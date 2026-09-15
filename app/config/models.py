@@ -54,6 +54,8 @@ class ModelSettings(SettingsGroup):
     @field_validator("api_key", mode="before")
     @classmethod
     def empty_secret_is_unset(cls, value: object) -> object:
+        if isinstance(value, SecretStr):
+            return value if value.get_secret_value() else None
         return None if value == "" else value
 
     @field_validator("generation_model", "embedding_model")

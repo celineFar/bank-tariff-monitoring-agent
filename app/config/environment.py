@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.config.models import Environment
@@ -38,25 +38,25 @@ class EnvironmentSettings(BaseSettings):
         "text/html",
     )
     http_user_agent: str = "ameria-tariff-monitor/0.1"
-    download_timeout_seconds: float = Field(default=20, gt=0, le=120)
-    http_max_attempts: int = Field(default=3, ge=1, le=5)
-    http_backoff_base_seconds: float = Field(default=0.5, ge=0, le=10)
-    max_redirects: int = Field(default=5, ge=0, le=10)
-    max_download_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
+    download_timeout_seconds: float = 20
+    http_max_attempts: int = 3
+    http_backoff_base_seconds: float = 0.5
+    max_redirects: int = 5
+    max_download_bytes: int = 25 * 1024 * 1024
     ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")
-    ocr_min_text_chars_per_page: int = Field(default=80, ge=0)
-    ocr_dpi: int = Field(default=300, ge=150, le=600)
-    ocr_max_pages: int = Field(default=50, ge=1, le=500)
-    ocr_timeout_seconds: float = Field(default=60, gt=0, le=600)
-    chunk_size_chars: int = Field(default=1500, ge=200, le=20_000)
-    chunk_overlap_chars: int = Field(default=150, ge=0)
-    retrieval_top_k: int = Field(default=8, ge=1, le=50)
-    retrieval_min_score: float = Field(default=0.25, ge=0, le=1)
-    hitl_document_rank_gap: float = Field(default=0.05, ge=0, le=1)
-    hitl_large_rate_change_percentage_points: float = Field(default=3, gt=0)
+    ocr_min_text_chars_per_page: int = 80
+    ocr_dpi: int = 300
+    ocr_max_pages: int = 50
+    ocr_timeout_seconds: float = 60
+    chunk_size_chars: int = 1500
+    chunk_overlap_chars: int = 150
+    retrieval_top_k: int = 8
+    retrieval_min_score: float = 0.25
+    hitl_document_rank_gap: float = 0.05
+    hitl_large_rate_change_percentage_points: float = 3
     schedule_timezone: str = "Asia/Yerevan"
-    schedule_hour: int = Field(default=6, ge=0, le=23)
-    schedule_minute: int = Field(default=0, ge=0, le=59)
+    schedule_hour: int = 6
+    schedule_minute: int = 0
     log_level: str = "INFO"
     otel_to_cloud: bool = False
     allow_origins: Annotated[tuple[str, ...], NoDecode] = ("http://localhost:3000",)
@@ -73,8 +73,3 @@ class EnvironmentSettings(BaseSettings):
         if isinstance(value, str):
             return tuple(item.strip() for item in value.split(",") if item.strip())
         return value
-
-    @field_validator("gemini_api_key", mode="before")
-    @classmethod
-    def empty_secret_is_unset(cls, value: object) -> object:
-        return None if value == "" else value

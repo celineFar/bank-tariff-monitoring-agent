@@ -109,9 +109,45 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         load_settings(_env_file=None, chunk_size_chars=500, chunk_overlap_chars=500)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("download_timeout_seconds", 0),
+        ("http_max_attempts", 6),
+        ("http_backoff_base_seconds", -1),
+        ("max_redirects", 11),
+        ("max_download_bytes", 0),
+        ("ocr_min_text_chars_per_page", -1),
+        ("ocr_dpi", 149),
+        ("ocr_max_pages", 0),
+        ("ocr_timeout_seconds", 601),
+        ("chunk_size_chars", 199),
+        ("chunk_overlap_chars", -1),
+        ("retrieval_top_k", 0),
+        ("retrieval_min_score", 1.1),
+        ("hitl_document_rank_gap", 1.1),
+        ("hitl_large_rate_change_percentage_points", 0),
+        ("schedule_hour", 24),
+        ("schedule_minute", 60),
+    ],
+)
+def test_domain_models_reject_out_of_range_environment_values(
+    field: str, value: int | float
+) -> None:
+    with pytest.raises(ValidationError):
+        load_settings(_env_file=None, **{field: value})
+
+
 def test_production_requires_api_key_and_masks_it() -> None:
     with pytest.raises(ValidationError, match="GEMINI_API_KEY"):
         load_settings(_env_file=None, environment=Environment.PRODUCTION)
+
+    with pytest.raises(ValidationError, match="GEMINI_API_KEY"):
+        load_settings(
+            _env_file=None,
+            environment=Environment.PRODUCTION,
+            gemini_api_key="",
+        )
 
     settings = load_settings(
         _env_file=None,
