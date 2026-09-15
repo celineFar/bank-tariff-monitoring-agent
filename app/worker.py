@@ -20,13 +20,13 @@ async def run_scheduled_monitoring() -> None:
 
 async def main() -> None:
     settings = get_settings()
-    logging.basicConfig(level=settings.log_level)
-    scheduler = AsyncIOScheduler(timezone=settings.schedule_timezone)
+    logging.basicConfig(level=settings.observability.log_level)
+    scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)
     scheduler.add_job(
         run_scheduled_monitoring,
         trigger="cron",
-        hour=settings.schedule_hour,
-        minute=settings.schedule_minute,
+        hour=settings.scheduler.hour,
+        minute=settings.scheduler.minute,
         id="daily-ameria-tariff-monitoring",
         max_instances=1,
         coalesce=True,

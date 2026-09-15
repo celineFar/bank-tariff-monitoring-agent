@@ -20,6 +20,8 @@ shell, or SQL tool.
 ## Package boundaries
 
 - `app/agent.py`: ADK root agent and stable instructions.
+- `app/config/`: one environment adapter plus nested typed groups shared by API,
+  agent, and worker; consumers depend only on the relevant group.
 - `app/tools.py`: narrow ADK adapters that call application services.
 - `app/api/`: user-trigger, run-status, and HITL review HTTP contracts.
 - `app/domain/`: validated tariff/evidence models and pure business rules.

@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.tools import resolve_product, start_tariff_monitoring
 
 
-MODEL = get_settings().model_name
+MODEL = get_settings().models.generation_model
 
 
 root_agent = Agent(

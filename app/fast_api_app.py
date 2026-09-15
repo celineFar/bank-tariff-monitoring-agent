@@ -25,12 +25,12 @@ from google.adk.runners import Runner
 from app.api.routes import router as project_router
 from app.app_utils import services
 from app.app_utils.a2a import attach_a2a_routes
+from app.config import get_settings
 
 load_dotenv()
-allow_origins = (
-    os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
-)
-otel_to_cloud = os.getenv("OTEL_TO_CLOUD", "false").lower() == "true"
+settings = get_settings()
+allow_origins = list(settings.http.allow_origins) or None
+otel_to_cloud = settings.observability.otel_to_cloud
 
 AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.runner = runner
     app.state.agent_app_name = adk_app.name
+    app.state.settings = settings
     await attach_a2a_routes(
         app,
         agent=root_agent,
@@ -67,8 +68,8 @@ app: FastAPI = get_fast_api_app(
     otel_to_cloud=otel_to_cloud,
     lifespan=lifespan,
 )
-app.title = "ameria-tariff-monitor"
-app.description = "API for interacting with the Agent ameria-tariff-monitor"
+app.title = settings.application.name
+app.description = f"API for interacting with the Agent {settings.application.name}"
 app.include_router(project_router)
 
 

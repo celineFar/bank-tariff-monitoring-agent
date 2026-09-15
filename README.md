@@ -18,7 +18,8 @@ fabricating results.
 - PostgreSQL 17 with pgvector
 - Docker Compose for a single AWS compute instance
 
-See [the architecture](docs/architecture.md) and [.agents-cli-spec.md](.agents-cli-spec.md).
+See [the architecture](docs/architecture.md), [configuration reference](docs/configuration.md),
+and [.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
 

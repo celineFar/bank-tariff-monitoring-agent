@@ -4,7 +4,7 @@ This list contains the components that need to be implemented. The order should 
 
 Each item defines its responsibility, implementation contract, important boundaries, and completion criteria. Ameria Bank, consumer loans, mortgages, Gemini Developer API, PostgreSQL/pgvector, FastAPI, and the daily `06:00 Asia/Yerevan` schedule are the initial scope.
 
-- [ ]  1. Configuration Component
+- [x]  1. Configuration Component
 
   - **Responsibility:** Provide one typed source of runtime configuration for the API, worker, ADK agent, repositories, and processing pipeline.
   - **Implement:** Use `pydantic-settings` for model names, `GEMINI_API_KEY`, PostgreSQL URL, Ameria host allowlist, HTTP timeout/retries, download/MIME limits, OCR thresholds/languages, chunk/retrieval settings, HITL thresholds, schedule, and logging. Supply a secret-free `.env.example`; use environment variables or AWS Secrets Manager for real secrets.
