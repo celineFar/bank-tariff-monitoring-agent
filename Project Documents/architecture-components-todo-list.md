@@ -22,7 +22,7 @@ Each item defines its responsibility, implementation contract, important boundar
 
   - **Responsibility:** Persist evidence-bearing chunks for lexical and semantic retrieval.
   - **Implement:** Use PostgreSQL and pgvector tables/repositories for document versions, chunks, metadata, full-text `tsvector`, and embeddings. Upsert deterministic chunk IDs derived from document checksum and location; retire stale chunks when a version changes. Generate embeddings through the configured Gemini embedding model outside the LLM tool loop.
-  - **Boundaries:** Keep bank, product, document, URL, page, section, language, retrieval time, checksum, extraction method, and quality filterable. Writes must be transactional and idempotent. This consumes component 7 output despite appearing earlier in the list.
+  - **Boundaries:** Keep bank, product, document, URL, page, section, language, retrieval time, checksum, extraction method, and quality filterable (if you think there are other attributes that needs to be filtered, go ahead and add them). Writes must be transactional and idempotent. This consumes component 7 output despite appearing earlier in the list.
   - **Done when:** Unchanged re-ingestion creates no duplicates, changed versions remain distinguishable, search uses indexes, and PostgreSQL/pgvector integration tests pass.
 
 - [ ]  4. RAG Retrieval Component

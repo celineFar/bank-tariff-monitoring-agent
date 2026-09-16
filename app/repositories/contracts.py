@@ -1,6 +1,11 @@
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.knowledge import (
+    DocumentVersionSummary,
+    EmbeddedKnowledgeDocument,
+    IndexWriteResult,
+)
 from app.domain.models import ProductType, TariffSnapshot
 
 
@@ -14,3 +19,13 @@ class ReviewRepository(Protocol):
     async def decide(
         self, review_id: UUID, decision: str, reviewer: str, comment: str | None
     ) -> None: ...
+
+
+class KnowledgeStoreRepository(Protocol):
+    async def upsert_document(
+        self, document: EmbeddedKnowledgeDocument
+    ) -> IndexWriteResult: ...
+
+    async def list_document_versions(
+        self, bank: str, product: ProductType, document_key: str
+    ) -> tuple[DocumentVersionSummary, ...]: ...

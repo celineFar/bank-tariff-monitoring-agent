@@ -34,5 +34,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  db-test:
+    image: pgvector/pgvector:pg17
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: tariff_monitor_test
+      POSTGRES_USER: tariff
+      POSTGRES_PASSWORD: tariff
+    ports: ["127.0.0.1:5433:5432"]
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tariff -d tariff_monitor_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
 volumes:
   postgres_data:

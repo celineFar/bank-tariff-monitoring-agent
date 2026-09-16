@@ -5,10 +5,10 @@ and mortgage tariffs. Gemini handles intent resolution and evidence-bound extrac
 security controls, ingestion, validation, persistence, comparison, scheduling, and
 HITL routing are deterministic.
 
-The repository currently contains the project scaffold and explicit interfaces. Live
-source discovery, parsing/OCR, retrieval, extraction, and PostgreSQL repositories are
-the next implementation phase; unimplemented HTTP operations return `501` rather than
-fabricating results.
+The repository contains the project scaffold, secure PDF retrieval, and a transactional
+PostgreSQL/pgvector knowledge store. Live source discovery, parsing/OCR, hybrid
+retrieval, extraction, and snapshot repositories remain later implementation phases;
+unimplemented HTTP operations return `501` rather than fabricating results.
 
 ## Runtime
 
@@ -19,7 +19,7 @@ fabricating results.
 - Docker Compose for a single AWS compute instance
 
 See [the architecture](docs/architecture.md), [configuration reference](docs/configuration.md),
-and [.agents-cli-spec.md](.agents-cli-spec.md).
+[knowledge-store design](docs/knowledge-store.md), and [.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
 

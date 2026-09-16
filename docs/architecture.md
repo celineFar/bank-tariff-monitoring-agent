@@ -29,7 +29,8 @@ shell, or SQL tool.
   services. `PdfDownloader` uses an injected, caller-owned HTTP client and returns
   immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
   checks complete.
-- `app/repositories/`: persistence interfaces and PostgreSQL implementations.
+- `app/repositories/`: persistence interfaces and PostgreSQL implementations,
+  including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/worker.py`: daily Asia/Yerevan scheduler entry point.
 - `migrations/`: PostgreSQL/pgvector schema.
@@ -51,3 +52,23 @@ signature check. The result contains the source/final URLs, bytes, SHA-256 check
 size, retrieval timestamps, and only the bounded provenance headers ETag,
 Last-Modified, and Content-Disposition. Failed or interrupted attempts return a
 typed `PdfDownloadError` and never expose a partial document.
+
+## RAG index / knowledge-store boundary
+
+`KnowledgeIndexer` accepts page-aware chunks from the future chunking component,
+requests `RETRIEVAL_DOCUMENT` embeddings through an injected embedding provider, and
+passes only validated 768-dimensional vectors to `PostgresKnowledgeStore`. Neither
+the embedding client nor the repository is exposed as an ADK tool.
+
+Document-version UUIDs are derived from bank, product, stable document identity, and
+source checksum. Chunk IDs are SHA-256 digests of the document checksum and stable
+location fields. Re-ingesting unchanged input therefore upserts the same rows. A
+per-document PostgreSQL advisory transaction lock serializes concurrent ingestion;
+new versions retire prior active versions and their chunks while retaining history.
+Re-chunking the same version also retires chunks absent from the new input.
+
+`knowledge_documents` retains source/version metadata, active state, retrieval time,
+extraction method, and quality. `knowledge_chunks` retains page/section/language,
+content, extraction metadata, a generated `tsvector`, and a `vector(768)` embedding.
+GIN and HNSW indexes support the lexical/vector retrieval component implemented in a
+later checklist item. Migration `002_rag_knowledge_store.sql` owns this schema.
