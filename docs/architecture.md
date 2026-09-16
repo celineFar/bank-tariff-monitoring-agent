@@ -53,6 +53,22 @@ size, retrieval timestamps, and only the bounded provenance headers ETag,
 Last-Modified, and Content-Disposition. Failed or interrupted attempts return a
 typed `PdfDownloadError` and never expose a partial document.
 
+## Website / HTML retrieval boundary
+
+`RestrictedHttpTransport` now owns the allowlist, manual redirect, transient retry,
+`Retry-After`, MIME, streamed-size, checksum, and safe-header behavior shared by PDF
+and HTML retrieval. `HtmlRetriever` adds the narrower `text/html` contract and the
+independent `MAX_HTML_BYTES` ceiling.
+
+The retriever parses without a browser runtime, removes executable/form content and
+common navigation, footer, cookie, chat, and repeated boilerplate elements,
+then returns immutable structured headings, main text, tables, language hints, and
+same-allowlist links. Canonical URLs and extracted links are independently validated;
+unsafe values are ignored rather than trusted from the page. Protected, unavailable,
+empty, non-HTML, and oversized responses fail with typed outcomes and no partial page.
+Raw HTML remains an untrusted artifact and is never supplied directly to Gemini. See
+`docs/html-retrieval.md` for the complete contract.
+
 ## RAG index / knowledge-store boundary
 
 `KnowledgeIndexer` accepts page-aware chunks from the future chunking component,

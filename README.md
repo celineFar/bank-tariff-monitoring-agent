@@ -5,10 +5,11 @@ and mortgage tariffs. Gemini handles intent resolution and evidence-bound extrac
 security controls, ingestion, validation, persistence, comparison, scheduling, and
 HITL routing are deterministic.
 
-The repository contains the project scaffold, secure PDF retrieval, and a transactional
-PostgreSQL/pgvector knowledge store. Live source discovery, parsing/OCR, hybrid
-retrieval, extraction, and snapshot repositories remain later implementation phases;
-unimplemented HTTP operations return `501` rather than fabricating results.
+The repository contains the project scaffold, shared restricted PDF/HTML retrieval,
+and a transactional PostgreSQL/pgvector knowledge store with deterministic hybrid
+retrieval. Source discovery, PDF parsing/OCR, extraction, and snapshot repositories
+remain later implementation phases; unimplemented HTTP operations return `501` rather
+than fabricating results.
 
 ## Runtime
 
@@ -19,7 +20,8 @@ unimplemented HTTP operations return `501` rather than fabricating results.
 - Docker Compose for a single AWS compute instance
 
 See [the architecture](docs/architecture.md), [configuration reference](docs/configuration.md),
-[knowledge-store design](docs/knowledge-store.md), and [.agents-cli-spec.md](.agents-cli-spec.md).
+[HTML retrieval design](docs/html-retrieval.md), [knowledge-store design](docs/knowledge-store.md),
+and [.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
 
@@ -51,10 +53,10 @@ tests/eval/           agent/RAG evaluation scaffold
 
 ## Security notes
 
-Only exact configured HTTPS hosts are accepted. Redirect targets must be checked with
-the same validator when retrieval is implemented. The model is not given filesystem,
-shell, arbitrary network, or SQL access. Production deployments should inject secrets
-through AWS Secrets Manager and put authenticated HTTPS ingress in front of FastAPI.
+Only exact configured HTTPS hosts are accepted, and every redirect target is checked
+with the same validator. The model is not given filesystem, shell, arbitrary network,
+or SQL access. Production deployments should inject secrets through AWS Secrets
+Manager and put authenticated HTTPS ingress in front of FastAPI.
 
 ## AI-assisted development disclosure
 

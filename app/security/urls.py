@@ -21,4 +21,10 @@ def validate_source_url(url: str, allowed_hosts: tuple[str, ...]) -> str:
         raise DisallowedSourceUrl(f"Source host is not allowlisted: {host}")
     if parsed.username or parsed.password:
         raise DisallowedSourceUrl("Source URL credentials are not allowed")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise DisallowedSourceUrl("Source URL contains an invalid port") from exc
+    if port not in {None, 443}:
+        raise DisallowedSourceUrl("Source URL must use the standard HTTPS port")
     return parsed.geturl()

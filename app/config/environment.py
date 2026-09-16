@@ -45,6 +45,7 @@ class EnvironmentSettings(BaseSettings):
     http_max_retry_delay_seconds: float = 120
     max_redirects: int = 5
     max_download_bytes: int = 25 * 1024 * 1024
+    max_html_bytes: int = 5 * 1024 * 1024
     ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")
     ocr_min_text_chars_per_page: int = 80
     ocr_dpi: int = 300

@@ -49,6 +49,7 @@ def load_settings(
             max_retry_delay_seconds=raw.http_max_retry_delay_seconds,
             max_redirects=raw.max_redirects,
             max_download_bytes=raw.max_download_bytes,
+            max_html_bytes=raw.max_html_bytes,
             allow_origins=raw.allow_origins,
         ),
         ocr=OcrSettings(

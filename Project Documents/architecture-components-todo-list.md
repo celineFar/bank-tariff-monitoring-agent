@@ -25,14 +25,14 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Keep bank, product, document, URL, page, section, language, retrieval time, checksum, extraction method, and quality filterable (if you think there are other attributes that needs to be filtered, go ahead and add them). Writes must be transactional and idempotent. This consumes component 7 output despite appearing earlier in the list.
   - **Done when:** Unchanged re-ingestion creates no duplicates, changed versions remain distinguishable, search uses indexes, and PostgreSQL/pgvector integration tests pass.
 
-- [ ]  4. RAG Retrieval Component
+- [x]  4. RAG Retrieval Component
 
   - **Responsibility:** Return the smallest relevant set of verifiable chunks for tariff extraction.
   - **Implement:** Combine pgvector similarity and PostgreSQL full-text search with mandatory bank/product filters, documented rank fusion, overlap deduplication, top-k limits, and minimum relevance thresholds. Support field-oriented queries for amounts, terms, rates, fees, collateral, and privileges.
   - **Contract:** Return typed hits with chunk content/ID, lexical/vector/final scores, rank explanation, document version, page/section, and URL. Return explicit insufficient evidence below threshold.
   - **Done when:** Armenian/English tests cover both products, metadata isolation, irrelevant-query rejection, deterministic ordering, deduplication, and complete provenance.
 
-- [ ]  5. Website Scraper / HTML Retriever
+- [x]  5. Website Scraper / HTML Retriever
 
   - **Responsibility:** Retrieve usable public content and links from official Ameria webpages.
   - **Implement:** Reuse the restricted HTTP transport and URL validator. Enforce redirects, timeouts, size, status, and HTML type limits. Extract canonical URL, title, headings, main text, tables, language hints, and same-allowlist links while removing scripts, styles, navigation, cookie banners, and repeated boilerplate.

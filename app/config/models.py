@@ -108,6 +108,7 @@ class HttpSettings(SettingsGroup):
     max_retry_delay_seconds: float = Field(default=120, gt=0, le=3600)
     max_redirects: int = Field(default=5, ge=0, le=10)
     max_download_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
+    max_html_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
     allow_origins: tuple[str, ...] = ("http://localhost:3000",)
 
     @field_validator("user_agent")
