@@ -72,3 +72,19 @@ extraction method, and quality. `knowledge_chunks` retains page/section/language
 content, extraction metadata, a generated `tsvector`, and a `vector(768)` embedding.
 GIN and HNSW indexes support the lexical/vector retrieval component implemented in a
 later checklist item. Migration `002_rag_knowledge_store.sql` owns this schema.
+
+## RAG retrieval boundary
+
+`RagRetriever` accepts an already resolved bank, product, query, and tariff-field
+scope. It creates a `RETRIEVAL_QUERY` embedding and calls only the narrow
+`HybridRetrievalRepository`; no database handle or SQL operation crosses into the
+agent/tool layer. `PostgresRagRetrievalRepository` unions full-text and cosine
+candidates while enforcing bank/product and active-version predicates in every SQL
+branch.
+
+The application service performs documented weighted reciprocal-rank fusion,
+absolute relevance scoring, threshold rejection, deterministic tie-breaking,
+same-document overlap deduplication, and top-k limiting. It returns immutable typed
+hits with complete document/chunk provenance, or an explicit
+`INSUFFICIENT_EVIDENCE` result. See `docs/rag-retrieval.md` for the exact formula and
+query contract.

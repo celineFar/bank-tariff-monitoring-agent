@@ -30,6 +30,13 @@ class EmbeddingProvider(Protocol):
     ) -> Sequence[Sequence[float]]: ...
 
 
+class QueryEmbeddingProvider(Protocol):
+    @property
+    def dimensions(self) -> int: ...
+
+    async def embed_query(self, content: str) -> Sequence[float]: ...
+
+
 class GeminiEmbeddingProvider:
     """Gemini embedding adapter used by deterministic ingestion, never as a tool."""
 
@@ -66,6 +73,39 @@ class GeminiEmbeddingProvider:
         if any(value is None for value in values):
             raise EmbeddingError("Gemini returned an embedding without values")
         return [value for value in values if value is not None]
+
+
+class GeminiQueryEmbeddingProvider:
+    """Gemini query adapter paired with RETRIEVAL_DOCUMENT ingestion vectors."""
+
+    def __init__(
+        self,
+        client: genai.Client,
+        model_name: str,
+        *,
+        dimensions: int = EMBEDDING_DIMENSIONS,
+    ) -> None:
+        self._client = client
+        self._model_name = model_name
+        self._dimensions = dimensions
+
+    @property
+    def dimensions(self) -> int:
+        return self._dimensions
+
+    async def embed_query(self, content: str) -> Sequence[float]:
+        response = await self._client.aio.models.embed_content(
+            model=self._model_name,
+            contents=content,
+            config=types.EmbedContentConfig(
+                task_type="RETRIEVAL_QUERY",
+                output_dimensionality=self._dimensions,
+            ),
+        )
+        embeddings = response.embeddings or []
+        if len(embeddings) != 1 or embeddings[0].values is None:
+            raise EmbeddingError("Gemini did not return exactly one query embedding")
+        return embeddings[0].values
 
 
 class KnowledgeIndexer:

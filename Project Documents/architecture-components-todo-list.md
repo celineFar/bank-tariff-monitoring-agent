@@ -18,7 +18,7 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Contract:** Accept only a discovered candidate URL and return a typed document containing content/artifact reference, final URL, MIME type, size, checksum, timestamps, and safe provenance headers. Do not expose generic downloading to Gemini.
   - **Done when:** Tests cover valid PDF, timeout, 404, 429/5xx retry, oversized content, spoofed MIME/signature, disallowed redirect, redirect loop, and controlled failure without partial output.
 
-- [ ]  3. RAG Index / Knowledge Store
+- [x]  3. RAG Index / Knowledge Store
 
   - **Responsibility:** Persist evidence-bearing chunks for lexical and semantic retrieval.
   - **Implement:** Use PostgreSQL and pgvector tables/repositories for document versions, chunks, metadata, full-text `tsvector`, and embeddings. Upsert deterministic chunk IDs derived from document checksum and location; retire stale chunks when a version changes. Generate embeddings through the configured Gemini embedding model outside the LLM tool loop.

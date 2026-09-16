@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from app.domain.knowledge import (
     IndexWriteResult,
 )
 from app.domain.models import ProductType, TariffSnapshot
+from app.domain.retrieval import RetrievalCandidate
 
 
 class SnapshotRepository(Protocol):
@@ -29,3 +31,15 @@ class KnowledgeStoreRepository(Protocol):
     async def list_document_versions(
         self, bank: str, product: ProductType, document_key: str
     ) -> tuple[DocumentVersionSummary, ...]: ...
+
+
+class HybridRetrievalRepository(Protocol):
+    async def search_candidates(
+        self,
+        *,
+        bank: str,
+        product: ProductType,
+        lexical_query: str,
+        query_embedding: Sequence[float],
+        limit: int,
+    ) -> Sequence[RetrievalCandidate]: ...

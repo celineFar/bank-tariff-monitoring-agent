@@ -16,13 +16,21 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.config.models import RagSettings
 from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
     EmbeddedKnowledgeChunk,
     EmbeddedKnowledgeDocument,
 )
 from app.domain.models import ProductType
+from app.domain.retrieval import (
+    RetrievalRequest,
+    RetrievalStatus,
+    TariffField,
+)
 from app.repositories.knowledge_store import PostgresKnowledgeStore
+from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
+from app.services.rag_retrieval import RagRetriever
 
 pytestmark = pytest.mark.postgres
 
@@ -264,3 +272,123 @@ async def test_vector_and_lexical_indexes_exist_and_vector_plan_uses_hnsw(
     assert "knowledge_chunks_search_gin_idx" in indexes
     assert "knowledge_chunks_embedding_hnsw_idx" in indexes
     assert "knowledge_chunks_embedding_hnsw_idx" in plan
+
+
+class _QueryEmbeddingProvider:
+    dimensions = EMBEDDING_DIMENSIONS
+
+    async def embed_query(self, content: str) -> tuple[float, ...]:
+        del content
+        return (1.0, *(0.0 for _ in range(EMBEDDING_DIMENSIONS - 1)))
+
+
+def _retrieval_document(
+    run_id: UUID,
+    *,
+    product: ProductType,
+    checksum: str,
+    document_key: str,
+    content: str,
+    language: str,
+    bank: str = "ameria",
+) -> EmbeddedKnowledgeDocument:
+    return EmbeddedKnowledgeDocument(
+        run_id=run_id,
+        bank=bank,
+        product=product,
+        document_key=document_key,
+        document_name=f"{product.value} official tariff",
+        source_url=f"https://ameriabank.am/{product.value}/tariff.pdf",
+        final_url=f"https://www.ameriabank.am/{product.value}/tariff.pdf",
+        mime_type="application/pdf",
+        content_sha256=checksum,
+        retrieved_at=datetime(2026, 9, 16, 6, tzinfo=UTC),
+        extraction_method="digital_pdf",
+        quality_score=0.97,
+        chunks=(
+            EmbeddedKnowledgeChunk(
+                ordinal=0,
+                content=content,
+                page_start=2,
+                page_end=2,
+                section="Tariff",
+                language=language,
+                extraction_method="digital_pdf",
+                quality_score=0.98,
+                embedding=(1.0, *(0.0 for _ in range(EMBEDDING_DIMENSIONS - 1))),
+            ),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_isolates_products_and_preserves_provenance(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    consumer_run = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
+    mortgage_run = await _create_run(session_factory, ProductType.MORTGAGE)
+    other_bank_run = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
+    store = PostgresKnowledgeStore(session_factory)
+    await store.upsert_document(
+        _retrieval_document(
+            consumer_run,
+            product=ProductType.CONSUMER_LOAN,
+            checksum="c" * 64,
+            document_key="consumer-tariff",
+            content="Consumer loan amount is up to 20,000,000 AMD.",
+            language="en",
+        )
+    )
+    await store.upsert_document(
+        _retrieval_document(
+            other_bank_run,
+            product=ProductType.CONSUMER_LOAN,
+            checksum="e" * 64,
+            document_key="other-bank-consumer-tariff",
+            content="Consumer loan amount is up to 99,000,000 AMD.",
+            language="en",
+            bank="other-bank",
+        )
+    )
+    await store.upsert_document(
+        _retrieval_document(
+            mortgage_run,
+            product=ProductType.MORTGAGE,
+            checksum="d" * 64,
+            document_key="mortgage-tariff",
+            content="Հիփոթեքային վարկի ժամկետը մինչև 240 ամիս է",
+            language="hy",
+        )
+    )
+    retriever = RagRetriever(
+        _QueryEmbeddingProvider(),
+        PostgresRagRetrievalRepository(session_factory),
+        RagSettings(retrieval_top_k=3, retrieval_min_score=0.25),
+    )
+
+    consumer = await retriever.retrieve(
+        RetrievalRequest(
+            query="consumer loan amount",
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            fields=(TariffField.AMOUNT,),
+        )
+    )
+    mortgage = await retriever.retrieve(
+        RetrievalRequest(
+            query="հիփոթեքային վարկի ժամկետը",
+            bank="ameria",
+            product=ProductType.MORTGAGE,
+            fields=(TariffField.TERM,),
+        )
+    )
+
+    assert consumer.status is RetrievalStatus.FOUND
+    assert len(consumer.hits) == 1
+    assert consumer.hits[0].document_checksum == "c" * 64
+    assert consumer.hits[0].page_start == 2
+    assert consumer.hits[0].section == "Tariff"
+    assert mortgage.status is RetrievalStatus.FOUND
+    assert len(mortgage.hits) == 1
+    assert mortgage.hits[0].document_checksum == "d" * 64
+    assert mortgage.hits[0].language == "hy"

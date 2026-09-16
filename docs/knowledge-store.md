@@ -33,7 +33,8 @@ a schema migration and a coordinated embedding-provider update.
   PostgreSQL's `simple` configuration.
 - A pgvector HNSW index with cosine operators supports semantic candidate retrieval.
 
-Hybrid ranking and result contracts belong to the separate RAG Retrieval Component.
+Hybrid ranking and result contracts are implemented by the separate RAG Retrieval
+Component and documented in `docs/rag-retrieval.md`.
 
 ## PostgreSQL integration tests
 

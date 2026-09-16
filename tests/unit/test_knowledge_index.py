@@ -18,6 +18,7 @@ from app.domain.models import ProductType
 from app.services.knowledge_index import (
     EmbeddingError,
     GeminiEmbeddingProvider,
+    GeminiQueryEmbeddingProvider,
     KnowledgeIndexer,
 )
 
@@ -165,4 +166,31 @@ async def test_gemini_embedding_adapter_uses_document_task_and_configured_model(
     assert models.arguments["contents"] == ["tariff evidence"]
     config = models.arguments["config"]
     assert config.task_type == "RETRIEVAL_DOCUMENT"
+    assert config.output_dimensionality == 3
+
+
+@pytest.mark.asyncio
+async def test_gemini_query_embedding_adapter_uses_query_task() -> None:
+    class FakeModels:
+        def __init__(self) -> None:
+            self.arguments: dict[str, object] = {}
+
+        async def embed_content(self, **arguments: object) -> object:
+            self.arguments = arguments
+            return SimpleNamespace(embeddings=[SimpleNamespace(values=[0.3, 0.2, 0.1])])
+
+    models = FakeModels()
+    client = SimpleNamespace(aio=SimpleNamespace(models=models))
+    provider = GeminiQueryEmbeddingProvider(
+        client,
+        "gemini-embedding-001",
+        dimensions=3,
+    )
+
+    result = await provider.embed_query("mortgage interest rate")
+
+    assert result == [0.3, 0.2, 0.1]
+    assert models.arguments["contents"] == "mortgage interest rate"
+    config = models.arguments["config"]
+    assert config.task_type == "RETRIEVAL_QUERY"
     assert config.output_dimensionality == 3
