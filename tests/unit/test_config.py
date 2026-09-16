@@ -16,6 +16,8 @@ def test_defaults_match_the_approved_architecture() -> None:
     )
     assert settings.scheduler.timezone == "Asia/Yerevan"
     assert (settings.scheduler.hour, settings.scheduler.minute) == (6, 0)
+    assert settings.http.retry_jitter_ratio == 0.25
+    assert settings.http.max_retry_delay_seconds == 120
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -50,6 +52,8 @@ def test_settings_load_from_deployment_environment(
     monkeypatch.setenv("SCHEDULE_HOUR", "7")
     monkeypatch.setenv("OTEL_TO_CLOUD", "true")
     monkeypatch.setenv("GEMINI_API_KEY", "runtime-secret")
+    monkeypatch.setenv("HTTP_RETRY_JITTER_RATIO", "0.5")
+    monkeypatch.setenv("HTTP_MAX_RETRY_DELAY_SECONDS", "30")
 
     settings = load_settings(_env_file=None)
 
@@ -59,6 +63,8 @@ def test_settings_load_from_deployment_environment(
     )
     assert settings.scheduler.hour == 7
     assert settings.observability.otel_to_cloud is True
+    assert settings.http.retry_jitter_ratio == 0.5
+    assert settings.http.max_retry_delay_seconds == 30
     assert settings.models.api_key is not None
     assert settings.models.api_key.get_secret_value() == "runtime-secret"
 
@@ -115,6 +121,8 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("download_timeout_seconds", 0),
         ("http_max_attempts", 6),
         ("http_backoff_base_seconds", -1),
+        ("http_retry_jitter_ratio", 1.1),
+        ("http_max_retry_delay_seconds", 0),
         ("max_redirects", 11),
         ("max_download_bytes", 0),
         ("ocr_min_text_chars_per_page", -1),

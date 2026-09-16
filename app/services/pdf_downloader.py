@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from enum import StrEnum
 from urllib.parse import urldefrag, urljoin
 
@@ -20,6 +22,7 @@ _MAX_PROVENANCE_HEADER_LENGTH = 512
 
 Sleep = Callable[[float], Awaitable[None]]
 Clock = Callable[[], datetime]
+RandomValue = Callable[[], float]
 
 
 class PdfDownloadFailure(StrEnum):
@@ -86,6 +89,7 @@ class _Redirect:
 @dataclass(frozen=True, slots=True)
 class _RetryableStatus:
     status_code: int
+    retry_after: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,11 +110,13 @@ class PdfDownloader:
         *,
         sleep: Sleep = asyncio.sleep,
         clock: Clock | None = None,
+        random_value: RandomValue = random.random,
     ) -> None:
         self._client = client
         self._settings = settings
         self._sleep = sleep
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._random_value = random_value
 
     async def download(self, candidate: PdfCandidate) -> DownloadedPdf:
         started_at = self._clock()
@@ -189,7 +195,7 @@ class PdfDownloader:
                         "PDF download exhausted retries for a transient HTTP status",
                         status_code=result.status_code,
                     )
-                await self._backoff(attempt)
+                await self._backoff(attempt, retry_after=result.retry_after)
                 continue
             return result
 
@@ -219,7 +225,10 @@ class PdfDownloader:
                 return _Redirect(location=location)
 
             if response.status_code == 429 or 500 <= response.status_code <= 599:
-                return _RetryableStatus(status_code=response.status_code)
+                return _RetryableStatus(
+                    status_code=response.status_code,
+                    retry_after=response.headers.get("retry-after"),
+                )
             if response.status_code != 200:
                 raise PdfDownloadError(
                     PdfDownloadFailure.HTTP_STATUS,
@@ -297,10 +306,23 @@ class PdfDownloader:
             provenance_headers=_safe_provenance_headers(response.headers),
         )
 
-    async def _backoff(self, failed_attempt: int) -> None:
+    async def _backoff(
+        self, failed_attempt: int, *, retry_after: str | None = None
+    ) -> None:
+        exponential_delay = self._settings.backoff_base_seconds * (
+            2 ** (failed_attempt - 1)
+        )
+        random_fraction = min(max(self._random_value(), 0.0), 1.0)
+        jitter = exponential_delay * self._settings.retry_jitter_ratio * random_fraction
+        client_delay = exponential_delay + jitter
+        server_delay = (
+            _parse_retry_after(retry_after, now=self._clock())
+            if retry_after is not None
+            else None
+        )
         delay = min(
-            self._settings.backoff_base_seconds * (2 ** (failed_attempt - 1)),
-            self._settings.timeout_seconds,
+            max(client_delay, server_delay or 0),
+            self._settings.max_retry_delay_seconds,
         )
         await self._sleep(delay)
 
@@ -319,3 +341,23 @@ def _safe_header(value: str | None) -> str | None:
     ):
         return None
     return value.strip()[:_MAX_PROVENANCE_HEADER_LENGTH] or None
+
+
+def _parse_retry_after(value: str | None, *, now: datetime) -> float | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if normalized.isascii() and normalized.isdigit():
+        try:
+            return float(int(normalized))
+        except (ValueError, OverflowError):
+            return None
+    try:
+        retry_at = parsedate_to_datetime(normalized)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    return max((retry_at.astimezone(UTC) - now.astimezone(UTC)).total_seconds(), 0)

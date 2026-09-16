@@ -1,6 +1,7 @@
 import hashlib
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 
 import httpx
 import pytest
@@ -19,11 +20,17 @@ PDF_BYTES = b"%PDF-1.7\ncontrolled fixture\n%%EOF"
 
 
 def _settings(**overrides: object) -> HttpSettings:
-    return HttpSettings(backoff_base_seconds=0, **overrides)
+    values: dict[str, object] = {"backoff_base_seconds": 0}
+    values.update(overrides)
+    return HttpSettings(**values)
 
 
 async def _no_sleep(_: float) -> None:
     return None
+
+
+def _zero_random() -> float:
+    return 0
 
 
 async def _download(
@@ -31,13 +38,16 @@ async def _download(
     *,
     settings: HttpSettings | None = None,
     clock: Callable[[], datetime] | None = None,
+    sleep: Callable[[float], Awaitable[None]] = _no_sleep,
+    random_value: Callable[[], float] = _zero_random,
 ) -> DownloadedPdf:
     async with httpx.AsyncClient(transport=handler) as client:
         downloader = PdfDownloader(
             client,
             settings or _settings(),
-            sleep=_no_sleep,
+            sleep=sleep,
             clock=clock,
+            random_value=random_value,
         )
         return await downloader.download(PdfCandidate(SOURCE_URL))
 
@@ -135,6 +145,163 @@ async def test_transient_status_is_retried(transient_status: int) -> None:
 
     assert document.content == PDF_BYTES
     assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_backoff_adds_injected_jitter() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503)
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=PDF_BYTES,
+        )
+
+    async def capture_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    await _download(
+        httpx.MockTransport(handler),
+        settings=_settings(
+            backoff_base_seconds=2,
+            retry_jitter_ratio=0.5,
+            max_retry_delay_seconds=20,
+        ),
+        sleep=capture_sleep,
+        random_value=lambda: 0.5,
+    )
+
+    assert delays == [2.5]
+
+
+@pytest.mark.asyncio
+async def test_retry_after_delta_seconds_takes_precedence() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"})
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=PDF_BYTES,
+        )
+
+    async def capture_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    await _download(
+        httpx.MockTransport(handler),
+        settings=_settings(backoff_base_seconds=2),
+        sleep=capture_sleep,
+    )
+
+    assert delays == [7]
+
+
+@pytest.mark.asyncio
+async def test_retry_after_http_date_is_supported() -> None:
+    now = datetime(2026, 9, 16, 6, tzinfo=UTC)
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            retry_at = format_datetime(now + timedelta(seconds=9), usegmt=True)
+            return httpx.Response(503, headers={"Retry-After": retry_at})
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=PDF_BYTES,
+        )
+
+    async def capture_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    await _download(
+        httpx.MockTransport(handler),
+        settings=_settings(backoff_base_seconds=2),
+        clock=lambda: now,
+        sleep=capture_sleep,
+    )
+
+    assert delays == [9]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "retry_after",
+    ["not-a-delay", "Wed, 16 Sep 2020 06:00:00 GMT"],
+)
+async def test_invalid_or_past_retry_after_falls_back_to_client_backoff(
+    retry_after: str,
+) -> None:
+    now = datetime(2026, 9, 16, 6, tzinfo=UTC)
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, headers={"Retry-After": retry_after})
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=PDF_BYTES,
+        )
+
+    async def capture_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    await _download(
+        httpx.MockTransport(handler),
+        settings=_settings(backoff_base_seconds=2, retry_jitter_ratio=0.5),
+        clock=lambda: now,
+        sleep=capture_sleep,
+        random_value=lambda: 0.5,
+    )
+
+    assert delays == [2.5]
+
+
+@pytest.mark.asyncio
+async def test_retry_after_is_capped_by_local_policy() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "600"})
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=PDF_BYTES,
+        )
+
+    async def capture_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    await _download(
+        httpx.MockTransport(handler),
+        settings=_settings(max_retry_delay_seconds=10),
+        sleep=capture_sleep,
+    )
+
+    assert delays == [10]
 
 
 @pytest.mark.asyncio

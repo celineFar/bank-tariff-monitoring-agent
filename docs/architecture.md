@@ -42,7 +42,8 @@ Official-source discovery hands a typed `PdfCandidate` to `PdfDownloader`; the
 downloader is an application service and is not exposed directly to Gemini. It uses
 a caller-owned `httpx.AsyncClient`, manually validates the initial URL and every
 redirect target, and retries only timeouts, transport failures, HTTP 429, and HTTP
-5xx responses with bounded exponential backoff.
+5xx responses with bounded exponential backoff, proportional jitter, and bounded
+`Retry-After` support for both delta-seconds and HTTP-date values.
 
 The service returns an immutable `DownloadedPdf` only after the complete stream has
 passed the configured byte limit, `application/pdf` MIME check, and `%PDF-`

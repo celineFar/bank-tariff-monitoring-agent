@@ -41,6 +41,8 @@ class EnvironmentSettings(BaseSettings):
     download_timeout_seconds: float = 20
     http_max_attempts: int = 3
     http_backoff_base_seconds: float = 0.5
+    http_retry_jitter_ratio: float = 0.25
+    http_max_retry_delay_seconds: float = 120
     max_redirects: int = 5
     max_download_bytes: int = 25 * 1024 * 1024
     ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")

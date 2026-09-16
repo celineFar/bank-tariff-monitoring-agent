@@ -45,6 +45,8 @@ def load_settings(
             timeout_seconds=raw.download_timeout_seconds,
             max_attempts=raw.http_max_attempts,
             backoff_base_seconds=raw.http_backoff_base_seconds,
+            retry_jitter_ratio=raw.http_retry_jitter_ratio,
+            max_retry_delay_seconds=raw.http_max_retry_delay_seconds,
             max_redirects=raw.max_redirects,
             max_download_bytes=raw.max_download_bytes,
             allow_origins=raw.allow_origins,
