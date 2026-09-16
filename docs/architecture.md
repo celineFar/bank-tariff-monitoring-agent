@@ -25,10 +25,28 @@ shell, or SQL tool.
 - `app/tools.py`: narrow ADK adapters that call application services.
 - `app/api/`: user-trigger, run-status, and HITL review HTTP contracts.
 - `app/domain/`: validated tariff/evidence models and pure business rules.
-- `app/services/`: pipeline orchestration interfaces and implementations.
+- `app/services/`: pipeline orchestration interfaces and deterministic application
+  services. `PdfDownloader` uses an injected, caller-owned HTTP client and returns
+  immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
+  checks complete.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/worker.py`: daily Asia/Yerevan scheduler entry point.
 - `migrations/`: PostgreSQL/pgvector schema.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
+
+## PDF retrieval boundary
+
+Official-source discovery hands a typed `PdfCandidate` to `PdfDownloader`; the
+downloader is an application service and is not exposed directly to Gemini. It uses
+a caller-owned `httpx.AsyncClient`, manually validates the initial URL and every
+redirect target, and retries only timeouts, transport failures, HTTP 429, and HTTP
+5xx responses with bounded exponential backoff.
+
+The service returns an immutable `DownloadedPdf` only after the complete stream has
+passed the configured byte limit, `application/pdf` MIME check, and `%PDF-`
+signature check. The result contains the source/final URLs, bytes, SHA-256 checksum,
+size, retrieval timestamps, and only the bounded provenance headers ETag,
+Last-Modified, and Content-Disposition. Failed or interrupted attempts return a
+typed `PdfDownloadError` and never expose a partial document.

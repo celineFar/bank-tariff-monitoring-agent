@@ -11,7 +11,7 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Normalize allowlist entries as hostnames, validate settings at startup, inject settings into services, and do not scatter environment reads through business logic.
   - **Done when:** API and worker use the same validated settings, invalid values fail before startup, configuration tests pass, and no credential is committed.
 
-- [ ]  2. PDF Downloader
+- [x]  2. PDF Downloader
 
   - **Responsibility:** Retrieve official candidate PDFs safely as untrusted binary content.
   - **Implement:** Build a focused async downloader using the shared HTTP client. Validate HTTPS and the exact Ameria allowlist before requesting and after every redirect; enforce status handling, redirect/timeout/retry limits, streamed byte limits, MIME and PDF-signature checks, SHA-256 hashing, and retrieval timestamps.
