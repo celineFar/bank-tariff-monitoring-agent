@@ -9,6 +9,7 @@ from app.domain.discovery import (
     PersistedSourceOrigin,
     SourceIngestionResult,
 )
+from app.domain.extraction import ExtractedDocument, PersistedExtraction
 from app.domain.knowledge import (
     DocumentVersionSummary,
     EmbeddedKnowledgeDocument,
@@ -67,3 +68,11 @@ class SourceIngestionRepository(Protocol):
         *,
         ingestion_run_id: UUID | None = None,
     ) -> tuple[PersistedSourceOrigin, ...]: ...
+
+
+class ContentExtractionRepository(Protocol):
+    async def save_extraction(self, extraction: ExtractedDocument) -> None: ...
+
+    async def get_extraction(
+        self, extraction_id: UUID
+    ) -> PersistedExtraction | None: ...

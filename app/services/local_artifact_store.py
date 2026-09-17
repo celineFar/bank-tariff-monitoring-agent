@@ -11,6 +11,7 @@ from uuid import uuid4
 from app.domain.discovery import StoredArtifact
 
 _EXTENSIONS = {
+    "application/json": ".json",
     "application/pdf": ".pdf",
     "text/html": ".html",
     "application/msword": ".doc",
@@ -47,6 +48,20 @@ class LocalArtifactStore:
     async def read(self, storage_key: str) -> bytes:
         return await asyncio.to_thread(self._safe_path(storage_key).read_bytes)
 
+    async def put_extracted(
+        self,
+        *,
+        content: bytes,
+        sha256: str,
+    ) -> StoredArtifact:
+        return await asyncio.to_thread(
+            self._put_sync,
+            content=content,
+            sha256=sha256,
+            mime_type="application/json",
+            namespace="extracted",
+        )
+
     async def write_manifest(self, run_id: str, payload: dict[str, Any]) -> str:
         storage_key = f"manifests/{run_id}.json"
         encoded = json.dumps(
@@ -77,6 +92,7 @@ class LocalArtifactStore:
         content: bytes,
         sha256: str,
         mime_type: str,
+        namespace: str = "raw",
     ) -> StoredArtifact:
         actual_sha256 = hashlib.sha256(content).hexdigest()
         normalized_sha256 = sha256.casefold()
@@ -85,7 +101,9 @@ class LocalArtifactStore:
                 "artifact bytes did not match the supplied SHA-256"
             )
         extension = _EXTENSIONS.get(mime_type.casefold(), ".bin")
-        storage_key = f"raw/{normalized_sha256[:2]}/{normalized_sha256}{extension}"
+        storage_key = (
+            f"{namespace}/{normalized_sha256[:2]}/{normalized_sha256}{extension}"
+        )
         path = self._safe_path(storage_key)
         created = not path.exists()
         if created:

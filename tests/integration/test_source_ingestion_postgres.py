@@ -1,3 +1,4 @@
+import hashlib
 import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -27,6 +28,10 @@ from app.domain.discovery import (
     SourceIngestionResult,
     StoredArtifact,
 )
+from app.repositories.content_extraction import (
+    ContentExtractionRecord,
+    PostgresContentExtractionRepository,
+)
 from app.repositories.source_ingestion import (
     PostgresSourceIngestionRepository,
     SourceArtifactOriginRecord,
@@ -34,6 +39,8 @@ from app.repositories.source_ingestion import (
     SourceIngestionCandidateRecord,
     SourceIngestionRunRecord,
 )
+from app.services.content_extractor import DocumentContentExtractor
+from app.services.local_artifact_store import LocalArtifactStore
 
 pytestmark = pytest.mark.postgres
 
@@ -224,3 +231,53 @@ async def test_artifact_is_reused_across_runs_and_conflicts_roll_back(
             _ingestion(conflicting_run, storage_key="raw/conflicting.html")
         )
     assert await repository.get_run(conflicting_run) is None
+
+
+@pytest.mark.asyncio
+async def test_extracts_ingested_html_and_records_representation_metadata(
+    session_factory: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+) -> None:
+    html = (
+        b'<html lang="en"><main id="wsc_main_content">'
+        b"<h1>Consumer finance</h1><dl><dt>Loan amount</dt>"
+        b"<dd>50,000 - 6,000,000 AMD</dd></dl></main></html>"
+    )
+    checksum = hashlib.sha256(html).hexdigest()
+    store = LocalArtifactStore(tmp_path / "artifacts")
+    artifact = await store.put(
+        content=html,
+        sha256=checksum,
+        mime_type="text/html",
+    )
+    base = _ingestion()
+    source = base.sources[0].model_copy(update={"artifact": artifact})
+    candidate = base.candidates[0].model_copy(
+        update={"content_sha256": checksum}
+    )
+    ingestion = base.model_copy(
+        update={"sources": (source,), "candidates": (candidate, base.candidates[1])}
+    )
+    await PostgresSourceIngestionRepository(session_factory).save_ingestion(ingestion)
+    extraction_repository = PostgresContentExtractionRepository(session_factory)
+    extractor = DocumentContentExtractor(
+        store,
+        extraction_repository,
+        clock=lambda: NOW,
+    )
+
+    first = await extractor.extract(source)
+    repeated = await extractor.extract(source)
+    persisted = await extraction_repository.get_extraction(first.extraction_id)
+
+    assert persisted is not None
+    assert persisted.representation_artifact.sha256 == (
+        first.representation_artifact.sha256
+    )
+    assert repeated.representation_artifact.created is False
+    assert first.blocks[1].label == "Loan amount"
+    async with session_factory() as session:
+        count = await session.scalar(
+            select(func.count()).select_from(ContentExtractionRecord)
+        )
+    assert count == 1

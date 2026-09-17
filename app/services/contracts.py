@@ -21,4 +21,11 @@ class ArtifactStore(Protocol):
 
     async def read(self, storage_key: str) -> bytes: ...
 
+    async def put_extracted(
+        self,
+        *,
+        content: bytes,
+        sha256: str,
+    ) -> StoredArtifact: ...
+
     async def write_manifest(self, run_id: str, payload: dict[str, Any]) -> str: ...

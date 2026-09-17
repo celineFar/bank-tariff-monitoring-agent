@@ -109,6 +109,32 @@ through the storage interface rather than depending on absolute filesystem paths
 This deterministic storage boundary is never exposed to Gemini as a filesystem or
 database tool.
 
+## Document content-extraction boundary
+
+`DocumentContentExtractor` accepts an `IngestedSource`, never an arbitrary local
+path or live URL. It reloads bytes through `ArtifactStore`, verifies their SHA-256
+digest and size against ingestion metadata, and dispatches only on the normalized,
+validated MIME type. Unsupported formats stop with a typed error; PDF dispatch stays
+unsupported until the dedicated PDF parser component is implemented.
+
+The deterministic HTML extractor parses the persisted rendered/static artifact. It
+selects the narrowest known main-content container, removes executable, navigation,
+form, footer, hidden, and common boilerplate elements, and walks the remaining DOM in
+document order. Its immutable output retains heading hierarchy, paragraphs, list
+items, label/value facts, table rows, HTTP(S) link text and targets, language, source
+URLs, and CSS locators. Stable block IDs derive from the source checksum, ordinal,
+type, locator, label, and exact extracted text; this stage does not interpret tariff
+amounts, currencies, rates, or terms.
+
+The canonical JSON representation excludes processing timestamps, is addressed by
+its own SHA-256 key under `extracted/`, and is therefore reused byte-for-byte on an
+unchanged rerun. `PostgresContentExtractionRepository` records the relationship from
+the ingested source artifact to the extracted representation, extractor/version,
+statistics, warnings, and processing time. Migration
+`004_content_extraction.sql` owns this schema, and an advisory lock plus deterministic
+extraction ID make metadata writes idempotent. Neither artifact storage nor the
+repository is exposed to Gemini.
+
 ## RAG index / knowledge-store boundary
 
 `KnowledgeIndexer` accepts page-aware chunks from the future chunking component,
