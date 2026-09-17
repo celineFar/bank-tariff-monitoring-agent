@@ -1,5 +1,6 @@
 import hashlib
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -139,6 +140,23 @@ async def test_ingestion_persists_raw_bytes_manifest_and_reuses_artifacts(
     assert manifest["run_id"] == str(RUN_ID)
     assert len(manifest["sources"]) == 2
     assert "content" not in manifest["sources"][0]
+
+
+@pytest.mark.asyncio
+async def test_ingestion_persists_metadata_when_repository_is_configured(
+    tmp_path,
+) -> None:
+    repository = AsyncMock()
+    service = SourceIngestionService(
+        LocalArtifactStore(tmp_path / "artifacts"),
+        metadata_repository=repository,
+        clock=lambda: NOW,
+        id_factory=lambda: RUN_ID,
+    )
+
+    result = await service.ingest(_discovery())
+
+    repository.save_ingestion.assert_awaited_once_with(result)
 
 
 @pytest.mark.asyncio

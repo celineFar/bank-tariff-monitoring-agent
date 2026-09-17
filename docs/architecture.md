@@ -98,10 +98,16 @@ of the candidate record for later source ranking.
 `SourceIngestionService` persists raw HTML and validated document bytes before
 parsing. `LocalArtifactStore` uses immutable SHA-256-addressed keys under the
 configured artifact directory and writes one JSON provenance manifest per ingestion
-run. API and worker containers mount the same local Docker volume. Parser and
-chunking components consume artifact keys through the storage interface rather than
-depending on absolute filesystem paths. This deterministic storage boundary is never
-exposed to Gemini as a filesystem tool.
+run. API and worker containers mount the same local Docker volume.
+`PostgresSourceIngestionRepository` separately persists run and product summaries,
+the complete candidate inventory, unique artifact metadata, and per-run URL origins.
+Migration `003_source_ingestion.sql` owns that metadata schema. A deterministic
+artifact UUID and transactional run-level advisory lock make retries idempotent;
+checksum metadata conflicts roll back the complete metadata write. Parser and
+chunking components resolve artifact keys from this repository and consume bytes
+through the storage interface rather than depending on absolute filesystem paths.
+This deterministic storage boundary is never exposed to Gemini as a filesystem or
+database tool.
 
 ## RAG index / knowledge-store boundary
 

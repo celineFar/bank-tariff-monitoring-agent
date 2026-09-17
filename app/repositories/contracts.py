@@ -2,6 +2,13 @@ from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
+from app.domain.discovery import (
+    IngestionRunSummary,
+    IngestionWriteResult,
+    PersistedArtifact,
+    PersistedSourceOrigin,
+    SourceIngestionResult,
+)
 from app.domain.knowledge import (
     DocumentVersionSummary,
     EmbeddedKnowledgeDocument,
@@ -43,3 +50,20 @@ class HybridRetrievalRepository(Protocol):
         query_embedding: Sequence[float],
         limit: int,
     ) -> Sequence[RetrievalCandidate]: ...
+
+
+class SourceIngestionRepository(Protocol):
+    async def save_ingestion(
+        self, ingestion: SourceIngestionResult
+    ) -> IngestionWriteResult: ...
+
+    async def get_run(self, run_id: UUID) -> IngestionRunSummary | None: ...
+
+    async def get_artifact(self, content_sha256: str) -> PersistedArtifact | None: ...
+
+    async def list_product_sources(
+        self,
+        product_id: str,
+        *,
+        ingestion_run_id: UUID | None = None,
+    ) -> tuple[PersistedSourceOrigin, ...]: ...

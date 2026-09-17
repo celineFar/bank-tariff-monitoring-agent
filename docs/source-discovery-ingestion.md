@@ -1,4 +1,4 @@
-# Official source discovery and local ingestion
+# Official source discovery and ingestion
 
 Component 6 builds on the exact-product crawler rather than replacing its safety
 checks. It returns two deliberately different classes of candidate:
@@ -34,6 +34,22 @@ volume into both API and worker containers. This local backend is intentionally
 behind the `ArtifactStore` protocol so a future backend does not change discovery,
 parsing, or chunking contracts.
 
+PostgreSQL stores the searchable ingestion metadata, not the raw bytes. Migration
+`003_source_ingestion.sql` creates:
+
+- `source_ingestion_runs` for the manifest and run-level counts/status;
+- `source_ingestion_products` for each product crawl result;
+- `source_ingestion_candidates` for both retrieved and sitemap-only candidates;
+- `source_artifacts` for one physical object per SHA-256 checksum; and
+- `source_artifact_origins` for every run/product/source-URL relationship to that
+  object.
+
+`PostgresSourceIngestionRepository` writes those records in one transaction. IDs are
+deterministic and writes are idempotent: retrying a run does not duplicate rows, and
+the same bytes found under multiple URLs or in later runs reuse one artifact record
+while retaining each provenance relationship. Conflicting metadata for an existing
+checksum aborts the transaction.
+
 ## Run discovery and ingestion
 
 All registered products:
@@ -52,3 +68,9 @@ uv run python scripts\discover_and_ingest_sources.py `
 
 The command prints the artifact root and manifest key. The manifest is the handoff
 contract for PDF/Office extraction, HTML cleaning, OCR routing, and chunking.
+It persists metadata to the configured PostgreSQL database by default, so migrations
+must be applied first. For filesystem diagnostics only, bypass the database with:
+
+```powershell
+uv run python scripts\discover_and_ingest_sources.py --artifact-only --pretty
+```
