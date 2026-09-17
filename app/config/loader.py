@@ -50,6 +50,12 @@ def load_settings(
             max_redirects=raw.max_redirects,
             max_download_bytes=raw.max_download_bytes,
             max_html_bytes=raw.max_html_bytes,
+            crawl_max_concurrent_requests=raw.crawl_max_concurrent_requests,
+            crawl_requests_per_second=raw.crawl_requests_per_second,
+            crawl_max_supporting_depth=raw.crawl_max_supporting_depth,
+            crawl_render_dynamic_pages=raw.crawl_render_dynamic_pages,
+            crawl_render_timeout_seconds=raw.crawl_render_timeout_seconds,
+            crawl_max_concurrent_renders=raw.crawl_max_concurrent_renders,
             allow_origins=raw.allow_origins,
         ),
         ocr=OcrSettings(

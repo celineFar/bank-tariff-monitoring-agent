@@ -25,6 +25,11 @@ service receives `settings.ocr`.
   `HTTP_BACKOFF_BASE_SECONDS`, `HTTP_RETRY_JITTER_RATIO`,
   `HTTP_MAX_RETRY_DELAY_SECONDS`, `MAX_REDIRECTS`, and `MAX_DOWNLOAD_BYTES`.
   `MAX_HTML_BYTES` provides a smaller independent ceiling for HTML pages.
+  `CRAWL_MAX_CONCURRENT_REQUESTS`, `CRAWL_REQUESTS_PER_SECOND`, and
+  `CRAWL_MAX_SUPPORTING_DEPTH` bound Phase-1 crawling; supporting depth may only
+  be zero or one. `CRAWL_RENDER_DYNAMIC_PAGES` enables the restricted rendered-DOM
+  fallback, `CRAWL_RENDER_TIMEOUT_SECONDS` bounds it, and
+  `CRAWL_MAX_CONCURRENT_RENDERS` separately caps memory-intensive browser contexts.
 - **OCR:** `OCR_LANGUAGES`, `OCR_MIN_TEXT_CHARS_PER_PAGE`, `OCR_DPI`,
   `OCR_MAX_PAGES`, and `OCR_TIMEOUT_SECONDS`.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and

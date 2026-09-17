@@ -69,6 +69,26 @@ empty, non-HTML, and oversized responses fail with typed outcomes and no partial
 Raw HTML remains an untrusted artifact and is never supplied directly to Gemini. See
 `docs/html-retrieval.md` for the complete contract.
 
+## Product source-crawl boundary
+
+`ProductCrawler` starts only from the typed, hard-coded Phase-1 registry of five
+consumer-loan and nine mortgage subproducts. For each seed it retrieves English and
+verified Armenian product pages, discovers literal links from the unmodified HTML,
+classifies them deterministically, follows at most one relevant supporting-page level,
+downloads validated PDF/Word/Excel attachments, and returns a typed
+`ProductSourceInventory`.
+
+Discovery and retrieval remain separate: `source_discovery` inspects DOM attributes
+and literal script strings without executing JavaScript, while `HtmlRetriever`,
+`DocumentDownloader`, and `RestrictedHttpTransport` enforce network and byte-level
+policy. Pages whose public DNN modules are empty in static HTML use a restricted,
+allowlisted Playwright rendered-DOM fallback. A shared per-run task cache, semaphore,
+and per-host limiter bound traffic.
+Sibling products and global navigation are excluded, external/calculator references
+are recorded but never followed, failures are isolated per product, and documents are
+deduplicated first by normalized URL and then by SHA-256. See
+`docs/product-source-crawler.md`.
+
 ## RAG index / knowledge-store boundary
 
 `KnowledgeIndexer` accepts page-aware chunks from the future chunking component,

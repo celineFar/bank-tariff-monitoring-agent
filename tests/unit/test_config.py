@@ -18,6 +18,12 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert (settings.scheduler.hour, settings.scheduler.minute) == (6, 0)
     assert settings.http.retry_jitter_ratio == 0.25
     assert settings.http.max_retry_delay_seconds == 120
+    assert settings.http.crawl_max_concurrent_requests == 4
+    assert settings.http.crawl_requests_per_second == 2
+    assert settings.http.crawl_max_supporting_depth == 1
+    assert settings.http.crawl_render_dynamic_pages is True
+    assert settings.http.crawl_render_timeout_seconds == 15
+    assert settings.http.crawl_max_concurrent_renders == 2
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -126,6 +132,11 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("max_redirects", 11),
         ("max_download_bytes", 0),
         ("max_html_bytes", 0),
+        ("crawl_max_concurrent_requests", 0),
+        ("crawl_requests_per_second", 0),
+        ("crawl_max_supporting_depth", 2),
+        ("crawl_render_timeout_seconds", 0),
+        ("crawl_max_concurrent_renders", 0),
         ("ocr_min_text_chars_per_page", -1),
         ("ocr_dpi", 149),
         ("ocr_max_pages", 0),

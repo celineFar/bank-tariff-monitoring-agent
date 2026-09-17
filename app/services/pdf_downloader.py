@@ -74,6 +74,7 @@ class DownloadedPdf:
     sha256: str
     retrieval_started_at: datetime
     retrieved_at: datetime
+    retry_count: int
     provenance_headers: PdfProvenanceHeaders
     content: bytes = field(repr=False)
 
@@ -128,6 +129,7 @@ class PdfDownloader:
             sha256=response.sha256,
             retrieval_started_at=response.retrieval_started_at,
             retrieved_at=response.retrieved_at,
+            retry_count=response.retry_count,
             provenance_headers=PdfProvenanceHeaders(
                 etag=response.provenance_headers.etag,
                 last_modified=response.provenance_headers.last_modified,

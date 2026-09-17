@@ -68,6 +68,7 @@ class RestrictedHttpResponse:
     sha256: str
     retrieval_started_at: datetime
     retrieved_at: datetime
+    retry_count: int
     provenance_headers: HttpProvenanceHeaders
     content: bytes = field(repr=False)
 
@@ -128,6 +129,7 @@ class RestrictedHttpTransport:
         current_url = source_url
         visited: set[str] = set()
         redirect_count = 0
+        retry_count = 0
 
         while True:
             if current_url in visited:
@@ -137,12 +139,13 @@ class RestrictedHttpTransport:
                 )
             visited.add(current_url)
 
-            result = await self._request_with_retries(
+            result, attempts = await self._request_with_retries(
                 current_url,
                 accepted_mime_types=allowed_mime_types,
                 accept_header=accept_header,
                 max_bytes=max_bytes,
             )
+            retry_count += attempts - 1
             if isinstance(result, _Redirect):
                 target_url = self._validated_url(urljoin(current_url, result.location))
                 redirect_count += 1
@@ -162,6 +165,7 @@ class RestrictedHttpTransport:
                 sha256=result.sha256,
                 retrieval_started_at=started_at,
                 retrieved_at=self._clock(),
+                retry_count=retry_count,
                 provenance_headers=result.provenance_headers,
                 content=result.content,
             )
@@ -183,7 +187,7 @@ class RestrictedHttpTransport:
         accepted_mime_types: frozenset[str],
         accept_header: str,
         max_bytes: int,
-    ) -> _Redirect | _Payload:
+    ) -> tuple[_Redirect | _Payload, int]:
         for attempt in range(1, self._settings.max_attempts + 1):
             try:
                 result = await self._request_once(
@@ -218,7 +222,7 @@ class RestrictedHttpTransport:
                     )
                 await self._backoff(attempt, retry_after=result.retry_after)
                 continue
-            return result
+            return result, attempt
 
         raise AssertionError("retry loop exited unexpectedly")
 

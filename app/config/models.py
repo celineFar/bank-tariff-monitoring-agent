@@ -99,7 +99,14 @@ class DatabaseSettings(SettingsGroup):
 
 class HttpSettings(SettingsGroup):
     allowed_source_hosts: tuple[str, ...] = ("ameriabank.am", "www.ameriabank.am")
-    allowed_download_mime_types: tuple[str, ...] = ("application/pdf", "text/html")
+    allowed_download_mime_types: tuple[str, ...] = (
+        "application/pdf",
+        "text/html",
+        "application/msword",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     user_agent: str = "ameria-tariff-monitor/0.1"
     timeout_seconds: float = Field(default=20, gt=0, le=120)
     max_attempts: int = Field(default=3, ge=1, le=5)
@@ -109,6 +116,12 @@ class HttpSettings(SettingsGroup):
     max_redirects: int = Field(default=5, ge=0, le=10)
     max_download_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
     max_html_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
+    crawl_max_concurrent_requests: int = Field(default=4, ge=1, le=20)
+    crawl_requests_per_second: float = Field(default=2, gt=0, le=20)
+    crawl_max_supporting_depth: int = Field(default=1, ge=0, le=1)
+    crawl_render_dynamic_pages: bool = True
+    crawl_render_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    crawl_max_concurrent_renders: int = Field(default=2, ge=1, le=4)
     allow_origins: tuple[str, ...] = ("http://localhost:3000",)
 
     @field_validator("user_agent")

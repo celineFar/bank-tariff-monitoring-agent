@@ -36,6 +36,10 @@ class EnvironmentSettings(BaseSettings):
     allowed_download_mime_types: Annotated[tuple[str, ...], NoDecode] = (
         "application/pdf",
         "text/html",
+        "application/msword",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     http_user_agent: str = "ameria-tariff-monitor/0.1"
     download_timeout_seconds: float = 20
@@ -46,6 +50,12 @@ class EnvironmentSettings(BaseSettings):
     max_redirects: int = 5
     max_download_bytes: int = 25 * 1024 * 1024
     max_html_bytes: int = 5 * 1024 * 1024
+    crawl_max_concurrent_requests: int = 4
+    crawl_requests_per_second: float = 2
+    crawl_max_supporting_depth: int = 1
+    crawl_render_dynamic_pages: bool = True
+    crawl_render_timeout_seconds: float = 15
+    crawl_max_concurrent_renders: int = 2
     ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")
     ocr_min_text_chars_per_page: int = 80
     ocr_dpi: int = 300

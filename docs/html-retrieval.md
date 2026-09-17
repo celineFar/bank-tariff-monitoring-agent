@@ -75,3 +75,7 @@ Remove-Item Env:RUN_LIVE_HTTP
 
 Live tests are intentionally excluded unless enabled because external availability
 must not make the normal integration suite flaky.
+
+Product-wide crawling is layered above this single-page retriever. See
+`docs/product-source-crawler.md` for the registry, raw-link discovery, Armenian variant,
+supporting-page, attachment, caching, and deduplication contracts.

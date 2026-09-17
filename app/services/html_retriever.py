@@ -27,6 +27,7 @@ from app.services.restricted_http import (
     RandomValue,
     RestrictedHttpError,
     RestrictedHttpFailure,
+    RestrictedHttpResponse,
     RestrictedHttpTransport,
     Sleep,
 )
@@ -73,6 +74,7 @@ class HtmlRetrievalFailure(StrEnum):
     UNSUPPORTED_MIME_TYPE = "UNSUPPORTED_MIME_TYPE"
     PROTECTED_OR_BLOCKED = "PROTECTED_OR_BLOCKED"
     NO_USABLE_CONTENT = "NO_USABLE_CONTENT"
+    RENDER_FAILED = "RENDER_FAILED"
 
 
 class HtmlRetrievalError(RuntimeError):
@@ -125,6 +127,11 @@ class HtmlRetriever:
                 str(exc),
                 status_code=exc.status_code,
             ) from exc
+
+        return self.parse_response(response)
+
+    def parse_response(self, response: RestrictedHttpResponse) -> RetrievedHtmlPage:
+        """Parse an already policy-approved static or rendered HTML response."""
 
         soup = BeautifulSoup(response.content, "html.parser")
         title = (
@@ -181,6 +188,7 @@ class HtmlRetriever:
             sha256=response.sha256,
             retrieval_started_at=response.retrieval_started_at,
             retrieved_at=response.retrieved_at,
+            retry_count=response.retry_count,
             provenance_headers=HtmlProvenanceHeaders(
                 etag=response.provenance_headers.etag,
                 last_modified=response.provenance_headers.last_modified,

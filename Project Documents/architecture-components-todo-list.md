@@ -34,10 +34,10 @@ Each item defines its responsibility, implementation contract, important boundar
 
 - [x]  5. Website Scraper / HTML Retriever
 
-  - **Responsibility:** Retrieve usable public content and links from official Ameria webpages.
-  - **Implement:** Reuse the restricted HTTP transport and URL validator. Enforce redirects, timeouts, size, status, and HTML type limits. Extract canonical URL, title, headings, main text, tables, language hints, and same-allowlist links while removing scripts, styles, navigation, cookie banners, and repeated boilerplate.
-  - **Boundaries:** Never execute scripts, submit forms, or bypass authentication, CAPTCHA, access restrictions, or anti-bot measures. Retain checksums and retrieval metadata; treat HTML as untrusted data.
-  - **Done when:** Fixtures preserve Armenian text/tables and official links, unsafe/non-HTML/oversized responses fail closed, and unavailable/protected pages produce controlled errors.
+  - **Responsibility:** Build a structured source inventory for every registered consumer-loan and mortgage subproduct from official Ameria webpages and discovered attachments.
+  - **Implement:** Use the typed 14-product registry, restricted transport, static raw-HTML discovery, verified Armenian variants, deterministic link classification, one-level supporting pages, validated PDF/Office downloads, URL/content deduplication, per-run caching, rate limits, concurrency bounds, and isolated statuses. Use the allowlisted rendered-DOM fallback only when public DNN modules contain no usable static content.
+  - **Boundaries:** Never generate document URLs, crawl sibling products as supporting sources, interact with calculators, submit forms, accept downloads, or bypass authentication, CAPTCHA, access restrictions, or anti-bot measures. Block rendered-page HTTP/WebSocket egress outside the source allowlist and treat all HTML as untrusted data.
+  - **Done when:** All 14 seeds return independently testable English/Armenian inventories, required DOM/data/script link sources are covered, depth and traffic limits hold, duplicate bytes merge with provenance, unsafe content fails closed, and one product failure does not discard the rest.
 
 - [ ]  6. Official Source Discovery
 

@@ -68,5 +68,6 @@ class RetrievedHtmlPage:
     sha256: str
     retrieval_started_at: datetime
     retrieved_at: datetime
+    retry_count: int
     provenance_headers: HtmlProvenanceHeaders
     raw_html: bytes = field(repr=False)
