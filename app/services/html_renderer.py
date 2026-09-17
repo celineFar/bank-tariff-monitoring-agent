@@ -31,7 +31,12 @@ class HtmlRenderError(RuntimeError):
 
 
 class HtmlRenderer(Protocol):
-    async def render(self, url: str) -> RestrictedHttpResponse: ...
+    async def render(
+        self,
+        url: str,
+        *,
+        required_module_ids: tuple[str, ...] = (),
+    ) -> RestrictedHttpResponse: ...
 
     async def close(self) -> None: ...
 
@@ -53,11 +58,24 @@ class PlaywrightHtmlRenderer:
             settings.crawl_max_concurrent_renders
         )
 
-    async def render(self, url: str) -> RestrictedHttpResponse:
+    async def render(
+        self,
+        url: str,
+        *,
+        required_module_ids: tuple[str, ...] = (),
+    ) -> RestrictedHttpResponse:
         async with self._render_semaphore:
-            return await self._render(url)
+            return await self._render(
+                url,
+                required_module_ids=required_module_ids,
+            )
 
-    async def _render(self, url: str) -> RestrictedHttpResponse:
+    async def _render(
+        self,
+        url: str,
+        *,
+        required_module_ids: tuple[str, ...],
+    ) -> RestrictedHttpResponse:
         source_url = validate_source_url(url, self._settings.allowed_source_hosts)
         started_at = datetime.now(UTC)
         state = await self._browser_state()
@@ -84,17 +102,32 @@ class PlaywrightHtmlRenderer:
                     f"Rendered HTML navigation returned non-success status {status}"
                 )
             try:
-                await page.wait_for_function(
-                    """() => Array.from(document.querySelectorAll(
-                        '.wsc_content_manager_module_container'
-                    )).some(element => element.children.length > 0 ||
-                        element.innerText.trim().length > 0)""",
-                    timeout=timeout_ms,
-                )
+                if required_module_ids:
+                    await page.wait_for_function(
+                        """moduleIds => moduleIds.every(moduleId => {
+                            const element = document.getElementById(moduleId);
+                            return element !== null &&
+                                element.innerText.trim().length > 0;
+                        })""",
+                        arg=required_module_ids,
+                        timeout=timeout_ms,
+                    )
+                else:
+                    await page.wait_for_function(
+                        """() => Array.from(document.querySelectorAll(
+                            '.wsc_content_manager_module_container'
+                        )).some(element => element.innerText.trim().length > 0)""",
+                        timeout=timeout_ms,
+                    )
             except PlaywrightTimeoutError:
-                # Parsing below remains authoritative and returns NO_USABLE_CONTENT
-                # if the official page never populated its public modules.
-                pass
+                if required_module_ids:
+                    missing = ", ".join(required_module_ids)
+                    raise HtmlRenderError(
+                        "Rendered HTML did not populate required public modules: "
+                        f"{missing}"
+                    ) from None
+                # Parsing below remains authoritative when static retrieval could
+                # not identify a specific module that must become ready.
             final_url = validate_source_url(
                 page.url, self._settings.allowed_source_hosts
             )

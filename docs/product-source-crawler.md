@@ -25,9 +25,15 @@ For each seed the crawler:
 One product failure does not discard other product inventories.
 
 Static HTML is always attempted first. Some Ameriabank DNN modules expose only empty
-containers until their public content loader runs. When static parsing returns
-`NO_USABLE_CONTENT`, the crawler can use `PlaywrightHtmlRenderer` to capture the
-rendered DOM. The fallback does not click, submit forms, accept downloads, bypass
+containers until their public content loader runs. The crawler renders both pages
+with no usable static content and otherwise-usable pages containing unresolved,
+non-boilerplate DNN content modules. It passes the stable `Container<module-id>`
+identifiers to `PlaywrightHtmlRenderer`, which waits for every required module rather
+than accepting an already-loaded banner. Empty header/footer/navigation/sidebar
+modules are excluded. If a required module does not populate before the bounded
+timeout, the known-incomplete static shell is rejected rather than ingested.
+
+The fallback does not click, submit forms, accept downloads, bypass
 access controls, or interact with calculators. HTTP and WebSocket requests are
 restricted to configured HTTPS/WSS hosts; images, media, fonts, stylesheets, service
 workers, and off-domain traffic are blocked. Each isolated browser context is bounded

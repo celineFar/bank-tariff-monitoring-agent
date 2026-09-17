@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 
 import httpx
+from bs4 import BeautifulSoup, Tag
 
 from app.config import HttpSettings
 from app.domain.crawl import (
@@ -59,6 +60,9 @@ AsyncSleep = Callable[[float], Awaitable[None]]
 MonotonicClock = Callable[[], float]
 DateTimeClock = Callable[[], datetime]
 _ARMENIAN = re.compile(r"[\u0530-\u058f]")
+_NON_CONTENT_PANE_MARKERS = frozenset(
+    ("footer", "header", "navigation", "sidebar")
+)
 
 
 class ProductCrawler:
@@ -478,19 +482,31 @@ class ProductCrawler:
                         or self._renderer is None
                     ):
                         raise
+                required_module_ids = (
+                    _unresolved_public_module_ids(static_page)
+                    if static_page is not None
+                    else ()
+                )
+                static_was_unresolved = static_page is not None and (
+                    bool(required_module_ids)
+                    or _has_busy_public_module(static_page)
+                )
                 should_render = self._renderer is not None and (
-                    static_page is None or _has_unresolved_public_modules(static_page)
+                    static_page is None or static_was_unresolved
                 )
                 if should_render:
                     try:
-                        rendered = await self._renderer.render(url)
+                        rendered = await self._renderer.render(
+                            url,
+                            required_module_ids=required_module_ids,
+                        )
                         page = self._html_retriever.parse_response(rendered)
                     except HtmlRetrievalError:
-                        if static_page is None:
+                        if static_page is None or static_was_unresolved:
                             raise
                         page = static_page
                     except (HtmlRenderError, DisallowedSourceUrl) as render_exc:
-                        if static_page is None:
+                        if static_page is None or static_was_unresolved:
                             raise HtmlRetrievalError(
                                 HtmlRetrievalFailure.RENDER_FAILED,
                                 str(render_exc),
@@ -564,14 +580,56 @@ def _is_armenian_product_page(page: RetrievedHtmlPage) -> bool:
     return page.language_hint == "hy" or bool(_ARMENIAN.search(page.main_text))
 
 
-def _has_unresolved_public_modules(page: RetrievedHtmlPage) -> bool:
-    html = page.raw_html.lower()
-    return bool(
-        re.search(
-            rb'class=["\'][^"\']*wsc_content_manager_module_container[^"\']*\bbusy\b',
-            html,
+def _unresolved_public_module_ids(page: RetrievedHtmlPage) -> tuple[str, ...]:
+    soup = BeautifulSoup(page.raw_html, "html.parser")
+    unresolved: list[str] = []
+    for element in soup.select(".wsc_content_manager_module_container"):
+        if not isinstance(element, Tag):
+            continue
+        if _is_in_non_content_pane(element):
+            continue
+        class_attribute = element.get("class")
+        classes = (
+            {str(item).casefold() for item in class_attribute}
+            if isinstance(class_attribute, list)
+            else {str(class_attribute).casefold()} if class_attribute else set()
         )
+        for ignored in element.find_all(("script", "style", "noscript", "template")):
+            ignored.decompose()
+        has_public_text = bool(element.get_text(" ", strip=True))
+        identifier = str(element.get("id", ""))
+        if (
+            ("busy" in classes or not has_public_text)
+            and re.fullmatch(r"Container\d+", identifier)
+            and identifier not in unresolved
+        ):
+            unresolved.append(identifier)
+    return tuple(unresolved)
+
+
+def _has_busy_public_module(page: RetrievedHtmlPage) -> bool:
+    soup = BeautifulSoup(page.raw_html, "html.parser")
+    return any(
+        isinstance(element, Tag) and not _is_in_non_content_pane(element)
+        for element in soup.select(".wsc_content_manager_module_container.busy")
     )
+
+
+def _is_in_non_content_pane(element: Tag) -> bool:
+    for ancestor in element.parents:
+        if not isinstance(ancestor, Tag):
+            continue
+        class_attribute = ancestor.get("class")
+        classes = (
+            " ".join(str(item) for item in class_attribute)
+            if isinstance(class_attribute, list)
+            else str(class_attribute or "")
+        )
+        markers = f"{ancestor.get('id', '')} {classes} {ancestor.get('role', '')}"
+        normalized = markers.casefold()
+        if any(marker in normalized for marker in _NON_CONTENT_PANE_MARKERS):
+            return True
+    return False
 
 
 def _html_or_url_issue(

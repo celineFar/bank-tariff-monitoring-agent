@@ -64,10 +64,17 @@ class _FakeRenderer:
     def __init__(self, content: bytes) -> None:
         self.content = content
         self.calls: list[str] = []
+        self.required_module_ids: list[tuple[str, ...]] = []
         self.closed = False
 
-    async def render(self, url: str) -> RestrictedHttpResponse:
+    async def render(
+        self,
+        url: str,
+        *,
+        required_module_ids: tuple[str, ...] = (),
+    ) -> RestrictedHttpResponse:
         self.calls.append(url)
+        self.required_module_ids.append(required_module_ids)
         now = datetime(2026, 9, 17, tzinfo=UTC)
         return RestrictedHttpResponse(
             source_url=url,
@@ -280,3 +287,62 @@ async def test_usable_static_page_with_busy_public_module_uses_rendered_dom() ->
     assert inventory.status is CrawlStatus.SUCCESS
     assert renderer.calls == [EN_URL]
     assert inventory.documents
+
+
+@pytest.mark.asyncio
+async def test_usable_banner_with_empty_dnn_module_waits_for_that_module() -> None:
+    static_shell = b"""<html lang="en"><head><title>Loan information</title></head>
+    <body><form id="Form"><div id="wsc_main_content">
+    <div class="wsc_content_manager_module_container" id="Container28243">
+      <h1>Be informed when taking a loan</h1>
+    </div>
+    <div class="wsc_content_manager_module_container" id="Container28245"></div>
+    <script>initModule(28245, {hasViewContent: true})</script>
+    <div id="dnn_WideFooter">
+      <div class="wsc_content_manager_module_container" id="Container99999"></div>
+    </div>
+    </div></form></body></html>"""
+    rendered_page = b"""<html lang="en"><head><title>Loan information</title></head>
+    <body><form id="Form"><div id="wsc_main_content">
+    <div class="wsc_content_manager_module_container" id="Container28243">
+      <h1>Be informed when taking a loan</h1>
+    </div>
+    <div class="wsc_content_manager_module_container" id="Container28245">
+      <h2>What should I know before becoming a guarantor?</h2>
+      <p>If the borrower fails to pay, the guarantor bears responsibility.</p>
+    </div>
+    </div></form></body></html>"""
+    complete_hy = """<html lang="hy"><head><title>Վարկային տեղեկություն</title></head>
+    <body><main><h1>Վարկային տեղեկություն</h1>
+    <p>Ամբողջական հրապարակային բովանդակություն.</p></main></body></html>""".encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == EN_URL:
+            return httpx.Response(
+                200, headers={"Content-Type": "text/html"}, content=static_shell
+            )
+        if url == HY_URL:
+            return httpx.Response(
+                200, headers={"Content-Type": "text/html"}, content=complete_hy
+            )
+        raise AssertionError(f"unexpected URL: {url}")
+
+    renderer = _FakeRenderer(rendered_page)
+    product = PRODUCT
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        async with ProductCrawler(
+            client,
+            HttpSettings(backoff_base_seconds=0, crawl_requests_per_second=20),
+            registry=(product,),
+            sleep=_no_sleep,
+            monotonic=lambda: 0,
+            renderer=renderer,
+        ) as crawler:
+            inventory = await crawler.crawl_product(product)
+
+    assert inventory.status is CrawlStatus.SUCCESS
+    assert renderer.calls == [EN_URL]
+    assert renderer.required_module_ids == [("Container28245",)]
+    assert inventory.product_page_en is not None
+    assert b"guarantor bears responsibility" in inventory.product_page_en.content
