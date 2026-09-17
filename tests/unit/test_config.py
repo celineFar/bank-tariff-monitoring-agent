@@ -24,6 +24,13 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.http.crawl_render_dynamic_pages is True
     assert settings.http.crawl_render_timeout_seconds == 15
     assert settings.http.crawl_max_concurrent_renders == 2
+    assert settings.application.artifact_storage_dir == Path("data/artifacts")
+    assert settings.http.discovery_sitemap_urls == (
+        "https://ameriabank.am/Portals/0/sitemap.xml",
+    )
+    assert settings.http.discovery_max_sitemaps == 8
+    assert settings.http.discovery_max_sitemap_entries == 5000
+    assert settings.http.discovery_max_candidates_per_product == 250
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -96,6 +103,14 @@ def test_non_postgresql_database_fails_startup() -> None:
         load_settings(_env_file=None, database_url="sqlite:///local.db")
 
 
+def test_sitemap_url_must_use_an_allowlisted_host() -> None:
+    with pytest.raises(ValidationError, match="allowlisted source host"):
+        load_settings(
+            _env_file=None,
+            discovery_sitemap_urls="https://evil.example/sitemap.xml",
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -137,6 +152,9 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("crawl_max_supporting_depth", 2),
         ("crawl_render_timeout_seconds", 0),
         ("crawl_max_concurrent_renders", 0),
+        ("discovery_max_sitemaps", 51),
+        ("discovery_max_sitemap_entries", 0),
+        ("discovery_max_candidates_per_product", 0),
         ("ocr_min_text_chars_per_page", -1),
         ("ocr_dpi", 149),
         ("ocr_max_pages", 0),

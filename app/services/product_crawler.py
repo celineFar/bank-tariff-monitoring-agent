@@ -45,6 +45,7 @@ from app.services.html_retriever import (
     HtmlRetriever,
     RetrievedHtmlPage,
 )
+from app.services.rate_limiter import HostRateLimiter
 from app.services.source_discovery import (
     classify_discovered_link,
     discover_armenian_candidates,
@@ -58,32 +59,6 @@ AsyncSleep = Callable[[float], Awaitable[None]]
 MonotonicClock = Callable[[], float]
 DateTimeClock = Callable[[], datetime]
 _ARMENIAN = re.compile(r"[\u0530-\u058f]")
-
-
-class _HostRateLimiter:
-    def __init__(
-        self,
-        requests_per_second: float,
-        *,
-        sleep: AsyncSleep,
-        clock: MonotonicClock,
-    ) -> None:
-        self._interval = 1 / requests_per_second
-        self._sleep = sleep
-        self._clock = clock
-        self._next_request_at = 0.0
-        self._lock = asyncio.Lock()
-
-    async def acquire(self) -> None:
-        async with self._lock:
-            now = self._clock()
-            delay = max(0.0, self._next_request_at - now)
-            if delay:
-                await self._sleep(delay)
-            observed = self._clock()
-            self._next_request_at = (
-                max(observed, self._next_request_at) + self._interval
-            )
 
 
 class ProductCrawler:
@@ -115,7 +90,7 @@ class ProductCrawler:
             )
         )
         self._semaphore = asyncio.Semaphore(settings.crawl_max_concurrent_requests)
-        self._rate_limiter = _HostRateLimiter(
+        self._rate_limiter = HostRateLimiter(
             settings.crawl_requests_per_second,
             sleep=sleep,
             clock=monotonic,
@@ -412,6 +387,14 @@ class ProductCrawler:
                 dict.fromkeys(item.original_url for item, _ in occurrences)
             )
             languages = tuple(dict.fromkeys(language for _, language in occurrences))
+            anchor_texts = tuple(
+                dict.fromkeys(
+                    item.anchor_text for item, _ in occurrences if item.anchor_text
+                )
+            )
+            contexts = tuple(
+                dict.fromkeys(item.context for item, _ in occurrences if item.context)
+            )
             existing = by_checksum.get(result.sha256)
             if existing is None:
                 by_checksum[result.sha256] = DocumentResource(
@@ -420,6 +403,8 @@ class ProductCrawler:
                     urls=(url,),
                     final_url=result.final_url,
                     referrer_urls=referrers,
+                    anchor_texts=anchor_texts,
+                    contexts=contexts,
                     content_type=result.mime_type,
                     size_bytes=result.size_bytes,
                     retrieved_at=result.retrieved_at,
@@ -438,6 +423,12 @@ class ProductCrawler:
                         ),
                         "language_hints": tuple(
                             dict.fromkeys((*existing.language_hints, *languages))
+                        ),
+                        "anchor_texts": tuple(
+                            dict.fromkeys((*existing.anchor_texts, *anchor_texts))
+                        ),
+                        "contexts": tuple(
+                            dict.fromkeys((*existing.contexts, *contexts))
                         ),
                     }
                 )
@@ -487,7 +478,9 @@ class ProductCrawler:
                         or self._renderer is None
                     ):
                         raise
-                should_render = self._renderer is not None and static_page is None
+                should_render = self._renderer is not None and (
+                    static_page is None or _has_unresolved_public_modules(static_page)
+                )
                 if should_render:
                     try:
                         rendered = await self._renderer.render(url)
@@ -559,6 +552,7 @@ def _page_resource(
         retrieved_at=page.retrieved_at,
         referrer_url=referrer_url,
         discovered_url=discovered_url,
+        content=page.raw_html,
     )
 
 
@@ -568,6 +562,16 @@ def _is_armenian_product_page(page: RetrievedHtmlPage) -> bool:
     if any(marker in title for marker in error_markers):
         return False
     return page.language_hint == "hy" or bool(_ARMENIAN.search(page.main_text))
+
+
+def _has_unresolved_public_modules(page: RetrievedHtmlPage) -> bool:
+    html = page.raw_html.lower()
+    return bool(
+        re.search(
+            rb'class=["\'][^"\']*wsc_content_manager_module_container[^"\']*\bbusy\b',
+            html,
+        )
+    )
 
 
 def _html_or_url_issue(

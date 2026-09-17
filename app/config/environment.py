@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.config.models import Environment
@@ -15,11 +15,15 @@ class EnvironmentSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     app_name: str = "ameria-tariff-monitor"
     environment: Environment = Environment.DEVELOPMENT
-    artifact_temp_dir: Path = Path("data/artifacts")
+    artifact_storage_dir: Path = Field(
+        default=Path("data/artifacts"),
+        validation_alias=AliasChoices("ARTIFACT_STORAGE_DIR", "ARTIFACT_TEMP_DIR"),
+    )
     gemini_api_key: SecretStr | None = None
     model_name: str = "gemini-3.7-flash"
     embedding_model_name: str = "gemini-embedding-001"
@@ -56,6 +60,12 @@ class EnvironmentSettings(BaseSettings):
     crawl_render_dynamic_pages: bool = True
     crawl_render_timeout_seconds: float = 15
     crawl_max_concurrent_renders: int = 2
+    discovery_sitemap_urls: Annotated[tuple[str, ...], NoDecode] = (
+        "https://ameriabank.am/Portals/0/sitemap.xml",
+    )
+    discovery_max_sitemaps: int = 8
+    discovery_max_sitemap_entries: int = 5000
+    discovery_max_candidates_per_product: int = 250
     ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")
     ocr_min_text_chars_per_page: int = 80
     ocr_dpi: int = 300
@@ -77,6 +87,7 @@ class EnvironmentSettings(BaseSettings):
     @field_validator(
         "allowed_source_hosts",
         "allowed_download_mime_types",
+        "discovery_sitemap_urls",
         "ocr_languages",
         "allow_origins",
         mode="before",

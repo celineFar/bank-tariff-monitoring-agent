@@ -117,6 +117,7 @@ class RestrictedHttpTransport:
         accepted_mime_types: Collection[str],
         accept_header: str,
         max_bytes: int,
+        require_configured_mime_type: bool = True,
     ) -> RestrictedHttpResponse:
         allowed_mime_types = frozenset(
             value.strip().lower() for value in accepted_mime_types
@@ -144,6 +145,7 @@ class RestrictedHttpTransport:
                 accepted_mime_types=allowed_mime_types,
                 accept_header=accept_header,
                 max_bytes=max_bytes,
+                require_configured_mime_type=require_configured_mime_type,
             )
             retry_count += attempts - 1
             if isinstance(result, _Redirect):
@@ -187,6 +189,7 @@ class RestrictedHttpTransport:
         accepted_mime_types: frozenset[str],
         accept_header: str,
         max_bytes: int,
+        require_configured_mime_type: bool,
     ) -> tuple[_Redirect | _Payload, int]:
         for attempt in range(1, self._settings.max_attempts + 1):
             try:
@@ -195,6 +198,7 @@ class RestrictedHttpTransport:
                     accepted_mime_types=accepted_mime_types,
                     accept_header=accept_header,
                     max_bytes=max_bytes,
+                    require_configured_mime_type=require_configured_mime_type,
                 )
             except httpx.TimeoutException as exc:
                 if attempt == self._settings.max_attempts:
@@ -233,6 +237,7 @@ class RestrictedHttpTransport:
         accepted_mime_types: frozenset[str],
         accept_header: str,
         max_bytes: int,
+        require_configured_mime_type: bool,
     ) -> _Redirect | _RetryableStatus | _Payload:
         async with self._client.stream(
             "GET",
@@ -269,9 +274,8 @@ class RestrictedHttpTransport:
             mime_type = response.headers.get("content-type", "").partition(";")[0]
             mime_type = mime_type.strip().lower()
             configured_mime_types = set(self._settings.allowed_download_mime_types)
-            if (
-                mime_type not in accepted_mime_types
-                or mime_type not in configured_mime_types
+            if mime_type not in accepted_mime_types or (
+                require_configured_mime_type and mime_type not in configured_mime_types
             ):
                 raise RestrictedHttpError(
                     RestrictedHttpFailure.UNSUPPORTED_MIME_TYPE,

@@ -39,12 +39,12 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Never generate document URLs, crawl sibling products as supporting sources, interact with calculators, submit forms, accept downloads, or bypass authentication, CAPTCHA, access restrictions, or anti-bot measures. Block rendered-page HTTP/WebSocket egress outside the source allowlist and treat all HTML as untrusted data.
   - **Done when:** All 14 seeds return independently testable English/Armenian inventories, required DOM/data/script link sources are covered, depth and traffic limits hold, duplicate bytes merge with provenance, unsafe content fails closed, and one product failure does not discard the rest.
 
-- [ ]  6. Official Source Discovery
+- [x]  6. Official Source Discovery
 
   - **Responsibility:** Find candidate product pages and official information documents within the configured Ameria domain.
-  - **Implement:** Traverse configured seeds, public sitemap entries, navigation, and official page links under strict crawl budgets. Normalize/deduplicate URLs and match Armenian/English product synonyms plus official-document terms such as `տեղեկատվական ամփոփագիր` and `ամփոփաթերթիկ`.
-  - **Contract:** Return candidates with URL, type, discovery path, anchor/title/context, match signals, and retrieval status. Discovery proposes candidates; it does not silently declare authority.
-  - **Done when:** Consumer-loan and mortgage fixtures produce relevant same-domain candidates, off-domain/unsupported resources are excluded, budgets hold, and product-not-found is explicit.
+  - **Implement:** Traverse configured seeds, public sitemap entries, navigation, and official page links under strict crawl budgets. Normalize/deduplicate URLs and match Armenian/English product synonyms plus official-document terms such as `տեղեկատվական ամփոփագիր` and `ամփոփաթերթիկ`. Persist every validated retrieved HTML/document body in immutable local content-addressed storage and write a per-run provenance manifest for later parsing and chunking.
+  - **Contract:** Return candidates with URL, type, discovery path, anchor/title/context, match signals, and retrieval status. Discovery proposes candidates; it does not silently declare authority. Sitemap-only candidates remain un-retrieved; ingestion stores only content already validated by the restricted crawler/downloader.
+  - **Done when:** Consumer-loan and mortgage fixtures produce relevant same-domain candidates, off-domain/unsupported resources are excluded, budgets hold, product-not-found is explicit, repeat ingestion reuses identical SHA-256 artifacts, and manifests contain artifact keys without embedding raw content.
 
 - [ ]  7. Chunking & Metadata Builder
 

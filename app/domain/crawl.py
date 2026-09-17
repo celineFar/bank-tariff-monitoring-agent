@@ -48,6 +48,7 @@ class ProductSeed(CrawlModel):
     category: ProductCategory
     name: str = Field(min_length=1, max_length=250)
     url_en: HttpUrl
+    aliases: tuple[str, ...] = ()
 
 
 class DiscoveredLink(CrawlModel):
@@ -77,6 +78,7 @@ class PageResource(CrawlModel):
     retrieved_at: datetime
     referrer_url: str | None = None
     discovered_url: str | None = None
+    content: bytes = Field(repr=False)
 
     @field_validator("sha256")
     @classmethod
@@ -96,6 +98,8 @@ class DocumentResource(CrawlModel):
     content_type: str
     size_bytes: int = Field(gt=0)
     retrieved_at: datetime
+    anchor_texts: tuple[str, ...] = ()
+    contexts: tuple[str, ...] = ()
     language_hints: tuple[str, ...] = ()
     content: bytes = Field(repr=False)
 

@@ -16,9 +16,11 @@ service receives `settings.ocr`.
 - **Application:** `APP_NAME`, `ENVIRONMENT` (`development`, `test`, or
   `production`). Production requires `GEMINI_API_KEY`.
 - **Models:** `GEMINI_API_KEY`, `MODEL_NAME`, `EMBEDDING_MODEL_NAME`.
-- **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`, `ARTIFACT_TEMP_DIR`.
-  Application storage must use PostgreSQL; the ADK session URI may also use
-  `shared://`.
+- **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`,
+  `ARTIFACT_STORAGE_DIR`. PostgreSQL stores structured application state; the local
+  artifact directory stores immutable downloaded bytes and ingestion manifests. The
+  legacy `ARTIFACT_TEMP_DIR` name remains accepted during migration. The ADK session
+  URI may also use `shared://`.
 - **Network policy:** `ALLOWED_SOURCE_HOSTS`,
   `ALLOWED_DOWNLOAD_MIME_TYPES`, `HTTP_USER_AGENT`,
   `DOWNLOAD_TIMEOUT_SECONDS`, `HTTP_MAX_ATTEMPTS`,
@@ -30,6 +32,9 @@ service receives `settings.ocr`.
   be zero or one. `CRAWL_RENDER_DYNAMIC_PAGES` enables the restricted rendered-DOM
   fallback, `CRAWL_RENDER_TIMEOUT_SECONDS` bounds it, and
   `CRAWL_MAX_CONCURRENT_RENDERS` separately caps memory-intensive browser contexts.
+  `DISCOVERY_SITEMAP_URLS`, `DISCOVERY_MAX_SITEMAPS`,
+  `DISCOVERY_MAX_SITEMAP_ENTRIES`, and
+  `DISCOVERY_MAX_CANDIDATES_PER_PRODUCT` bound official-source discovery.
 - **OCR:** `OCR_LANGUAGES`, `OCR_MIN_TEXT_CHARS_PER_PAGE`, `OCR_DPI`,
   `OCR_MAX_PAGES`, and `OCR_TIMEOUT_SECONDS`.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and

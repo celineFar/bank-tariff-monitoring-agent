@@ -35,7 +35,7 @@ class SettingsGroup(BaseModel):
 class ApplicationSettings(SettingsGroup):
     name: str = "ameria-tariff-monitor"
     environment: Environment = Environment.DEVELOPMENT
-    artifact_temp_dir: Path = Path("data/artifacts")
+    artifact_storage_dir: Path = Path("data/artifacts")
 
     @field_validator("name")
     @classmethod
@@ -122,6 +122,12 @@ class HttpSettings(SettingsGroup):
     crawl_render_dynamic_pages: bool = True
     crawl_render_timeout_seconds: float = Field(default=15, gt=0, le=60)
     crawl_max_concurrent_renders: int = Field(default=2, ge=1, le=4)
+    discovery_sitemap_urls: tuple[str, ...] = (
+        "https://ameriabank.am/Portals/0/sitemap.xml",
+    )
+    discovery_max_sitemaps: int = Field(default=8, ge=0, le=50)
+    discovery_max_sitemap_entries: int = Field(default=5000, ge=1, le=100_000)
+    discovery_max_candidates_per_product: int = Field(default=250, ge=1, le=5000)
     allow_origins: tuple[str, ...] = ("http://localhost:3000",)
 
     @field_validator("user_agent")
@@ -155,6 +161,34 @@ class HttpSettings(SettingsGroup):
         if not normalized:
             raise ValueError("at least one source host is required")
         return tuple(normalized)
+
+    @field_validator("discovery_sitemap_urls")
+    @classmethod
+    def validate_sitemap_urls(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized: list[str] = []
+        for value in values:
+            parsed = urlsplit(value.strip())
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.fragment
+            ):
+                raise ValueError(f"invalid sitemap URL: {value!r}")
+            clean = parsed.geturl()
+            if clean not in normalized:
+                normalized.append(clean)
+        return tuple(normalized)
+
+    @model_validator(mode="after")
+    def require_allowlisted_sitemap_hosts(self) -> HttpSettings:
+        allowed = set(self.allowed_source_hosts)
+        for value in self.discovery_sitemap_urls:
+            host = (urlsplit(value).hostname or "").lower().rstrip(".")
+            if host not in allowed:
+                raise ValueError("sitemap URLs must use an allowlisted source host")
+        return self
 
     @field_validator("allowed_download_mime_types")
     @classmethod

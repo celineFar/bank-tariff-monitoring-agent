@@ -89,6 +89,20 @@ are recorded but never followed, failures are isolated per product, and document
 deduplicated first by normalized URL and then by SHA-256. See
 `docs/product-source-crawler.md`.
 
+`OfficialSourceDiscovery` converts validated inventories into explicit source
+candidates and supplements them with bounded, allowlisted sitemap matches. A sitemap
+match is only a proposal with `not_retrieved` status; it is not silently promoted to
+an authoritative source. Product aliases and deterministic match signals remain part
+of the candidate record for later source ranking.
+
+`SourceIngestionService` persists raw HTML and validated document bytes before
+parsing. `LocalArtifactStore` uses immutable SHA-256-addressed keys under the
+configured artifact directory and writes one JSON provenance manifest per ingestion
+run. API and worker containers mount the same local Docker volume. Parser and
+chunking components consume artifact keys through the storage interface rather than
+depending on absolute filesystem paths. This deterministic storage boundary is never
+exposed to Gemini as a filesystem tool.
+
 ## RAG index / knowledge-store boundary
 
 `KnowledgeIndexer` accepts page-aware chunks from the future chunking component,

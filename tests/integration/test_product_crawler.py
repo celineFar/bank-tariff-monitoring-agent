@@ -233,3 +233,50 @@ async def test_empty_static_page_uses_restricted_rendered_dom_fallback() -> None
     assert inventory.status is CrawlStatus.SUCCESS
     assert renderer.calls == [EN_URL]
     assert renderer.closed is True
+
+
+@pytest.mark.asyncio
+async def test_usable_static_page_with_busy_public_module_uses_rendered_dom() -> None:
+    incomplete_static_html = b"""<html lang="en"><head><title>Consumer loan</title></head>
+    <body><form id="Form"><div id="wsc_main_content">
+    <h1>Consumer loan</h1><p>Public product description is present.</p>
+    <div class="wsc_content_manager_module_container busy"></div>
+    </div></form></body></html>"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == EN_URL:
+            return httpx.Response(
+                200,
+                headers={"Content-Type": "text/html"},
+                content=incomplete_static_html,
+            )
+        if url == HY_URL:
+            return httpx.Response(
+                200, headers={"Content-Type": "text/html"}, content=HY_HTML
+            )
+        if url == SUPPORT_URL:
+            return httpx.Response(
+                200, headers={"Content-Type": "text/html"}, content=SUPPORT_HTML
+            )
+        if url in {PDF_URL, PDF_ALIAS_URL}:
+            return httpx.Response(
+                200, headers={"Content-Type": "application/pdf"}, content=PDF_BYTES
+            )
+        raise AssertionError(f"unexpected URL: {url}")
+
+    renderer = _FakeRenderer(EN_HTML)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        async with ProductCrawler(
+            client,
+            HttpSettings(backoff_base_seconds=0, crawl_requests_per_second=20),
+            registry=(PRODUCT, SIBLING),
+            sleep=_no_sleep,
+            monotonic=lambda: 0,
+            renderer=renderer,
+        ) as crawler:
+            inventory = await crawler.crawl_product(PRODUCT)
+
+    assert inventory.status is CrawlStatus.SUCCESS
+    assert renderer.calls == [EN_URL]
+    assert inventory.documents

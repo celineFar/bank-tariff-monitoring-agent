@@ -81,7 +81,14 @@ async def _run(args: argparse.Namespace) -> None:
         payload = result.model_dump(
             mode="json",
             exclude={
-                "inventories": {"__all__": {"documents": {"__all__": {"content"}}}}
+                "inventories": {
+                    "__all__": {
+                        "product_page_en": {"content"},
+                        "product_page_hy": {"content"},
+                        "supporting_pages": {"__all__": {"content"}},
+                        "documents": {"__all__": {"content"}},
+                    }
+                }
             },
         )
     print(

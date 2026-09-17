@@ -27,7 +27,7 @@ def load_settings(
         application=ApplicationSettings(
             name=raw.app_name,
             environment=raw.environment,
-            artifact_temp_dir=raw.artifact_temp_dir,
+            artifact_storage_dir=raw.artifact_storage_dir,
         ),
         models=ModelSettings(
             api_key=raw.gemini_api_key,
@@ -56,6 +56,12 @@ def load_settings(
             crawl_render_dynamic_pages=raw.crawl_render_dynamic_pages,
             crawl_render_timeout_seconds=raw.crawl_render_timeout_seconds,
             crawl_max_concurrent_renders=raw.crawl_max_concurrent_renders,
+            discovery_sitemap_urls=raw.discovery_sitemap_urls,
+            discovery_max_sitemaps=raw.discovery_max_sitemaps,
+            discovery_max_sitemap_entries=raw.discovery_max_sitemap_entries,
+            discovery_max_candidates_per_product=(
+                raw.discovery_max_candidates_per_product
+            ),
             allow_origins=raw.allow_origins,
         ),
         ocr=OcrSettings(

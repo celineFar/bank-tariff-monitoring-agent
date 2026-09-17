@@ -4,6 +4,8 @@ services:
     command: ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
     env_file: .env
     ports: ["8080:8080"]
+    volumes:
+      - source_artifacts:/code/data/artifacts
     depends_on:
       db:
         condition: service_healthy
@@ -13,6 +15,8 @@ services:
     build: .
     command: ["uv", "run", "python", "-m", "app.worker"]
     env_file: .env
+    volumes:
+      - source_artifacts:/code/data/artifacts
     depends_on:
       db:
         condition: service_healthy
@@ -52,3 +56,4 @@ services:
 
 volumes:
   postgres_data:
+  source_artifacts:

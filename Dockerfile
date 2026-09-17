@@ -29,7 +29,8 @@ RUN uv sync --frozen
 RUN uv run playwright install --with-deps chromium \
     && chmod -R a+rX /ms-playwright
 
-RUN useradd --create-home --uid 10001 appuser \
+RUN mkdir -p /code/data/artifacts \
+    && useradd --create-home --uid 10001 appuser \
     && chown -R appuser:appuser /code
 USER appuser
 
