@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -53,13 +54,17 @@ class LocalArtifactStore:
         *,
         content: bytes,
         sha256: str,
+        source_sha256: str,
+        extractor: str,
+        extractor_version: str,
     ) -> StoredArtifact:
         return await asyncio.to_thread(
-            self._put_sync,
+            self._put_extracted_sync,
             content=content,
             sha256=sha256,
-            mime_type="application/json",
-            namespace="extracted",
+            source_sha256=source_sha256,
+            extractor=extractor,
+            extractor_version=extractor_version,
         )
 
     async def write_manifest(self, run_id: str, payload: dict[str, Any]) -> str:
@@ -122,6 +127,45 @@ class LocalArtifactStore:
             created=created,
         )
 
+    def _put_extracted_sync(
+        self,
+        *,
+        content: bytes,
+        sha256: str,
+        source_sha256: str,
+        extractor: str,
+        extractor_version: str,
+    ) -> StoredArtifact:
+        actual_sha256 = hashlib.sha256(content).hexdigest()
+        normalized_sha256 = sha256.casefold()
+        normalized_source_sha256 = source_sha256.casefold()
+        if actual_sha256 != normalized_sha256:
+            raise ArtifactIntegrityError(
+                "extracted bytes did not match the supplied SHA-256"
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", normalized_source_sha256):
+            raise ValueError("source SHA-256 must be a lowercase hex digest")
+        identity = _safe_artifact_component(f"{extractor}-{extractor_version}")
+        storage_key = (
+            f"extracted/{normalized_source_sha256[:2]}/"
+            f"{normalized_source_sha256}-{identity}.json"
+        )
+        path = self._safe_path(storage_key)
+        created = not path.exists()
+        if created:
+            self._atomic_write(path, content, replace=False)
+        elif path.read_bytes() != content:
+            raise ArtifactIntegrityError(
+                "extractor output changed without an extractor version change"
+            )
+        return StoredArtifact(
+            storage_key=storage_key,
+            sha256=normalized_sha256,
+            mime_type="application/json",
+            size_bytes=len(content),
+            created=created,
+        )
+
     def _safe_path(self, storage_key: str) -> Path:
         if not storage_key or Path(storage_key).is_absolute():
             raise ValueError("artifact storage key must be relative")
@@ -153,3 +197,10 @@ class LocalArtifactStore:
             os.replace(temporary, path)
         finally:
             temporary.unlink(missing_ok=True)
+
+
+def _safe_artifact_component(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9._-]+", "-", value.casefold()).strip("-.")
+    if not normalized:
+        raise ValueError("extractor identity cannot be empty")
+    return normalized

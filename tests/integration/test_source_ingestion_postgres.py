@@ -252,9 +252,7 @@ async def test_extracts_ingested_html_and_records_representation_metadata(
     )
     base = _ingestion()
     source = base.sources[0].model_copy(update={"artifact": artifact})
-    candidate = base.candidates[0].model_copy(
-        update={"content_sha256": checksum}
-    )
+    candidate = base.candidates[0].model_copy(update={"content_sha256": checksum})
     ingestion = base.model_copy(
         update={"sources": (source,), "candidates": (candidate, base.candidates[1])}
     )
@@ -263,6 +261,7 @@ async def test_extracts_ingested_html_and_records_representation_metadata(
     extractor = DocumentContentExtractor(
         store,
         extraction_repository,
+        min_text_characters_per_page=80,
         clock=lambda: NOW,
     )
 
@@ -276,8 +275,16 @@ async def test_extracts_ingested_html_and_records_representation_metadata(
     )
     assert repeated.representation_artifact.created is False
     assert first.blocks[1].label == "Loan amount"
+    assert persisted.status.value == "success"
+    assert persisted.ocr.pages_requiring_ocr == ()
     async with session_factory() as session:
-        count = await session.scalar(
-            select(func.count()).select_from(ContentExtractionRecord)
-        )
-    assert count == 1
+        row = (
+            await session.execute(
+                select(
+                    func.count(),
+                    func.max(ContentExtractionRecord.block_count),
+                    func.bool_or(ContentExtractionRecord.needs_ocr),
+                ).select_from(ContentExtractionRecord)
+            )
+        ).one()
+    assert row == (1, first.statistics.block_count, False)

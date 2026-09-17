@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.metadata
+import io
 import json
 import re
+import statistics
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,7 +15,10 @@ from enum import StrEnum
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
+import pdfplumber
 from bs4 import BeautifulSoup, Tag
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from app.domain.discovery import IngestedSource
 from app.domain.extraction import (
@@ -20,10 +27,15 @@ from app.domain.extraction import (
     ExtractedDocument,
     ExtractedDocumentContent,
     ExtractedLink,
+    ExtractedPage,
+    ExtractedPageTable,
     ExtractedTable,
     ExtractedTableRow,
     ExtractionStatistics,
+    ExtractionStatus,
     ExtractionWarning,
+    OcrAssessment,
+    PdfDocumentMetadata,
     SourceLocator,
     extraction_id_for,
 )
@@ -31,8 +43,14 @@ from app.repositories.contracts import ContentExtractionRepository
 from app.services.contracts import ArtifactStore
 
 _HTML_MIME_TYPES = frozenset(("text/html", "application/xhtml+xml"))
-_EXTRACTOR_NAME = "deterministic-html"
-_EXTRACTOR_VERSION = "1.1"
+_PDF_MIME_TYPE = "application/pdf"
+_HTML_EXTRACTOR_NAME = "deterministic-html"
+_HTML_EXTRACTOR_VERSION = "1.1"
+_PDF_EXTRACTOR_NAME = "pdfplumber"
+_PDF_EXTRACTOR_VERSION = "1.0"
+_INVALID_UNICODE_THRESHOLD = 0.02
+_UNREADABLE_CHARACTER_THRESHOLD = 0.10
+_MAX_PDF_PAGES = 500
 _SPACE = re.compile(r"\s+")
 _CSS_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _IGNORED_TAGS = frozenset(
@@ -74,15 +92,16 @@ _LABEL_MARKERS = frozenset(("label", "name", "title", "caption", "key"))
 _VALUE_MARKERS = frozenset(
     ("value", "amount", "description", "content", "text", "data")
 )
-_FACT_CONTAINER_MARKERS = frozenset(
-    ("detail", "feature", "info", "parameter", "stat")
-)
+_FACT_CONTAINER_MARKERS = frozenset(("detail", "feature", "info", "parameter", "stat"))
 
 
 class ContentExtractionErrorCode(StrEnum):
     ARTIFACT_INTEGRITY = "artifact_integrity"
     UNSUPPORTED_MIME_TYPE = "unsupported_mime_type"
     EMPTY_DOCUMENT = "empty_document"
+    MALFORMED_PDF = "malformed_pdf"
+    ENCRYPTED_PDF = "encrypted_pdf"
+    PDF_TOO_LARGE = "pdf_too_large"
 
 
 class ContentExtractionError(RuntimeError):
@@ -110,6 +129,20 @@ class _HtmlResult:
     warnings: tuple[ExtractionWarning, ...]
 
 
+@dataclass(frozen=True)
+class _ExtractionResult:
+    language: str | None
+    extractor: str
+    extractor_version: str
+    status: ExtractionStatus
+    blocks: tuple[ExtractedBlock, ...]
+    pages: tuple[ExtractedPage, ...]
+    pdf_metadata: PdfDocumentMetadata | None
+    ocr: OcrAssessment
+    statistics: ExtractionStatistics
+    warnings: tuple[ExtractionWarning, ...]
+
+
 class DocumentContentExtractor:
     """Verify an ingested artifact, extract it, persist JSON, then record metadata."""
 
@@ -118,10 +151,14 @@ class DocumentContentExtractor:
         artifact_store: ArtifactStore,
         repository: ContentExtractionRepository,
         *,
+        min_text_characters_per_page: int,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
+        if min_text_characters_per_page < 0:
+            raise ValueError("minimum text characters per page cannot be negative")
         self._artifact_store = artifact_store
         self._repository = repository
+        self._min_text_characters_per_page = min_text_characters_per_page
         self._clock = clock or (lambda: datetime.now(UTC))
 
     async def extract(self, source: IngestedSource) -> ExtractedDocument:
@@ -139,13 +176,32 @@ class DocumentContentExtractor:
             )
 
         mime_type = source.artifact.mime_type.partition(";")[0].strip().casefold()
-        if mime_type not in _HTML_MIME_TYPES:
+        if mime_type in _HTML_MIME_TYPES:
+            html = await asyncio.to_thread(_extract_html, source, content)
+            extracted = _ExtractionResult(
+                language=html.language,
+                extractor=_HTML_EXTRACTOR_NAME,
+                extractor_version=_HTML_EXTRACTOR_VERSION,
+                status=ExtractionStatus.SUCCESS,
+                blocks=html.blocks,
+                pages=(),
+                pdf_metadata=None,
+                ocr=OcrAssessment(status=ExtractionStatus.SUCCESS),
+                statistics=_statistics(html.blocks, html.warnings),
+                warnings=html.warnings,
+            )
+        elif mime_type == _PDF_MIME_TYPE:
+            extracted = await asyncio.to_thread(
+                _extract_pdf,
+                source,
+                content,
+                self._min_text_characters_per_page,
+            )
+        else:
             raise ContentExtractionError(
                 ContentExtractionErrorCode.UNSUPPORTED_MIME_TYPE,
                 f"no content extractor is registered for {mime_type!r}",
             )
-
-        html = await asyncio.to_thread(_extract_html, source, content)
         extraction_id = extraction_id_for(
             source_sha256=source.artifact.sha256,
             source_storage_key=source.artifact.storage_key,
@@ -153,11 +209,10 @@ class DocumentContentExtractor:
             product_id=source.product_id,
             source_url=source.source_url,
             final_url=source.final_url,
-            language=html.language,
-            extractor=_EXTRACTOR_NAME,
-            extractor_version=_EXTRACTOR_VERSION,
+            language=extracted.language,
+            extractor=extracted.extractor,
+            extractor_version=extracted.extractor_version,
         )
-        statistics = _statistics(html.blocks, html.warnings)
         document_content = ExtractedDocumentContent(
             extraction_id=extraction_id,
             product_id=source.product_id,
@@ -166,17 +221,24 @@ class DocumentContentExtractor:
             source_storage_key=source.artifact.storage_key,
             source_sha256=source.artifact.sha256,
             source_mime_type=mime_type,
-            language=html.language,
-            extractor=_EXTRACTOR_NAME,
-            extractor_version=_EXTRACTOR_VERSION,
-            blocks=html.blocks,
-            statistics=statistics,
-            warnings=html.warnings,
+            language=extracted.language,
+            extractor=extracted.extractor,
+            extractor_version=extracted.extractor_version,
+            status=extracted.status,
+            blocks=extracted.blocks,
+            pages=extracted.pages,
+            pdf_metadata=extracted.pdf_metadata,
+            ocr=extracted.ocr,
+            statistics=extracted.statistics,
+            warnings=extracted.warnings,
         )
         encoded = _canonical_json(document_content)
         representation = await self._artifact_store.put_extracted(
             content=encoded,
             sha256=hashlib.sha256(encoded).hexdigest(),
+            source_sha256=source.artifact.sha256,
+            extractor=extracted.extractor,
+            extractor_version=extracted.extractor_version,
         )
         result = ExtractedDocument(
             **document_content.model_dump(),
@@ -185,6 +247,353 @@ class DocumentContentExtractor:
         )
         await self._repository.save_extraction(result)
         return result
+
+
+def _extract_pdf(
+    source: IngestedSource,
+    content: bytes,
+    min_text_characters_per_page: int,
+) -> _ExtractionResult:
+    try:
+        reader = PdfReader(io.BytesIO(content), strict=False)
+        if reader.is_encrypted:
+            raise ContentExtractionError(
+                ContentExtractionErrorCode.ENCRYPTED_PDF,
+                "encrypted PDFs cannot be extracted deterministically",
+            )
+        page_count = len(reader.pages)
+    except ContentExtractionError:
+        raise
+    except (PdfReadError, OSError, ValueError) as exc:
+        raise ContentExtractionError(
+            ContentExtractionErrorCode.MALFORMED_PDF,
+            f"PDF validation failed: {exc}",
+        ) from exc
+
+    if page_count == 0:
+        raise ContentExtractionError(
+            ContentExtractionErrorCode.EMPTY_DOCUMENT,
+            "PDF contained no pages",
+        )
+    if page_count > _MAX_PDF_PAGES:
+        raise ContentExtractionError(
+            ContentExtractionErrorCode.PDF_TOO_LARGE,
+            f"PDF has {page_count} pages; limit is {_MAX_PDF_PAGES}",
+        )
+
+    try:
+        metadata = _pdf_metadata(reader)
+    except (PdfReadError, TypeError, ValueError) as exc:
+        raise ContentExtractionError(
+            ContentExtractionErrorCode.MALFORMED_PDF,
+            f"PDF metadata extraction failed: {exc}",
+        ) from exc
+    pages: list[ExtractedPage] = []
+    warnings: list[ExtractionWarning] = []
+    page_reasons: dict[int, tuple[str, ...]] = {}
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as document:
+            if len(document.pages) != page_count:
+                raise ContentExtractionError(
+                    ContentExtractionErrorCode.MALFORMED_PDF,
+                    "PDF parsers disagreed about the page count",
+                )
+            for page_number, page in enumerate(document.pages, start=1):
+                extracted_page, reasons = _extract_pdf_page(
+                    source.artifact.sha256,
+                    page_number,
+                    page,
+                    min_text_characters_per_page,
+                )
+                pages.append(extracted_page)
+                warnings.extend(extracted_page.warnings)
+                if reasons:
+                    page_reasons[page_number] = reasons
+    except ContentExtractionError:
+        raise
+    except Exception as exc:
+        raise ContentExtractionError(
+            ContentExtractionErrorCode.MALFORMED_PDF,
+            f"PDF layout extraction failed: {exc}",
+        ) from exc
+
+    requiring_ocr = tuple(page_reasons)
+    if requiring_ocr:
+        primary_reason = next(
+            reason for candidate in page_reasons.values() for reason in candidate
+        )
+        status = ExtractionStatus.NEEDS_OCR
+        ocr = OcrAssessment(
+            status=status,
+            pages_requiring_ocr=requiring_ocr,
+            reason=primary_reason,
+            page_reasons=page_reasons,
+        )
+    else:
+        status = ExtractionStatus.SUCCESS
+        ocr = OcrAssessment(status=status)
+
+    page_tuple = tuple(pages)
+    warning_tuple = tuple(warnings)
+    return _ExtractionResult(
+        language=source.language,
+        extractor=_PDF_EXTRACTOR_NAME,
+        extractor_version=_PDF_EXTRACTOR_VERSION,
+        status=status,
+        blocks=(),
+        pages=page_tuple,
+        pdf_metadata=metadata,
+        ocr=ocr,
+        statistics=_statistics((), warning_tuple, pages=page_tuple, ocr=ocr),
+        warnings=warning_tuple,
+    )
+
+
+def _pdf_metadata(reader: PdfReader) -> PdfDocumentMetadata:
+    raw = reader.metadata
+
+    def value(name: str) -> str | None:
+        if raw is None:
+            return None
+        item = getattr(raw, name, None)
+        return str(item) if item is not None else None
+
+    return PdfDocumentMetadata(
+        title=value("title"),
+        author=value("author"),
+        subject=value("subject"),
+        creator=value("creator"),
+        producer=value("producer"),
+        creation_date=value("creation_date"),
+        modification_date=value("modification_date"),
+        is_encrypted=False,
+        pypdf_version=importlib.metadata.version("pypdf"),
+        pdfplumber_version=importlib.metadata.version("pdfplumber"),
+    )
+
+
+def _extract_pdf_page(
+    source_sha256: str,
+    page_number: int,
+    page: Any,
+    min_text_characters_per_page: int,
+) -> tuple[ExtractedPage, tuple[str, ...]]:
+    page_warnings: list[ExtractionWarning] = []
+    locator = SourceLocator(page=page_number)
+    text_failed = False
+    try:
+        words = page.extract_words(
+            use_text_flow=True,
+            keep_blank_chars=False,
+            extra_attrs=["size"],
+        )
+    except Exception as exc:
+        words = []
+        text_failed = True
+        page_warnings.append(
+            ExtractionWarning(
+                code="text_extraction_failed",
+                message=f"text extraction failed: {type(exc).__name__}",
+                source_locator=locator,
+            )
+        )
+
+    blocks = _pdf_blocks(source_sha256, page_number, words)
+    page_tables: list[ExtractedPageTable] = []
+    table_failed = False
+    try:
+        discovered_tables = page.find_tables()
+        for found in discovered_tables:
+            rows = found.extract()
+            normalized_rows = tuple(
+                ExtractedTableRow(
+                    cells=tuple(_normalize_pdf_cell(cell) for cell in row),
+                    is_header=index == 0,
+                )
+                for index, row in enumerate(rows)
+                if row and any(_normalize_pdf_cell(cell) for cell in row)
+            )
+            if not normalized_rows:
+                continue
+            bbox = tuple(float(coordinate) for coordinate in found.bbox)
+            page_tables.append(
+                ExtractedPageTable(
+                    ordinal=len(page_tables),
+                    table=ExtractedTable(rows=normalized_rows),
+                    source_locator=SourceLocator(
+                        page=page_number,
+                        bounding_box=bbox,
+                    ),
+                )
+            )
+    except Exception as exc:
+        table_failed = True
+        page_warnings.append(
+            ExtractionWarning(
+                code="table_extraction_failed",
+                message=f"table extraction failed: {type(exc).__name__}",
+                source_locator=locator,
+            )
+        )
+
+    text = "\n".join(block.text for block in blocks)
+    character_count = len(text)
+    try:
+        image_count = len(page.images or ())
+    except Exception as exc:
+        image_count = 0
+        page_warnings.append(
+            ExtractionWarning(
+                code="image_detection_failed",
+                message=f"image detection failed: {type(exc).__name__}",
+                source_locator=locator,
+            )
+        )
+    invalid_ratio = _invalid_unicode_ratio(text)
+    unreadable_ratio = _unreadable_character_ratio(text)
+    is_empty = character_count == 0 and image_count == 0
+    is_image_only = image_count > 0 and (
+        character_count == 0
+        or (
+            min_text_characters_per_page > 0
+            and character_count < min_text_characters_per_page
+        )
+    )
+    reasons: list[str] = []
+    if text_failed:
+        reasons.append("text_extraction_failed")
+    elif is_image_only:
+        reasons.append("image_only")
+    elif 0 < character_count < min_text_characters_per_page:
+        reasons.append("insufficient_text")
+    if invalid_ratio > _INVALID_UNICODE_THRESHOLD:
+        reasons.append("invalid_unicode")
+    if unreadable_ratio > _UNREADABLE_CHARACTER_THRESHOLD:
+        reasons.append("unreadable_text")
+    if table_failed:
+        reasons.append("table_extraction_failed")
+    if is_empty:
+        page_warnings.append(
+            ExtractionWarning(
+                code="empty_page",
+                message="page contains neither extractable text nor images",
+                source_locator=locator,
+            )
+        )
+    for reason in reasons:
+        page_warnings.append(
+            ExtractionWarning(
+                code=f"ocr_{reason}",
+                message=f"page requires OCR because of {reason.replace('_', ' ')}",
+                source_locator=locator,
+            )
+        )
+
+    return (
+        ExtractedPage(
+            page_number=page_number,
+            width=float(page.width),
+            height=float(page.height),
+            blocks=blocks,
+            tables=tuple(page_tables),
+            warnings=tuple(page_warnings),
+            text_character_count=character_count,
+            image_count=image_count,
+            invalid_unicode_ratio=invalid_ratio,
+            unreadable_character_ratio=unreadable_ratio,
+            is_empty=is_empty,
+            is_image_only=is_image_only,
+            is_scanned=is_image_only,
+            needs_ocr=bool(reasons),
+        ),
+        tuple(reasons),
+    )
+
+
+def _pdf_blocks(
+    source_sha256: str, page_number: int, words: list[dict[str, Any]]
+) -> tuple[ExtractedBlock, ...]:
+    if not words:
+        return ()
+    sizes = [float(word.get("size") or 0) for word in words]
+    positive_sizes = [size for size in sizes if size > 0]
+    body_size = statistics.median(positive_sizes) if positive_sizes else 0
+    lines: list[list[dict[str, Any]]] = []
+    for word in words:
+        if not lines or abs(float(word["top"]) - float(lines[-1][0]["top"])) > 3:
+            lines.append([word])
+        else:
+            lines[-1].append(word)
+
+    blocks: list[ExtractedBlock] = []
+    section: tuple[str, ...] = ()
+    for line in lines:
+        text = _SPACE.sub(" ", " ".join(str(word["text"]) for word in line)).strip()
+        if not text:
+            continue
+        line_size = max(float(word.get("size") or 0) for word in line)
+        is_heading = body_size > 0 and line_size >= body_size * 1.2 and len(text) <= 200
+        block_type = (
+            ExtractedBlockType.HEADING if is_heading else ExtractedBlockType.PARAGRAPH
+        )
+        if is_heading:
+            section = (text,)
+        bbox = (
+            min(float(word["x0"]) for word in line),
+            min(float(word["top"]) for word in line),
+            max(float(word["x1"]) for word in line),
+            max(float(word["bottom"]) for word in line),
+        )
+        ordinal = len(blocks)
+        identity = "\x1f".join(
+            (source_sha256, str(page_number), str(ordinal), block_type.value, text)
+        )
+        blocks.append(
+            ExtractedBlock(
+                block_id=hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+                ordinal=ordinal,
+                block_type=block_type,
+                section=section,
+                text=text,
+                heading_level=1 if is_heading else None,
+                source_locator=SourceLocator(
+                    page=page_number,
+                    bounding_box=bbox,
+                ),
+            )
+        )
+    return tuple(blocks)
+
+
+def _normalize_pdf_cell(value: object) -> str:
+    return _SPACE.sub(" ", str(value or "")).strip()
+
+
+def _invalid_unicode_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    invalid = sum(
+        character == "\ufffd"
+        or 0xD800 <= ord(character) <= 0xDFFF
+        or ord(character) in {0xFFFE, 0xFFFF}
+        for character in text
+    )
+    return invalid / len(text)
+
+
+def _unreadable_character_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    unreadable = sum(
+        unicodedata.category(character) in {"Cc", "Co", "Cs"}
+        and character not in "\n\r\t"
+        for character in text
+    )
+    repeated = sum(
+        len(match.group(0))
+        for match in re.finditer(r"([^\s])\1{11,}", text, flags=re.UNICODE)
+    )
+    return min(1.0, (unreadable + repeated) / len(text))
 
 
 def _extract_html(source: IngestedSource, content: bytes) -> _HtmlResult:
@@ -441,7 +850,8 @@ def _table(element: Tag) -> ExtractedTable | None:
     rows: list[ExtractedTableRow] = []
     for row in element.find_all("tr"):
         cells = tuple(
-            text for cell in row.find_all(("th", "td"), recursive=False)
+            text
+            for cell in row.find_all(("th", "td"), recursive=False)
             if (text := _text(cell))
         )
         if cells:
@@ -511,7 +921,9 @@ def _css_path(element: Tag) -> str:
         if isinstance(parent, Tag):
             siblings = list(parent.find_all(current.name, recursive=False))
             if len(siblings) > 1:
-                parts.append(f"{current.name}:nth-of-type({siblings.index(current) + 1})")
+                parts.append(
+                    f"{current.name}:nth-of-type({siblings.index(current) + 1})"
+                )
             else:
                 parts.append(current.name)
         else:
@@ -537,27 +949,39 @@ def _block_id(source_sha256: str, ordinal: int, draft: _BlockDraft) -> str:
 def _statistics(
     blocks: tuple[ExtractedBlock, ...],
     warnings: tuple[ExtractionWarning, ...],
+    *,
+    pages: tuple[ExtractedPage, ...] = (),
+    ocr: OcrAssessment | None = None,
 ) -> ExtractionStatistics:
+    page_blocks = tuple(block for page in pages for block in page.blocks)
+    all_blocks = blocks + page_blocks
+    page_tables = tuple(table for page in pages for table in page.tables)
     return ExtractionStatistics(
-        block_count=len(blocks),
+        block_count=len(all_blocks),
         heading_count=sum(
-            block.block_type is ExtractedBlockType.HEADING for block in blocks
+            block.block_type is ExtractedBlockType.HEADING for block in all_blocks
         ),
         paragraph_count=sum(
-            block.block_type is ExtractedBlockType.PARAGRAPH for block in blocks
+            block.block_type is ExtractedBlockType.PARAGRAPH for block in all_blocks
         ),
         list_item_count=sum(
-            block.block_type is ExtractedBlockType.LIST_ITEM for block in blocks
+            block.block_type is ExtractedBlockType.LIST_ITEM for block in all_blocks
         ),
         table_count=sum(
             block.block_type is ExtractedBlockType.TABLE for block in blocks
-        ),
+        )
+        + len(page_tables),
         table_row_count=sum(
             len(block.table.rows) for block in blocks if block.table is not None
-        ),
-        link_count=sum(len(block.links) for block in blocks),
-        text_character_count=sum(len(block.text) for block in blocks),
+        )
+        + sum(len(table.table.rows) for table in page_tables),
+        link_count=sum(len(block.links) for block in all_blocks),
+        text_character_count=sum(len(block.text) for block in all_blocks),
         warning_count=len(warnings),
+        page_count=len(pages),
+        empty_page_count=sum(page.is_empty for page in pages),
+        image_only_page_count=sum(page.is_image_only for page in pages),
+        pages_requiring_ocr_count=len(ocr.pages_requiring_ocr) if ocr else 0,
     )
 
 

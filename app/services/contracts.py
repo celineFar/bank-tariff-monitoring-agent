@@ -26,6 +26,9 @@ class ArtifactStore(Protocol):
         *,
         content: bytes,
         sha256: str,
+        source_sha256: str,
+        extractor: str,
+        extractor_version: str,
     ) -> StoredArtifact: ...
 
     async def write_manifest(self, run_id: str, payload: dict[str, Any]) -> str: ...

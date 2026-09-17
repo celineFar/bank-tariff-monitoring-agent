@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime
 from enum import StrEnum
@@ -26,9 +27,29 @@ class ExtractedBlockType(StrEnum):
     FACT = "fact"
 
 
+class ExtractionStatus(StrEnum):
+    SUCCESS = "success"
+    NEEDS_OCR = "needs_ocr"
+
+
 class SourceLocator(ExtractionModel):
     css_path: str | None = Field(default=None, max_length=4000)
     page: int | None = Field(default=None, ge=1)
+    bounding_box: tuple[float, float, float, float] | None = None
+
+    @field_validator("bounding_box")
+    @classmethod
+    def validate_bounding_box(
+        cls, value: tuple[float, float, float, float] | None
+    ) -> tuple[float, float, float, float] | None:
+        if value is None:
+            return None
+        x0, top, x1, bottom = value
+        if not all(math.isfinite(coordinate) for coordinate in value):
+            raise ValueError("bounding-box coordinates must be finite")
+        if x1 < x0 or bottom < top:
+            raise ValueError("bounding-box coordinates are inverted")
+        return value
 
     @model_validator(mode="after")
     def require_a_location(self) -> SourceLocator:
@@ -56,6 +77,75 @@ class ExtractedTableRow(ExtractionModel):
 class ExtractedTable(ExtractionModel):
     caption: str | None = None
     rows: tuple[ExtractedTableRow, ...] = Field(min_length=1)
+
+
+class ExtractedPageTable(ExtractionModel):
+    ordinal: int = Field(ge=0)
+    table: ExtractedTable
+    source_locator: SourceLocator
+
+
+class ExtractedPage(ExtractionModel):
+    page_number: int = Field(ge=1)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+    blocks: tuple[ExtractedBlock, ...] = ()
+    tables: tuple[ExtractedPageTable, ...] = ()
+    warnings: tuple[ExtractionWarning, ...] = ()
+    text_character_count: int = Field(ge=0)
+    image_count: int = Field(ge=0)
+    invalid_unicode_ratio: float = Field(ge=0, le=1)
+    unreadable_character_ratio: float = Field(ge=0, le=1)
+    is_empty: bool
+    is_image_only: bool
+    is_scanned: bool
+    needs_ocr: bool
+
+    @model_validator(mode="after")
+    def validate_ordinals(self) -> ExtractedPage:
+        if tuple(block.ordinal for block in self.blocks) != tuple(
+            range(len(self.blocks))
+        ):
+            raise ValueError("page block ordinals must be contiguous and ordered")
+        if tuple(table.ordinal for table in self.tables) != tuple(
+            range(len(self.tables))
+        ):
+            raise ValueError("page table ordinals must be contiguous and ordered")
+        return self
+
+
+class PdfDocumentMetadata(ExtractionModel):
+    title: str | None = None
+    author: str | None = None
+    subject: str | None = None
+    creator: str | None = None
+    producer: str | None = None
+    creation_date: str | None = None
+    modification_date: str | None = None
+    is_encrypted: bool = False
+    pypdf_version: str
+    pdfplumber_version: str
+
+
+class OcrAssessment(ExtractionModel):
+    status: ExtractionStatus
+    pages_requiring_ocr: tuple[int, ...] = ()
+    reason: str | None = Field(default=None, max_length=100)
+    page_reasons: dict[int, tuple[str, ...]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_status(self) -> OcrAssessment:
+        pages = tuple(sorted(set(self.pages_requiring_ocr)))
+        if pages != self.pages_requiring_ocr:
+            raise ValueError("OCR page numbers must be sorted and unique")
+        if self.status is ExtractionStatus.NEEDS_OCR:
+            if not pages or self.reason is None:
+                raise ValueError("needs_ocr requires pages and a reason")
+        elif pages or self.reason is not None or self.page_reasons:
+            raise ValueError("successful extraction cannot require OCR pages")
+        if set(self.page_reasons) != set(pages):
+            raise ValueError("OCR page reasons must match pages requiring OCR")
+        return self
 
 
 class ExtractedBlock(ExtractionModel):
@@ -101,10 +191,14 @@ class ExtractionStatistics(ExtractionModel):
     link_count: int = Field(ge=0)
     text_character_count: int = Field(ge=0)
     warning_count: int = Field(ge=0)
+    page_count: int = Field(default=0, ge=0)
+    empty_page_count: int = Field(default=0, ge=0)
+    image_only_page_count: int = Field(default=0, ge=0)
+    pages_requiring_ocr_count: int = Field(default=0, ge=0)
 
 
 class ExtractedDocumentContent(ExtractionModel):
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"
     extraction_id: UUID
     product_id: str = Field(min_length=1, max_length=100)
     source_url: str = Field(min_length=1, max_length=4000)
@@ -115,7 +209,11 @@ class ExtractedDocumentContent(ExtractionModel):
     language: str | None = Field(default=None, max_length=35)
     extractor: str = Field(min_length=1, max_length=100)
     extractor_version: str = Field(min_length=1, max_length=50)
-    blocks: tuple[ExtractedBlock, ...]
+    status: ExtractionStatus = ExtractionStatus.SUCCESS
+    blocks: tuple[ExtractedBlock, ...] = ()
+    pages: tuple[ExtractedPage, ...] = ()
+    pdf_metadata: PdfDocumentMetadata | None = None
+    ocr: OcrAssessment = OcrAssessment(status=ExtractionStatus.SUCCESS)
     statistics: ExtractionStatistics
     warnings: tuple[ExtractionWarning, ...] = ()
 
@@ -135,10 +233,26 @@ class ExtractedDocumentContent(ExtractionModel):
             raise ValueError("block ordinals must be contiguous and document ordered")
         if len({block.block_id for block in self.blocks}) != len(self.blocks):
             raise ValueError("block IDs must be unique")
-        if self.statistics.block_count != len(self.blocks):
+        page_blocks = tuple(block for page in self.pages for block in page.blocks)
+        all_blocks = self.blocks + page_blocks
+        if len({block.block_id for block in all_blocks}) != len(all_blocks):
+            raise ValueError("block IDs must be unique across the document")
+        if tuple(page.page_number for page in self.pages) != tuple(
+            range(1, len(self.pages) + 1)
+        ):
+            raise ValueError("page numbers must be contiguous and one-based")
+        if self.statistics.block_count != len(all_blocks):
             raise ValueError("statistics block count did not match blocks")
+        if self.statistics.page_count != len(self.pages):
+            raise ValueError("statistics page count did not match pages")
         if self.statistics.warning_count != len(self.warnings):
             raise ValueError("statistics warning count did not match warnings")
+        if self.status is not self.ocr.status:
+            raise ValueError("document and OCR statuses must match")
+        if self.statistics.pages_requiring_ocr_count != len(
+            self.ocr.pages_requiring_ocr
+        ):
+            raise ValueError("statistics OCR page count did not match assessment")
         return self
 
 
@@ -155,6 +269,8 @@ class PersistedExtraction(ExtractionModel):
     representation_artifact: StoredArtifact
     extractor: str
     extractor_version: str
+    status: ExtractionStatus
+    ocr: OcrAssessment
     statistics: ExtractionStatistics
     warnings: tuple[ExtractionWarning, ...]
     extracted_at: datetime

@@ -1,4 +1,4 @@
-"""Extract persisted HTML sources into immutable structured JSON artifacts."""
+"""Extract persisted HTML and PDF sources into structured JSON artifacts."""
 
 from __future__ import annotations
 
@@ -24,16 +24,16 @@ from app.services.content_extractor import (
 )
 from app.services.local_artifact_store import LocalArtifactStore
 
-_HTML_MIME_TYPES = frozenset(("text/html", "application/xhtml+xml"))
+_SUPPORTED_MIME_TYPES = frozenset(
+    ("text/html", "application/xhtml+xml", "application/pdf")
+)
 
 
 class _ArtifactOnlyExtractionRepository:
     async def save_extraction(self, extraction: ExtractedDocument) -> None:
         del extraction
 
-    async def get_extraction(
-        self, extraction_id: UUID
-    ) -> PersistedExtraction | None:
+    async def get_extraction(self, extraction_id: UUID) -> PersistedExtraction | None:
         del extraction_id
         return None
 
@@ -67,7 +67,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--fail-fast",
         action="store_true",
-        help="stop after the first failed HTML extraction",
+        help="stop after the first failed extraction",
     )
     parser.add_argument("--pretty", action="store_true", help="indent JSON output")
     return parser.parse_args()
@@ -107,13 +107,17 @@ async def _run(args: argparse.Namespace) -> int:
                 async_sessionmaker(engine, expire_on_commit=False)
             )
 
-        extractor = DocumentContentExtractor(store, extraction_repository)
+        extractor = DocumentContentExtractor(
+            store,
+            extraction_repository,
+            min_text_characters_per_page=(settings.ocr.min_text_chars_per_page),
+        )
         extracted: list[dict[str, Any]] = []
         failed: list[dict[str, str]] = []
         skipped: list[dict[str, str]] = []
         for source in sources:
             mime_type = source.artifact.mime_type.partition(";")[0].strip().casefold()
-            if mime_type not in _HTML_MIME_TYPES:
+            if mime_type not in _SUPPORTED_MIME_TYPES:
                 skipped.append(
                     {
                         "product_id": source.product_id,
@@ -142,6 +146,12 @@ async def _run(args: argparse.Namespace) -> int:
                     "product_id": document.product_id,
                     "source_url": document.source_url,
                     "blocks": document.statistics.block_count,
+                    "pages": document.statistics.page_count,
+                    "tables": document.statistics.table_count,
+                    "text_characters": document.statistics.text_character_count,
+                    "status": document.status.value,
+                    "needs_ocr": document.status.value == "needs_ocr",
+                    "pages_requiring_ocr": list(document.ocr.pages_requiring_ocr),
                     "warnings": document.statistics.warning_count,
                     "json_key": document.representation_artifact.storage_key,
                     "json_path": str(
@@ -156,9 +166,7 @@ async def _run(args: argparse.Namespace) -> int:
 
         payload = {
             "manifest_key": manifest_key,
-            "artifact_root": str(
-                settings.application.artifact_storage_dir.resolve()
-            ),
+            "artifact_root": str(settings.application.artifact_storage_dir.resolve()),
             "metadata_persisted": not args.artifact_only,
             "source_count": len(sources),
             "extracted_count": len(extracted),
@@ -205,9 +213,7 @@ async def _manifest_sources(
         sources.append(IngestedSource.model_validate(source_payload))
     selected = set(product_ids)
     return _deduplicate_sources(
-        source
-        for source in sources
-        if not selected or source.product_id in selected
+        source for source in sources if not selected or source.product_id in selected
     )
 
 

@@ -6,10 +6,12 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Table,
     Text,
@@ -25,7 +27,9 @@ from app.domain.discovery import StoredArtifact, source_artifact_id
 from app.domain.extraction import (
     ExtractedDocument,
     ExtractionStatistics,
+    ExtractionStatus,
     ExtractionWarning,
+    OcrAssessment,
     PersistedExtraction,
 )
 
@@ -60,6 +64,14 @@ class ContentExtractionRecord(ContentExtractionBase):
     representation_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     statistics: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     warnings: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    text_character_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    block_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    table_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    needs_ocr: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    pages_requiring_ocr: Mapped[list[int]] = mapped_column(JSONB, nullable=False)
+    ocr_assessment: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     extracted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -73,9 +85,7 @@ class ContentExtractionRecord(ContentExtractionBase):
     __table_args__ = (
         Index("content_extractions_source_artifact_idx", "source_artifact_id"),
         Index("content_extractions_product_idx", "product_id", "extracted_at"),
-        Index(
-            "content_extractions_representation_idx", "representation_sha256"
-        ),
+        Index("content_extractions_representation_idx", "representation_sha256"),
     )
 
 
@@ -121,9 +131,16 @@ class PostgresContentExtractionRepository:
                 "representation_size_bytes": representation.size_bytes,
                 "statistics": extraction.statistics.model_dump(mode="json"),
                 "warnings": [
-                    warning.model_dump(mode="json")
-                    for warning in extraction.warnings
+                    warning.model_dump(mode="json") for warning in extraction.warnings
                 ],
+                "status": extraction.status.value,
+                "page_count": extraction.statistics.page_count,
+                "text_character_count": extraction.statistics.text_character_count,
+                "block_count": extraction.statistics.block_count,
+                "table_count": extraction.statistics.table_count,
+                "needs_ocr": extraction.status is ExtractionStatus.NEEDS_OCR,
+                "pages_requiring_ocr": list(extraction.ocr.pages_requiring_ocr),
+                "ocr_assessment": extraction.ocr.model_dump(mode="json"),
                 "extracted_at": extraction.extracted_at,
                 "created_at": extraction.extracted_at,
                 "updated_at": extraction.extracted_at,
@@ -141,15 +158,21 @@ class PostgresContentExtractionRepository:
                             warning.model_dump(mode="json")
                             for warning in extraction.warnings
                         ],
+                        "status": extraction.status.value,
+                        "page_count": extraction.statistics.page_count,
+                        "text_character_count": extraction.statistics.text_character_count,
+                        "block_count": extraction.statistics.block_count,
+                        "table_count": extraction.statistics.table_count,
+                        "needs_ocr": extraction.status is ExtractionStatus.NEEDS_OCR,
+                        "pages_requiring_ocr": list(extraction.ocr.pages_requiring_ocr),
+                        "ocr_assessment": extraction.ocr.model_dump(mode="json"),
                         "extracted_at": extraction.extracted_at,
                         "updated_at": extraction.extracted_at,
                     },
                 )
             )
 
-    async def get_extraction(
-        self, extraction_id: UUID
-    ) -> PersistedExtraction | None:
+    async def get_extraction(self, extraction_id: UUID) -> PersistedExtraction | None:
         async with self._session_factory() as session:
             record = await session.scalar(
                 select(ContentExtractionRecord).where(
@@ -172,6 +195,8 @@ class PostgresContentExtractionRepository:
             ),
             extractor=record.extractor,
             extractor_version=record.extractor_version,
+            status=ExtractionStatus(record.status),
+            ocr=OcrAssessment.model_validate(record.ocr_assessment),
             statistics=ExtractionStatistics.model_validate(record.statistics),
             warnings=tuple(
                 ExtractionWarning.model_validate(item) for item in record.warnings

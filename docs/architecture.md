@@ -114,8 +114,8 @@ database tool.
 `DocumentContentExtractor` accepts an `IngestedSource`, never an arbitrary local
 path or live URL. It reloads bytes through `ArtifactStore`, verifies their SHA-256
 digest and size against ingestion metadata, and dispatches only on the normalized,
-validated MIME type. Unsupported formats stop with a typed error; PDF dispatch stays
-unsupported until the dedicated PDF parser component is implemented.
+validated MIME type. Unsupported formats stop with a typed error. HTML and PDF use
+separate versioned deterministic extractors behind the same dispatcher.
 
 The deterministic HTML extractor parses the persisted rendered/static artifact. It
 selects the narrowest known main-content container, removes executable, navigation,
@@ -126,21 +126,32 @@ URLs, and CSS locators. Stable block IDs derive from the source checksum, ordina
 type, locator, label, and exact extracted text; this stage does not interpret tariff
 amounts, currencies, rates, or terms.
 
-The canonical JSON representation excludes processing timestamps, is addressed by
-its own SHA-256 key under `extracted/`, and is therefore reused byte-for-byte on an
-unchanged rerun. `PostgresContentExtractionRepository` records the relationship from
-the ingested source artifact to the extracted representation, extractor/version,
-statistics, warnings, and processing time. Migration
-`004_content_extraction.sql` owns this schema, and an advisory lock plus deterministic
-extraction ID make metadata writes idempotent. Neither artifact storage nor the
-repository is exposed to Gemini.
+PDF input is first validated and inspected for metadata with `pypdf`, then extracted
+page by page with `pdfplumber`. Page output retains reading-order text blocks, detected
+headings, tables and cells, dimensions, image counts, bounding boxes, warnings, and
+text-quality measurements. Encrypted, malformed, empty, and excessively large PDFs
+stop with typed errors. Deterministic low-text, image-only, invalid-Unicode,
+unreadable-text, and table-failure signals identify only the pages a later OCR
+component should consume; the low-text threshold comes from `OcrSettings`, and this
+component does not perform OCR.
+
+The canonical JSON representation excludes processing timestamps and is stored as
+`extracted/<raw-sha-prefix>/<raw-sha>-<extractor>-<version>.json`. An unchanged raw
+checksum and extractor version therefore resolves to the same immutable object; a
+different result without a version bump is treated as an integrity error.
+`PostgresContentExtractionRepository` records the raw artifact relationship, output
+key and checksum, extractor/version, status, page/text/block/table counts, OCR
+assessment, warnings, and processing time. Migrations `004_content_extraction.sql`
+and `005_pdf_content_extraction.sql` own this schema. An advisory lock plus a
+deterministic extraction ID makes metadata writes idempotent. Neither artifact
+storage nor the repository is exposed to Gemini.
 
 `scripts/extract_ingested_sources.py` is the operator entry point. It can read an
 explicit or latest local ingestion manifest, optionally filter products, or reload
 known product sources from PostgreSQL. It prints each generated JSON path. Normal
 runs record metadata in PostgreSQL; `--artifact-only` is an explicit local diagnostic
-mode that writes immutable JSON without a metadata row. Non-HTML artifacts are
-reported as skipped until their dedicated extractors exist.
+mode that writes immutable JSON without a metadata row. HTML and PDF artifacts are
+extracted; other MIME types are reported as skipped.
 
 ## RAG index / knowledge-store boundary
 

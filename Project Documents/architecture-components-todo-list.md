@@ -53,7 +53,7 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Never mix documents; record any page range. Avoid tiny orphan chunks, repeated boilerplate, and overlap-driven duplicate evidence.
   - **Done when:** Repeated input creates identical chunks/IDs, Armenian text and tables survive, every chunk maps to its source, and boundary/overlap tests pass.
 
-- [ ]  8. PDF Parser / Document Content Extractor
+- [x]  8. PDF Parser / Document Content Extractor
 
   - **Responsibility:** Extract structured, page-addressable content from digital PDFs before OCR.
   - **Implement:** Parse every page into text, blocks/tables, page dimensions, document metadata, warnings, and extraction statistics while preserving page boundaries and reading order. Detect encrypted, malformed, empty, and excessively complex documents.
