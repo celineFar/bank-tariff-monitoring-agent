@@ -235,6 +235,35 @@ async def test_extracts_saved_html_to_stable_structured_json(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_same_raw_bytes_with_different_provenance_get_distinct_artifacts(
+    tmp_path: Path,
+) -> None:
+    store = LocalArtifactStore(tmp_path / "artifacts")
+    repository = RecordingRepository()
+    first_source = await _source(store)
+    second_source = first_source.model_copy(
+        update={
+            "product_id": "consumer.unsecured",
+            "source_url": f"{URL}?origin=shared-document",
+            "final_url": f"{URL}?origin=shared-document",
+        }
+    )
+    extractor = _extractor(store, repository, clock=lambda: NOW)
+
+    first = await extractor.extract(first_source)
+    second = await extractor.extract(second_source)
+
+    assert first.source_sha256 == second.source_sha256
+    assert first.extraction_id != second.extraction_id
+    assert (
+        first.representation_artifact.storage_key
+        != second.representation_artifact.storage_key
+    )
+    assert first.representation_artifact.created is True
+    assert second.representation_artifact.created is True
+
+
+@pytest.mark.asyncio
 async def test_rejects_source_when_saved_bytes_do_not_match_metadata(
     tmp_path: Path,
 ) -> None:
@@ -316,7 +345,7 @@ async def test_extracts_pdf_page_by_page_and_persists_stable_json(
     assert first.ocr.pages_requiring_ocr == ()
     assert first.representation_artifact.storage_key == (
         f"extracted/{source.artifact.sha256[:2]}/{source.artifact.sha256}-"
-        "pdfplumber-1.0.json"
+        f"pdfplumber-1.1-{first.extraction_id}.json"
     )
     assert repeated.representation_artifact.created is False
 

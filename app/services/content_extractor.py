@@ -45,9 +45,9 @@ from app.services.contracts import ArtifactStore
 _HTML_MIME_TYPES = frozenset(("text/html", "application/xhtml+xml"))
 _PDF_MIME_TYPE = "application/pdf"
 _HTML_EXTRACTOR_NAME = "deterministic-html"
-_HTML_EXTRACTOR_VERSION = "1.1"
+_HTML_EXTRACTOR_VERSION = "1.2"
 _PDF_EXTRACTOR_NAME = "pdfplumber"
-_PDF_EXTRACTOR_VERSION = "1.0"
+_PDF_EXTRACTOR_VERSION = "1.1"
 _INVALID_UNICODE_THRESHOLD = 0.02
 _UNREADABLE_CHARACTER_THRESHOLD = 0.10
 _MAX_PDF_PAGES = 500
@@ -239,6 +239,7 @@ class DocumentContentExtractor:
             source_sha256=source.artifact.sha256,
             extractor=extracted.extractor,
             extractor_version=extracted.extractor_version,
+            extraction_id=str(extraction_id),
         )
         result = ExtractedDocument(
             **document_content.model_dump(),

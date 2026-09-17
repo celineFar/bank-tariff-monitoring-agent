@@ -136,9 +136,11 @@ component should consume; the low-text threshold comes from `OcrSettings`, and t
 component does not perform OCR.
 
 The canonical JSON representation excludes processing timestamps and is stored as
-`extracted/<raw-sha-prefix>/<raw-sha>-<extractor>-<version>.json`. An unchanged raw
-checksum and extractor version therefore resolves to the same immutable object; a
-different result without a version bump is treated as an integrity error.
+`extracted/<raw-sha-prefix>/<raw-sha>-<extractor>-<version>-<extraction-id>.json`.
+The deterministic extraction ID includes source provenance, preventing two URLs or
+products that serve identical bytes from overwriting one another. An unchanged
+ingested source and extractor version therefore resolves to the same immutable
+object; a different result without a version bump is treated as an integrity error.
 `PostgresContentExtractionRepository` records the raw artifact relationship, output
 key and checksum, extractor/version, status, page/text/block/table counts, OCR
 assessment, warnings, and processing time. Migrations `004_content_extraction.sql`

@@ -57,6 +57,7 @@ class LocalArtifactStore:
         source_sha256: str,
         extractor: str,
         extractor_version: str,
+        extraction_id: str,
     ) -> StoredArtifact:
         return await asyncio.to_thread(
             self._put_extracted_sync,
@@ -65,6 +66,7 @@ class LocalArtifactStore:
             source_sha256=source_sha256,
             extractor=extractor,
             extractor_version=extractor_version,
+            extraction_id=extraction_id,
         )
 
     async def write_manifest(self, run_id: str, payload: dict[str, Any]) -> str:
@@ -135,6 +137,7 @@ class LocalArtifactStore:
         source_sha256: str,
         extractor: str,
         extractor_version: str,
+        extraction_id: str,
     ) -> StoredArtifact:
         actual_sha256 = hashlib.sha256(content).hexdigest()
         normalized_sha256 = sha256.casefold()
@@ -146,9 +149,10 @@ class LocalArtifactStore:
         if not re.fullmatch(r"[0-9a-f]{64}", normalized_source_sha256):
             raise ValueError("source SHA-256 must be a lowercase hex digest")
         identity = _safe_artifact_component(f"{extractor}-{extractor_version}")
+        source_identity = _safe_artifact_component(extraction_id)
         storage_key = (
             f"extracted/{normalized_source_sha256[:2]}/"
-            f"{normalized_source_sha256}-{identity}.json"
+            f"{normalized_source_sha256}-{identity}-{source_identity}.json"
         )
         path = self._safe_path(storage_key)
         created = not path.exists()

@@ -22,7 +22,7 @@ from app.services.content_extractor import (
     ContentExtractionError,
     DocumentContentExtractor,
 )
-from app.services.local_artifact_store import LocalArtifactStore
+from app.services.local_artifact_store import ArtifactIntegrityError, LocalArtifactStore
 
 _SUPPORTED_MIME_TYPES = frozenset(
     ("text/html", "application/xhtml+xml", "application/pdf")
@@ -129,7 +129,12 @@ async def _run(args: argparse.Namespace) -> int:
                 continue
             try:
                 document = await extractor.extract(source)
-            except (ContentExtractionError, OSError, ValueError) as exc:
+            except (
+                ArtifactIntegrityError,
+                ContentExtractionError,
+                OSError,
+                ValueError,
+            ) as exc:
                 failed.append(
                     {
                         "product_id": source.product_id,
