@@ -32,7 +32,7 @@ from app.services.contracts import ArtifactStore
 
 _HTML_MIME_TYPES = frozenset(("text/html", "application/xhtml+xml"))
 _EXTRACTOR_NAME = "deterministic-html"
-_EXTRACTOR_VERSION = "1.0"
+_EXTRACTOR_VERSION = "1.1"
 _SPACE = re.compile(r"\s+")
 _CSS_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _IGNORED_TAGS = frozenset(
@@ -44,11 +44,15 @@ _IGNORED_TAGS = frozenset(
         "svg",
         "canvas",
         "iframe",
+        "input",
+        "button",
+        "select",
+        "textarea",
+        "option",
         "nav",
         "footer",
         "header",
         "aside",
-        "form",
     )
 )
 _BOILERPLATE_MARKERS = frozenset(
@@ -69,6 +73,9 @@ _BOILERPLATE_MARKERS = frozenset(
 _LABEL_MARKERS = frozenset(("label", "name", "title", "caption", "key"))
 _VALUE_MARKERS = frozenset(
     ("value", "amount", "description", "content", "text", "data")
+)
+_FACT_CONTAINER_MARKERS = frozenset(
+    ("detail", "feature", "info", "parameter", "stat")
 )
 
 
@@ -184,6 +191,10 @@ def _extract_html(source: IngestedSource, content: bytes) -> _HtmlResult:
     soup = BeautifulSoup(content, "html.parser")
     for element in soup.find_all(_is_ignored_element):
         element.decompose()
+    # DNN pages wrap the complete document in one ASP.NET form. Keep its content
+    # while dropping the interactive container and controls.
+    for form in soup.find_all("form"):
+        form.unwrap()
 
     warnings: list[ExtractionWarning] = []
     root = _primary_content(soup)
@@ -397,6 +408,20 @@ def _fact_parts(element: Tag) -> tuple[Tag, Tag] | None:
     children = [child for child in element.find_all(recursive=False) if _text(child)]
     if len(children) != 2:
         return None
+    headings = [
+        child
+        for child in children
+        if child.name and re.fullmatch(r"h[1-6]", child.name)
+    ]
+    paragraphs = [child for child in children if child.name == "p"]
+    if (
+        len(headings) == 1
+        and len(paragraphs) == 1
+        and _marker_tokens(element) & _FACT_CONTAINER_MARKERS
+    ):
+        # Ameria feature cards place the value in a styled heading and its label
+        # in the following paragraph (for example, amount then "Loan amount").
+        return paragraphs[0], headings[0]
     label = next(
         (child for child in children if _marker_tokens(child) & _LABEL_MARKERS),
         None,

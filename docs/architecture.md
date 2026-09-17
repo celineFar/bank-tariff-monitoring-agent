@@ -135,6 +135,13 @@ statistics, warnings, and processing time. Migration
 extraction ID make metadata writes idempotent. Neither artifact storage nor the
 repository is exposed to Gemini.
 
+`scripts/extract_ingested_sources.py` is the operator entry point. It can read an
+explicit or latest local ingestion manifest, optionally filter products, or reload
+known product sources from PostgreSQL. It prints each generated JSON path. Normal
+runs record metadata in PostgreSQL; `--artifact-only` is an explicit local diagnostic
+mode that writes immutable JSON without a metadata row. Non-HTML artifacts are
+reported as skipped until their dedicated extractors exist.
+
 ## RAG index / knowledge-store boundary
 
 `KnowledgeIndexer` accepts page-aware chunks from the future chunking component,

@@ -19,14 +19,15 @@ URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-finance"
 HTML = b"""<!doctype html>
 <html lang="en">
   <body>
+    <form id="Form">
     <header><p>Bank-wide header</p></header>
     <nav><a href="/other">Unrelated navigation</a></nav>
     <main id="wsc_main_content">
       <h1>Consumer finance</h1>
       <p>See the <a href="/en/terms">full terms</a>.</p>
-      <div class="loan-fact">
-        <span class="label">Loan amount</span>
-        <span class="value">50,000 - 6,000,000 AMD</span>
+      <div class="vertical-stack__item-info">
+        <h5 class="vertical-stack__item-title">50,000 - 6,000,000 AMD</h5>
+        <p class="paragraph-small">Loan amount</p>
       </div>
       <h2>Requirements</h2>
       <ul><li>Applicant must be an adult.</li><li>Proof of income.</li></ul>
@@ -38,6 +39,7 @@ HTML = b"""<!doctype html>
       <script>throw new Error('must never be content')</script>
     </main>
     <footer><p>Bank-wide footer</p></footer>
+    </form>
   </body>
 </html>"""
 

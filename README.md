@@ -6,10 +6,10 @@ security controls, ingestion, validation, persistence, comparison, scheduling, a
 HITL routing are deterministic.
 
 The repository contains the project scaffold, shared restricted PDF/HTML retrieval,
-and a transactional PostgreSQL/pgvector knowledge store with deterministic hybrid
-retrieval. Source discovery, PDF parsing/OCR, extraction, and snapshot repositories
-remain later implementation phases; unimplemented HTTP operations return `501` rather
-than fabricating results.
+official-source discovery and ingestion, deterministic persisted-HTML extraction, and
+a transactional PostgreSQL/pgvector knowledge store with hybrid retrieval. PDF
+parsing/OCR and snapshot repositories remain later implementation phases;
+unimplemented HTTP operations return `501` rather than fabricating results.
 
 ## Runtime
 
@@ -34,6 +34,31 @@ and [.agents-cli-spec.md](.agents-cli-spec.md).
 The ADK playground can be started with `agents-cli playground` after dependencies are
 installed. Behavioral evaluation uses `agents-cli eval run` after live pipeline tools
 are implemented.
+
+## Inspect extracted HTML
+
+Extract every HTML source in the latest local ingestion manifest without requiring
+PostgreSQL metadata writes:
+
+```powershell
+uv run python scripts/extract_ingested_sources.py --latest-manifest --artifact-only --pretty
+```
+
+Add `--product-id consumer.finance` to inspect only that product. The command prints
+the absolute `json_path` for every result; complete output is stored under
+`data/artifacts/extracted/`.
+
+When artifacts live in the Docker named volume, rebuild the tools image and run the
+same operation inside the container:
+
+```powershell
+docker compose build ingest
+docker compose --profile tools run --rm ingest uv run --no-sync python scripts/extract_ingested_sources.py --latest-manifest --artifact-only --pretty
+```
+
+Omit `--artifact-only` to also write `content_extractions` metadata to PostgreSQL.
+Without a manifest option, the CLI loads previously ingested sources from PostgreSQL;
+`--product-id` may be repeated, or omitted to process all registered products.
 
 ## Main layout
 
