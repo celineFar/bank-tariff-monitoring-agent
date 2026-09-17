@@ -1,7 +1,7 @@
 services:
   api:
     build: .
-    command: ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
     env_file: .env
     ports: ["8080:8080"]
     volumes:
@@ -13,7 +13,7 @@ services:
 
   worker:
     build: .
-    command: ["uv", "run", "python", "-m", "app.worker"]
+    command: ["uv", "run", "--no-sync", "python", "-m", "app.worker"]
     env_file: .env
     volumes:
       - source_artifacts:/code/data/artifacts
@@ -22,12 +22,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  ingest:
+    profiles: ["tools"]
+    build: .
+    command: ["uv", "run", "--no-sync", "python", "scripts/discover_and_ingest_sources.py", "--pretty"]
+    env_file: .env
+    volumes:
+      - source_artifacts:/code/data/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+
   db:
     image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: tariff_monitor
       POSTGRES_USER: tariff
       POSTGRES_PASSWORD: tariff
+    ports: ["127.0.0.1:5434:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro

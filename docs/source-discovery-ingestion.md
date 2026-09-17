@@ -74,3 +74,13 @@ must be applied first. For filesystem diagnostics only, bypass the database with
 ```powershell
 uv run python scripts\discover_and_ingest_sources.py --artifact-only --pretty
 ```
+
+For the persistent Docker environment, run ingestion inside the tools profile so
+raw artifacts use the same `source_artifacts` volume as API and worker:
+
+```powershell
+docker compose --profile tools run --rm ingest
+```
+
+The persistent database is exposed only on `127.0.0.1:5434` for local administration
+tools such as pgAdmin. The disposable integration-test database remains on port 5433.

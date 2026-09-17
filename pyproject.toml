@@ -100,6 +100,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 pythonpath = "."
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "live: requires external services or model credentials",
     "postgres: requires TEST_DATABASE_URL pointing to an isolated PostgreSQL test database",
