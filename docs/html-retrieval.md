@@ -50,6 +50,28 @@ extraction must consume cleaned/indexed evidence rather than raw HTML.
 ## Initial product coverage
 
 Fixtures model the supplied Ameriabank consumer-loan and secondary-market mortgage
-pages in Armenian and English. They verify preservation of Armenian text, tables,
-mortgage fee/insurance statements, and official PDF links while excluding scripts,
-cookie UI, navigation, and off-domain links.
+pages in Armenian and English. In addition to small purpose-built fixtures, compact
+recorded snapshots under `tests/fixtures/html/recorded` are derived from downloads of
+all four official pages. They retain the real DNN form/root structure and meaningful
+product sections, plus the topbar needed for the boilerplate-removal regression test,
+while removing scripts, media, empty layout sections, and the large global header.
+The manifest records the source and snapshot checksums and capture time.
+
+Refresh and verify the snapshots with:
+
+```powershell
+uv run python scripts/refresh_html_snapshots.py
+uv run pytest tests/integration/test_recorded_html_pages.py -v
+```
+
+The recorded tests are deterministic and require no network. An opt-in smoke suite
+detects live site markup or content changes:
+
+```powershell
+$env:RUN_LIVE_HTTP = "1"
+uv run pytest tests/live/test_html_retriever_live.py -v
+Remove-Item Env:RUN_LIVE_HTTP
+```
+
+Live tests are intentionally excluded unless enabled because external availability
+must not make the normal integration suite flaky.

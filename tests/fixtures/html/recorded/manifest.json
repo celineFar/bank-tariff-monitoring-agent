@@ -1,0 +1,66 @@
+{
+  "pages": [
+    {
+      "filename": "consumer_en.html",
+      "source_url": "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans",
+      "final_url": "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans",
+      "language": "en",
+      "expected_phrases": [
+        "Consumer loan",
+        "Want to make a surprise gift"
+      ],
+      "captured_at": "2026-09-16T17:34:06.527473+00:00",
+      "source_size_bytes": 295255,
+      "source_sha256": "91be78bff0c2ed17887f217e8dcbbd666e7cd78c0afccce2f87f8c61f8d8ef88",
+      "snapshot_size_bytes": 12009,
+      "snapshot_sha256": "e5dbc1981ceadcfc9087ccbb7ba7c3abeacd82d004768d031a02c1c253d1d96f"
+    },
+    {
+      "filename": "consumer_hy.html",
+      "source_url": "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans",
+      "final_url": "https://ameriabank.am/personal/loans/consumer-loans/consumer-loans",
+      "language": "hy",
+      "expected_phrases": [
+        "Սպառողական վարկ",
+        "Պայմաններ և սակագներ"
+      ],
+      "captured_at": "2026-09-16T17:34:07.183900+00:00",
+      "source_size_bytes": 318410,
+      "source_sha256": "65d26ec4c22de124e94f1c09262422980205a75be81caeb2c68c9743fff03954",
+      "snapshot_size_bytes": 17824,
+      "snapshot_sha256": "13db3372ea973333430616f401f7fc359c66c7ea821da1cede765d3dfa0d6e1a"
+    },
+    {
+      "filename": "mortgage_en.html",
+      "source_url": "https://ameriabank.am/en/personal/loans/mortgage/secondary-market",
+      "final_url": "https://ameriabank.am/en/personal/loans/mortgage/secondary-market",
+      "language": "en",
+      "expected_phrases": [
+        "Real estate loan for secondary market",
+        "No loan service fees",
+        "Property insurance by the Bank"
+      ],
+      "captured_at": "2026-09-16T17:34:08.444567+00:00",
+      "source_size_bytes": 299422,
+      "source_sha256": "328c842b7b19b5363cdb14e2bc7b9a29d319792d0af20c25811580fb230a8e7e",
+      "snapshot_size_bytes": 23861,
+      "snapshot_sha256": "27c91b8a91c265f23df03905e844e89f0c9409c3fb0327c995a8765f8fd9dd53"
+    },
+    {
+      "filename": "mortgage_hy.html",
+      "source_url": "https://ameriabank.am/personal/loans/mortgage/secondary-market",
+      "final_url": "https://ameriabank.am/personal/loans/mortgage/secondary-market",
+      "language": "hy",
+      "expected_phrases": [
+        "Հիփոթեքային վարկ",
+        "Առանց վարկի սպասարկման վճարների",
+        "Գույքի ապահովագրությունը բանկի կողմից"
+      ],
+      "captured_at": "2026-09-16T17:34:09.633810+00:00",
+      "source_size_bytes": 311122,
+      "source_sha256": "96926a9135cc14026f83bec05a850ed0a3afcf1ffc3ae654b89bafa781273906",
+      "snapshot_size_bytes": 23289,
+      "snapshot_sha256": "3a53ed0febec6ae49a70a87c6a8fcf7c18bddea762eed8eed4850c9026059dfa"
+    }
+  ]
+}
