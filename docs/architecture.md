@@ -31,7 +31,10 @@ shell, or SQL tool.
   capture, content-addressed artifact storage, and linked-PDF retrieval. `PdfDownloader`
   uses an injected, caller-owned HTTP client and returns
   immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
-  checks complete.
+  checks complete. `StructuralNormalizationService` converts the acquired page,
+  linked PDFs, and captured API payloads into one uniform evidence-linked bundle;
+  table reconstruction, scalar recognition, PDF/OCR routing, and JSON-path flattening
+  remain deterministic and are not exposed to Gemini.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
   including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
@@ -71,6 +74,22 @@ image/control metadata, downloaded PDFs, bounded textual XHR/fetch payloads, sou
 locators, timestamps, and a deterministic content hash. Raw bytes are stored
 under SHA-256-derived paths; source-controlled strings never become filesystem paths.
 See `docs/acquisition.md` for the complete contract.
+
+## Structural normalization boundary
+
+Acquisition preserves what each source delivered; structural normalization makes
+that material safe and predictable for chunking and evidence-bound extraction. Its
+immutable `NormalizedSourceBundle` contains normalized documents, blocks, rectangular
+tables, notes, scalar candidates, source references, quality scores, and typed
+warnings. It never assigns tariff-field meaning.
+
+HTML tables are reconstructed from cell coordinates and rowspan/colspan metadata,
+with phantom columns and duplicate carry-only rows removed. PDF blocks retain page
+locators and use an injected OCR adapter only when embedded page text falls below the
+configured threshold. Captured JSON leaves retain exact JSON paths. Raw source text
+and acquisition locators remain attached throughout, so later chunks and extracted
+values can cite the original evidence rather than a rendered Markdown approximation.
+See `docs/normalization.md` for the complete contract and inspection workflow.
 
 ## RAG index / knowledge-store boundary
 

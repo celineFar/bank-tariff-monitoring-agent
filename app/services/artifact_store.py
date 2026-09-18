@@ -37,6 +37,25 @@ class FileSystemArtifactStore:
             extension=extension,
         )
 
+    async def read(self, artifact: StoredArtifact) -> bytes:
+        """Read and verify an artifact already accepted by acquisition."""
+        return await asyncio.to_thread(self._read_sync, artifact)
+
+    def _read_sync(self, artifact: StoredArtifact) -> bytes:
+        root = self._root.resolve()
+        target = (root / artifact.relative_path).resolve()
+        if root not in target.parents:
+            raise ArtifactStoreError("artifact path escaped the configured root")
+        try:
+            content = target.read_bytes()
+        except OSError as exc:
+            raise ArtifactStoreError(f"artifact could not be read: {target.name}") from exc
+        if len(content) != artifact.size_bytes:
+            raise ArtifactStoreError("artifact size does not match acquisition metadata")
+        if hashlib.sha256(content).hexdigest() != artifact.sha256:
+            raise ArtifactStoreError("artifact checksum does not match acquisition metadata")
+        return content
+
     def _save_sync(
         self,
         content: bytes,
@@ -51,6 +70,11 @@ class FileSystemArtifactStore:
             raise ArtifactStoreError("artifact extension is invalid")
 
         root = self._root.resolve()
+        # Establish the root before resolving descendants. On Windows, concurrent
+        # first writes can otherwise observe different resolution results while
+        # the root is being created.
+        with self._write_lock:
+            root.mkdir(parents=True, exist_ok=True)
         directory = (root / checksum[:2]).resolve()
         if root != directory and root not in directory.parents:
             raise ArtifactStoreError("artifact path escaped the configured root")
