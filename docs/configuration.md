@@ -40,7 +40,11 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`, and
   `SOURCE_DISCOVERY_MAX_CHARS_PER_BATCH`. Preflight cost assumptions use
   `SOURCE_DISCOVERY_ESTIMATED_CHARS_PER_INPUT_TOKEN` and
-  `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`. Model-specific paid-tier
+  `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`. Classifier resilience uses
+  `SOURCE_DISCOVERY_CLASSIFIER_MAX_ATTEMPTS`,
+  `SOURCE_DISCOVERY_CLASSIFIER_BACKOFF_BASE_SECONDS`,
+  `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`, and
+  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Model-specific paid-tier
   rates and effective periods live in `app/services/model_pricing.py`. Policy,
   prompt, model, product, and
   content fingerprints jointly define exact cache reuse. Changing either version

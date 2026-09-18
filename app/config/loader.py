@@ -90,6 +90,16 @@ def load_settings(
             estimated_output_tokens_per_item=(
                 raw.source_discovery_estimated_output_tokens_per_item
             ),
+            classifier_max_attempts=raw.source_discovery_classifier_max_attempts,
+            classifier_backoff_base_seconds=(
+                raw.source_discovery_classifier_backoff_base_seconds
+            ),
+            classifier_max_backoff_seconds=(
+                raw.source_discovery_classifier_max_backoff_seconds
+            ),
+            classifier_retry_jitter_ratio=(
+                raw.source_discovery_classifier_retry_jitter_ratio
+            ),
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

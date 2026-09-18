@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import random
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -8,6 +11,7 @@ from google.adk.agents import Agent
 from google.adk.models import Gemini
 from google.adk.runners import InMemoryRunner
 from google.genai import types
+from google.genai.errors import APIError
 
 from app.domain.source_discovery import DiscoveryBatch, DiscoveryBatchResponse
 
@@ -27,6 +31,9 @@ assessment is only a hint for a changed item and must be checked against current
 content.
 """.strip()
 
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ClassifierUsage:
@@ -34,12 +41,23 @@ class ClassifierUsage:
     output_tokens: int = 0
     thinking_tokens: int = 0
     total_tokens: int = 0
+    request_attempts: int = 0
+    application_retries: int = 0
 
 
 class AdkSourceDiscoveryClassifier:
     """Bounded ADK classifier with strict Pydantic structured output and no tools."""
 
-    def __init__(self, model_name: str, *, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        *,
+        api_key: str | None = None,
+        max_attempts: int = 3,
+        backoff_base_seconds: float = 5.0,
+        max_backoff_seconds: float = 60.0,
+        retry_jitter_ratio: float = 0.25,
+    ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
         agent = Agent(
             name="source_discovery_classifier",
@@ -57,8 +75,36 @@ class AdkSourceDiscoveryClassifier:
             app_name="source_discovery_classifier",
         )
         self.usage = ClassifierUsage()
+        self._max_attempts = max_attempts
+        self._backoff_base_seconds = backoff_base_seconds
+        self._max_backoff_seconds = max_backoff_seconds
+        self._retry_jitter_ratio = retry_jitter_ratio
 
     async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
+        for attempt in range(1, self._max_attempts + 1):
+            self.usage.request_attempts += 1
+            try:
+                return await self._classify_once(batch)
+            except APIError as exc:
+                if exc.code not in _RETRYABLE_STATUS_CODES or attempt >= self._max_attempts:
+                    raise
+                self.usage.application_retries += 1
+                delay = self._retry_delay(attempt)
+                logger.warning(
+                    "Retryable Gemini error for source-discovery batch %s "
+                    "(status=%s, application attempt=%s/%s); retrying in %.2fs",
+                    batch.id,
+                    exc.code,
+                    attempt,
+                    self._max_attempts,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        raise AssertionError("source discovery retry loop exhausted unexpectedly")
+
+    async def _classify_once(
+        self, batch: DiscoveryBatch
+    ) -> DiscoveryBatchResponse:
         session_id = uuid4().hex
         user_id = "tariff-pipeline"
         session = await self._runner.session_service.create_session(
@@ -89,6 +135,14 @@ class AdkSourceDiscoveryClassifier:
         if final_text is None:
             raise RuntimeError("source discovery classifier returned no final response")
         return DiscoveryBatchResponse.model_validate_json(_strip_json_fence(final_text))
+
+    def _retry_delay(self, failed_attempt: int) -> float:
+        base = min(
+            self._max_backoff_seconds,
+            self._backoff_base_seconds * (2 ** (failed_attempt - 1)),
+        )
+        jitter = base * self._retry_jitter_ratio
+        return max(0.0, base + random.uniform(-jitter, jitter))
 
 
 def _strip_json_fence(value: str) -> str:

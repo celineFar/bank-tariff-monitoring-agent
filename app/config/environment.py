@@ -69,6 +69,10 @@ class EnvironmentSettings(BaseSettings):
     source_discovery_max_chars_per_batch: int = 18_000
     source_discovery_estimated_chars_per_input_token: float = 4.0
     source_discovery_estimated_output_tokens_per_item: int = 160
+    source_discovery_classifier_max_attempts: int = 3
+    source_discovery_classifier_backoff_base_seconds: float = 5.0
+    source_discovery_classifier_max_backoff_seconds: float = 60.0
+    source_discovery_classifier_retry_jitter_ratio: float = 0.25
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     schedule_timezone: str = "Asia/Yerevan"

@@ -59,6 +59,16 @@ async def demonstrate(
     classifier = AdkSourceDiscoveryClassifier(
         settings.models.generation_model,
         api_key=settings.models.api_key.get_secret_value(),
+        max_attempts=settings.source_discovery.classifier_max_attempts,
+        backoff_base_seconds=(
+            settings.source_discovery.classifier_backoff_base_seconds
+        ),
+        max_backoff_seconds=(
+            settings.source_discovery.classifier_max_backoff_seconds
+        ),
+        retry_jitter_ratio=(
+            settings.source_discovery.classifier_retry_jitter_ratio
+        ),
     )
     service = SourceDiscoveryService(
         classifier=classifier,
@@ -73,7 +83,11 @@ async def demonstrate(
         output_directory=output_directory,
         execution_run=True,
     )
-    result = await service.discover(bundle, product)
+    try:
+        result = await service.discover(bundle, product)
+    except Exception as exc:
+        _write_failed_run(output_directory, classifier.usage, exc)
+        raise
     write_live_bundle(
         plan,
         result,
@@ -82,6 +96,42 @@ async def demonstrate(
         output_directory=output_directory,
     )
     return output_directory
+
+
+def _write_failed_run(
+    output_directory: Path, usage: ClassifierUsage, error: Exception
+) -> None:
+    failure = {
+        "status": "failed",
+        "error_type": type(error).__name__,
+        "http_status_code": getattr(error, "code", None),
+        "api_status": getattr(error, "status", None),
+        "message": str(error),
+        "request_attempts": usage.request_attempts,
+        "application_retries": usage.application_retries,
+        "input_tokens_reported_before_failure": usage.input_tokens,
+        "output_tokens_reported_before_failure": usage.output_tokens,
+        "thinking_tokens_reported_before_failure": usage.thinking_tokens,
+    }
+    (output_directory / "failure.json").write_text(
+        json.dumps(failure, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (output_directory / "summary.txt").write_text(
+        "\n".join(
+            (
+                "MODE: LLM EXECUTION FAILED",
+                f"Error type: {failure['error_type']}",
+                f"HTTP status: {failure['http_status_code']}",
+                f"API status: {failure['api_status']}",
+                f"Application request attempts: {usage.request_attempts}",
+                f"Application-level retries: {usage.application_retries}",
+                "See failure.json for details. The preflight directory was not modified.",
+                "Rerunning will create a new llm_run_NNN directory.",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def _next_run_directory(parent: Path) -> Path:
@@ -386,6 +436,8 @@ def _actual_cost(usage: ClassifierUsage, price: ModelPrice) -> dict[str, Any]:
         "thinking_tokens": usage.thinking_tokens,
         "billed_output_tokens": billed_output_tokens,
         "total_tokens_reported": usage.total_tokens,
+        "request_attempts": usage.request_attempts,
+        "application_retries": usage.application_retries,
         "input_cost_usd": round(input_cost, 8),
         "output_cost_usd": round(output_cost, 8),
         "total_cost_usd": round(input_cost + output_cost, 8),
@@ -448,6 +500,7 @@ def _summary(
                 f"Actual API input tokens: {actual['input_tokens']}",
                 f"Actual API output tokens: {actual['output_tokens']}",
                 f"Actual API thinking tokens: {actual['thinking_tokens']}",
+                f"Application-level retries: {actual['application_retries']}",
                 f"Calculated actual cost (USD): ${actual['total_cost_usd']:.8f}",
             )
         )

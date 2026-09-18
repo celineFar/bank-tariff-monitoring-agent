@@ -23,6 +23,8 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.source_discovery.max_items_per_batch == 8
     assert settings.source_discovery.max_chars_per_item == 3000
     assert settings.source_discovery.max_chars_per_batch == 18_000
+    assert settings.source_discovery.classifier_max_attempts == 3
+    assert settings.source_discovery.classifier_backoff_base_seconds == 5.0
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -148,6 +150,8 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("source_discovery_max_items_per_batch", 0),
         ("source_discovery_max_chars_per_item", 499),
         ("source_discovery_max_chars_per_batch", 999),
+        ("source_discovery_classifier_max_attempts", 0),
+        ("source_discovery_classifier_retry_jitter_ratio", 1.1),
         ("hitl_document_rank_gap", 1.1),
         ("hitl_large_rate_change_percentage_points", 0),
         ("schedule_hour", 24),

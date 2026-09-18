@@ -1,4 +1,5 @@
 import pytest
+from google.genai.errors import ServerError
 
 from app.config import SourceDiscoverySettings
 from app.domain.acquisition import SourceLocator, SourceType
@@ -24,6 +25,7 @@ from app.domain.source_discovery import (
     Relevance,
     TemporalStatus,
 )
+from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
 from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
@@ -281,3 +283,55 @@ async def test_classification_markdown_groups_direct_decisions() -> None:
     assert "## Deterministic and reused decisions" in markdown
     assert "Decision source: `llm`" in markdown
     assert "Child assessments represented through inheritance" in markdown
+
+
+@pytest.mark.asyncio
+async def test_classifier_retries_transient_server_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planning = SourceDiscoveryService(
+        None,
+        InMemorySourceDiscoveryRepository(),
+        SourceDiscoverySettings(),
+        model_name="configured-model",
+    )
+    batch = (await planning.plan(_bundle(), ProductType.MORTGAGE)).batches[0]
+    classifier = AdkSourceDiscoveryClassifier(
+        "configured-model",
+        api_key="fixture-key",
+        max_attempts=3,
+        backoff_base_seconds=0,
+        max_backoff_seconds=0,
+    )
+    expected = DiscoveryBatchResponse(
+        items=tuple(
+            ModelSourceAssessment(
+                source_id=item.source_id,
+                product_association=ProductAssociation.CURRENT_PRODUCT,
+                role=InformationRole.PRODUCT_TERMS,
+                relevance=Relevance.RELEVANT,
+                authority=Authority.OFFICIAL_PRODUCT_CONTENT,
+                temporal_status=TemporalStatus.CURRENT,
+                reason="Recovered after transient errors.",
+            )
+            for item in batch.items
+        )
+    )
+    calls = 0
+
+    async def classify_once(_: DiscoveryBatch) -> DiscoveryBatchResponse:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise ServerError(
+                503,
+                {"error": {"status": "UNAVAILABLE", "message": "high demand"}},
+            )
+        return expected
+
+    monkeypatch.setattr(classifier, "_classify_once", classify_once)
+
+    assert await classifier.classify(batch) == expected
+    assert calls == 3
+    assert classifier.usage.application_retries == 2
+    assert classifier.usage.request_attempts == 3

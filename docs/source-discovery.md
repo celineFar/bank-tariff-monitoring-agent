@@ -34,6 +34,12 @@ explicitly treated as untrusted evidence. The classifier must return exactly one
 known source ID per requested item; the application service rejects missing,
 duplicate, or invented IDs.
 
+The Google SDK performs its own bounded request retries. The classifier adds a
+second bounded application-level retry loop for status codes 429, 500, 502, 503,
+and 504, using exponential backoff and jitter. Authentication, permission, schema,
+and validation failures are not retried. The configured model is never changed
+implicitly.
+
 Children inherit the validated container assessment. The final result still contains
 an assessment for every block, while the model operates on a much smaller set of
 classification units.
@@ -93,7 +99,9 @@ overwrite `preflight/` or a previous live run. The live directory adds
 `source_discovery_result.json`, `assessments.json`, `extraction_context.json`, and
 `actual_usage_and_cost.json`. It also writes `classification_results.md`, a readable
 review grouped into relevant, possibly relevant, irrelevant, and deterministic/reused
-decisions. The report lists direct units only and summarizes inherited children.
+decisions. The report lists direct units only and summarizes inherited children. A
+failed execution retains its numbered directory and writes `failure.json`; a rerun
+uses the next number.
 
 
 ---

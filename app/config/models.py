@@ -226,12 +226,20 @@ class SourceDiscoverySettings(SettingsGroup):
     max_chars_per_batch: int = Field(default=18_000, ge=1000, le=100_000)
     estimated_chars_per_input_token: float = Field(default=4.0, gt=0, le=20)
     estimated_output_tokens_per_item: int = Field(default=160, ge=0, le=10_000)
+    classifier_max_attempts: int = Field(default=3, ge=1, le=10)
+    classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
+    classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
+    classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_batch_limits(self) -> SourceDiscoverySettings:
         if self.max_chars_per_item > self.max_chars_per_batch:
             raise ValueError(
                 "source discovery item character limit must not exceed batch limit"
+            )
+        if self.classifier_backoff_base_seconds > self.classifier_max_backoff_seconds:
+            raise ValueError(
+                "source discovery classifier base backoff must not exceed maximum"
             )
         return self
 
