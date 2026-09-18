@@ -30,9 +30,19 @@ from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
-from scripts.demonstrate_source_discovery import _render_classification_results
+from scripts.demonstrate_source_discovery import (
+    _model_sequence,
+    _render_classification_results,
+)
 
 URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
+
+
+def test_model_sequence_preserves_order_and_removes_duplicates() -> None:
+    assert _model_sequence(
+        "gemini-3.7-flash",
+        ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"),
+    ) == ("gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.6-flash")
 
 
 def _ref(identifier: str, source_type: SourceType = SourceType.PAGE) -> SourceReference:

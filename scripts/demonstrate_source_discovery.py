@@ -21,6 +21,7 @@ from app.services.discovery_classifier import (
     AdkSourceDiscoveryClassifier,
     ClassifierUsage,
     build_classifier_prompt,
+    is_retryable_api_error,
 )
 from app.services.model_pricing import ModelPrice, get_model_price
 from app.services.source_discovery import (
@@ -56,26 +57,6 @@ async def demonstrate(
         raise RuntimeError(
             "GEMINI_API_KEY is required for --execute-llm; set it in .env or the process environment"
         )
-    classifier = AdkSourceDiscoveryClassifier(
-        settings.models.generation_model,
-        api_key=settings.models.api_key.get_secret_value(),
-        max_attempts=settings.source_discovery.classifier_max_attempts,
-        backoff_base_seconds=(
-            settings.source_discovery.classifier_backoff_base_seconds
-        ),
-        max_backoff_seconds=(
-            settings.source_discovery.classifier_max_backoff_seconds
-        ),
-        retry_jitter_ratio=(
-            settings.source_discovery.classifier_retry_jitter_ratio
-        ),
-    )
-    service = SourceDiscoveryService(
-        classifier=classifier,
-        repository=repository,
-        settings=settings.source_discovery,
-        model_name=settings.models.generation_model,
-    )
     output_directory = _next_run_directory(case_directory / "source_discovery")
     write_preflight_bundle(
         plan,
@@ -83,23 +64,92 @@ async def demonstrate(
         output_directory=output_directory,
         execution_run=True,
     )
-    try:
-        result = await service.discover(bundle, product)
-    except Exception as exc:
-        _write_failed_run(output_directory, classifier.usage, exc)
-        raise
-    write_live_bundle(
-        plan,
-        result,
-        classifier.usage,
-        settings=settings.source_discovery,
-        output_directory=output_directory,
+    models = _model_sequence(
+        settings.models.generation_model,
+        settings.source_discovery.fallback_model_names,
     )
-    return output_directory
+    attempts: list[dict[str, Any]] = []
+    for model_index, model_name in enumerate(models):
+        print(
+            f"Source discovery model attempt {model_index + 1}/{len(models)}: "
+            f"{model_name}",
+            flush=True,
+        )
+        attempt_repository = InMemorySourceDiscoveryRepository()
+        classifier = _build_classifier(
+            model_name,
+            settings.models.api_key.get_secret_value(),
+            settings.source_discovery,
+        )
+        service = SourceDiscoveryService(
+            classifier=classifier,
+            repository=attempt_repository,
+            settings=settings.source_discovery,
+            model_name=model_name,
+        )
+        model_plan = await service.plan(bundle, product)
+        try:
+            result = await service.discover(bundle, product)
+        except Exception as exc:
+            attempts.append(_model_attempt(model_name, classifier.usage, exc))
+            _write_model_attempts(output_directory, attempts)
+            has_fallback = model_index + 1 < len(models)
+            if is_retryable_api_error(exc) and has_fallback:
+                next_model = models[model_index + 1]
+                print(
+                    f"Model {model_name} exhausted retries with HTTP "
+                    f"{getattr(exc, 'code', None)}; falling back to {next_model}.",
+                    flush=True,
+                )
+                continue
+            _write_failed_run(output_directory, attempts, exc)
+            raise
+
+        attempts.append(_model_attempt(model_name, classifier.usage, None))
+        _write_model_attempts(output_directory, attempts)
+        write_preflight_bundle(
+            model_plan,
+            settings=settings.source_discovery,
+            output_directory=output_directory,
+            execution_run=True,
+        )
+        write_live_bundle(
+            model_plan,
+            result,
+            attempts,
+            settings=settings.source_discovery,
+            output_directory=output_directory,
+        )
+        if model_index:
+            print(
+                f"Source discovery completed with fallback model {model_name}.",
+                flush=True,
+            )
+        return output_directory
+    raise AssertionError("source discovery model sequence exhausted unexpectedly")
+
+
+def _model_sequence(primary: str, fallbacks: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((primary, *fallbacks)))
+
+
+def _build_classifier(
+    model_name: str, api_key: str, settings: SourceDiscoverySettings
+) -> AdkSourceDiscoveryClassifier:
+    return AdkSourceDiscoveryClassifier(
+        model_name,
+        api_key=api_key,
+        max_attempts=settings.classifier_max_attempts,
+        backoff_base_seconds=settings.classifier_backoff_base_seconds,
+        max_backoff_seconds=settings.classifier_max_backoff_seconds,
+        retry_jitter_ratio=settings.classifier_retry_jitter_ratio,
+    )
 
 
 def _write_failed_run(
-    output_directory: Path, usage: ClassifierUsage, error: Exception
+    output_directory: Path,
+    attempts: list[dict[str, Any]],
+    error: Exception,
 ) -> None:
     failure = {
         "status": "failed",
@@ -107,11 +157,7 @@ def _write_failed_run(
         "http_status_code": getattr(error, "code", None),
         "api_status": getattr(error, "status", None),
         "message": str(error),
-        "request_attempts": usage.request_attempts,
-        "application_retries": usage.application_retries,
-        "input_tokens_reported_before_failure": usage.input_tokens,
-        "output_tokens_reported_before_failure": usage.output_tokens,
-        "thinking_tokens_reported_before_failure": usage.thinking_tokens,
+        "model_attempts": attempts,
     }
     (output_directory / "failure.json").write_text(
         json.dumps(failure, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -123,14 +169,41 @@ def _write_failed_run(
                 f"Error type: {failure['error_type']}",
                 f"HTTP status: {failure['http_status_code']}",
                 f"API status: {failure['api_status']}",
-                f"Application request attempts: {usage.request_attempts}",
-                f"Application-level retries: {usage.application_retries}",
+                f"Models attempted: {', '.join(item['model'] for item in attempts)}",
+                "Application request attempts: "
+                f"{sum(item['request_attempts'] for item in attempts)}",
+                "Application-level retries: "
+                f"{sum(item['application_retries'] for item in attempts)}",
                 "See failure.json for details. The preflight directory was not modified.",
                 "Rerunning will create a new llm_run_NNN directory.",
             )
         )
         + "\n",
         encoding="utf-8",
+    )
+
+
+def _model_attempt(
+    model_name: str, usage: ClassifierUsage, error: Exception | None
+) -> dict[str, Any]:
+    cost = _actual_cost(usage, get_model_price(model_name))
+    return {
+        "model": model_name,
+        "status": "failed" if error else "succeeded",
+        "retryable_failure": is_retryable_api_error(error) if error else False,
+        "error_type": type(error).__name__ if error else None,
+        "http_status_code": getattr(error, "code", None),
+        "api_status": getattr(error, "status", None),
+        "message": str(error) if error else None,
+        **cost,
+    }
+
+
+def _write_model_attempts(
+    output_directory: Path, attempts: list[dict[str, Any]]
+) -> None:
+    (output_directory / "model_attempts.json").write_text(
+        json.dumps(attempts, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
 
@@ -180,14 +253,13 @@ def write_preflight_bundle(
 def write_live_bundle(
     plan: SourceDiscoveryPlan,
     result: SourceDiscoveryResult,
-    usage: ClassifierUsage,
+    model_attempts: list[dict[str, Any]],
     *,
     settings: SourceDiscoverySettings,
     output_directory: Path,
 ) -> None:
-    price = get_model_price(plan.model_name)
     estimated_cost = _cost_estimate(plan, settings)
-    actual_cost = _actual_cost(usage, price)
+    actual_cost = _combined_actual_cost(model_attempts, plan.model_name)
     (output_directory / "source_discovery_result.json").write_text(
         result.model_dump_json(indent=2), encoding="utf-8"
     )
@@ -445,6 +517,41 @@ def _actual_cost(usage: ClassifierUsage, price: ModelPrice) -> dict[str, Any]:
     }
 
 
+def _combined_actual_cost(
+    attempts: list[dict[str, Any]], selected_model: str
+) -> dict[str, Any]:
+    return {
+        "currency": "USD",
+        "selected_model": selected_model,
+        "fallback_transitions": max(0, len(attempts) - 1),
+        "models_attempted": [item["model"] for item in attempts],
+        "input_tokens": sum(item["input_tokens"] for item in attempts),
+        "output_tokens": sum(item["output_tokens"] for item in attempts),
+        "thinking_tokens": sum(item["thinking_tokens"] for item in attempts),
+        "billed_output_tokens": sum(
+            item["billed_output_tokens"] for item in attempts
+        ),
+        "total_tokens_reported": sum(
+            item["total_tokens_reported"] for item in attempts
+        ),
+        "request_attempts": sum(item["request_attempts"] for item in attempts),
+        "application_retries": sum(
+            item["application_retries"] for item in attempts
+        ),
+        "input_cost_usd": round(
+            sum(item["input_cost_usd"] for item in attempts), 8
+        ),
+        "output_cost_usd": round(
+            sum(item["output_cost_usd"] for item in attempts), 8
+        ),
+        "total_cost_usd": round(
+            sum(item["total_cost_usd"] for item in attempts), 8
+        ),
+        "attempts": attempts,
+        "note": "Includes all reported usage from failed and successful model attempts; provider billing remains authoritative.",
+    }
+
+
 def _summary(
     plan: SourceDiscoveryPlan,
     cost: dict[str, Any],
@@ -500,6 +607,9 @@ def _summary(
                 f"Actual API input tokens: {actual['input_tokens']}",
                 f"Actual API output tokens: {actual['output_tokens']}",
                 f"Actual API thinking tokens: {actual['thinking_tokens']}",
+                f"Models attempted: {', '.join(actual['models_attempted'])}",
+                f"Selected model: {actual['selected_model']}",
+                f"Fallback transitions: {actual['fallback_transitions']}",
                 f"Application-level retries: {actual['application_retries']}",
                 f"Calculated actual cost (USD): ${actual['total_cost_usd']:.8f}",
             )

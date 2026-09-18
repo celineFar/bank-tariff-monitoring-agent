@@ -100,6 +100,7 @@ def load_settings(
             classifier_retry_jitter_ratio=(
                 raw.source_discovery_classifier_retry_jitter_ratio
             ),
+            fallback_model_names=raw.source_discovery_fallback_model_names,
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

@@ -230,6 +230,20 @@ class SourceDiscoverySettings(SettingsGroup):
     classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
     classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    fallback_model_names: tuple[str, ...] = (
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+    )
+
+    @field_validator("fallback_model_names")
+    @classmethod
+    def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if len(normalized) > 5:
+            raise ValueError("at most five source discovery fallback models are allowed")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("source discovery fallback models must be unique")
+        return normalized
 
     @model_validator(mode="after")
     def validate_batch_limits(self) -> SourceDiscoverySettings:

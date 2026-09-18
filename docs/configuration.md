@@ -44,7 +44,9 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   `SOURCE_DISCOVERY_CLASSIFIER_MAX_ATTEMPTS`,
   `SOURCE_DISCOVERY_CLASSIFIER_BACKOFF_BASE_SECONDS`,
   `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`, and
-  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Model-specific paid-tier
+  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Whole-run fallback order is
+  configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`.
+  Model-specific paid-tier
   rates and effective periods live in `app/services/model_pricing.py`. Policy,
   prompt, model, product, and
   content fingerprints jointly define exact cache reuse. Changing either version

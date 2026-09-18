@@ -37,8 +37,12 @@ duplicate, or invented IDs.
 The Google SDK performs its own bounded request retries. The classifier adds a
 second bounded application-level retry loop for status codes 429, 500, 502, 503,
 and 504, using exponential backoff and jitter. Authentication, permission, schema,
-and validation failures are not retried. The configured model is never changed
-implicitly.
+and validation failures are not retried. After a model exhausts retryable failures,
+the demonstration may restart the complete discovery run with the next explicitly
+configured `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` entry. Whole-run fallback avoids
+mixing model decisions within one accepted result. Console messages announce every
+model attempt and transition, while `model_attempts.json` records failures, retries,
+usage, and cost per model.
 
 Children inherit the validated container assessment. The final result still contains
 an assessment for every block, while the model operates on a much smaller set of

@@ -16,6 +16,12 @@ def test_model_price_catalog_selects_effective_period() -> None:
     assert introductory.output_per_million_tokens_usd == 3.75
     assert standard.input_per_million_tokens_usd == 1.50
     assert standard.output_per_million_tokens_usd == 7.50
+    assert get_model_price(
+        "gemini-3.8-flash", on_date=date(2026, 9, 18)
+    ).input_per_million_tokens_usd == 0.75
+    assert get_model_price(
+        "gemini-3.6-flash", on_date=date(2026, 9, 18)
+    ).output_per_million_tokens_usd == 3.75
 
 
 def test_unknown_model_price_fails_explicitly() -> None:

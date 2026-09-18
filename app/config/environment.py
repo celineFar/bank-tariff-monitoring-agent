@@ -73,6 +73,10 @@ class EnvironmentSettings(BaseSettings):
     source_discovery_classifier_backoff_base_seconds: float = 5.0
     source_discovery_classifier_max_backoff_seconds: float = 60.0
     source_discovery_classifier_retry_jitter_ratio: float = 0.25
+    source_discovery_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+    )
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     schedule_timezone: str = "Asia/Yerevan"
@@ -87,6 +91,7 @@ class EnvironmentSettings(BaseSettings):
         "allowed_download_mime_types",
         "ocr_languages",
         "allow_origins",
+        "source_discovery_fallback_model_names",
         mode="before",
     )
     @classmethod
