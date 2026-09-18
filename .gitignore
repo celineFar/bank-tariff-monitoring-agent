@@ -204,6 +204,7 @@ my_env.tfvars
 .env
 .google-agents-cli/
 .tmp/
+.temp/
 data/
 
 # A2A Inspector

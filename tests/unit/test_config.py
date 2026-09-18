@@ -18,6 +18,8 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert (settings.scheduler.hour, settings.scheduler.minute) == (6, 0)
     assert settings.http.retry_jitter_ratio == 0.25
     assert settings.http.max_retry_delay_seconds == 120
+    assert settings.acquisition.browser_enabled is True
+    assert settings.acquisition.max_interactions == 20
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -125,6 +127,13 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("http_max_retry_delay_seconds", 0),
         ("max_redirects", 11),
         ("max_download_bytes", 0),
+        ("acquisition_min_static_text_chars", -1),
+        ("acquisition_browser_navigation_timeout_seconds", 0),
+        ("acquisition_browser_settle_milliseconds", 10_001),
+        ("acquisition_max_interactions", 101),
+        ("acquisition_max_network_payloads", 201),
+        ("acquisition_max_network_payload_bytes", 0),
+        ("acquisition_max_linked_documents", 51),
         ("ocr_min_text_chars_per_page", -1),
         ("ocr_dpi", 149),
         ("ocr_max_pages", 0),

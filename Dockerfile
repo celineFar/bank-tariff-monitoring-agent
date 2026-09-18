@@ -24,6 +24,7 @@ COPY ./app ./app
 COPY ./migrations ./migrations
 
 RUN uv sync --frozen
+RUN uv run playwright install --with-deps chromium
 
 ARG AGENT_VERSION=0.0.0
 ENV AGENT_VERSION=${AGENT_VERSION}

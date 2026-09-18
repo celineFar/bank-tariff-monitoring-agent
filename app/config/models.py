@@ -176,6 +176,17 @@ class HttpSettings(SettingsGroup):
         return tuple(normalized)
 
 
+class AcquisitionSettings(SettingsGroup):
+    browser_enabled: bool = True
+    min_static_text_chars: int = Field(default=500, ge=0, le=100_000)
+    browser_navigation_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    browser_settle_milliseconds: int = Field(default=750, ge=0, le=10_000)
+    max_interactions: int = Field(default=20, ge=0, le=100)
+    max_network_payloads: int = Field(default=25, ge=0, le=200)
+    max_network_payload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
+    max_linked_documents: int = Field(default=10, ge=0, le=50)
+
+
 class OcrSettings(SettingsGroup):
     languages: tuple[str, ...] = ("hye", "eng")
     min_text_chars_per_page: int = Field(default=80, ge=0)
@@ -245,6 +256,7 @@ class Settings(SettingsGroup):
     models: ModelSettings
     database: DatabaseSettings
     http: HttpSettings
+    acquisition: AcquisitionSettings
     ocr: OcrSettings
     rag: RagSettings
     hitl: HitlSettings

@@ -26,7 +26,10 @@ shell, or SQL tool.
 - `app/api/`: user-trigger, run-status, and HITL review HTTP contracts.
 - `app/domain/`: validated tariff/evidence models and pure business rules.
 - `app/services/`: pipeline orchestration interfaces and deterministic application
-  services. `PdfDownloader` uses an injected, caller-owned HTTP client and returns
+  services. `AcquisitionService` combines restricted static HTML retrieval, faithful
+  structural parsing, conditional Playwright rendering, bounded same-domain network
+  capture, content-addressed artifact storage, and linked-PDF retrieval. `PdfDownloader`
+  uses an injected, caller-owned HTTP client and returns
   immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
   checks complete.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
@@ -52,6 +55,20 @@ signature check. The result contains the source/final URLs, bytes, SHA-256 check
 size, retrieval timestamps, and only the bounded provenance headers ETag,
 Last-Modified, and Content-Disposition. Failed or interrupted attempts return a
 typed `PdfDownloadError` and never expose a partial document.
+
+## Acquisition boundary
+
+Acquisition is deterministic and does not decide what a loan field means. Initial URLs,
+HTTP redirects, browser subrequests, and the final browser URL must pass the same exact
+HTTPS host allowlist. Browser rendering is used only when static content is insufficient
+or the DOM advertises interactive/client-rendered content. It blocks non-GET requests,
+forms, downloads, cross-domain traffic, service workers, and unnecessary heavy assets.
+
+The output is an immutable `PageArtifact` containing raw/rendered HTML, Markdown,
+structural blocks, tables, links, downloaded PDFs, bounded textual XHR/fetch payloads,
+source locators, timestamps, and a deterministic content hash. Raw bytes are stored
+under SHA-256-derived paths; source-controlled strings never become filesystem paths.
+See `docs/acquisition.md` for the complete contract.
 
 ## RAG index / knowledge-store boundary
 

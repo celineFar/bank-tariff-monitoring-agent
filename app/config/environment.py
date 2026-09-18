@@ -45,6 +45,14 @@ class EnvironmentSettings(BaseSettings):
     http_max_retry_delay_seconds: float = 120
     max_redirects: int = 5
     max_download_bytes: int = 25 * 1024 * 1024
+    acquisition_browser_enabled: bool = True
+    acquisition_min_static_text_chars: int = 500
+    acquisition_browser_navigation_timeout_seconds: float = 30
+    acquisition_browser_settle_milliseconds: int = 750
+    acquisition_max_interactions: int = 20
+    acquisition_max_network_payloads: int = 25
+    acquisition_max_network_payload_bytes: int = 2 * 1024 * 1024
+    acquisition_max_linked_documents: int = 10
     ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")
     ocr_min_text_chars_per_page: int = 80
     ocr_dpi: int = 300

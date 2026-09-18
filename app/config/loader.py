@@ -6,6 +6,7 @@ from typing import Any
 
 from app.config.environment import EnvironmentSettings
 from app.config.models import (
+    AcquisitionSettings,
     ApplicationSettings,
     DatabaseSettings,
     HitlSettings,
@@ -50,6 +51,18 @@ def load_settings(
             max_redirects=raw.max_redirects,
             max_download_bytes=raw.max_download_bytes,
             allow_origins=raw.allow_origins,
+        ),
+        acquisition=AcquisitionSettings(
+            browser_enabled=raw.acquisition_browser_enabled,
+            min_static_text_chars=raw.acquisition_min_static_text_chars,
+            browser_navigation_timeout_seconds=(
+                raw.acquisition_browser_navigation_timeout_seconds
+            ),
+            browser_settle_milliseconds=(raw.acquisition_browser_settle_milliseconds),
+            max_interactions=raw.acquisition_max_interactions,
+            max_network_payloads=raw.acquisition_max_network_payloads,
+            max_network_payload_bytes=raw.acquisition_max_network_payload_bytes,
+            max_linked_documents=raw.acquisition_max_linked_documents,
         ),
         ocr=OcrSettings(
             languages=raw.ocr_languages,

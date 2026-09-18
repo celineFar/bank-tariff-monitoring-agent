@@ -6,8 +6,8 @@ existing flat process environment variables and, for local development, `.env`
 once; `load_settings` then validates and groups them. Copy `.env.example` to
 `.env` and never commit a real API key.
 
-The service-facing groups are `application`, `models`, `database`, `http`, `ocr`,
-`rag`, `hitl`, `scheduler`, and `observability`. A component should receive only
+The service-facing groups are `application`, `models`, `database`, `http`,
+`acquisition`, `ocr`, `rag`, `hitl`, `scheduler`, and `observability`. A component should receive only
 the group it needs—for example, a downloader receives `settings.http` and an OCR
 service receives `settings.ocr`.
 
@@ -24,6 +24,13 @@ service receives `settings.ocr`.
   `DOWNLOAD_TIMEOUT_SECONDS`, `HTTP_MAX_ATTEMPTS`,
   `HTTP_BACKOFF_BASE_SECONDS`, `HTTP_RETRY_JITTER_RATIO`,
   `HTTP_MAX_RETRY_DELAY_SECONDS`, `MAX_REDIRECTS`, and `MAX_DOWNLOAD_BYTES`.
+- **Acquisition:** `ACQUISITION_BROWSER_ENABLED`,
+  `ACQUISITION_MIN_STATIC_TEXT_CHARS`,
+  `ACQUISITION_BROWSER_NAVIGATION_TIMEOUT_SECONDS`,
+  `ACQUISITION_BROWSER_SETTLE_MILLISECONDS`, `ACQUISITION_MAX_INTERACTIONS`,
+  `ACQUISITION_MAX_NETWORK_PAYLOADS`,
+  `ACQUISITION_MAX_NETWORK_PAYLOAD_BYTES`, and
+  `ACQUISITION_MAX_LINKED_DOCUMENTS`.
 - **OCR:** `OCR_LANGUAGES`, `OCR_MIN_TEXT_CHARS_PER_PAGE`, `OCR_DPI`,
   `OCR_MAX_PAGES`, and `OCR_TIMEOUT_SECONDS`.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
