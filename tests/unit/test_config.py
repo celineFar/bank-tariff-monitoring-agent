@@ -26,9 +26,10 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.source_discovery.classifier_max_attempts == 3
     assert settings.source_discovery.classifier_backoff_base_seconds == 5.0
     assert settings.source_discovery.fallback_model_names == (
-        "gemini-3.8-flash",
-        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
     )
+    assert settings.source_discovery.max_price_per_million_tokens_usd == 4.0
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -39,7 +40,7 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         allowed_download_mime_types="application/pdf, text/html,application/pdf",
         ocr_languages="HYE,eng,hye",
         allow_origins="http://localhost:3000, https://review.example",
-        source_discovery_fallback_model_names="gemini-3.8-flash,gemini-3.6-flash",
+        source_discovery_fallback_model_names="gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     )
 
     assert settings.http.allowed_source_hosts == (
@@ -56,8 +57,8 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         "https://review.example",
     )
     assert settings.source_discovery.fallback_model_names == (
-        "gemini-3.8-flash",
-        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
     )
 
 

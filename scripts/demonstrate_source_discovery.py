@@ -23,7 +23,11 @@ from app.services.discovery_classifier import (
     build_classifier_prompt,
     is_retryable_api_error,
 )
-from app.services.model_pricing import ModelPrice, get_model_price
+from app.services.model_pricing import (
+    ModelPrice,
+    enforce_model_price_cap,
+    get_model_price,
+)
 from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
@@ -57,16 +61,22 @@ async def demonstrate(
         raise RuntimeError(
             "GEMINI_API_KEY is required for --execute-llm; set it in .env or the process environment"
         )
+    models = _model_sequence(
+        settings.models.generation_model,
+        settings.source_discovery.fallback_model_names,
+    )
+    enforce_model_price_cap(
+        models,
+        max_price_per_million_tokens_usd=(
+            settings.source_discovery.max_price_per_million_tokens_usd
+        ),
+    )
     output_directory = _next_run_directory(case_directory / "source_discovery")
     write_preflight_bundle(
         plan,
         settings=settings.source_discovery,
         output_directory=output_directory,
         execution_run=True,
-    )
-    models = _model_sequence(
-        settings.models.generation_model,
-        settings.source_discovery.fallback_model_names,
     )
     attempts: list[dict[str, Any]] = []
     for model_index, model_name in enumerate(models):

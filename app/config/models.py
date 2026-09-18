@@ -231,9 +231,10 @@ class SourceDiscoverySettings(SettingsGroup):
     classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
     fallback_model_names: tuple[str, ...] = (
-        "gemini-3.8-flash",
-        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
     )
+    max_price_per_million_tokens_usd: float = Field(default=4.0, gt=0, le=100)
 
     @field_validator("fallback_model_names")
     @classmethod

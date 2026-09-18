@@ -101,6 +101,9 @@ def load_settings(
                 raw.source_discovery_classifier_retry_jitter_ratio
             ),
             fallback_model_names=raw.source_discovery_fallback_model_names,
+            max_price_per_million_tokens_usd=(
+                raw.source_discovery_max_price_per_million_tokens_usd
+            ),
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

@@ -44,6 +44,10 @@ mixing model decisions within one accepted result. Console messages announce eve
 model attempt and transition, while `model_attempts.json` records failures, retries,
 usage, and cost per model.
 
+Before live execution, every primary and fallback model is checked against
+`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD`. If either its current input
+or output price exceeds the ceiling, the run stops before making an API request.
+
 Children inherit the validated container assessment. The final result still contains
 an assessment for every block, while the model operates on a much smaller set of
 classification units.

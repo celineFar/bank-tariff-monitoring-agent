@@ -70,7 +70,7 @@ class AdkSourceDiscoveryClassifier:
             output_schema=DiscoveryBatchResponse,
             generate_content_config=(
                 types.GenerateContentConfig()
-                if model_name == "gemini-3.8-flash"
+                if model_name in {"gemini-3.8-flash", "gemini-3.5-flash-lite"}
                 else types.GenerateContentConfig(temperature=0)
             ),
         )

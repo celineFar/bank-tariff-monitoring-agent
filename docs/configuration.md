@@ -46,6 +46,8 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`, and
   `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Whole-run fallback order is
   configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`.
+  `SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` is a hard ceiling applied
+  independently to both input and output rates before any live model call.
   Model-specific paid-tier
   rates and effective periods live in `app/services/model_pricing.py`. Policy,
   prompt, model, product, and
