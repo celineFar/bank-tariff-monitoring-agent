@@ -23,8 +23,6 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.source_discovery.max_items_per_batch == 8
     assert settings.source_discovery.max_chars_per_item == 3000
     assert settings.source_discovery.max_chars_per_batch == 18_000
-    assert settings.source_discovery.input_price_per_million_tokens_usd == 0.75
-    assert settings.source_discovery.output_price_per_million_tokens_usd == 3.75
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 

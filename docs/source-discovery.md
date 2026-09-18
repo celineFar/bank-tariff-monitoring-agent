@@ -83,8 +83,15 @@ It writes `source_discovery/preflight/` inside the case:
   cost; this is not an invoice or an actual usage record;
 - `selected_for_llm.md`: readable rendering of the selected model context.
 
-The script uses no classifier and cannot make a Gemini call. Pricing is configuration,
-not executable billing logic, and should be updated when the provider changes rates.
+Without an execution flag, the script uses no classifier and cannot make a Gemini
+call. Model-specific prices are stored in `app/services/model_pricing.py` and should
+be updated when the provider changes rates.
+
+To execute the classifier explicitly, set `GEMINI_API_KEY` and add
+`--execute-llm`. Live outputs go to a new `llm_run_NNN/` directory and never
+overwrite `preflight/` or a previous live run. The live directory adds
+`source_discovery_result.json`, `assessments.json`, `extraction_context.json`, and
+`actual_usage_and_cost.json`.
 
 
 ---

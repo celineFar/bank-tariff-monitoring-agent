@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import uuid4
 
+from google import genai
 from google.adk.agents import Agent
 from google.adk.models import Gemini
 from google.adk.runners import InMemoryRunner
@@ -26,14 +28,24 @@ content.
 """.strip()
 
 
+@dataclass
+class ClassifierUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    thinking_tokens: int = 0
+    total_tokens: int = 0
+
+
 class AdkSourceDiscoveryClassifier:
     """Bounded ADK classifier with strict Pydantic structured output and no tools."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, *, api_key: str | None = None) -> None:
+        client = genai.Client(api_key=api_key) if api_key else None
         agent = Agent(
             name="source_discovery_classifier",
             model=Gemini(
                 model=model_name,
+                client=client,
                 retry_options=types.HttpRetryOptions(attempts=3),
             ),
             instruction=SOURCE_DISCOVERY_INSTRUCTION,
@@ -44,6 +56,7 @@ class AdkSourceDiscoveryClassifier:
             agent=agent,
             app_name="source_discovery_classifier",
         )
+        self.usage = ClassifierUsage()
 
     async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
         session_id = uuid4().hex
@@ -62,6 +75,13 @@ class AdkSourceDiscoveryClassifier:
                 role="user", parts=[types.Part.from_text(text=prompt)]
             ),
         ):
+            if event.is_final_response() and event.usage_metadata:
+                metadata = event.usage_metadata
+                thinking = metadata.thoughts_token_count or 0
+                self.usage.input_tokens += metadata.prompt_token_count or 0
+                self.usage.output_tokens += metadata.candidates_token_count or 0
+                self.usage.thinking_tokens += thinking
+                self.usage.total_tokens += metadata.total_token_count or 0
             if event.is_final_response() and event.content and event.content.parts:
                 text_parts = [part.text for part in event.content.parts if part.text]
                 if text_parts:

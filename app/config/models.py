@@ -224,13 +224,8 @@ class SourceDiscoverySettings(SettingsGroup):
     max_items_per_batch: int = Field(default=8, ge=1, le=50)
     max_chars_per_item: int = Field(default=3000, ge=500, le=12_000)
     max_chars_per_batch: int = Field(default=18_000, ge=1000, le=100_000)
-    input_price_per_million_tokens_usd: float = Field(default=0.75, ge=0)
-    output_price_per_million_tokens_usd: float = Field(default=3.75, ge=0)
     estimated_chars_per_input_token: float = Field(default=4.0, gt=0, le=20)
     estimated_output_tokens_per_item: int = Field(default=160, ge=0, le=10_000)
-    pricing_effective_through: str = Field(
-        default="2026-12-31", pattern=r"^\d{4}-\d{2}-\d{2}$"
-    )
 
     @model_validator(mode="after")
     def validate_batch_limits(self) -> SourceDiscoverySettings:

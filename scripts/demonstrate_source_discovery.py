@@ -10,35 +10,85 @@ from typing import Any
 from app.config import SourceDiscoverySettings, load_settings
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle
-from app.domain.source_discovery import SourceDiscoveryPlan
+from app.domain.source_discovery import SourceDiscoveryPlan, SourceDiscoveryResult
 from app.services.discovery_classifier import (
     SOURCE_DISCOVERY_INSTRUCTION,
+    AdkSourceDiscoveryClassifier,
+    ClassifierUsage,
     build_classifier_prompt,
 )
+from app.services.model_pricing import ModelPrice, get_model_price
 from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
 
 
-async def demonstrate(case_path: Path, product: ProductType) -> Path:
+async def demonstrate(
+    case_path: Path, product: ProductType, *, execute_llm: bool = False
+) -> Path:
     bundle_path, case_directory = _resolve_case(case_path)
     bundle = NormalizedSourceBundle.model_validate_json(
         bundle_path.read_text(encoding="utf-8")
     )
     settings = load_settings()
-    service = SourceDiscoveryService(
+    repository = InMemorySourceDiscoveryRepository()
+    planning_service = SourceDiscoveryService(
         classifier=None,
-        repository=InMemorySourceDiscoveryRepository(),
+        repository=repository,
         settings=settings.source_discovery,
         model_name=settings.models.generation_model,
     )
-    plan = await service.plan(bundle, product)
-    return write_preflight_bundle(
+    plan = await planning_service.plan(bundle, product)
+    if not execute_llm:
+        return write_preflight_bundle(
+            plan,
+            settings=settings.source_discovery,
+            output_directory=case_directory / "source_discovery" / "preflight",
+        )
+
+    if settings.models.api_key is None:
+        raise RuntimeError(
+            "GEMINI_API_KEY is required for --execute-llm; set it in .env or the process environment"
+        )
+    classifier = AdkSourceDiscoveryClassifier(
+        settings.models.generation_model,
+        api_key=settings.models.api_key.get_secret_value(),
+    )
+    service = SourceDiscoveryService(
+        classifier=classifier,
+        repository=repository,
+        settings=settings.source_discovery,
+        model_name=settings.models.generation_model,
+    )
+    output_directory = _next_run_directory(case_directory / "source_discovery")
+    write_preflight_bundle(
         plan,
         settings=settings.source_discovery,
-        output_directory=case_directory / "source_discovery" / "preflight",
+        output_directory=output_directory,
+        execution_run=True,
     )
+    result = await service.discover(bundle, product)
+    write_live_bundle(
+        plan,
+        result,
+        classifier.usage,
+        settings=settings.source_discovery,
+        output_directory=output_directory,
+    )
+    return output_directory
+
+
+def _next_run_directory(parent: Path) -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    for index in range(100_000):
+        candidate = parent / f"llm_run_{index:03d}"
+        try:
+            candidate.mkdir()
+        except FileExistsError:
+            continue
+        return candidate
+    raise RuntimeError(f"No available LLM run directory below {parent}")
 
 
 def write_preflight_bundle(
@@ -46,6 +96,7 @@ def write_preflight_bundle(
     *,
     settings: SourceDiscoverySettings,
     output_directory: Path,
+    execution_run: bool = False,
 ) -> Path:
     output_directory.mkdir(parents=True, exist_ok=True)
     cost_estimate = _cost_estimate(plan, settings)
@@ -63,12 +114,38 @@ def write_preflight_bundle(
         json.dumps(cost_estimate, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     (output_directory / "selected_for_llm.md").write_text(
-        _render_selected(plan), encoding="utf-8"
+        _render_selected(plan, execution_run=execution_run), encoding="utf-8"
     )
     (output_directory / "summary.txt").write_text(
         _summary(plan, cost_estimate), encoding="utf-8"
     )
     return output_directory
+
+
+def write_live_bundle(
+    plan: SourceDiscoveryPlan,
+    result: SourceDiscoveryResult,
+    usage: ClassifierUsage,
+    *,
+    settings: SourceDiscoverySettings,
+    output_directory: Path,
+) -> None:
+    price = get_model_price(plan.model_name)
+    estimated_cost = _cost_estimate(plan, settings)
+    actual_cost = _actual_cost(usage, price)
+    (output_directory / "source_discovery_result.json").write_text(
+        result.model_dump_json(indent=2), encoding="utf-8"
+    )
+    _write_json(output_directory / "assessments.json", result.assessments)
+    (output_directory / "extraction_context.json").write_text(
+        result.extraction_context.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_directory / "actual_usage_and_cost.json").write_text(
+        json.dumps(actual_cost, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (output_directory / "summary.txt").write_text(
+        _summary(plan, estimated_cost, actual=actual_cost), encoding="utf-8"
+    )
 
 
 def _resolve_case(path: Path) -> tuple[Path, Path]:
@@ -101,12 +178,16 @@ def _write_json(path: Path, values: tuple[object, ...]) -> None:
     )
 
 
-def _render_selected(plan: SourceDiscoveryPlan) -> str:
+def _render_selected(plan: SourceDiscoveryPlan, *, execution_run: bool = False) -> str:
     parts = [
         "# Source discovery LLM preflight",
         "",
         "This is the exact bounded material selected for semantic classification. ",
-        "The demonstration script did not invoke Gemini.",
+        (
+            "This material was sent to Gemini during this numbered execution run."
+            if execution_run
+            else "The demonstration script did not invoke Gemini."
+        ),
         "",
     ]
     for batch in plan.batches:
@@ -136,6 +217,7 @@ def _render_selected(plan: SourceDiscoveryPlan) -> str:
 def _cost_estimate(
     plan: SourceDiscoveryPlan, settings: SourceDiscoverySettings
 ) -> dict[str, Any]:
+    price = get_model_price(plan.model_name)
     prompt_characters = sum(
         len(SOURCE_DISCOVERY_INSTRUCTION) + len(build_classifier_prompt(batch))
         for batch in plan.batches
@@ -146,23 +228,22 @@ def _cost_estimate(
     item_count = sum(len(batch.items) for batch in plan.batches)
     output_tokens = item_count * settings.estimated_output_tokens_per_item
     input_cost = (
-        input_tokens * settings.input_price_per_million_tokens_usd / 1_000_000
+        input_tokens * price.input_per_million_tokens_usd / 1_000_000
     )
     output_cost = (
-        output_tokens * settings.output_price_per_million_tokens_usd / 1_000_000
+        output_tokens * price.output_per_million_tokens_usd / 1_000_000
     )
     return {
         "currency": "USD",
         "model": plan.model_name,
-        "pricing_basis": "Gemini Developer API paid tier",
-        "pricing_effective_through": settings.pricing_effective_through,
-        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
-        "input_price_per_million_tokens": (
-            settings.input_price_per_million_tokens_usd
+        "pricing_basis": price.basis,
+        "pricing_starts_on": price.starts_on.isoformat(),
+        "pricing_effective_through": (
+            price.ends_on.isoformat() if price.ends_on else None
         ),
-        "output_price_per_million_tokens": (
-            settings.output_price_per_million_tokens_usd
-        ),
+        "pricing_source": price.source,
+        "input_price_per_million_tokens": price.input_per_million_tokens_usd,
+        "output_price_per_million_tokens": price.output_per_million_tokens_usd,
         "estimated_prompt_characters": prompt_characters,
         "estimated_chars_per_input_token": (
             settings.estimated_chars_per_input_token
@@ -187,7 +268,37 @@ def _cost_estimate(
     }
 
 
-def _summary(plan: SourceDiscoveryPlan, cost: dict[str, Any]) -> str:
+def _actual_cost(usage: ClassifierUsage, price: ModelPrice) -> dict[str, Any]:
+    billed_output_tokens = usage.output_tokens + usage.thinking_tokens
+    input_cost = (
+        usage.input_tokens * price.input_per_million_tokens_usd / 1_000_000
+    )
+    output_cost = (
+        billed_output_tokens * price.output_per_million_tokens_usd / 1_000_000
+    )
+    return {
+        "currency": "USD",
+        "model": price.model,
+        "pricing_basis": price.basis,
+        "pricing_source": price.source,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "thinking_tokens": usage.thinking_tokens,
+        "billed_output_tokens": billed_output_tokens,
+        "total_tokens_reported": usage.total_tokens,
+        "input_cost_usd": round(input_cost, 8),
+        "output_cost_usd": round(output_cost, 8),
+        "total_cost_usd": round(input_cost + output_cost, 8),
+        "note": "Calculated from API-reported usage; provider billing remains authoritative.",
+    }
+
+
+def _summary(
+    plan: SourceDiscoveryPlan,
+    cost: dict[str, Any],
+    *,
+    actual: dict[str, Any] | None = None,
+) -> str:
     selected_chars = sum(
         len(item.content) for batch in plan.batches for item in batch.items
     )
@@ -196,8 +307,12 @@ def _summary(plan: SourceDiscoveryPlan, cost: dict[str, Any]) -> str:
         for batch in plan.batches
         for item in batch.items
     )
-    lines = (
-        "MODE: PREFLIGHT ONLY -- Gemini was not called.",
+    lines = [
+        (
+            "MODE: LLM EXECUTION -- Gemini was called."
+            if actual
+            else "MODE: PREFLIGHT ONLY -- Gemini was not called."
+        ),
         f"Product: {plan.product.value}",
         f"Canonical URL: {plan.canonical_url}",
         f"Input acquisition hash: {plan.input_content_hash}",
@@ -219,18 +334,31 @@ def _summary(plan: SourceDiscoveryPlan, cost: dict[str, Any]) -> str:
         f"Estimated input cost (USD): ${cost['estimated_input_cost_usd']:.8f}",
         f"Estimated output cost (USD): ${cost['estimated_output_cost_usd']:.8f}",
         f"Estimated total cost (USD): ${cost['estimated_total_cost_usd']:.8f}",
-        "Cost status: estimate only -- no model call occurred; free-tier billing may be $0",
+        (
+            "Cost status: API usage captured; provider billing remains authoritative"
+            if actual
+            else "Cost status: estimate only -- no model call occurred; free-tier billing may be $0"
+        ),
         f"Changed-layout prior hints: {prior_hints}",
         f"Child items covered by inheritance: {plan.inherited_item_count}",
-    )
+    ]
+    if actual:
+        lines.extend(
+            (
+                f"Actual API input tokens: {actual['input_tokens']}",
+                f"Actual API output tokens: {actual['output_tokens']}",
+                f"Actual API thinking tokens: {actual['thinking_tokens']}",
+                f"Calculated actual cost (USD): ${actual['total_cost_usd']:.8f}",
+            )
+        )
     return "\n".join(lines) + "\n"
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Show the bounded source components selected for Gemini without "
-            "performing any model call."
+            "Preview source-discovery inputs, or explicitly execute the bounded "
+            "Gemini classifier in a separate incrementing run directory."
         )
     )
     parser.add_argument(
@@ -247,15 +375,28 @@ def _parse_args() -> argparse.Namespace:
         choices=[product.value for product in ProductType],
         help="Canonical product family being assessed",
     )
+    parser.add_argument(
+        "--execute-llm",
+        action="store_true",
+        help=(
+            "Call Gemini and write llm_run_NNN; without this flag the script only "
+            "updates the preflight directory"
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
     output_directory = asyncio.run(
-        demonstrate(args.case, ProductType(args.product))
+        demonstrate(
+            args.case,
+            ProductType(args.product),
+            execute_llm=args.execute_llm,
+        )
     )
-    print(f"Source discovery preflight saved to {output_directory.resolve()}")
+    mode = "LLM run" if args.execute_llm else "preflight"
+    print(f"Source discovery {mode} saved to {output_directory.resolve()}")
 
 
 if __name__ == "__main__":

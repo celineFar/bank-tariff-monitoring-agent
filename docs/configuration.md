@@ -39,11 +39,10 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   `SOURCE_DISCOVERY_PROMPT_VERSION`, `SOURCE_DISCOVERY_MAX_ITEMS_PER_BATCH`,
   `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`, and
   `SOURCE_DISCOVERY_MAX_CHARS_PER_BATCH`. Preflight cost assumptions use
-  `SOURCE_DISCOVERY_INPUT_PRICE_PER_MILLION_TOKENS_USD`,
-  `SOURCE_DISCOVERY_OUTPUT_PRICE_PER_MILLION_TOKENS_USD`,
-  `SOURCE_DISCOVERY_ESTIMATED_CHARS_PER_INPUT_TOKEN`,
-  `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`, and
-  `SOURCE_DISCOVERY_PRICING_EFFECTIVE_THROUGH`. Policy, prompt, model, product, and
+  `SOURCE_DISCOVERY_ESTIMATED_CHARS_PER_INPUT_TOKEN` and
+  `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`. Model-specific paid-tier
+  rates and effective periods live in `app/services/model_pricing.py`. Policy,
+  prompt, model, product, and
   content fingerprints jointly define exact cache reuse. Changing either version
   deliberately invalidates the corresponding cached assessments.
 - **HITL:** `HITL_DOCUMENT_RANK_GAP` and
