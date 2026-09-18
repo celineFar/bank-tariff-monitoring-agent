@@ -28,6 +28,11 @@ _ACCORDION_TITLE = re.compile(
     r"(?:accordion|faq).*(?:title|header|question|trigger)", re.I
 )
 _ACCORDION_PANEL = re.compile(r"(?:accordion|faq).*(?:panel|content|answer)", re.I)
+_CARD_CONTAINER = re.compile(r"(?:^|[-_])card(?:$|__item$|[-_]item$)", re.I)
+_NESTED_HEADING_BLOCKS = frozenset(
+    {"div", "section", "article", "p", "table", "details", "ul", "ol"}
+)
+_SUPERSCRIPT_DIGITS = str.maketrans("0123456789+-=()", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾")
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,12 +107,14 @@ class HtmlArtifactParser:
         block_ids: dict[int, str] = {}
         accordion_titles, accordion_panels = self._accordion_parts(root)
         accordion_block_ids: dict[int, str] = {}
+        card_elements = self._card_elements(root)
 
         def is_candidate(tag: Tag) -> bool:
             return (
                 tag.name in _BLOCK_TAGS
                 or tag.name == "table"
                 or id(tag) in accordion_titles
+                or id(tag) in card_elements
             )
 
         for element in root.find_all(is_candidate):
@@ -123,8 +130,15 @@ class HtmlArtifactParser:
                 continue
             if any(id(parent) in accordion_titles for parent in element.parents):
                 continue
+            if any(id(parent) in card_elements for parent in element.parents):
+                continue
 
-            text = self._structured_text(element, markdown=False)
+            is_heading = element.name.startswith("h") and len(element.name) == 2
+            text = self._structured_text(
+                element,
+                markdown=False,
+                exclude_nested_blocks=is_heading,
+            )
             if not text:
                 continue
             block_id = f"b{len(blocks) + 1}"
@@ -135,7 +149,10 @@ class HtmlArtifactParser:
             ) or self._parent_block_id(element, block_ids)
             link_ids = self._contained_link_ids(element, links_by_element)
             block_markdown = self._structured_text(
-                element, markdown=True, links_by_element=links_by_element
+                element,
+                markdown=True,
+                links_by_element=links_by_element,
+                exclude_nested_blocks=is_heading,
             )
 
             if element.name == "table":
@@ -153,7 +170,9 @@ class HtmlArtifactParser:
             elif id(element) in accordion_titles:
                 block_type = ContentBlockType.ACCORDION
                 accordion_block_ids[accordion_titles[id(element)]] = block_id
-            elif element.name.startswith("h") and len(element.name) == 2:
+            elif id(element) in card_elements:
+                block_type = ContentBlockType.CARD
+            elif is_heading:
                 level = int(element.name[1])
                 headings = [(n, value) for n, value in headings if n < level]
                 heading_path = tuple(value for _, value in headings)
@@ -331,6 +350,7 @@ class HtmlArtifactParser:
             for text_row, markdown_row, physical_cells in grid_rows
         ]
 
+        context_title = self._context_title(element)
         title: str | None = None
         headers: tuple[str, ...] = ()
         markdown_headers: tuple[str, ...] = ()
@@ -369,6 +389,9 @@ class HtmlArtifactParser:
             markdown_headers = headers
             headers_inferred = True
 
+        if context_title:
+            title = f"{context_title} — {title}" if title else context_title
+
         return TableArtifact(
             id=table_id,
             caption=caption,
@@ -388,7 +411,7 @@ class HtmlArtifactParser:
     def _images(self, root: Tag, source_url: str) -> tuple[ImageArtifact, ...]:
         images: list[ImageArtifact] = []
         for element in root.find_all("img"):
-            if not isinstance(element, Tag):
+            if not isinstance(element, Tag) or self._is_hidden(element):
                 continue
             raw_url = (
                 element.get("src")
@@ -430,6 +453,7 @@ class HtmlArtifactParser:
         controls: list[InteractiveControlArtifact] = []
         selector = (
             "button, summary, [role='button'], [role='tab'], "
+            "[data-acquisition-tab-control='true'], "
             "input[type='button'], input[type='submit']"
         )
         for element in root.select(selector):
@@ -503,6 +527,7 @@ class HtmlArtifactParser:
         *,
         markdown: bool,
         links_by_element: dict[int, LinkArtifact] | None = None,
+        exclude_nested_blocks: bool = False,
     ) -> str:
         links_by_element = links_by_element or {}
 
@@ -510,6 +535,12 @@ class HtmlArtifactParser:
             if isinstance(node, NavigableString):
                 return str(node)
             if not isinstance(node, Tag):
+                return ""
+            if (
+                exclude_nested_blocks
+                and node is not element
+                and node.name in _NESTED_HEADING_BLOCKS
+            ):
                 return ""
             if node.name == "br":
                 return "\n"
@@ -537,7 +568,12 @@ class HtmlArtifactParser:
                 return "\n".join(items) + "\n"
             content = "".join(render(child, list_depth) for child in node.children)
             if node.name == "sup":
-                return f" {content}"
+                cleaned = cls._clean(content)
+                if cleaned and all(character in "0123456789+-=()" for character in cleaned):
+                    cleaned = cleaned.translate(_SUPERSCRIPT_DIGITS)
+                elif markdown and cleaned:
+                    cleaned = f"<sup>{cleaned}</sup>"
+                return f" {cleaned} " if cleaned else ""
             if node.name in {"p", "div", "section", "article"}:
                 return content + "\n"
             return content
@@ -548,6 +584,11 @@ class HtmlArtifactParser:
     def _is_hidden(cls, element: Tag) -> bool:
         for current in (element, *element.parents):
             if not isinstance(current, Tag):
+                continue
+            visibility = current.get("data-acquisition-visible")
+            if visibility == "false":
+                return True
+            if visibility == "true":
                 continue
             if current.has_attr("hidden") or current.get("aria-hidden") == "true":
                 return True
@@ -641,6 +682,37 @@ class HtmlArtifactParser:
     @staticmethod
     def _class_text(element: Tag) -> str:
         return " ".join(str(value) for value in (element.get("class") or ()))
+
+    @classmethod
+    def _card_elements(cls, root: Tag) -> dict[int, Tag]:
+        candidates: list[Tag] = []
+        for element in root.find_all(["article", "div", "li"]):
+            if not isinstance(element, Tag):
+                continue
+            classes = tuple(str(value) for value in (element.get("class") or ()))
+            if any(_CARD_CONTAINER.search(value) for value in classes):
+                candidates.append(element)
+        candidate_ids = {id(element) for element in candidates}
+        return {
+            id(element): element
+            for element in candidates
+            if not any(
+                id(descendant) in candidate_ids
+                for descendant in element.find_all(["article", "div", "li"])
+            )
+        }
+
+    @classmethod
+    def _context_title(cls, element: Tag) -> str | None:
+        for current in (element, *element.parents):
+            if not isinstance(current, Tag):
+                continue
+            value = cls._clean(
+                str(current.get("data-acquisition-context-title") or "")
+            )
+            if value:
+                return value
+        return None
 
     @classmethod
     def _accordion_parts(cls, root: Tag) -> tuple[dict[int, int], dict[int, int]]:

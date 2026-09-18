@@ -136,3 +136,83 @@ def test_bold_first_row_is_preserved_as_table_header() -> None:
 
     assert table.headers == ("Purpose", "Rates and Fees")
     assert table.rows == (("Change repayment date", "AMD 10,000"),)
+
+
+def test_browser_visibility_markers_exclude_never_visible_dom() -> None:
+    html = """
+    <html><body>
+      <p>Visible terms</p>
+      <div data-acquisition-visible="false">
+        <h3>No offers found matching the selected criteria</h3>
+        <a href="/hidden.pdf">Hidden document</a>
+        <img src="/hidden.png" alt="Hidden image">
+      </div>
+    </body></html>
+    """
+
+    parsed = HtmlArtifactParser(("ameriabank.am",)).parse(
+        html, source_url="https://ameriabank.am/loan"
+    )
+
+    assert parsed.visible_text == "Visible terms"
+    assert parsed.links == ()
+    assert parsed.images == ()
+
+
+def test_nested_heading_content_is_not_emitted_twice() -> None:
+    tagline = "Installment loans make shopping quick and hassle-free"
+    html = f"""
+    <html><body>
+      <h1>Consumer finance<p>{tagline}</p></h1>
+    </body></html>
+    """
+
+    parsed = HtmlArtifactParser(("ameriabank.am",)).parse(
+        html, source_url="https://ameriabank.am/loan"
+    )
+
+    assert parsed.blocks[0].text == "Consumer finance"
+    assert parsed.visible_text.count(tagline) == 1
+
+
+def test_superscript_reference_keeps_its_text_boundary() -> None:
+    html = """
+    <html><body><p>Apply in the store<sup>1</sup>just in a few minutes.</p></body></html>
+    """
+
+    parsed = HtmlArtifactParser(("ameriabank.am",)).parse(
+        html, source_url="https://ameriabank.am/loan"
+    )
+
+    assert parsed.blocks[0].text == "Apply in the store ¹ just in a few minutes."
+    assert "store ¹ just" in parsed.markdown
+
+
+def test_partner_cards_and_tab_table_context_are_preserved() -> None:
+    html = """
+    <html><body>
+      <a href="#products" data-acquisition-tab-control="true"
+         aria-controls="products">Purchasing products</a>
+      <div class="privileges-card">
+        <div class="partner-card__item">
+          <div class="partner-card__item-info">
+            <p>ZIGZAG</p><p>ZIGZAG LLC</p>
+          </div>
+        </div>
+      </div>
+      <div id="products" data-acquisition-context-title="Purchasing products"
+           data-acquisition-visible="true" style="display: none">
+        <table><tr><td>Terms</td><td>Currency</td><td>AMD</td></tr></table>
+      </div>
+    </body></html>
+    """
+
+    parsed = HtmlArtifactParser(("ameriabank.am",)).parse(
+        html, source_url="https://ameriabank.am/loan"
+    )
+
+    cards = [block for block in parsed.blocks if block.type.value == "card"]
+    assert len(cards) == 1
+    assert cards[0].text == "ZIGZAG\nZIGZAG LLC"
+    assert parsed.tables[0].title == "Purchasing products"
+    assert parsed.interactive_controls[0].aria_controls == "products"

@@ -19,7 +19,7 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.http.retry_jitter_ratio == 0.25
     assert settings.http.max_retry_delay_seconds == 120
     assert settings.acquisition.browser_enabled is True
-    assert settings.acquisition.max_interactions == 20
+    assert settings.acquisition.max_interactions == 100
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 

@@ -42,6 +42,169 @@ class BrowserRenderer(Protocol):
     async def render(self, url: str) -> RenderedPage: ...
 
 
+_PREPARE_ACQUISITION_DOM = """
+() => {
+  const isVisible = (element) => {
+    if (!(element instanceof HTMLElement) && !(element instanceof SVGElement)) {
+      return false;
+    }
+    const style = window.getComputedStyle(element);
+    if (
+      style.display === 'none'
+      || style.visibility === 'hidden'
+      || style.visibility === 'collapse'
+      || style.opacity === '0'
+    ) {
+      return false;
+    }
+    return element.getClientRects().length > 0;
+  };
+
+  for (const anchor of document.querySelectorAll('a[href^="#"]')) {
+    const fragment = anchor.getAttribute('href')?.slice(1);
+    if (!fragment) continue;
+    const panel = document.getElementById(fragment);
+    const label = (anchor.innerText || anchor.textContent || '').trim();
+    if (panel && label) {
+      panel.setAttribute('data-acquisition-context-title', label);
+      anchor.setAttribute('data-acquisition-tab-control', 'true');
+      anchor.setAttribute('aria-controls', fragment);
+    }
+  }
+
+  for (const element of document.body.querySelectorAll('*')) {
+    if (isVisible(element)) {
+      element.setAttribute('data-acquisition-visible', 'true');
+    }
+  }
+}
+"""
+
+_PERFORM_ONE_INTERACTION = """
+({labels}) => {
+  const isVisible = (element) => {
+    const style = window.getComputedStyle(element);
+    return (
+      style.display !== 'none'
+      && style.visibility !== 'hidden'
+      && style.visibility !== 'collapse'
+      && style.opacity !== '0'
+      && element.getClientRects().length > 0
+    );
+  };
+
+  for (const element of document.querySelectorAll(
+    '[data-acquisition-current-interaction="true"]'
+  )) {
+    element.removeAttribute('data-acquisition-current-interaction');
+  }
+
+  const selector = [
+    'button',
+    '[role="button"]',
+    '[role="tab"]',
+    '[aria-expanded="false"]',
+    '[data-acquisition-tab-control="true"]',
+    '[id*="show-more" i]',
+    '[class*="show-more" i]'
+  ].join(', ');
+  let repeatableCandidate = null;
+  for (const element of document.querySelectorAll(selector)) {
+    if (!isVisible(element) || element.disabled) continue;
+    if (element.dataset.acquisitionExhausted === 'true') continue;
+    if (
+      element.tagName === 'A'
+      && !String(element.getAttribute('href') || '').startsWith('#')
+    ) {
+      continue;
+    }
+    const text = (element.innerText || element.textContent || '')
+      .trim()
+      .toLocaleLowerCase();
+    const expandable = element.getAttribute('aria-expanded') === 'false';
+    const isTab = (
+      element.getAttribute('role') === 'tab'
+      || element.getAttribute('data-acquisition-tab-control') === 'true'
+    );
+    const matchedLabel = labels.find((label) => text.includes(label));
+    if (!expandable && !isTab && !matchedLabel) continue;
+
+    const repeatable = matchedLabel === 'show more' || matchedLabel === 'see more';
+    if (!repeatable && element.dataset.acquisitionInteracted === 'true') continue;
+    if (repeatable) {
+      repeatableCandidate ||= element;
+      continue;
+    }
+    element.dataset.acquisitionInteracted = 'true';
+    element.dataset.acquisitionCurrentInteraction = 'true';
+    element.click();
+    return {interacted: true, repeatable: false};
+  }
+
+  const closedDetails = Array.from(
+    document.querySelectorAll('details:not([open])')
+  ).find(isVisible);
+  if (closedDetails) {
+    closedDetails.open = true;
+    closedDetails.setAttribute('data-acquisition-interacted', 'true');
+    return {interacted: true, repeatable: false};
+  }
+
+  if (repeatableCandidate) {
+    repeatableCandidate.dataset.acquisitionInteracted = 'true';
+    repeatableCandidate.dataset.acquisitionCurrentInteraction = 'true';
+    repeatableCandidate.click();
+    return {interacted: true, repeatable: true};
+  }
+  return {interacted: false, repeatable: false};
+}
+"""
+
+_ACQUISITION_DOM_SIGNATURE = """
+() => [
+  document.body.innerText.length,
+  document.body.innerHTML.length,
+  document.body.querySelectorAll('*').length
+].join(':')
+"""
+
+_MARK_CURRENT_INTERACTION_EXHAUSTED = """
+() => {
+  const element = document.querySelector(
+    '[data-acquisition-current-interaction="true"]'
+  );
+  if (element) element.dataset.acquisitionExhausted = 'true';
+}
+"""
+
+_FINALIZE_ACQUISITION_DOM = """
+() => {
+  const isVisible = (element) => {
+    const style = window.getComputedStyle(element);
+    return (
+      style.display !== 'none'
+      && style.visibility !== 'hidden'
+      && style.visibility !== 'collapse'
+      && style.opacity !== '0'
+      && element.getClientRects().length > 0
+    );
+  };
+  for (const element of document.body.querySelectorAll('*')) {
+    if (isVisible(element)) {
+      element.setAttribute('data-acquisition-visible', 'true');
+    } else if (
+      element.getAttribute('data-acquisition-interacted') === 'true'
+      || element.closest('[data-acquisition-interacted="true"]')
+    ) {
+      element.setAttribute('data-acquisition-visible', 'false');
+    } else if (element.getAttribute('data-acquisition-visible') !== 'true') {
+      element.setAttribute('data-acquisition-visible', 'false');
+    }
+  }
+}
+"""
+
+
 class PlaywrightBrowserRenderer:
     """Bounded, read-only browser rendering for allowlisted public pages."""
 
@@ -200,53 +363,45 @@ class PlaywrightBrowserRenderer:
                         "Browser navigation left the source allowlist",
                     ) from exc
 
-                interactions = await page.evaluate(
-                    """
-                    ({maxInteractions, labels}) => {
-                      let count = 0;
-                      for (const details of document.querySelectorAll('details:not([open])')) {
-                        if (count >= maxInteractions) break;
-                        details.open = true;
-                        count += 1;
-                      }
-                      const candidates = document.querySelectorAll(
-                        'button, [role="button"], [role="tab"], [aria-expanded="false"]'
-                      );
-                      for (const element of candidates) {
-                        if (count >= maxInteractions) break;
-                        if (element.closest('form') || element.disabled) continue;
-                        const style = window.getComputedStyle(element);
-                        if (style.display === 'none' || style.visibility === 'hidden') continue;
-                        const text = (element.innerText || element.textContent || '')
-                          .trim().toLocaleLowerCase();
-                        const expandable = element.getAttribute('aria-expanded') === 'false';
-                        const isTab = element.getAttribute('role') === 'tab';
-                        if (!expandable && !isTab && !labels.some(label => text.includes(label))) {
-                          continue;
-                        }
-                        element.click();
-                        count += 1;
-                      }
-                      return count;
-                    }
-                    """,
-                    {
-                        "maxInteractions": self._settings.max_interactions,
-                        "labels": [
-                            "terms and conditions",
-                            "see more",
-                            "show more",
-                            "learn more",
-                            "details",
-                            "պայմաններ",
-                            "տեսնել ավելին",
-                        ],
-                    },
-                )
                 if self._settings.browser_settle_milliseconds:
                     await page.wait_for_timeout(
                         self._settings.browser_settle_milliseconds
                     )
+                await page.evaluate(_PREPARE_ACQUISITION_DOM)
+                interaction_labels = [
+                    "terms and conditions",
+                    "see more",
+                    "show more",
+                    "learn more",
+                    "details",
+                    "պայմաններ",
+                    "տեսնել ավելին",
+                ]
+                interactions = 0
+                while interactions < self._settings.max_interactions:
+                    before_signature = await page.evaluate(
+                        _ACQUISITION_DOM_SIGNATURE
+                    )
+                    interaction = await page.evaluate(
+                        _PERFORM_ONE_INTERACTION,
+                        {"labels": interaction_labels},
+                    )
+                    if not interaction["interacted"]:
+                        break
+                    interactions += 1
+                    if self._settings.browser_settle_milliseconds:
+                        await page.wait_for_timeout(
+                            self._settings.browser_settle_milliseconds
+                        )
+                    after_signature = await page.evaluate(
+                        _ACQUISITION_DOM_SIGNATURE
+                    )
+                    if interaction["repeatable"] and (
+                        before_signature == after_signature
+                    ):
+                        await page.evaluate(_MARK_CURRENT_INTERACTION_EXHAUSTED)
+                    await page.evaluate(_PREPARE_ACQUISITION_DOM)
+                await page.evaluate(_FINALIZE_ACQUISITION_DOM)
                 if capture_tasks:
                     await asyncio.gather(*tuple(capture_tasks), return_exceptions=True)
                 html = await page.content()

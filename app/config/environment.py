@@ -49,7 +49,7 @@ class EnvironmentSettings(BaseSettings):
     acquisition_min_static_text_chars: int = 500
     acquisition_browser_navigation_timeout_seconds: float = 30
     acquisition_browser_settle_milliseconds: int = 750
-    acquisition_max_interactions: int = 20
+    acquisition_max_interactions: int = 100
     acquisition_max_network_payloads: int = 25
     acquisition_max_network_payload_bytes: int = 2 * 1024 * 1024
     acquisition_max_linked_documents: int = 10
