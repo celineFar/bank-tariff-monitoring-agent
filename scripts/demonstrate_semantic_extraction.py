@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,9 @@ from app.services.semantic_extraction import (
 )
 
 
+SEMANTIC_EXTRACTION_LOGGER = "app.services.semantic_extraction"
+
+
 class SemanticExtractionRunFailed(RuntimeError):
     def __init__(self, output_directory: Path, error: Exception) -> None:
         super().__init__(str(error))
@@ -41,6 +45,8 @@ async def demonstrate(
     discovery_path = _resolve_discovery_result(
         case_directory, source_discovery_result
     )
+    print(f"Loading normalized input from {bundle_path}", flush=True)
+    print(f"Loading discovery result from {discovery_path}", flush=True)
     bundle = NormalizedSourceBundle.model_validate_json(
         bundle_path.read_text(encoding="utf-8")
     )
@@ -56,6 +62,12 @@ async def demonstrate(
         model_name=settings.models.generation_model,
     )
     plan = await planning_service.plan(bundle, discovery)
+    print(
+        f"Extraction plan ready: {len(plan.batches)} LLM batch(es), "
+        f"{len(plan.cache_hits)} cached batch(es), "
+        f"{len(plan.evidence_catalog)} evidence item(s)",
+        flush=True,
+    )
     if not execute_llm:
         output_directory = case_directory / "semantic_extraction" / "preflight"
         _write_preflight(plan, output_directory, execution_run=False)
@@ -75,6 +87,7 @@ async def demonstrate(
     )
     output_directory = _next_run_directory(case_directory / "semantic_extraction")
     _write_preflight(plan, output_directory, execution_run=True)
+    print(f"Run artifacts initialized at {output_directory.resolve()}", flush=True)
     attempts: list[dict[str, Any]] = []
     for index, model_name in enumerate(models):
         print(
@@ -121,6 +134,12 @@ async def demonstrate(
         attempts.append(_attempt(model_name, extractor, None))
         _write_json(output_directory / "model_attempts.json", attempts)
         _write_result(result, output_directory)
+        print(
+            f"Model {model_name} completed: "
+            f"{extractor.usage.request_attempts} request attempt(s), "
+            f"{extractor.usage.total_tokens} total token(s)",
+            flush=True,
+        )
         return output_directory
     raise AssertionError("semantic extraction model sequence exhausted")
 
@@ -367,7 +386,19 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _configure_terminal_logging() -> None:
+    """Show this command's extraction progress without enabling noisy SDK logs."""
+    service_logger = logging.getLogger(SEMANTIC_EXTRACTION_LOGGER)
+    service_logger.setLevel(logging.INFO)
+    service_logger.propagate = False
+    if not service_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+        service_logger.addHandler(handler)
+
+
 def main() -> int:
+    _configure_terminal_logging()
     parser = argparse.ArgumentParser(description="Inspect or run semantic extraction")
     parser.add_argument("case_path", type=Path)
     parser.add_argument("--source-discovery-result", type=Path)

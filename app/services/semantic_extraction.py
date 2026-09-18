@@ -283,10 +283,31 @@ class SemanticExtractionService:
             raise RuntimeError("semantic extraction has unresolved batches but no extractor")
         responses: list[ExtractionBatchResponse] = []
         cache_values: list[tuple[str, ExtractionBatchResponse]] = []
-        for batch in plan.batches:
+        batch_count = len(plan.batches)
+        if plan.cache_hits:
+            logger.info(
+                "Reusing %s cached semantic-extraction batch(es)",
+                len(plan.cache_hits),
+            )
+        for batch_index, batch in enumerate(plan.batches, start=1):
             assert self._extractor is not None
+            logger.info(
+                "Submitting semantic-extraction batch %s/%s: %s "
+                "(%s field(s), %s evidence item(s))",
+                batch_index,
+                batch_count,
+                batch.id,
+                len(batch.fields),
+                len(batch.evidence),
+            )
             response = await self._extractor.extract(batch)
             _validate_response(batch, response)
+            logger.info(
+                "Completed semantic-extraction batch %s/%s: %s",
+                batch_index,
+                batch_count,
+                batch.id,
+            )
             responses.append(response)
             cache_values.append((batch.content_fingerprint, response))
         if cache_values:
