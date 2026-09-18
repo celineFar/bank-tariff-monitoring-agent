@@ -10,7 +10,12 @@ from typing import Any
 from app.config import SourceDiscoverySettings, load_settings
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle
-from app.domain.source_discovery import SourceDiscoveryPlan, SourceDiscoveryResult
+from app.domain.source_discovery import (
+    DiscoveryCandidate,
+    SourceAssessment,
+    SourceDiscoveryPlan,
+    SourceDiscoveryResult,
+)
 from app.services.discovery_classifier import (
     SOURCE_DISCOVERY_INSTRUCTION,
     AdkSourceDiscoveryClassifier,
@@ -143,9 +148,104 @@ def write_live_bundle(
     (output_directory / "actual_usage_and_cost.json").write_text(
         json.dumps(actual_cost, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    (output_directory / "classification_results.md").write_text(
+        _render_classification_results(plan, result), encoding="utf-8"
+    )
     (output_directory / "summary.txt").write_text(
         _summary(plan, estimated_cost, actual=actual_cost), encoding="utf-8"
     )
+
+
+def _render_classification_results(
+    plan: SourceDiscoveryPlan, result: SourceDiscoveryResult
+) -> str:
+    candidates = {item.source_id: item for item in plan.llm_candidates}
+    direct = [item for item in result.assessments if item.inherited_from is None]
+    model_decisions = [item for item in direct if item.source_id in candidates]
+    other_decisions = [item for item in direct if item.source_id not in candidates]
+    inherited_count = sum(item.inherited_from is not None for item in result.assessments)
+
+    parts = [
+        "# Source discovery classification results",
+        "",
+        f"- Product: `{result.product.value}`",
+        f"- Model: `{result.model_name}`",
+        f"- Direct LLM/cache classification units: {len(model_decisions)}",
+        f"- Deterministic decisions: {len(other_decisions)}",
+        f"- Child assessments represented through inheritance: {inherited_count}",
+        "",
+        "This report shows direct classification units only. Inherited child records ",
+        "remain available in `assessments.json`.",
+        "",
+    ]
+    groups = (
+        ("Relevant", "relevant"),
+        ("Possibly relevant", "possibly_relevant"),
+        ("Irrelevant", "irrelevant"),
+    )
+    for heading, relevance in groups:
+        selected = [
+            item for item in model_decisions if item.relevance.value == relevance
+        ]
+        parts.extend((f"## {heading} ({len(selected)})", ""))
+        if not selected:
+            parts.extend(("No items.", ""))
+            continue
+        for assessment in selected:
+            parts.extend(
+                _render_assessment(
+                    assessment,
+                    candidate=candidates.get(assessment.source_id),
+                )
+            )
+
+    parts.extend((f"## Deterministic and reused decisions ({len(other_decisions)})", ""))
+    if not other_decisions:
+        parts.extend(("No items.", ""))
+    else:
+        for assessment in other_decisions:
+            parts.extend(_render_assessment(assessment, candidate=None))
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _render_assessment(
+    assessment: SourceAssessment, *, candidate: DiscoveryCandidate | None
+) -> list[str]:
+    title = candidate.title if candidate is not None else assessment.source_id
+    inherited_members = len(candidate.member_source_ids) if candidate is not None else 0
+    lines = [
+        f"### {title}",
+        "",
+        f"- Source ID: `{assessment.source_id}`",
+        f"- Decision source: `{assessment.decision_source.value}`",
+        f"- Product association: `{assessment.product_association.value}`",
+        f"- Relevance: `{assessment.relevance.value}`",
+        f"- Role: `{assessment.role.value}`",
+        f"- Authority: `{assessment.authority.value}`",
+        f"- Temporal status: `{assessment.temporal_status.value}`",
+        f"- Child items inheriting this decision: {inherited_members}",
+        f"- Reason: {assessment.reason}",
+    ]
+    if candidate is not None:
+        lines.extend(
+            (
+                f"- Scope: `{candidate.scope.value}`",
+                f"- Heading path: {' > '.join(candidate.heading_path) or '(none)'}",
+                f"- Source type: `{candidate.source_type.value}`",
+            )
+        )
+    if assessment.conditions:
+        lines.append(f"- Conditions: {'; '.join(assessment.conditions)}")
+    if assessment.effective_periods:
+        periods = "; ".join(period.raw for period in assessment.effective_periods)
+        lines.append(f"- Effective periods: {periods}")
+    if candidate is not None:
+        excerpt = candidate.context_text[:1000]
+        if len(candidate.context_text) > len(excerpt):
+            excerpt += "\n[excerpt truncated]"
+        lines.extend(("", "```text", excerpt, "```"))
+    lines.append("")
+    return lines
 
 
 def _resolve_case(path: Path) -> tuple[Path, Path]:

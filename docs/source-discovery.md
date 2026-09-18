@@ -91,7 +91,9 @@ To execute the classifier explicitly, set `GEMINI_API_KEY` and add
 `--execute-llm`. Live outputs go to a new `llm_run_NNN/` directory and never
 overwrite `preflight/` or a previous live run. The live directory adds
 `source_discovery_result.json`, `assessments.json`, `extraction_context.json`, and
-`actual_usage_and_cost.json`.
+`actual_usage_and_cost.json`. It also writes `classification_results.md`, a readable
+review grouped into relevant, possibly relevant, irrelevant, and deterministic/reused
+decisions. The report lists direct units only and summarizes inherited children.
 
 
 ---

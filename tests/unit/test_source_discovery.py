@@ -28,6 +28,7 @@ from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
+from scripts.demonstrate_source_discovery import _render_classification_results
 
 URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
 
@@ -257,3 +258,26 @@ async def test_discovery_rejects_missing_or_invented_classifier_ids() -> None:
 
     with pytest.raises(ValueError, match="response IDs"):
         await service.discover(_bundle(), ProductType.MORTGAGE)
+
+
+@pytest.mark.asyncio
+async def test_classification_markdown_groups_direct_decisions() -> None:
+    repository = InMemorySourceDiscoveryRepository()
+    service = SourceDiscoveryService(
+        _Classifier(),
+        repository,
+        SourceDiscoverySettings(),
+        model_name="configured-model",
+    )
+    bundle = _bundle()
+    plan = await service.plan(bundle, ProductType.MORTGAGE)
+    result = await service.discover(bundle, ProductType.MORTGAGE)
+
+    markdown = _render_classification_results(plan, result)
+
+    assert "## Relevant" in markdown
+    assert "## Possibly relevant (0)" in markdown
+    assert "## Irrelevant" in markdown
+    assert "## Deterministic and reused decisions" in markdown
+    assert "Decision source: `llm`" in markdown
+    assert "Child assessments represented through inheritance" in markdown
