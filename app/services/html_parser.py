@@ -223,8 +223,11 @@ class HtmlArtifactParser:
         for element in root.find_all("a", href=True):
             if not isinstance(element, Tag) or self._is_hidden(element):
                 continue
+            raw_href = str(element["href"])
+            resolved = urljoin(source_url, raw_href)
+            fragment = urldefrag(resolved).fragment or None
             absolute = self._normalized_http_url(
-                urljoin(source_url, str(element["href"]))
+                resolved
             )
             if not absolute:
                 continue
@@ -246,6 +249,8 @@ class HtmlArtifactParser:
             artifact = LinkArtifact(
                 id=link_id,
                 url=absolute,
+                raw_href=raw_href,
+                fragment=fragment,
                 text=self._clean(element.get_text(" ", strip=True)),
                 title=self._clean(str(element.get("title") or "")) or None,
                 rel=rel,
@@ -551,7 +556,10 @@ class HtmlArtifactParser:
                 link = links_by_element.get(id(node))
                 if markdown and link and label:
                     safe_label = label.replace("]", "\\]")
-                    return f"[{safe_label}](<{link.url}>)"
+                    target = str(link.url)
+                    if link.fragment:
+                        target = f"{target}#{link.fragment}"
+                    return f"[{safe_label}](<{target}>)"
                 return label
             if node.name in {"ul", "ol"}:
                 items: list[str] = []

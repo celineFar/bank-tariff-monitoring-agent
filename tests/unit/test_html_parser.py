@@ -191,8 +191,8 @@ def test_superscript_reference_keeps_its_text_boundary() -> None:
 def test_partner_cards_and_tab_table_context_are_preserved() -> None:
     html = """
     <html><body>
-      <a href="#products" data-acquisition-tab-control="true"
-         aria-controls="products">Purchasing products</a>
+      <p><a href="#products" data-acquisition-tab-control="true"
+         aria-controls="products">Purchasing products</a></p>
       <div class="privileges-card">
         <div class="partner-card__item">
           <div class="partner-card__item-info">
@@ -216,3 +216,9 @@ def test_partner_cards_and_tab_table_context_are_preserved() -> None:
     assert cards[0].text == "ZIGZAG\nZIGZAG LLC"
     assert parsed.tables[0].title == "Purchasing products"
     assert parsed.interactive_controls[0].aria_controls == "products"
+    assert parsed.links[0].raw_href == "#products"
+    assert parsed.links[0].fragment == "products"
+    assert (
+        "[Purchasing products](<https://ameriabank.am/loan#products>)"
+        in parsed.markdown
+    )

@@ -98,6 +98,8 @@ class TableArtifact(AcquisitionModel):
 class LinkArtifact(AcquisitionModel):
     id: str = Field(min_length=1, max_length=100)
     url: HttpUrl
+    raw_href: str = Field(min_length=1, max_length=8192)
+    fragment: str | None = None
     text: str = ""
     title: str | None = None
     rel: tuple[str, ...] = ()

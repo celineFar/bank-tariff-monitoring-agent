@@ -209,7 +209,9 @@ Every collected HTTP/HTTPS link.
 
 Important fields:
 
-- `url`: resolved absolute URL.
+- `url`: resolved, defragmented absolute URL used for retrieval and deduplication.
+- `raw_href`: exact `href` value supplied by the source DOM.
+- `fragment`: same-page or document fragment target, without the leading `#`.
 - `text`: visible link text.
 - `title`: HTML title attribute.
 - `rel`: values such as `canonical`, `noopener`, or `nofollow`.
