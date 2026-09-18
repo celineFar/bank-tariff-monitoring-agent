@@ -198,6 +198,8 @@ class AcquisitionService:
             blocks=parsed.blocks,
             tables=parsed.tables,
             links=parsed.links,
+            images=parsed.images,
+            interactive_controls=parsed.interactive_controls,
             downloadable_documents=documents,
             network_payloads=tuple(persisted_payloads),
             stored_artifacts=tuple(stored),
@@ -223,11 +225,19 @@ class AcquisitionService:
     ) -> tuple[tuple[DocumentArtifact, ...], tuple[str, ...]]:
         documents: list[DocumentArtifact] = []
         warnings: list[str] = []
-        candidates = [
-            link
-            for link in parsed.links
-            if link.downloadable and link.same_allowlisted_source
-        ][: self._settings.max_linked_documents]
+        candidates = []
+        seen_urls: set[str] = set()
+        for link in parsed.links:
+            url = str(link.url)
+            if (
+                link.downloadable
+                and link.same_allowlisted_source
+                and url not in seen_urls
+            ):
+                candidates.append(link)
+                seen_urls.add(url)
+            if len(candidates) >= self._settings.max_linked_documents:
+                break
         for link in candidates:
             try:
                 downloaded = await self._pdf_downloader.download(
@@ -286,6 +296,11 @@ class AcquisitionService:
             "blocks": [block.model_dump(mode="json") for block in parsed.blocks],
             "tables": [table.model_dump(mode="json") for table in parsed.tables],
             "links": [link.model_dump(mode="json") for link in parsed.links],
+            "images": [image.model_dump(mode="json") for image in parsed.images],
+            "interactive_controls": [
+                control.model_dump(mode="json")
+                for control in parsed.interactive_controls
+            ],
             "documents": [document.sha256 for document in documents],
             "network_payloads": [payload.sha256 for payload in network_payloads],
         }

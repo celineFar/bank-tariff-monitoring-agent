@@ -57,17 +57,41 @@ class ContentBlock(AcquisitionModel):
     id: str = Field(min_length=1, max_length=100)
     type: ContentBlockType
     text: str = Field(min_length=1)
+    markdown: str | None = None
     heading_path: tuple[str, ...] = ()
     parent_id: str | None = None
+    link_ids: tuple[str, ...] = ()
     locator: SourceLocator
     visible: bool
+
+
+class TableCellArtifact(AcquisitionModel):
+    id: str = Field(min_length=1, max_length=100)
+    row_index: int = Field(ge=0)
+    column_index: int = Field(ge=0)
+    rowspan: int = Field(default=1, ge=1)
+    colspan: int = Field(default=1, ge=1)
+    tag: str = Field(pattern=r"^(td|th)$")
+    is_header: bool = False
+    text: str
+    markdown: str
+    link_ids: tuple[str, ...] = ()
+    locator: SourceLocator
 
 
 class TableArtifact(AcquisitionModel):
     id: str = Field(min_length=1, max_length=100)
     caption: str | None = None
+    title: str | None = None
+    column_count: int = Field(default=0, ge=0)
     headers: tuple[str, ...] = ()
+    markdown_headers: tuple[str, ...] = ()
+    headers_inferred: bool = False
     rows: tuple[tuple[str, ...], ...] = ()
+    markdown_rows: tuple[tuple[str, ...], ...] = ()
+    notes: tuple[str, ...] = ()
+    markdown_notes: tuple[str, ...] = ()
+    cells: tuple[TableCellArtifact, ...] = ()
     locator: SourceLocator
 
 
@@ -80,6 +104,30 @@ class LinkArtifact(AcquisitionModel):
     declared_mime_type: str | None = None
     same_allowlisted_source: bool
     downloadable: bool
+    locator: SourceLocator
+
+
+class ImageArtifact(AcquisitionModel):
+    id: str = Field(min_length=1, max_length=100)
+    url: HttpUrl
+    alt: str = ""
+    title: str | None = None
+    width: str | None = None
+    height: str | None = None
+    same_allowlisted_source: bool
+    decorative: bool
+    locator: SourceLocator
+
+
+class InteractiveControlArtifact(AcquisitionModel):
+    id: str = Field(min_length=1, max_length=100)
+    element: str = Field(min_length=1, max_length=50)
+    role: str | None = None
+    text: str = ""
+    aria_label: str | None = None
+    aria_expanded: bool | None = None
+    aria_controls: str | None = None
+    disabled: bool = False
     locator: SourceLocator
 
 
@@ -152,6 +200,8 @@ class PageArtifact(AcquisitionModel):
     blocks: tuple[ContentBlock, ...]
     tables: tuple[TableArtifact, ...]
     links: tuple[LinkArtifact, ...]
+    images: tuple[ImageArtifact, ...] = ()
+    interactive_controls: tuple[InteractiveControlArtifact, ...] = ()
     downloadable_documents: tuple[DocumentArtifact, ...]
     network_payloads: tuple[NetworkPayload, ...]
     stored_artifacts: tuple[StoredArtifact, ...] = ()

@@ -65,8 +65,9 @@ or the DOM advertises interactive/client-rendered content. It blocks non-GET req
 forms, downloads, cross-domain traffic, service workers, and unnecessary heavy assets.
 
 The output is an immutable `PageArtifact` containing raw/rendered HTML, Markdown,
-structural blocks, tables, links, downloaded PDFs, bounded textual XHR/fetch payloads,
-source locators, timestamps, and a deterministic content hash. Raw bytes are stored
+structural blocks, span-aware tables, linked FAQ questions and answers, inline links,
+image/control metadata, downloaded PDFs, bounded textual XHR/fetch payloads, source
+locators, timestamps, and a deterministic content hash. Raw bytes are stored
 under SHA-256-derived paths; source-controlled strings never become filesystem paths.
 See `docs/acquisition.md` for the complete contract.
 

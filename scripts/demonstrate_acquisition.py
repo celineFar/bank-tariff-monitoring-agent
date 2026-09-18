@@ -45,6 +45,12 @@ def write_inspection_bundle(
     (output_directory / "documents.json").write_text(
         _models_json(artifact.downloadable_documents), encoding="utf-8"
     )
+    (output_directory / "images.json").write_text(
+        _models_json(artifact.images), encoding="utf-8"
+    )
+    (output_directory / "interactive_controls.json").write_text(
+        _models_json(artifact.interactive_controls), encoding="utf-8"
+    )
     (output_directory / "network_payloads.json").write_text(
         _models_json(artifact.network_payloads), encoding="utf-8"
     )
@@ -111,6 +117,8 @@ def _summary(artifact: PageArtifact) -> str:
         f"Tables: {len(artifact.tables)}",
         f"Links: {len(artifact.links)}",
         f"Documents: {len(artifact.downloadable_documents)}",
+        f"Images: {len(artifact.images)}",
+        f"Interactive controls: {len(artifact.interactive_controls)}",
         f"Network payloads: {len(artifact.network_payloads)}",
         f"Warnings: {len(artifact.warnings)}",
         *(f"- {warning}" for warning in artifact.warnings),

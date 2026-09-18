@@ -10,7 +10,9 @@ to the ADK model.
    source-host allowlist. It applies bounded retries, redirect limits, MIME checks, and
    streamed byte limits before returning decoded HTML and its SHA-256 checksum.
 2. `HtmlArtifactParser` preserves title, language, canonical URL, visible structural
-   blocks, heading paths, tables, and links with CSS/XPath locators.
+   blocks, heading paths, rowspan/colspan-aware tables, FAQ/accordion relationships,
+   inline links, images, and interactive controls with CSS/XPath locators. Both the
+   physical table cells and a deterministic logical grid are retained.
 3. Static content is used when it is sufficient. Interactive markup, an application
    shell, or insufficient text triggers `PlaywrightBrowserRenderer` when enabled.
 4. Browser requests are restricted to allowlisted GET/HEAD URLs. Images, media, fonts,
@@ -59,7 +61,8 @@ uv run python scripts/demonstrate_acquisition.py "https://ameriabank.am/en/perso
 The script writes the requested URL to `.temp/acuisition_test/source_url.txt` and
 places the inspection files under `.temp/acuisition_test/output/`. The output includes
 the complete `PageArtifact`, summary, raw and rendered HTML, Markdown, structural
-blocks, tables, links, documents, network payloads, and content-addressed raw artifacts.
+blocks, tables, links, images, interactive controls, documents, network payloads, and
+content-addressed raw artifacts.
 
 
 ---

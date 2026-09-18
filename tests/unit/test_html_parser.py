@@ -59,3 +59,80 @@ def test_parser_rejects_off_domain_canonical_and_ignores_hidden_content() -> Non
     assert parsed.canonical_url == "https://ameriabank.am/loan"
     assert "99%" not in parsed.visible_text
     assert "document.write" not in parsed.visible_text
+
+
+def test_rowspan_tables_expand_without_shifting_and_preserve_cell_structure() -> None:
+    html = """
+    <html><body><table>
+      <tr><td colspan="3">Consumer loan</td></tr>
+      <tr><td rowspan="3">Loan terms</td><td>Currency</td><td>AMD</td></tr>
+      <tr><td>Term</td><td>60 months</td></tr>
+      <tr><td rowspan="2">Repayment method</td><td>Annuity</td></tr>
+      <tr><td rowspan="2">Forms of repayment</td><td>Differentiated</td></tr>
+      <tr><td>Documents</td><td><ul><li>ID</li><li>Application</li></ul></td></tr>
+      <tr><td colspan="3">Footnote text</td></tr>
+    </table></body></html>
+    """
+
+    parsed = HtmlArtifactParser(("ameriabank.am",)).parse(
+        html, source_url="https://ameriabank.am/loan"
+    )
+    table = parsed.tables[0]
+
+    assert table.title == "Consumer loan"
+    assert table.headers == ("Section", "Item", "Terms")
+    assert table.headers_inferred is True
+    assert table.rows == (
+        ("Loan terms", "Currency", "AMD"),
+        ("Loan terms", "Term", "60 months"),
+        ("Loan terms", "Repayment method", "Annuity"),
+        ("Forms of repayment", "Repayment method", "Differentiated"),
+        ("Forms of repayment", "Documents", "• ID\n• Application"),
+    )
+    assert table.notes == ("Footnote text",)
+    assert any(cell.rowspan == 3 for cell in table.cells)
+    assert "| Loan terms | Term | 60 months |" in parsed.markdown
+    assert "• ID<br>• Application" in parsed.markdown
+
+
+def test_accordion_questions_answers_and_inline_links_remain_associated() -> None:
+    html = """
+    <html><body>
+      <div class="cs-accordion__body">
+        <div class="cs-accordion__title">How can I apply?</div>
+        <div class="cs-accordion__panel">
+          <p>Apply using <a href="/application">this link</a>.</p>
+        </div>
+      </div>
+    </body></html>
+    """
+
+    parsed = HtmlArtifactParser(("ameriabank.am",)).parse(
+        html, source_url="https://ameriabank.am/loan"
+    )
+    question, answer = parsed.blocks
+
+    assert question.type.value == "accordion"
+    assert question.text == "How can I apply?"
+    assert answer.parent_id == question.id
+    assert answer.link_ids == (parsed.links[0].id,)
+    assert str(parsed.links[0].url) == "https://ameriabank.am/application"
+    assert "[this link](<https://ameriabank.am/application>)" in parsed.markdown
+
+
+def test_bold_first_row_is_preserved_as_table_header() -> None:
+    html = """
+    <html><body><table>
+      <tr><td><strong>Purpose</strong></td><td><strong>Rates and Fees</strong></td></tr>
+      <tr><td>Change repayment date</td><td>AMD 10,000</td></tr>
+    </table></body></html>
+    """
+
+    table = (
+        HtmlArtifactParser(("ameriabank.am",))
+        .parse(html, source_url="https://ameriabank.am/loan")
+        .tables[0]
+    )
+
+    assert table.headers == ("Purpose", "Rates and Fees")
+    assert table.rows == (("Change repayment date", "AMD 10,000"),)
