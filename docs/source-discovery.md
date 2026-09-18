@@ -313,7 +313,7 @@ Important fields:
 - `heading_path`: structural headings surrounding the content.
 - `context_text`: representative content from the complete unit.
 - `mime_type`: source media type.
-- `extraction_method`: browser, HTML parser, JSON parser, PDF text extraction, OCR, etc.
+- `extraction_method`: browser, HTML parser, JSON parser, or `gemini_pdf:<model>`.
 - `quality_score`: extraction-quality measurement when available.
 - `member_source_ids`: child blocks that will inherit the resulting classification.
 - `all_members_hidden`: whether all underlying blocks were marked hidden.

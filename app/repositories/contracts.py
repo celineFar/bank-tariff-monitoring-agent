@@ -8,6 +8,7 @@ from app.domain.knowledge import (
     IndexWriteResult,
 )
 from app.domain.models import ProductType, TariffSnapshot
+from app.domain.pdf_extraction import PdfExtractionResponse
 from app.domain.retrieval import RetrievalCandidate
 from app.domain.semantic_extraction import ExtractionBatchResponse
 from app.domain.source_discovery import SourceAssessment
@@ -76,6 +77,29 @@ class SourceDiscoveryRepository(Protocol):
         prompt_version: str,
         model_name: str,
         assessments: Sequence[SourceAssessment],
+    ) -> None: ...
+
+
+class PdfExtractionRepository(Protocol):
+    async def get_exact(
+        self,
+        *,
+        document_sha256: str,
+        schema_version: str,
+        prompt_version: str,
+        model_name: str,
+        content_fingerprint: str,
+    ) -> PdfExtractionResponse | None: ...
+
+    async def save(
+        self,
+        *,
+        document_sha256: str,
+        schema_version: str,
+        prompt_version: str,
+        model_name: str,
+        content_fingerprint: str,
+        response: PdfExtractionResponse,
     ) -> None: ...
 
 

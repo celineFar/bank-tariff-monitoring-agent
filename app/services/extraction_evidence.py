@@ -11,6 +11,7 @@ from app.domain.source_discovery import (
     Relevance,
     SourceAssessment,
     SourceDiscoveryResult,
+    TemporalStatus,
 )
 
 
@@ -79,7 +80,10 @@ def _assessment_by_source_item(
 ) -> dict[str, SourceAssessment]:
     values: dict[str, SourceAssessment] = {}
     for assessment in assessments:
-        if assessment.relevance is Relevance.IRRELEVANT:
+        if assessment.relevance is Relevance.IRRELEVANT or assessment.temporal_status in {
+            TemporalStatus.POSSIBLY_STALE,
+            TemporalStatus.FUTURE,
+        }:
             continue
         for reference in assessment.source_refs:
             current = values.get(reference.source_item_id)

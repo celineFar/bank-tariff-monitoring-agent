@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.domain.acquisition import SourceType
 from app.domain.models import ProductType
 from app.domain.normalization import SourceReference
+from app.domain.pdf_extraction import PdfAdmission
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -19,6 +20,8 @@ class DiscoveryModel(BaseModel):
 
 class ProductAssociation(StrEnum):
     CURRENT_PRODUCT = "current_product"
+    HISTORICAL_VERSION = "historical_version"
+    FUTURE_VERSION = "future_version"
     RELATED_PRODUCT = "related_product"
     GLOBAL_NAVIGATION = "global_navigation"
     GENERIC_BANK_INFORMATION = "generic_bank_information"
@@ -58,6 +61,7 @@ class Authority(StrEnum):
 
 class TemporalStatus(StrEnum):
     CURRENT = "current"
+    FUTURE = "future"
     TIME_BOUNDED = "time_bounded"
     POSSIBLY_STALE = "possibly_stale"
     UNKNOWN = "unknown"
@@ -110,6 +114,7 @@ class DiscoveryCandidate(DiscoveryModel):
     content_fingerprint: str
     structural_fingerprint: str
     selection_reason: str = Field(min_length=1, max_length=1000)
+    pdf_admission: PdfAdmission | None = None
 
     @model_validator(mode="after")
     def validate_fingerprints(self) -> DiscoveryCandidate:

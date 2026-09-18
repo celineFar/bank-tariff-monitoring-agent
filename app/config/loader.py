@@ -13,7 +13,7 @@ from app.config.models import (
     HttpSettings,
     ModelSettings,
     ObservabilitySettings,
-    OcrSettings,
+    PdfExtractionSettings,
     RagSettings,
     SchedulerSettings,
     SemanticExtractionSettings,
@@ -66,12 +66,19 @@ def load_settings(
             max_network_payload_bytes=raw.acquisition_max_network_payload_bytes,
             max_linked_documents=raw.acquisition_max_linked_documents,
         ),
-        ocr=OcrSettings(
-            languages=raw.ocr_languages,
-            min_text_chars_per_page=raw.ocr_min_text_chars_per_page,
-            dpi=raw.ocr_dpi,
-            max_pages=raw.ocr_max_pages,
-            timeout_seconds=raw.ocr_timeout_seconds,
+        pdf_extraction=PdfExtractionSettings(
+            schema_version=raw.pdf_extraction_schema_version,
+            prompt_version=raw.pdf_extraction_prompt_version,
+            model_name=raw.pdf_extraction_model_name,
+            fallback_model_names=raw.pdf_extraction_fallback_model_names,
+            max_price_per_million_tokens_usd=(
+                raw.pdf_extraction_max_price_per_million_tokens_usd
+            ),
+            max_attempts=raw.pdf_extraction_max_attempts,
+            backoff_base_seconds=raw.pdf_extraction_backoff_base_seconds,
+            max_backoff_seconds=raw.pdf_extraction_max_backoff_seconds,
+            retry_jitter_ratio=raw.pdf_extraction_retry_jitter_ratio,
+            probe_text_threshold=raw.pdf_extraction_probe_text_threshold,
         ),
         rag=RagSettings(
             chunk_size_chars=raw.chunk_size_chars,

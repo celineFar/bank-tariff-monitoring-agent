@@ -7,9 +7,10 @@ once; `load_settings` then validates and groups them. Copy `.env.example` to
 `.env` and never commit a real API key.
 
 The service-facing groups are `application`, `models`, `database`, `http`,
-`acquisition`, `ocr`, `rag`, `source_discovery`, `semantic_extraction`, `hitl`,
+`acquisition`, `pdf_extraction`, `rag`, `source_discovery`, `semantic_extraction`, `hitl`,
 `scheduler`, and `observability`. A component should receive only the group it needs—for example, a
-downloader receives `settings.http` and an OCR service receives `settings.ocr`.
+downloader receives `settings.http` and the PDF extraction service receives
+`settings.pdf_extraction`.
 
 ## Setting groups
 
@@ -31,8 +32,15 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   `ACQUISITION_MAX_NETWORK_PAYLOADS`,
   `ACQUISITION_MAX_NETWORK_PAYLOAD_BYTES`, and
   `ACQUISITION_MAX_LINKED_DOCUMENTS`.
-- **OCR:** `OCR_LANGUAGES`, `OCR_MIN_TEXT_CHARS_PER_PAGE`, `OCR_DPI`,
-  `OCR_MAX_PAGES`, and `OCR_TIMEOUT_SECONDS`.
+- **PDF extraction:** `PDF_EXTRACTION_SCHEMA_VERSION`,
+  `PDF_EXTRACTION_PROMPT_VERSION`, `PDF_EXTRACTION_MODEL_NAME`, and the
+  comma-separated `PDF_EXTRACTION_FALLBACK_MODEL_NAMES`. Retry behavior uses
+  `PDF_EXTRACTION_MAX_ATTEMPTS`, `PDF_EXTRACTION_BACKOFF_BASE_SECONDS`,
+  `PDF_EXTRACTION_MAX_BACKOFF_SECONDS`, and
+  `PDF_EXTRACTION_RETRY_JITTER_RATIO`. `PDF_EXTRACTION_PROBE_TEXT_THRESHOLD`
+  affects only the deterministic input-mode diagnostic.
+  `PDF_EXTRACTION_MAX_PRICE_PER_MILLION_TOKENS_USD` rejects any configured model
+  whose input or output rate exceeds the ceiling before a live call.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
 - **Source discovery:** `SOURCE_DISCOVERY_POLICY_VERSION`,
@@ -67,7 +75,7 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   `SCHEDULE_MINUTE`.
 - **Serving/telemetry:** `LOG_LEVEL`, `OTEL_TO_CLOUD`, and `ALLOW_ORIGINS`.
 
-Comma-separated values are used for hosts, MIME types, OCR languages, and CORS
+Comma-separated values are used for hosts, MIME types, fallback models, and CORS
 origins. Allowlisted sources must be exact DNS hostnames; schemes, paths,
 wildcards, credentials, ports, and IP literals are rejected. Redirect targets
 must later be checked against the same normalized tuple.

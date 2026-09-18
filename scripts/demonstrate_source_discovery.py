@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
 from app.config import SourceDiscoverySettings, load_settings
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle
@@ -412,7 +414,7 @@ def _resolve_case(path: Path) -> tuple[Path, Path]:
 
 def _write_json(path: Path, values: tuple[object, ...]) -> None:
     serialized = [
-        value.model_dump(mode="json") if hasattr(value, "model_dump") else value
+        value.model_dump(mode="json") if isinstance(value, BaseModel) else value
         for value in values
     ]
     path.write_text(
@@ -655,7 +657,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--product",
         required=True,
-        choices=[product.value for product in ProductType],
+        choices=[product.value for product in ProductType.__members__.values()],
         help="Canonical product family being assessed",
     )
     parser.add_argument(

@@ -6,7 +6,8 @@ FastAPI user trigger ----+
 Daily worker trigger ----+              |
                                         v
                            deterministic pipeline
- discovery -> secure retrieval -> PDF/HTML parse -> OCR fallback
+ discovery -> secure retrieval -> deterministic PDF admission/input probe
+ -> bounded Gemini PDF structure extraction + deterministic HTML parsing
  -> structural normalization -> cached/rule prefilter -> bounded Gemini source classification
  -> clean/chunk -> PostgreSQL + pgvector -> hybrid retrieval
  -> Gemini evidence-bound extraction -> deterministic validation
@@ -14,7 +15,8 @@ Daily worker trigger ----+              |
 ```
 
 Gemini is restricted to language-dependent intent resolution, bounded cache-aware
-source classification, and evidence-bound structured extraction.
+source classification, PDF structure transcription, and evidence-bound structured
+extraction.
 All security, persistence, validation, comparison, scheduling, and review routing controls
 are deterministic application services. The ADK agent receives no raw network, filesystem,
 shell, or SQL tool.
@@ -35,8 +37,9 @@ shell, or SQL tool.
   immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
   checks complete. `StructuralNormalizationService` converts the acquired page,
   linked PDFs, and captured API payloads into one uniform evidence-linked bundle;
-  table reconstruction, scalar recognition, PDF/OCR routing, and JSON-path flattening
-  remain deterministic and are not exposed to Gemini.
+  HTML table reconstruction, scalar recognition, PDF admission/input-mode probing,
+  and JSON-path flattening remain deterministic. PDF bytes cross only the tool-free,
+  strict-schema Gemini PDF extraction boundary.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
   including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
@@ -86,9 +89,12 @@ tables, notes, scalar candidates, source references, quality scores, and typed
 warnings. It never assigns tariff-field meaning.
 
 HTML tables are reconstructed from cell coordinates and rowspan/colspan metadata,
-with phantom columns and duplicate carry-only rows removed. PDF blocks retain page
-locators and use an injected OCR adapter only when embedded page text falls below the
-configured threshold. Captured JSON leaves retain exact JSON paths. Raw source text
+with phantom columns and duplicate carry-only rows removed. A deterministic probe
+records each PDF as machine-readable, image-only, mixed, or unknown, but its extracted
+text is not used as business evidence. A tool-free ADK agent sends the original PDF
+bytes to Gemini and requires page-complete blocks, rectangular tables, notes, and
+footnotes. PDF outputs retain page locators and are cached by source hash, schema,
+prompt, model, and admission/probe fingerprint. Captured JSON leaves retain exact JSON paths. Raw source text
 and acquisition locators remain attached throughout, so later chunks and extracted
 values can cite the original evidence rather than a rendered Markdown approximation.
 See `docs/normalization.md` for the complete contract and inspection workflow.
@@ -101,6 +107,13 @@ rules; reuses content-addressed PostgreSQL assessments; and sends only unresolve
 semantic cases to a tool-free ADK classifier with strict structured output. Child
 blocks and JSON leaves inherit their container decision, so model use scales with
 semantic novelty rather than raw normalized block count.
+
+Downloaded PDFs with strongly product-relevant link text, title, URL, or surrounding
+heading receive a deterministic document assessment, so their extracted content is
+not sent through source classification again. Relevance does not imply currentness:
+archive/previous-term context and explicit effective dates independently classify a
+PDF as current, historical, future, time-bounded, or unknown. Historical and future
+documents remain auditable but are excluded from current-tariff extraction evidence.
 
 Exact reuse requires matching product, content fingerprint, policy version, prompt
 version, and model name. Stable structure with changed content supplies only a prior

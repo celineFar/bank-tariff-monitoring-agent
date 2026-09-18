@@ -53,11 +53,19 @@ class EnvironmentSettings(BaseSettings):
     acquisition_max_network_payloads: int = 25
     acquisition_max_network_payload_bytes: int = 2 * 1024 * 1024
     acquisition_max_linked_documents: int = 10
-    ocr_languages: Annotated[tuple[str, ...], NoDecode] = ("hye", "eng")
-    ocr_min_text_chars_per_page: int = 80
-    ocr_dpi: int = 300
-    ocr_max_pages: int = 50
-    ocr_timeout_seconds: float = 60
+    pdf_extraction_schema_version: str = "2"
+    pdf_extraction_prompt_version: str = "2"
+    pdf_extraction_model_name: str = "gemini-3.1-flash-lite"
+    pdf_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
+    )
+    pdf_extraction_max_price_per_million_tokens_usd: float = 4.0
+    pdf_extraction_max_attempts: int = 3
+    pdf_extraction_backoff_base_seconds: float = 5.0
+    pdf_extraction_max_backoff_seconds: float = 60.0
+    pdf_extraction_retry_jitter_ratio: float = 0.25
+    pdf_extraction_probe_text_threshold: int = 20
     chunk_size_chars: int = 1500
     chunk_overlap_chars: int = 150
     retrieval_top_k: int = 8
@@ -95,9 +103,9 @@ class EnvironmentSettings(BaseSettings):
     @field_validator(
         "allowed_source_hosts",
         "allowed_download_mime_types",
-        "ocr_languages",
         "allow_origins",
         "source_discovery_fallback_model_names",
+        "pdf_extraction_fallback_model_names",
         mode="before",
     )
     @classmethod

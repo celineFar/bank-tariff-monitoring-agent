@@ -9,6 +9,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceLocator, SourceType
+from app.domain.pdf_extraction import PdfAdmission, PdfInputMode
 
 _SPACE_RE = re.compile(r"[\t\r\f\v \u00a0]+")
 _ALL_SPACE_RE = re.compile(r"[\s\u00a0]+")
@@ -77,12 +78,10 @@ class ScalarKind(StrEnum):
 
 class NormalizationWarningCode(StrEnum):
     ARTIFACT_UNAVAILABLE = "ARTIFACT_UNAVAILABLE"
-    PDF_PARSE_FAILED = "PDF_PARSE_FAILED"
-    OCR_REQUIRED = "OCR_REQUIRED"
-    OCR_FAILED = "OCR_FAILED"
     INVALID_JSON = "INVALID_JSON"
     AMBIGUOUS_TABLE = "AMBIGUOUS_TABLE"
-    PAGE_LIMIT_REACHED = "PAGE_LIMIT_REACHED"
+    PDF_MODEL_REQUIRED = "PDF_MODEL_REQUIRED"
+    PDF_MODEL_FAILED = "PDF_MODEL_FAILED"
 
 
 class SourceReference(NormalizationModel):
@@ -193,6 +192,8 @@ class NormalizedDocument(NormalizationModel):
     content_sha256: str = Field(min_length=64, max_length=64)
     extraction_method: str = Field(min_length=1, max_length=100)
     quality_score: float | None = Field(default=None, ge=0, le=1)
+    pdf_input_mode: PdfInputMode | None = None
+    pdf_admission: PdfAdmission | None = None
     blocks: tuple[NormalizedBlock, ...] = ()
     tables: tuple[NormalizedTable, ...] = ()
     links: tuple[NormalizedLink, ...] = ()

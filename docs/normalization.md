@@ -1,6 +1,6 @@
 # Structural normalization
 
-Structural normalization is the deterministic boundary between source-specific
+Structural normalization is the uniform-schema boundary between source-specific
 acquisition artifacts and the later chunking, retrieval, and evidence-bound tariff
 extraction stages. It does not decide that a value is an interest rate, loan limit,
 or another business field. Instead, it makes source structure uniform and retains a
@@ -18,15 +18,15 @@ a `NormalizedSourceBundle` containing:
 - normalized content blocks and rectangular tables;
 - normalized links with original `href` text and fragment targets;
 - syntax-level scalar candidates (number, range, date, operator, and unit); and
-- typed warnings for unavailable artifacts, parse failures, OCR routing, invalid JSON,
-  and configured page limits.
+- typed warnings for unavailable artifacts, model-required/model-failed PDFs, and
+  invalid JSON.
 
 Every `NormalizedBlock`, `NormalizedTableCell`, and `NormalizedNote` carries one or
 more `SourceReference` values. A reference combines the stable acquisition item ID
 with its original `SourceLocator` (URL plus block, DOM, PDF-page, or JSON-path
 coordinates). Raw text is retained beside normalized text.
 
-## Deterministic transformations
+## Transformations and the PDF model boundary
 
 HTML blocks retain their type, visibility, parent, heading path, link IDs, Markdown,
 and locator. Links retain their resolved URL, raw `href`, and fragment. Whitespace
@@ -44,11 +44,22 @@ Tables are rebuilt from physical cell coordinates and span metadata. The normali
 - retains cell lists inside the cell; and
 - separates full-width footnotes from data rows while preserving their markers.
 
-Downloaded PDFs first use embedded text extraction. A page below
-`ocr.min_text_chars_per_page` is routed to an injected OCR adapter. If no adapter is
-configured, or OCR fails, the bundle retains available embedded text and reports a
-typed warning; the condition is never hidden. Extraction is bounded by
-`ocr.max_pages`.
+Downloaded PDFs use a deliberately narrow model-backed substep. Python first records
+link/title/heading context, checks effective-date and archive markers, and probes each
+page as `machine_readable`, `image_only`, `mixed`, or `unknown`. The probe discards
+its extracted text; it exists for routing, logging, and audit only. The original PDF
+bytes are then supplied to a tool-free Gemini ADK agent with a strict response schema.
+The response must contain every page exactly once and rectangular tables; Python
+rejects invalid output and converts accepted blocks, tables, notes, and footnotes to
+the same page-addressable normalized structures used downstream.
+
+The default cost-capped sequence is `gemini-3.1-flash-lite`, then
+`gemini-3.5-flash-lite`, then `gemini-3.6-flash`. Transient calls receive bounded
+retries before the next model is tried. Exact results are reusable by PDF SHA-256,
+schema version, prompt version, model, and admission/probe fingerprint.
+The demonstration stores this exact cache under `pdf_extraction/cache` and writes a
+checkpoint JSON file immediately after each completed PDF. Restarting after a later
+failure therefore reuses completed model responses instead of charging for them again.
 
 JSON payloads are flattened only to scalar leaves. Each leaf becomes a key/value
 block with its exact JSON path. Invalid JSON remains available as a raw text block and
@@ -70,6 +81,18 @@ uv run python scripts/demonstrate_normalization.py .temp/acuisition_test/case_00
 The command writes `normalization/` inside that case with the complete bundle,
 flattened block/table/scalar views, rendered Markdown, and a warning/count summary.
 The files are inspection views; `normalized_bundle.json` is the canonical contract.
+
+Inspect PDF routing and estimated cost without a model call, then optionally execute
+the extraction in a separate numbered directory:
+
+```bash
+uv run python scripts/demonstrate_pdf_extraction.py .temp/acuisition_test/case_008
+uv run python scripts/demonstrate_pdf_extraction.py .temp/acuisition_test/case_008 --execute-llm
+```
+
+Preflight writes `pdf_extraction/preflight/`; live runs write
+`pdf_extraction/llm_run_000/`, `llm_run_001/`, and so on, so one mode never overwrites
+the other.
 
 ---
 
@@ -230,7 +253,7 @@ Important fields:
 - `fields`: explicit structure extracted without semantic inference.
 - `scalar_candidates`: numbers, ranges, units, and dates recognized in the block.
 - `source_refs`: evidence pointing back to the acquired source.
-- `extraction_method`: `browser`, `static`, `pdf_text`, `ocr`, `json`, or `text`.
+- `extraction_method`: `browser`, `static`, `gemini_pdf:<model>`, `json`, or `text`.
 
 Examples of `fields` include:
 
@@ -573,7 +596,7 @@ Each document contains:
   "source_type": "pdf",
   "mime_type": "application/pdf",
   "content_sha256": "...",
-  "extraction_method": "pdf_text",
+  "extraction_method": "gemini_pdf:gemini-3.1-flash-lite",
   "quality_score": 1.0,
   "blocks": [],
   "tables": [],
@@ -681,9 +704,8 @@ Possible values include:
 
 - `static`: block came from statically retrieved HTML.
 - `browser`: block came from the rendered browser DOM.
-- `pdf_text`: text came from the PDF’s embedded text layer.
-- `ocr`: text came from OCR.
-- `pdf_text+ocr`: different pages used different methods.
+- `gemini_pdf:<model>`: page structure was transcribed from the native PDF by the
+  named Gemini model and passed deterministic schema/page-coverage validation.
 - `json`: block came from a successfully parsed JSON payload.
 - `text`: payload was retained as ordinary text.
 
@@ -691,16 +713,15 @@ The extraction method helps later verification assess evidence quality.
 
 ### `quality_score`
 
-PDF documents can contain a quality score between `0` and `1`.
-
-It reflects how many processed pages contained enough extracted text after PDF parsing and possible OCR.
+PDF documents contain a quality score between `0` and `1`. It is the fraction of
+pages for which the accepted model response supplied at least one block or table.
 
 Examples:
 
 ```text
-1.0   all processed pages contained sufficient text
-0.5   half of the processed pages contained sufficient text
-0.0   no processed page contained sufficient text
+1.0   every PDF page produced at least one accepted block or table
+0.5   half of the PDF pages produced at least one accepted block or table
+0.0   no PDF page produced an accepted block or table
 ```
 
 This is an extraction-quality signal. It is not a relevance or source-authority score.
@@ -714,12 +735,10 @@ Normalization warnings are structured conditions that require attention.
 Possible warning codes include:
 
 - `ARTIFACT_UNAVAILABLE`: stored source bytes could not be read or verified.
-- `PDF_PARSE_FAILED`: a PDF or PDF page could not be parsed.
-- `OCR_REQUIRED`: a page lacked sufficient embedded text, but no OCR adapter was configured.
-- `OCR_FAILED`: OCR was attempted but failed.
+- `PDF_MODEL_REQUIRED`: PDF bytes were available but no Gemini PDF extractor was configured.
+- `PDF_MODEL_FAILED`: all bounded Gemini extraction attempts failed or returned invalid output.
 - `INVALID_JSON`: a captured JSON response could not be decoded.
 - `AMBIGUOUS_TABLE`: table structure could not be resolved reliably.
-- `PAGE_LIMIT_REACHED`: only the configured maximum number of PDF pages was processed.
 
 A warning does not necessarily invalidate the whole bundle. It identifies a specific source or operation that may be incomplete.
 

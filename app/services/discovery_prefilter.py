@@ -192,10 +192,21 @@ def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
     )
     blocks = list(document.blocks)
     context = _representative_blocks(blocks)
+    table_context = "\n".join(
+        " | ".join(table.headers)
+        + "\n"
+        + "\n".join(" | ".join(cell.text for cell in row.cells) for row in table.rows)
+        for table in document.tables
+    )
+    if table_context:
+        context = _bounded(f"{context}\n{table_context}")
     if not context:
         context = f"Document has no extracted text. URL: {document.source_url}"
     member_ids = tuple(
         member_source_id(document.id, "block", block.id) for block in blocks
+    ) + tuple(
+        member_source_id(document.id, "table", table.id)
+        for table in document.tables
     )
     return _candidate(
         source_id=f"document::{document.id}",
@@ -205,15 +216,35 @@ def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
         heading_path=(),
         context=context,
         member_ids=member_ids,
-        refs=_block_refs(blocks) or (_document_reference(document),),
+        refs=(
+            _block_refs(blocks)
+            + tuple(ref for table in document.tables for ref in table.source_refs)
+        )[:20]
+        or (_document_reference(document),),
         all_hidden=bool(blocks) and all(not block.visible for block in blocks),
-        has_scalars=any(block.scalar_candidates for block in blocks),
-        content_identity=document.content_sha256,
+        has_scalars=(
+            any(block.scalar_candidates for block in blocks)
+            or any(
+                cell.scalar_candidates
+                for table in document.tables
+                for row in table.rows
+                for cell in row.cells
+            )
+        ),
+        content_identity={
+            "sha256": document.content_sha256,
+            "pdf_admission": (
+                document.pdf_admission.model_dump(mode="json")
+                if document.pdf_admission
+                else None
+            ),
+        },
         selection_reason=(
             "API leaves are grouped at payload scope to avoid one model decision per JSON leaf."
             if scope is DiscoveryScope.API_PAYLOAD
             else "Linked documents are first assessed as one source-level unit."
         ),
+        pdf_admission=document.pdf_admission,
     )
 
 
@@ -231,6 +262,7 @@ def _candidate(
     has_scalars: bool,
     content_identity: object,
     selection_reason: str,
+    pdf_admission=None,
 ) -> DiscoveryCandidate:
     structural = {
         "document_url": str(document.source_url),
@@ -259,6 +291,7 @@ def _candidate(
         content_fingerprint=_hash(content),
         structural_fingerprint=_hash(structural),
         selection_reason=selection_reason,
+        pdf_admission=pdf_admission,
     )
 
 

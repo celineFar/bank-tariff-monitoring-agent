@@ -187,20 +187,34 @@ class AcquisitionSettings(SettingsGroup):
     max_linked_documents: int = Field(default=10, ge=0, le=50)
 
 
-class OcrSettings(SettingsGroup):
-    languages: tuple[str, ...] = ("hye", "eng")
-    min_text_chars_per_page: int = Field(default=80, ge=0)
-    dpi: int = Field(default=300, ge=150, le=600)
-    max_pages: int = Field(default=50, ge=1, le=500)
-    timeout_seconds: float = Field(default=60, gt=0, le=600)
+class PdfExtractionSettings(SettingsGroup):
+    schema_version: str = Field(default="2", min_length=1, max_length=50)
+    prompt_version: str = Field(default="2", min_length=1, max_length=50)
+    model_name: str = "gemini-3.1-flash-lite"
+    fallback_model_names: tuple[str, ...] = (
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
+    )
+    max_price_per_million_tokens_usd: float = Field(default=4.0, gt=0, le=100)
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
+    max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
+    retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    probe_text_threshold: int = Field(default=20, ge=0, le=10_000)
 
-    @field_validator("languages")
+    @field_validator("fallback_model_names")
     @classmethod
-    def validate_languages(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        normalized = tuple(dict.fromkeys(value.lower() for value in values))
-        if not normalized:
-            raise ValueError("at least one OCR language is required")
+    def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if len(normalized) > 5 or len(set(normalized)) != len(normalized):
+            raise ValueError("PDF fallback models must be unique and at most five")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_retry_limits(self) -> PdfExtractionSettings:
+        if self.backoff_base_seconds > self.max_backoff_seconds:
+            raise ValueError("PDF extraction base backoff must not exceed maximum")
+        return self
 
 
 class RagSettings(SettingsGroup):
@@ -314,7 +328,7 @@ class Settings(SettingsGroup):
     database: DatabaseSettings
     http: HttpSettings
     acquisition: AcquisitionSettings
-    ocr: OcrSettings
+    pdf_extraction: PdfExtractionSettings
     rag: RagSettings
     source_discovery: SourceDiscoverySettings
     semantic_extraction: SemanticExtractionSettings

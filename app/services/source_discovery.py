@@ -8,6 +8,11 @@ from app.config import SourceDiscoverySettings
 from app.domain.acquisition import SourceType
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle, SourceReference
+from app.domain.pdf_extraction import (
+    PdfAdmissionRelevance,
+    PdfAdmissionRole,
+    PdfTemporalStatus,
+)
 from app.domain.source_discovery import (
     Authority,
     DecisionSource,
@@ -16,6 +21,7 @@ from app.domain.source_discovery import (
     DiscoveryCandidate,
     DiscoveryPromptItem,
     DiscoveryScope,
+    EffectivePeriod,
     ExtractionContext,
     ExtractionContextItem,
     InformationRole,
@@ -258,6 +264,49 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
         TemporalStatus,
         str,
     ] | None = None
+    if (
+        candidate.scope is DiscoveryScope.DOCUMENT
+        and candidate.source_type is SourceType.PDF
+        and candidate.pdf_admission is not None
+        and candidate.pdf_admission.relevance is PdfAdmissionRelevance.RELEVANT
+    ):
+        admission = candidate.pdf_admission
+        role = {
+            PdfAdmissionRole.PRODUCT_TERMS: InformationRole.PRODUCT_TERMS,
+            PdfAdmissionRole.FEES: InformationRole.FEES,
+            PdfAdmissionRole.LEGAL_DISCLOSURE: InformationRole.LEGAL_DISCLOSURE,
+            PdfAdmissionRole.OTHER: InformationRole.OTHER,
+        }[admission.role]
+        temporal = {
+            PdfTemporalStatus.CURRENT: TemporalStatus.CURRENT,
+            PdfTemporalStatus.HISTORICAL: TemporalStatus.POSSIBLY_STALE,
+            PdfTemporalStatus.FUTURE: TemporalStatus.FUTURE,
+            PdfTemporalStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
+            PdfTemporalStatus.UNKNOWN: TemporalStatus.UNKNOWN,
+        }[admission.temporal_status]
+        association = {
+            PdfTemporalStatus.HISTORICAL: ProductAssociation.HISTORICAL_VERSION,
+            PdfTemporalStatus.FUTURE: ProductAssociation.FUTURE_VERSION,
+        }.get(admission.temporal_status, ProductAssociation.CURRENT_PRODUCT)
+        return SourceAssessment(
+            source_id=candidate.source_id,
+            document_id=candidate.document_id,
+            scope=candidate.scope,
+            product_association=association,
+            role=role,
+            relevance=Relevance.RELEVANT,
+            authority=Authority.OFFICIAL_TERMS,
+            temporal_status=temporal,
+            effective_periods=tuple(
+                EffectivePeriod(raw=item.raw, start=item.start, end=item.end)
+                for item in admission.effective_periods
+            ),
+            reason=admission.reason,
+            decision_source=DecisionSource.RULE,
+            input_fingerprint=candidate.content_fingerprint,
+            structural_fingerprint=candidate.structural_fingerprint,
+            source_refs=candidate.source_refs,
+        )
     if candidate.scope is DiscoveryScope.DOCUMENT and candidate.source_type is SourceType.PAGE:
         values = (
             ProductAssociation.CURRENT_PRODUCT,
@@ -419,7 +468,11 @@ def _inherited_assessments(
                 assessment.model_copy(
                     update={
                         "source_id": member_id,
-                        "scope": DiscoveryScope.BLOCK,
+                        "scope": (
+                            DiscoveryScope.TABLE
+                            if "::table::" in member_id
+                            else DiscoveryScope.BLOCK
+                        ),
                         "decision_source": DecisionSource.INHERITED,
                         "inherited_from": assessment.source_id,
                         "input_fingerprint": fingerprint,
@@ -438,6 +491,9 @@ def _member_references(
         for block in document.blocks:
             if block.source_refs:
                 values[f"{document.id}::block::{block.id}"] = block.source_refs[0]
+        for table in document.tables:
+            if table.source_refs:
+                values[f"{document.id}::table::{table.id}"] = table.source_refs[0]
     return values
 
 
@@ -448,7 +504,10 @@ def _build_extraction_context(
 ) -> ExtractionContext:
     items: list[ExtractionContextItem] = []
     for assessment in direct:
-        if assessment.relevance is Relevance.IRRELEVANT:
+        if assessment.relevance is Relevance.IRRELEVANT or assessment.temporal_status in {
+            TemporalStatus.POSSIBLY_STALE,
+            TemporalStatus.FUTURE,
+        }:
             continue
         candidate = candidates[assessment.source_id]
         items.append(

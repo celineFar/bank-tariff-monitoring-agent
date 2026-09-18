@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from app.config import OcrSettings
 from app.domain.acquisition import (
     ContentBlockType,
+    DocumentArtifact,
     PageArtifact,
     SourceType,
     StoredArtifact,
@@ -19,7 +19,7 @@ from app.domain.normalization import (
 )
 from app.services.api_payload_normalizer import normalize_network_payload
 from app.services.block_normalizer import normalize_block
-from app.services.pdf_text_extractor import OcrExtractor, PdfTextExtractor
+from app.services.pdf_extraction import GeminiPdfExtractionService
 from app.services.table_normalizer import normalize_table
 
 
@@ -32,15 +32,12 @@ class StructuralNormalizationService:
 
     def __init__(
         self,
-        ocr_settings: OcrSettings,
         *,
         artifact_reader: ArtifactReader | None = None,
-        ocr_extractor: OcrExtractor | None = None,
+        pdf_extractor: GeminiPdfExtractionService | None = None,
     ) -> None:
         self._artifact_reader = artifact_reader
-        self._pdf_extractor = PdfTextExtractor(
-            ocr_settings, ocr_extractor=ocr_extractor
-        )
+        self._pdf_extractor = pdf_extractor
 
     async def normalize(self, artifact: PageArtifact) -> NormalizedSourceBundle:
         warnings: list[NormalizationWarning] = []
@@ -100,7 +97,7 @@ class StructuralNormalizationService:
             document_id = f"document:{index}:{source_document.sha256[:12]}"
             if self._artifact_reader is None:
                 documents.append(
-                    PdfTextExtractor._empty_document(source_document, document_id)
+                    self._empty_pdf_document(source_document, document_id)
                 )
                 warnings.append(
                     NormalizationWarning(
@@ -114,7 +111,7 @@ class StructuralNormalizationService:
                 content = await self._artifact_reader.read(source_document.artifact)
             except Exception as exc:
                 documents.append(
-                    PdfTextExtractor._empty_document(source_document, document_id)
+                    self._empty_pdf_document(source_document, document_id)
                 )
                 warnings.append(
                     NormalizationWarning(
@@ -124,11 +121,31 @@ class StructuralNormalizationService:
                     )
                 )
                 continue
-            normalized_document, document_warnings = self._pdf_extractor.extract(
-                source_document, content, document_id=document_id
-            )
-            documents.append(normalized_document)
-            warnings.extend(document_warnings)
+            if self._pdf_extractor is None:
+                documents.append(self._empty_pdf_document(source_document, document_id))
+                warnings.append(
+                    NormalizationWarning(
+                        code=NormalizationWarningCode.PDF_MODEL_REQUIRED,
+                        source_id=document_id,
+                        message="No Gemini PDF extractor was configured",
+                    )
+                )
+                continue
+            try:
+                outcome = await self._pdf_extractor.extract(
+                    source_document, content, document_id=document_id
+                )
+            except Exception as exc:
+                documents.append(self._empty_pdf_document(source_document, document_id))
+                warnings.append(
+                    NormalizationWarning(
+                        code=NormalizationWarningCode.PDF_MODEL_FAILED,
+                        source_id=document_id,
+                        message=f"Gemini PDF extraction failed: {exc}",
+                    )
+                )
+                continue
+            documents.append(outcome.normalized_document)
 
         for index, payload in enumerate(artifact.network_payloads):
             document, payload_warnings = normalize_network_payload(payload, index=index)
@@ -140,4 +157,19 @@ class StructuralNormalizationService:
             acquisition_content_hash=artifact.content_hash,
             documents=tuple(documents),
             warnings=tuple(warnings),
+        )
+
+    @staticmethod
+    def _empty_pdf_document(
+        document: DocumentArtifact, document_id: str
+    ) -> NormalizedDocument:
+        return NormalizedDocument(
+            id=document_id,
+            name=document.document_name,
+            source_url=document.final_url,
+            source_type=SourceType.PDF,
+            mime_type=document.mime_type,
+            content_sha256=document.sha256,
+            extraction_method="gemini_pdf_unavailable",
+            quality_score=0,
         )

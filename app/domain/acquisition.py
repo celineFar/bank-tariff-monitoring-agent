@@ -160,6 +160,12 @@ class DocumentArtifact(AcquisitionModel):
     sha256: str
     retrieved_at: datetime
     artifact: StoredArtifact
+    link_id: str | None = Field(default=None, max_length=100)
+    link_text: str = Field(default="", max_length=2000)
+    link_title: str | None = Field(default=None, max_length=2000)
+    origin_block_id: str | None = Field(default=None, max_length=100)
+    origin_heading_path: tuple[str, ...] = ()
+    nearby_text: str = Field(default="", max_length=5000)
 
     @field_validator("sha256")
     @classmethod

@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.config import OcrSettings
 from app.domain.acquisition import (
     AcquisitionMode,
     ContentBlock,
@@ -84,7 +83,7 @@ async def test_service_preserves_table_and_link_relationships() -> None:
         content_hash="a" * 64,
     )
 
-    bundle = await StructuralNormalizationService(OcrSettings()).normalize(artifact)
+    bundle = await StructuralNormalizationService().normalize(artifact)
 
     document = bundle.documents[0]
     assert document.blocks[0].table_id == "t1"

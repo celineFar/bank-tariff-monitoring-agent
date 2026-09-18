@@ -264,9 +264,24 @@ class AcquisitionService:
                     sha256=downloaded.sha256,
                     retrieved_at=downloaded.retrieved_at,
                     artifact=artifact,
+                    link_id=link.id,
+                    link_text=link.text,
+                    link_title=link.title,
+                    **self._document_origin(parsed, link.id),
                 )
             )
         return tuple(documents), tuple(warnings)
+
+    @staticmethod
+    def _document_origin(parsed: ParsedHtml, link_id: str) -> dict[str, object]:
+        for block in parsed.blocks:
+            if link_id in block.link_ids:
+                return {
+                    "origin_block_id": block.id,
+                    "origin_heading_path": block.heading_path,
+                    "nearby_text": block.text[:5000],
+                }
+        return {}
 
     @staticmethod
     def _document_name(link_text: str, url: str) -> str:
@@ -301,7 +316,18 @@ class AcquisitionService:
                 control.model_dump(mode="json")
                 for control in parsed.interactive_controls
             ],
-            "documents": [document.sha256 for document in documents],
+            "documents": [
+                {
+                    "sha256": document.sha256,
+                    "link_id": document.link_id,
+                    "link_text": document.link_text,
+                    "link_title": document.link_title,
+                    "origin_block_id": document.origin_block_id,
+                    "origin_heading_path": document.origin_heading_path,
+                    "nearby_text": document.nearby_text,
+                }
+                for document in documents
+            ],
             "network_payloads": [payload.sha256 for payload in network_payloads],
         }
         encoded = json.dumps(

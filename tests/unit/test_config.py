@@ -20,6 +20,12 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.http.max_retry_delay_seconds == 120
     assert settings.acquisition.browser_enabled is True
     assert settings.acquisition.max_interactions == 100
+    assert settings.pdf_extraction.model_name == "gemini-3.1-flash-lite"
+    assert settings.pdf_extraction.fallback_model_names == (
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
+    )
+    assert settings.pdf_extraction.max_price_per_million_tokens_usd == 4.0
     assert settings.source_discovery.max_items_per_batch == 8
     assert settings.source_discovery.max_chars_per_item == 3000
     assert settings.source_discovery.max_chars_per_batch == 18_000
@@ -38,7 +44,9 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         _env_file=None,
         allowed_source_hosts="AMERIABANK.AM., www.ameriabank.am, ameriabank.am",
         allowed_download_mime_types="application/pdf, text/html,application/pdf",
-        ocr_languages="HYE,eng,hye",
+        pdf_extraction_fallback_model_names=(
+            "gemini-3.5-flash-lite,gemini-3.6-flash"
+        ),
         allow_origins="http://localhost:3000, https://review.example",
         source_discovery_fallback_model_names="gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     )
@@ -51,7 +59,10 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         "application/pdf",
         "text/html",
     )
-    assert settings.ocr.languages == ("hye", "eng")
+    assert settings.pdf_extraction.fallback_model_names == (
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
+    )
     assert settings.http.allow_origins == (
         "http://localhost:3000",
         "https://review.example",
@@ -149,10 +160,10 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("acquisition_max_network_payloads", 201),
         ("acquisition_max_network_payload_bytes", 0),
         ("acquisition_max_linked_documents", 51),
-        ("ocr_min_text_chars_per_page", -1),
-        ("ocr_dpi", 149),
-        ("ocr_max_pages", 0),
-        ("ocr_timeout_seconds", 601),
+        ("pdf_extraction_probe_text_threshold", -1),
+        ("pdf_extraction_max_attempts", 0),
+        ("pdf_extraction_backoff_base_seconds", -1),
+        ("pdf_extraction_max_price_per_million_tokens_usd", 0),
         ("chunk_size_chars", 199),
         ("chunk_overlap_chars", -1),
         ("retrieval_top_k", 0),

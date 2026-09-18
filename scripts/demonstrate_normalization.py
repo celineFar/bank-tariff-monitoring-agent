@@ -7,7 +7,6 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from app.config import load_settings
 from app.domain.acquisition import PageArtifact
 from app.domain.normalization import NormalizedSourceBundle
 from app.services.artifact_store import FileSystemArtifactStore
@@ -72,10 +71,8 @@ def write_normalization_bundle(
 async def demonstrate(case_path: Path) -> Path:
     artifact_path, case_directory = _resolve_case(case_path)
     artifact = PageArtifact.model_validate_json(artifact_path.read_text(encoding="utf-8"))
-    settings = load_settings()
     artifact_root = artifact_path.parent / "artifacts"
     service = StructuralNormalizationService(
-        settings.ocr,
         artifact_reader=FileSystemArtifactStore(artifact_root),
     )
     bundle = await service.normalize(artifact)

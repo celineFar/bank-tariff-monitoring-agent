@@ -5,6 +5,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 _ADK_EXCEPTION_LOGGERS = (
+    "google.adk.workflow._node_runner",
+    "google.adk.runners",
     "google_adk.google.adk.workflow._node_runner",
     "google_adk.google.adk.runners",
 )
