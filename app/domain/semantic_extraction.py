@@ -305,7 +305,7 @@ class ModelFieldResult(ExtractionModel):
     field: ExtractionField
     status: ExtractionStatus
     value_json: str | None = Field(default=None, max_length=50_000)
-    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=100)
+    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=20)
     explanation: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
