@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,15 @@ from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
+
+
+class SourceDiscoveryRunFailed(RuntimeError):
+    def __init__(self, output_directory: Path, error: Exception) -> None:
+        super().__init__(str(error))
+        self.output_directory = output_directory
+        self.error_type = type(error).__name__
+        self.http_status_code = getattr(error, "code", None)
+        self.api_status = getattr(error, "status", None)
 
 
 async def demonstrate(
@@ -113,7 +123,7 @@ async def demonstrate(
                 )
                 continue
             _write_failed_run(output_directory, attempts, exc)
-            raise
+            raise SourceDiscoveryRunFailed(output_directory, exc) from None
 
         attempts.append(_model_attempt(model_name, classifier.usage, None))
         _write_model_attempts(output_directory, attempts)
@@ -659,18 +669,36 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> int:
     args = _parse_args()
-    output_directory = asyncio.run(
-        demonstrate(
-            args.case,
-            ProductType(args.product),
-            execute_llm=args.execute_llm,
+    try:
+        output_directory = asyncio.run(
+            demonstrate(
+                args.case,
+                ProductType(args.product),
+                execute_llm=args.execute_llm,
+            )
         )
-    )
+    except SourceDiscoveryRunFailed as exc:
+        status = (
+            f"HTTP {exc.http_status_code} / {exc.api_status}"
+            if exc.http_status_code
+            else exc.error_type
+        )
+        print(f"Source discovery failed: {status}.", file=sys.stderr)
+        print(
+            f"Failure details: {(exc.output_directory / 'failure.json').resolve()}",
+            file=sys.stderr,
+        )
+        print(
+            "No Python traceback is shown because this was a handled provider/API failure.",
+            file=sys.stderr,
+        )
+        return 1
     mode = "LLM run" if args.execute_llm else "preflight"
     print(f"Source discovery {mode} saved to {output_directory.resolve()}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

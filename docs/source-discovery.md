@@ -111,6 +111,10 @@ decisions. The report lists direct units only and summarizes inherited children.
 failed execution retains its numbered directory and writes `failure.json`; a rerun
 uses the next number.
 
+Handled provider/API failures exit with status code 1 and print a concise status plus
+the `failure.json` path. Dependency tracebacks are suppressed for these expected
+operational failures; unexpected programming errors still retain normal tracebacks.
+
 
 ---
 # Source Discovery Content Explanation

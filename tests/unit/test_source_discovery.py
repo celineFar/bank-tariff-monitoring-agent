@@ -31,8 +31,10 @@ from app.services.source_discovery import (
     SourceDiscoveryService,
 )
 from scripts.demonstrate_source_discovery import (
+    SourceDiscoveryRunFailed,
     _model_sequence,
     _render_classification_results,
+    main,
 )
 
 URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
@@ -43,6 +45,40 @@ def test_model_sequence_preserves_order_and_removes_duplicates() -> None:
         "gemini-3.7-flash",
         ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"),
     ) == ("gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.6-flash")
+
+
+def test_cli_prints_concise_handled_api_failure_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path,
+) -> None:
+    error = ServerError(
+        503,
+        {"error": {"status": "UNAVAILABLE", "message": "high demand"}},
+    )
+
+    async def fail(*args, **kwargs):
+        raise SourceDiscoveryRunFailed(tmp_path, error)
+
+    monkeypatch.setattr(
+        "scripts.demonstrate_source_discovery.demonstrate", fail
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "demonstrate_source_discovery.py",
+            "case_008",
+            "--product",
+            "mortgage",
+            "--execute-llm",
+        ],
+    )
+
+    assert main() == 1
+    captured = capsys.readouterr()
+    assert "HTTP 503 / UNAVAILABLE" in captured.err
+    assert "failure.json" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def _ref(identifier: str, source_type: SourceType = SourceType.PAGE) -> SourceReference:
