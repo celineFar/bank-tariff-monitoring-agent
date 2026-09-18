@@ -20,6 +20,11 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.http.max_retry_delay_seconds == 120
     assert settings.acquisition.browser_enabled is True
     assert settings.acquisition.max_interactions == 100
+    assert settings.source_discovery.max_items_per_batch == 8
+    assert settings.source_discovery.max_chars_per_item == 3000
+    assert settings.source_discovery.max_chars_per_batch == 18_000
+    assert settings.source_discovery.input_price_per_million_tokens_usd == 0.75
+    assert settings.source_discovery.output_price_per_million_tokens_usd == 3.75
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -142,6 +147,9 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("chunk_overlap_chars", -1),
         ("retrieval_top_k", 0),
         ("retrieval_min_score", 1.1),
+        ("source_discovery_max_items_per_batch", 0),
+        ("source_discovery_max_chars_per_item", 499),
+        ("source_discovery_max_chars_per_batch", 999),
         ("hitl_document_rank_gap", 1.1),
         ("hitl_large_rate_change_percentage_points", 0),
         ("schedule_hour", 24),
@@ -173,6 +181,15 @@ def test_production_requires_api_key_and_masks_it() -> None:
     )
     assert isinstance(settings.models.api_key, SecretStr)
     assert "super-secret-value" not in repr(settings)
+
+
+def test_source_discovery_item_limit_cannot_exceed_batch_limit() -> None:
+    with pytest.raises(ValidationError, match="item character limit"):
+        load_settings(
+            _env_file=None,
+            source_discovery_max_chars_per_item=2000,
+            source_discovery_max_chars_per_batch=1000,
+        )
 
 
 def test_settings_factory_is_process_cached() -> None:

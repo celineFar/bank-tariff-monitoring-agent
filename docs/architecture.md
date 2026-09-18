@@ -7,12 +7,14 @@ Daily worker trigger ----+              |
                                         v
                            deterministic pipeline
  discovery -> secure retrieval -> PDF/HTML parse -> OCR fallback
+ -> structural normalization -> cached/rule prefilter -> bounded Gemini source classification
  -> clean/chunk -> PostgreSQL + pgvector -> hybrid retrieval
  -> Gemini evidence-bound extraction -> deterministic validation
  -> snapshot comparison -> HITL routing -> report
 ```
 
-Gemini is restricted to language-dependent intent resolution and structured extraction.
+Gemini is restricted to language-dependent intent resolution, bounded cache-aware
+source classification, and evidence-bound structured extraction.
 All security, persistence, validation, comparison, scheduling, and review routing controls
 are deterministic application services. The ADK agent receives no raw network, filesystem,
 shell, or SQL tool.
@@ -90,6 +92,22 @@ configured threshold. Captured JSON leaves retain exact JSON paths. Raw source t
 and acquisition locators remain attached throughout, so later chunks and extracted
 values can cite the original evidence rather than a rendered Markdown approximation.
 See `docs/normalization.md` for the complete contract and inspection workflow.
+
+## Source discovery boundary
+
+`SourceDiscoveryService` consumes only the normalized bundle. It groups page blocks,
+tables, PDFs, and API payloads into bounded classification units; applies deterministic
+rules; reuses content-addressed PostgreSQL assessments; and sends only unresolved
+semantic cases to a tool-free ADK classifier with strict structured output. Child
+blocks and JSON leaves inherit their container decision, so model use scales with
+semantic novelty rather than raw normalized block count.
+
+Exact reuse requires matching product, content fingerprint, policy version, prompt
+version, and model name. Stable structure with changed content supplies only a prior
+hint and still requires reassessment. Deterministic Python validates response IDs,
+persists assessments, expands inheritance, and constructs the precedence-ordered
+extraction context. See `docs/source-discovery.md` for the full contract and no-LLM
+preflight workflow.
 
 ## RAG index / knowledge-store boundary
 

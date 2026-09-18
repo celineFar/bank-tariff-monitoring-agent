@@ -17,6 +17,7 @@ from app.config.models import (
     RagSettings,
     SchedulerSettings,
     Settings,
+    SourceDiscoverySettings,
 )
 
 
@@ -76,6 +77,28 @@ def load_settings(
             chunk_overlap_chars=raw.chunk_overlap_chars,
             retrieval_top_k=raw.retrieval_top_k,
             retrieval_min_score=raw.retrieval_min_score,
+        ),
+        source_discovery=SourceDiscoverySettings(
+            policy_version=raw.source_discovery_policy_version,
+            prompt_version=raw.source_discovery_prompt_version,
+            max_items_per_batch=raw.source_discovery_max_items_per_batch,
+            max_chars_per_item=raw.source_discovery_max_chars_per_item,
+            max_chars_per_batch=raw.source_discovery_max_chars_per_batch,
+            input_price_per_million_tokens_usd=(
+                raw.source_discovery_input_price_per_million_tokens_usd
+            ),
+            output_price_per_million_tokens_usd=(
+                raw.source_discovery_output_price_per_million_tokens_usd
+            ),
+            estimated_chars_per_input_token=(
+                raw.source_discovery_estimated_chars_per_input_token
+            ),
+            estimated_output_tokens_per_item=(
+                raw.source_discovery_estimated_output_tokens_per_item
+            ),
+            pricing_effective_through=(
+                raw.source_discovery_pricing_effective_through
+            ),
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

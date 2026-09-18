@@ -9,6 +9,7 @@ from app.domain.knowledge import (
 )
 from app.domain.models import ProductType, TariffSnapshot
 from app.domain.retrieval import RetrievalCandidate
+from app.domain.source_discovery import SourceAssessment
 
 
 class SnapshotRepository(Protocol):
@@ -43,3 +44,35 @@ class HybridRetrievalRepository(Protocol):
         query_embedding: Sequence[float],
         limit: int,
     ) -> Sequence[RetrievalCandidate]: ...
+
+
+class SourceDiscoveryRepository(Protocol):
+    async def get_exact(
+        self,
+        *,
+        product: ProductType,
+        policy_version: str,
+        prompt_version: str,
+        model_name: str,
+        content_fingerprints: Sequence[str],
+    ) -> dict[str, SourceAssessment]: ...
+
+    async def get_structural_priors(
+        self,
+        *,
+        product: ProductType,
+        policy_version: str,
+        prompt_version: str,
+        model_name: str,
+        structural_fingerprints: Sequence[str],
+    ) -> dict[str, SourceAssessment]: ...
+
+    async def save(
+        self,
+        *,
+        product: ProductType,
+        policy_version: str,
+        prompt_version: str,
+        model_name: str,
+        assessments: Sequence[SourceAssessment],
+    ) -> None: ...

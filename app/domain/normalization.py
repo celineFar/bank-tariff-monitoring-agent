@@ -177,6 +177,10 @@ class NormalizedLink(NormalizationModel):
     fragment: str | None = None
     text: str = ""
     title: str | None = None
+    rel: tuple[str, ...] = ()
+    declared_mime_type: str | None = None
+    same_allowlisted_source: bool = True
+    downloadable: bool = False
     source_refs: tuple[SourceReference, ...] = Field(min_length=1)
 
 

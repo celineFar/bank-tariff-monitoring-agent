@@ -7,9 +7,9 @@ once; `load_settings` then validates and groups them. Copy `.env.example` to
 `.env` and never commit a real API key.
 
 The service-facing groups are `application`, `models`, `database`, `http`,
-`acquisition`, `ocr`, `rag`, `hitl`, `scheduler`, and `observability`. A component should receive only
-the group it needs—for example, a downloader receives `settings.http` and an OCR
-service receives `settings.ocr`.
+`acquisition`, `ocr`, `rag`, `source_discovery`, `hitl`, `scheduler`, and
+`observability`. A component should receive only the group it needs—for example, a
+downloader receives `settings.http` and an OCR service receives `settings.ocr`.
 
 ## Setting groups
 
@@ -35,6 +35,17 @@ service receives `settings.ocr`.
   `OCR_MAX_PAGES`, and `OCR_TIMEOUT_SECONDS`.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
+- **Source discovery:** `SOURCE_DISCOVERY_POLICY_VERSION`,
+  `SOURCE_DISCOVERY_PROMPT_VERSION`, `SOURCE_DISCOVERY_MAX_ITEMS_PER_BATCH`,
+  `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`, and
+  `SOURCE_DISCOVERY_MAX_CHARS_PER_BATCH`. Preflight cost assumptions use
+  `SOURCE_DISCOVERY_INPUT_PRICE_PER_MILLION_TOKENS_USD`,
+  `SOURCE_DISCOVERY_OUTPUT_PRICE_PER_MILLION_TOKENS_USD`,
+  `SOURCE_DISCOVERY_ESTIMATED_CHARS_PER_INPUT_TOKEN`,
+  `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`, and
+  `SOURCE_DISCOVERY_PRICING_EFFECTIVE_THROUGH`. Policy, prompt, model, product, and
+  content fingerprints jointly define exact cache reuse. Changing either version
+  deliberately invalidates the corresponding cached assessments.
 - **HITL:** `HITL_DOCUMENT_RANK_GAP` and
   `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`.
 - **Scheduling:** `SCHEDULE_TIMEZONE`, `SCHEDULE_HOUR`, and

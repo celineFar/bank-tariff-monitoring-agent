@@ -12,6 +12,7 @@ from app.config.models import (
     RagSettings,
     SchedulerSettings,
     Settings,
+    SourceDiscoverySettings,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "RagSettings",
     "SchedulerSettings",
     "Settings",
+    "SourceDiscoverySettings",
     "get_settings",
     "load_settings",
 ]

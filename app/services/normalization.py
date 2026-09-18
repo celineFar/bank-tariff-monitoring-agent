@@ -81,6 +81,10 @@ class StructuralNormalizationService:
                         fragment=link.fragment,
                         text=link.text,
                         title=link.title,
+                        rel=link.rel,
+                        declared_mime_type=link.declared_mime_type,
+                        same_allowlisted_source=link.same_allowlisted_source,
+                        downloadable=link.downloadable,
                         source_refs=(
                             SourceReference(
                                 source_item_id=link.id, locator=link.locator

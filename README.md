@@ -1,15 +1,16 @@
 # Ameria Tariff Monitor
 
 An evidence-backed Google ADK prototype for monitoring Ameria Bank consumer-loan
-and mortgage tariffs. Gemini handles intent resolution and evidence-bound extraction;
+and mortgage tariffs. Gemini handles intent resolution, bounded cache-aware source
+classification, and evidence-bound extraction;
 security controls, ingestion, validation, persistence, comparison, scheduling, and
 HITL routing are deterministic.
 
-The repository contains the project scaffold, deterministic page acquisition, secure PDF
-retrieval, a transactional PostgreSQL/pgvector knowledge store, and hybrid retrieval.
-Source discovery, PDF parsing/OCR, semantic extraction, verification, and snapshot
-repositories remain later implementation phases; unimplemented HTTP operations return
-`501` rather than fabricating results.
+The repository contains the project scaffold, deterministic acquisition, structural
+normalization, cache-aware source discovery, secure PDF retrieval and text/OCR routing,
+a transactional PostgreSQL/pgvector knowledge store, and hybrid retrieval. Semantic
+tariff extraction, verification, and snapshot comparison remain later implementation
+phases; unimplemented HTTP operations return `501` rather than fabricating results.
 
 ## Runtime
 
@@ -20,8 +21,10 @@ repositories remain later implementation phases; unimplemented HTTP operations r
 - Docker Compose for a single AWS compute instance
 
 See [the architecture](docs/architecture.md), [configuration reference](docs/configuration.md),
-[acquisition design](docs/acquisition.md), [knowledge-store design](docs/knowledge-store.md),
-and [.agents-cli-spec.md](.agents-cli-spec.md).
+[acquisition design](docs/acquisition.md), [normalization design](docs/normalization.md),
+[source-discovery design](docs/source-discovery.md),
+[knowledge-store design](docs/knowledge-store.md), and
+[.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
 
