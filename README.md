@@ -8,9 +8,10 @@ HITL routing are deterministic.
 
 The repository contains the project scaffold, deterministic acquisition, structural
 normalization, cache-aware source discovery, secure PDF retrieval and text/OCR routing,
-a transactional PostgreSQL/pgvector knowledge store, and hybrid retrieval. Semantic
-tariff extraction, verification, and snapshot comparison remain later implementation
-phases; unimplemented HTTP operations return `501` rather than fabricating results.
+a transactional PostgreSQL/pgvector knowledge store, hybrid retrieval, and bounded
+evidence-linked semantic extraction. Claim generation, verification, and snapshot
+comparison remain later implementation phases; unimplemented HTTP operations return
+`501` rather than fabricating results.
 
 ## Runtime
 
@@ -23,6 +24,7 @@ phases; unimplemented HTTP operations return `501` rather than fabricating resul
 See [the architecture](docs/architecture.md), [configuration reference](docs/configuration.md),
 [acquisition design](docs/acquisition.md), [normalization design](docs/normalization.md),
 [source-discovery design](docs/source-discovery.md),
+[semantic-extraction design](docs/semantic-extraction.md),
 [knowledge-store design](docs/knowledge-store.md), and
 [.agents-cli-spec.md](.agents-cli-spec.md).
 

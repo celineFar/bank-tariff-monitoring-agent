@@ -7,8 +7,8 @@ once; `load_settings` then validates and groups them. Copy `.env.example` to
 `.env` and never commit a real API key.
 
 The service-facing groups are `application`, `models`, `database`, `http`,
-`acquisition`, `ocr`, `rag`, `source_discovery`, `hitl`, `scheduler`, and
-`observability`. A component should receive only the group it needs—for example, a
+`acquisition`, `ocr`, `rag`, `source_discovery`, `semantic_extraction`, `hitl`,
+`scheduler`, and `observability`. A component should receive only the group it needs—for example, a
 downloader receives `settings.http` and an OCR service receives `settings.ocr`.
 
 ## Setting groups
@@ -53,6 +53,14 @@ downloader receives `settings.http` and an OCR service receives `settings.ocr`.
   prompt, model, product, and
   content fingerprints jointly define exact cache reuse. Changing either version
   deliberately invalidates the corresponding cached assessments.
+- **Semantic extraction:** `SEMANTIC_EXTRACTION_SCHEMA_VERSION`,
+  `SEMANTIC_EXTRACTION_PROMPT_VERSION`,
+  `SEMANTIC_EXTRACTION_MAX_EVIDENCE_CHARS_PER_ITEM`,
+  `SEMANTIC_EXTRACTION_MAX_CHARS_PER_BATCH`, and
+  `SEMANTIC_EXTRACTION_MAX_ITEMS_PER_BATCH`. Schema, prompt, model, product, and
+  selected-evidence fingerprints jointly define exact extraction-batch cache reuse.
+  The demonstration command uses the source-discovery retry, fallback-model, and
+  price-ceiling settings for live calls.
 - **HITL:** `HITL_DOCUMENT_RANK_GAP` and
   `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`.
 - **Scheduling:** `SCHEDULE_TIMEZONE`, `SCHEDULE_HOUR`, and

@@ -16,6 +16,7 @@ from app.config.models import (
     OcrSettings,
     RagSettings,
     SchedulerSettings,
+    SemanticExtractionSettings,
     Settings,
     SourceDiscoverySettings,
 )
@@ -104,6 +105,15 @@ def load_settings(
             max_price_per_million_tokens_usd=(
                 raw.source_discovery_max_price_per_million_tokens_usd
             ),
+        ),
+        semantic_extraction=SemanticExtractionSettings(
+            schema_version=raw.semantic_extraction_schema_version,
+            prompt_version=raw.semantic_extraction_prompt_version,
+            max_evidence_chars_per_item=(
+                raw.semantic_extraction_max_evidence_chars_per_item
+            ),
+            max_chars_per_batch=raw.semantic_extraction_max_chars_per_batch,
+            max_items_per_batch=raw.semantic_extraction_max_items_per_batch,
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

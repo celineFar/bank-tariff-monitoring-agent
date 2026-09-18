@@ -109,6 +109,25 @@ persists assessments, expands inheritance, and constructs the precedence-ordered
 extraction context. See `docs/source-discovery.md` for the full contract and no-LLM
 preflight workflow.
 
+## Semantic extraction boundary
+
+`SemanticExtractionService` combines the normalized source bundle with the accepted
+source-discovery assessments. It deterministically restores full normalized blocks,
+table rows, and notes; assigns immutable evidence IDs; groups fields into bounded
+packets; and sends only uncached packets to a tool-free ADK agent with a strict
+structured response schema. The model cannot browse, fetch documents, query storage,
+or alter the evidence packet.
+
+Python requires an exact response field set, known evidence IDs, and citation quotes
+that occur verbatim in the cited evidence. It then parses every value into the rich
+`LoanProduct` contract, retains explicit `found`, `not_stated`, `ambiguous`, or
+`conflicting` states, and hydrates citations with the original source locator. Exact
+batch reuse requires matching product, schema version, prompt version, model name,
+and selected-evidence fingerprint. PostgreSQL migration
+`004_semantic_extraction.sql` owns that cache. Claim generation, cross-source
+verification/repair, snapshot comparison, and HITL decisions remain downstream.
+See `docs/semantic-extraction.md` for the complete contract and demonstration flow.
+
 ## RAG index / knowledge-store boundary
 
 `KnowledgeIndexer` accepts page-aware chunks from the future chunking component,

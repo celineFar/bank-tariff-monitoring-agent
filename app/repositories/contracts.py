@@ -9,6 +9,7 @@ from app.domain.knowledge import (
 )
 from app.domain.models import ProductType, TariffSnapshot
 from app.domain.retrieval import RetrievalCandidate
+from app.domain.semantic_extraction import ExtractionBatchResponse
 from app.domain.source_discovery import SourceAssessment
 
 
@@ -75,4 +76,26 @@ class SourceDiscoveryRepository(Protocol):
         prompt_version: str,
         model_name: str,
         assessments: Sequence[SourceAssessment],
+    ) -> None: ...
+
+
+class SemanticExtractionRepository(Protocol):
+    async def get_exact(
+        self,
+        *,
+        product: ProductType,
+        schema_version: str,
+        prompt_version: str,
+        model_name: str,
+        fingerprints: Sequence[str],
+    ) -> dict[str, ExtractionBatchResponse]: ...
+
+    async def save(
+        self,
+        *,
+        product: ProductType,
+        schema_version: str,
+        prompt_version: str,
+        model_name: str,
+        values: Sequence[tuple[str, ExtractionBatchResponse]],
     ) -> None: ...

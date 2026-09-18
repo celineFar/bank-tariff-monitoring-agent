@@ -11,6 +11,7 @@ from app.config.models import (
     OcrSettings,
     RagSettings,
     SchedulerSettings,
+    SemanticExtractionSettings,
     Settings,
     SourceDiscoverySettings,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "OcrSettings",
     "RagSettings",
     "SchedulerSettings",
+    "SemanticExtractionSettings",
     "Settings",
     "SourceDiscoverySettings",
     "get_settings",

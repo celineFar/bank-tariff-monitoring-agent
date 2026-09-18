@@ -259,6 +259,22 @@ class SourceDiscoverySettings(SettingsGroup):
         return self
 
 
+class SemanticExtractionSettings(SettingsGroup):
+    schema_version: str = Field(default="1", min_length=1, max_length=50)
+    prompt_version: str = Field(default="1", min_length=1, max_length=50)
+    max_evidence_chars_per_item: int = Field(default=5000, ge=500, le=20_000)
+    max_chars_per_batch: int = Field(default=20_000, ge=1000, le=100_000)
+    max_items_per_batch: int = Field(default=20, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_batch_limits(self) -> SemanticExtractionSettings:
+        if self.max_evidence_chars_per_item > self.max_chars_per_batch:
+            raise ValueError(
+                "semantic extraction item character limit must not exceed batch limit"
+            )
+        return self
+
+
 class HitlSettings(SettingsGroup):
     document_rank_gap: float = Field(default=0.05, ge=0, le=1)
     large_rate_change_percentage_points: float = Field(default=3, gt=0)
@@ -301,6 +317,7 @@ class Settings(SettingsGroup):
     ocr: OcrSettings
     rag: RagSettings
     source_discovery: SourceDiscoverySettings
+    semantic_extraction: SemanticExtractionSettings
     hitl: HitlSettings
     scheduler: SchedulerSettings
     observability: ObservabilitySettings
