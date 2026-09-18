@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 from collections.abc import Sequence
@@ -43,6 +44,7 @@ from app.domain.semantic_extraction import (
 )
 from app.domain.source_discovery import SourceDiscoveryResult
 from app.repositories.contracts import SemanticExtractionRepository
+from app.services.adk_logging import suppress_handled_adk_exception_logs
 from app.services.discovery_classifier import ClassifierUsage, is_retryable_api_error
 from app.services.extraction_evidence import build_evidence_catalog
 from app.services.extraction_planner import build_extraction_batches
@@ -54,7 +56,9 @@ You extract loan-product facts only from the supplied official evidence.
 Return exactly one result for every requested field and no other fields.
 Never use general banking knowledge or infer an unstated value.
 
-For found values, use the documented JSON shape for the field, preserve ranges,
+For found values, put the documented value in value_json as a compact, valid JSON
+string. For example, category uses value_json="\\\"consumer_loan\\\"" and a list
+uses value_json="[\\\"purchase\\\"]". Preserve ranges,
 currencies, units, conditions, formulas, and nominal-versus-effective distinctions,
 and cite one or more supplied evidence_id values with a short verbatim quote.
 Use not_stated when the supplied evidence does not state the field, ambiguous when
@@ -189,24 +193,25 @@ class AdkSemanticExtractor:
             user_id="tariff-pipeline",
         )
         final_text: str | None = None
-        async for event in self._runner.run_async(
-            user_id="tariff-pipeline",
-            session_id=session.id,
-            new_message=types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=build_extraction_prompt(batch))],
-            ),
-        ):
-            if event.is_final_response() and event.usage_metadata:
-                metadata = event.usage_metadata
-                self.usage.input_tokens += metadata.prompt_token_count or 0
-                self.usage.output_tokens += metadata.candidates_token_count or 0
-                self.usage.thinking_tokens += metadata.thoughts_token_count or 0
-                self.usage.total_tokens += metadata.total_token_count or 0
-            if event.is_final_response() and event.content and event.content.parts:
-                text = "".join(part.text or "" for part in event.content.parts)
-                if text:
-                    final_text = text
+        with suppress_handled_adk_exception_logs():
+            async for event in self._runner.run_async(
+                user_id="tariff-pipeline",
+                session_id=session.id,
+                new_message=types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=build_extraction_prompt(batch))],
+                ),
+            ):
+                if event.is_final_response() and event.usage_metadata:
+                    metadata = event.usage_metadata
+                    self.usage.input_tokens += metadata.prompt_token_count or 0
+                    self.usage.output_tokens += metadata.candidates_token_count or 0
+                    self.usage.thinking_tokens += metadata.thoughts_token_count or 0
+                    self.usage.total_tokens += metadata.total_token_count or 0
+                if event.is_final_response() and event.content and event.content.parts:
+                    text = "".join(part.text or "" for part in event.content.parts)
+                    if text:
+                        final_text = text
         if final_text is None:
             raise RuntimeError("semantic extractor returned no final response")
         return ExtractionBatchResponse.model_validate_json(_strip_fence(final_text))
@@ -376,7 +381,7 @@ def assemble_loan_product(
         raise ValueError("extractor results do not contain loan category")
     if category_result.status is not ExtractionStatus.FOUND:
         raise ValueError("loan category must be found before product assembly")
-    category = LoanCategory(str(category_result.value))
+    category = LoanCategory(_decode_value(category_result))
     if plan.product is ProductType.MORTGAGE and category is not LoanCategory.MORTGAGE:
         raise ValueError("mortgage discovery cannot produce a non-mortgage category")
     if (
@@ -391,8 +396,8 @@ def assemble_loan_product(
             status=ExtractionStatus.NOT_STATED,
         )
         parsed = None
-        if result.value is not None:
-            parsed = TypeAdapter(adapter).validate_python(result.value)
+        if result.value_json is not None:
+            parsed = TypeAdapter(adapter).validate_python(_decode_value(result))
         citations = tuple(
             _hydrate_citation(citation.evidence_id, citation.quote, evidence)
             for citation in result.evidence
@@ -515,3 +520,14 @@ def _strip_fence(value: str) -> str:
     if lines and lines[-1].strip() == "```":
         lines.pop()
     return "\n".join(lines).strip()
+
+
+def _decode_value(result: ModelFieldResult) -> Any:
+    if result.value_json is None:
+        return None
+    try:
+        return json.loads(result.value_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"extractor returned invalid value_json for {result.field.value}"
+        ) from exc

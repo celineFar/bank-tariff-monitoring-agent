@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceLocator, SourceType
 from app.domain.models import ProductType
@@ -304,17 +304,17 @@ class ModelCitation(ExtractionModel):
 class ModelFieldResult(ExtractionModel):
     field: ExtractionField
     status: ExtractionStatus
-    value: JsonValue | None = None
+    value_json: str | None = Field(default=None, max_length=50_000)
     evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=100)
     explanation: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def validate_state(self) -> ModelFieldResult:
         if self.status is ExtractionStatus.FOUND:
-            if self.value is None or not self.evidence:
+            if self.value_json is None or not self.evidence:
                 raise ValueError("found model result requires value and evidence")
         elif self.status is ExtractionStatus.NOT_STATED:
-            if self.value is not None or self.evidence:
+            if self.value_json is not None or self.evidence:
                 raise ValueError("not_stated model result requires no value or evidence")
         elif not self.evidence:
             raise ValueError("ambiguous/conflicting model result requires evidence")

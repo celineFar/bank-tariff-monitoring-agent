@@ -24,7 +24,6 @@ from app.services.semantic_extraction import (
     SemanticExtractionService,
 )
 
-
 SEMANTIC_EXTRACTION_LOGGER = "app.services.semantic_extraction"
 
 
@@ -243,7 +242,7 @@ def _render_results(result: SemanticExtractionResult) -> str:
                     f"Status: **{item.status.value}**",
                     "",
                     "```json",
-                    json.dumps(item.value, ensure_ascii=False, indent=2),
+                    _pretty_value(item.value_json),
                     "```",
                     "",
                 )
@@ -273,6 +272,15 @@ def _cost_estimate(plan: SemanticExtractionPlan) -> dict[str, Any]:
         "pricing_source": price.source,
         "assumptions": "4 input characters/token and 250 output tokens/field",
     }
+
+
+def _pretty_value(value_json: str | None) -> str:
+    if value_json is None:
+        return "null"
+    try:
+        return json.dumps(json.loads(value_json), ensure_ascii=False, indent=2)
+    except json.JSONDecodeError:
+        return value_json
 
 
 def _attempt(

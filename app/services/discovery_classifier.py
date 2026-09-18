@@ -14,6 +14,7 @@ from google.genai import types
 from google.genai.errors import APIError
 
 from app.domain.source_discovery import DiscoveryBatch, DiscoveryBatchResponse
+from app.services.adk_logging import suppress_handled_adk_exception_logs
 
 SOURCE_DISCOVERY_INSTRUCTION = """
 You classify official-bank source material for a tariff-monitoring pipeline.
@@ -118,24 +119,25 @@ class AdkSourceDiscoveryClassifier:
         )
         prompt = build_classifier_prompt(batch)
         final_text: str | None = None
-        async for event in self._runner.run_async(
-            user_id=user_id,
-            session_id=session.id,
-            new_message=types.Content(
-                role="user", parts=[types.Part.from_text(text=prompt)]
-            ),
-        ):
-            if event.is_final_response() and event.usage_metadata:
-                metadata = event.usage_metadata
-                thinking = metadata.thoughts_token_count or 0
-                self.usage.input_tokens += metadata.prompt_token_count or 0
-                self.usage.output_tokens += metadata.candidates_token_count or 0
-                self.usage.thinking_tokens += thinking
-                self.usage.total_tokens += metadata.total_token_count or 0
-            if event.is_final_response() and event.content and event.content.parts:
-                text_parts = [part.text for part in event.content.parts if part.text]
-                if text_parts:
-                    final_text = "".join(text_parts)
+        with suppress_handled_adk_exception_logs():
+            async for event in self._runner.run_async(
+                user_id=user_id,
+                session_id=session.id,
+                new_message=types.Content(
+                    role="user", parts=[types.Part.from_text(text=prompt)]
+                ),
+            ):
+                if event.is_final_response() and event.usage_metadata:
+                    metadata = event.usage_metadata
+                    thinking = metadata.thoughts_token_count or 0
+                    self.usage.input_tokens += metadata.prompt_token_count or 0
+                    self.usage.output_tokens += metadata.candidates_token_count or 0
+                    self.usage.thinking_tokens += thinking
+                    self.usage.total_tokens += metadata.total_token_count or 0
+                if event.is_final_response() and event.content and event.content.parts:
+                    text_parts = [part.text for part in event.content.parts if part.text]
+                    if text_parts:
+                        final_text = "".join(text_parts)
         if final_text is None:
             raise RuntimeError("source discovery classifier returned no final response")
         return DiscoveryBatchResponse.model_validate_json(_strip_json_fence(final_text))

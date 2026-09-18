@@ -139,14 +139,14 @@ class FakeExtractor:
                 result = ModelFieldResult(
                     field=field,
                     status=ExtractionStatus.FOUND,
-                    value="consumer_loan",
+                    value_json='"consumer_loan"',
                     evidence=(citation,),
                 )
             elif field is ExtractionField.PRODUCT_NAME:
                 result = ModelFieldResult(
                     field=field,
                     status=ExtractionStatus.FOUND,
-                    value="Consumer loan",
+                    value_json='"Consumer loan"',
                     evidence=(citation,),
                 )
             else:
@@ -160,6 +160,14 @@ class FakeExtractor:
 def test_found_value_requires_evidence() -> None:
     with pytest.raises(ValidationError):
         ExtractedValue[str](value="Consumer loan", status=ExtractionStatus.FOUND)
+
+
+def test_model_response_schema_uses_portable_json_string() -> None:
+    schema = ExtractionBatchResponse.model_json_schema()
+    value_schema = schema["$defs"]["ModelFieldResult"]["properties"]["value_json"]
+
+    assert value_schema["anyOf"][0]["type"] == "string"
+    assert "JsonValue" not in schema["$defs"]
 
 
 def test_evidence_catalog_restores_full_normalized_content() -> None:
@@ -198,17 +206,10 @@ def test_response_rejects_invented_or_non_verbatim_citation() -> None:
             ModelFieldResult(
                 field=ExtractionField.INTEREST_RATE,
                 status=ExtractionStatus.FOUND,
-                value=[
-                    {
-                        "value": {
-                            "min": 20,
-                            "max": 20,
-                            "rate_type": "fixed",
-                            "basis": "annual",
-                        },
-                        "conditions": [],
-                    }
-                ],
+                value_json=(
+                    '[{"value":{"min":20,"max":20,"rate_type":"fixed",'
+                    '"basis":"annual"},"conditions":[]}]'
+                ),
                 evidence=(
                     ModelCitation(
                         evidence_id=evidence.evidence_id,
