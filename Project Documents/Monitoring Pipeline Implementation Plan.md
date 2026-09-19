@@ -609,14 +609,14 @@ Implementation record (2026-09-19):
 
 ### I. Vertical-slice verification
 
-- [ ] Exercise `consumer_standard` as the first end-to-end integration slice.
-- [ ] Cover API submit -> queued run -> worker claim -> pipeline -> publication -> run
+- [x] Exercise `consumer_standard` as the first end-to-end integration slice.
+- [x] Cover API submit -> queued run -> worker claim -> pipeline -> publication -> run
       status using fakes/fixtures by default.
-- [ ] Verify unchanged reruns are idempotent and produce no false changes.
-- [ ] Verify one failing sibling produces family `PARTIAL_SUCCESS` without rolling back
+- [x] Verify unchanged reruns are idempotent and produce no false changes.
+- [x] Verify one failing sibling produces family `PARTIAL_SUCCESS` without rolling back
       successful offerings.
-- [ ] Verify a question uses the index only and never triggers acquisition.
-- [ ] Keep live network/Gemini/PostgreSQL tests opt-in and clearly marked.
+- [x] Verify a question uses the index only and never triggers acquisition.
+- [x] Keep live network/Gemini/PostgreSQL tests opt-in and clearly marked.
 
 ### J. Documentation and checklist reconciliation
 
