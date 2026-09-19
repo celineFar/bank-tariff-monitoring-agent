@@ -49,6 +49,7 @@ from app.services.pipeline_audit import (
     render_review_queue,
     render_semantic_extraction,
     render_source_selection,
+    render_source_selection_diff,
     render_unparsed_pre_validation,
 )
 from app.services.semantic_extraction import (
@@ -194,8 +195,12 @@ async def demonstrate(
         if isinstance(exc, ModelSequenceError):
             _write_json(discovery_directory / "plan.json", exc.plan)
             _write_json(discovery_directory / "model_attempts.json", exc.attempts)
-        (discovery_directory / "selection.md").write_text(
+        (discovery_directory / "selection_decisions.md").write_text(
             render_source_selection(bundle, None, error=failure), encoding="utf-8"
+        )
+        (discovery_directory / "selection_diff.md").write_text(
+            render_source_selection_diff(bundle, None, error=failure),
+            encoding="utf-8",
         )
         _write_json(
             discovery_directory / "failure.json",
@@ -209,8 +214,11 @@ async def demonstrate(
     _write_json(discovery_directory / "plan.json", discovery_plan)
     _write_json(discovery_directory / "result.json", discovery_result)
     _write_json(discovery_directory / "model_attempts.json", discovery_attempts)
-    (discovery_directory / "selection.md").write_text(
+    (discovery_directory / "selection_decisions.md").write_text(
         render_source_selection(bundle, discovery_result), encoding="utf-8"
+    )
+    (discovery_directory / "selection_diff.md").write_text(
+        render_source_selection_diff(bundle, discovery_result), encoding="utf-8"
     )
 
     semantic_directory = output / "semantic-extraction"

@@ -130,7 +130,7 @@ def render_source_selection(
 ) -> str:
     assessments = _assessment_index(result.assessments if result else ())
     parts = [
-        "# Source-discovery selection",
+        "# Source-discovery selection decisions",
         "",
         "This is the normalized content in its original document order with a "
         "source-discovery semantic overlay. The labels are annotations; the content "
@@ -197,6 +197,90 @@ def render_source_selection(
                     "",
                 )
             )
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def render_source_selection_diff(
+    bundle: NormalizedSourceBundle,
+    result: SourceDiscoveryResult | None,
+    *,
+    error: Exception | None = None,
+) -> str:
+    """Render normalized source structure with selection decisions inline."""
+    assessments = _assessment_index(result.assessments if result else ())
+    parts = [
+        "# Source-discovery selection diff",
+        "",
+        "This report preserves the normalized document order and Markdown structure. "
+        "Green content is retained for semantic extraction, orange content is retained "
+        "with uncertainty, and red strikethrough content is removed from extraction "
+        "evidence. The text itself is not rewritten.",
+        "",
+        '<span style="background:#e6ffed;color:#116329;padding:0.1em 0.25em;">'
+        "retained</span> &nbsp; "
+        '<span style="background:#fff4e5;color:#b54708;padding:0.1em 0.25em;">'
+        "retained with uncertainty</span> &nbsp; "
+        '<span style="background:#ffe6e6;color:#b42318;padding:0.1em 0.25em;">'
+        "<del>removed</del></span>",
+        "",
+    ]
+    if error is not None:
+        parts.extend(
+            (
+                "## Stage error",
+                "",
+                f"**{type(error).__name__}:** {_safe(str(error))}",
+                "",
+                "No completed selection exists; content below is shown without a "
+                "keep/remove decision.",
+                "",
+            )
+        )
+    for document in bundle.documents:
+        parts.extend(
+            (
+                "---",
+                "",
+                f"## {_safe(document.name)}",
+                "",
+                f"Source: <{document.source_url}>",
+                "",
+            )
+        )
+        table_by_id = {table.id: table for table in document.tables}
+        rendered_tables: set[str] = set()
+        for block in document.blocks:
+            if block.type is NormalizedBlockType.TABLE and block.table_id:
+                table = table_by_id.get(block.table_id)
+                if table is not None:
+                    parts.extend(
+                        _render_source_diff_table(
+                            table,
+                            assessments.get(table.id),
+                            decisions_available=result is not None,
+                        )
+                    )
+                    rendered_tables.add(table.id)
+                continue
+            parts.extend(
+                (
+                    _render_source_diff_block(
+                        block,
+                        assessments.get(block.id),
+                        decisions_available=result is not None,
+                    ),
+                    "",
+                )
+            )
+        for table in document.tables:
+            if table.id not in rendered_tables:
+                parts.extend(
+                    _render_source_diff_table(
+                        table,
+                        assessments.get(table.id),
+                        decisions_available=result is not None,
+                    )
+                )
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -585,6 +669,133 @@ def _render_discovery_table(
     for note in table.notes:
         parts.extend((f"> {_safe(note.text)}", ""))
     return tuple(parts)
+
+
+def _render_source_diff_block(
+    block: NormalizedBlock,
+    assessment: SourceAssessment | None,
+    *,
+    decisions_available: bool,
+) -> str:
+    color, removed = _source_diff_appearance(
+        assessment, decisions_available=decisions_available
+    )
+    lines = [
+        _source_diff_highlight(line, color=color, removed=removed)
+        for line in block.text.splitlines()
+    ] or [""]
+    if block.type is NormalizedBlockType.HEADING:
+        level = min(max(len(block.heading_path), 1) + 1, 6)
+        return f"{'#' * level} " + "<br>".join(lines)
+    if block.type is NormalizedBlockType.LIST:
+        return "\n".join(f"- {line}" for line in lines if line.strip())
+    if block.type is NormalizedBlockType.CARD and block.fields:
+        title = _source_diff_highlight(
+            block.fields.get("title", ""), color=color, removed=removed
+        )
+        body = _source_diff_highlight(
+            block.fields.get("body", ""), color=color, removed=removed
+        )
+        return f"### {title}\n\n{body}".strip()
+    return "  \n".join(lines)
+
+
+def _render_source_diff_table(
+    table: NormalizedTable,
+    assessment: SourceAssessment | None,
+    *,
+    decisions_available: bool,
+) -> tuple[str, ...]:
+    color, removed = _source_diff_appearance(
+        assessment, decisions_available=decisions_available
+    )
+    parts: list[str] = []
+    if table.title:
+        parts.extend(
+            (
+                "### "
+                + _source_diff_highlight(table.title, color=color, removed=removed),
+                "",
+            )
+        )
+    width = len(table.headers) or (len(table.rows[0].cells) if table.rows else 0)
+    if width:
+        headers = table.headers or tuple(f"Column {index + 1}" for index in range(width))
+        parts.extend(
+            (
+                "| "
+                + " | ".join(
+                    _cell(
+                        _source_diff_highlight(
+                            value, color=color, removed=removed
+                        )
+                    )
+                    for value in headers
+                )
+                + " |",
+                "| " + " | ".join("---" for _ in range(width)) + " |",
+            )
+        )
+        for row in table.rows:
+            parts.append(
+                "| "
+                + " | ".join(
+                    _cell(
+                        _source_diff_highlight(
+                            cell.text, color=color, removed=removed
+                        )
+                    )
+                    for cell in row.cells
+                )
+                + " |"
+            )
+        parts.append("")
+    for note in table.notes:
+        parts.extend(
+            (
+                "> "
+                + _source_diff_highlight(note.text, color=color, removed=removed),
+                "",
+            )
+        )
+    return tuple(parts)
+
+
+def _source_diff_appearance(
+    assessment: SourceAssessment | None,
+    *,
+    decisions_available: bool,
+) -> tuple[str, bool]:
+    if not decisions_available:
+        return "#f2f4f7", False
+    if assessment is None:
+        return "#ffe6e6", True
+    if assessment.relevance is Relevance.IRRELEVANT or assessment.temporal_status in {
+        TemporalStatus.POSSIBLY_STALE,
+        TemporalStatus.FUTURE,
+    }:
+        return "#ffe6e6", True
+    if (
+        assessment.relevance is Relevance.POSSIBLY_RELEVANT
+        or assessment.temporal_status
+        in {TemporalStatus.UNKNOWN, TemporalStatus.TIME_BOUNDED}
+    ):
+        return "#fff4e5", False
+    return "#e6ffed", False
+
+
+def _source_diff_highlight(value: str, *, color: str, removed: bool) -> str:
+    escaped = html.escape(value).replace("\n", "<br>")
+    content = f"<del>{escaped}</del>" if removed else escaped
+    text_color = "#b42318" if removed else "#116329"
+    if color == "#fff4e5":
+        text_color = "#b54708"
+    if color == "#f2f4f7":
+        text_color = "#344054"
+    return (
+        f'<span style="background:{color};color:{text_color};'
+        f'padding:0.08em 0.18em;">{content}</span>'
+    )
 
 
 def _render_extraction_documents(

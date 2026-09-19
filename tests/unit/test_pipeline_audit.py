@@ -44,6 +44,7 @@ from app.services.pipeline_audit import (
     render_pdf_response_markdown,
     render_semantic_extraction,
     render_source_selection,
+    render_source_selection_diff,
 )
 from scripts.demonstrate_end_to_end import _next_run_directory
 
@@ -121,6 +122,54 @@ def test_source_discovery_report_overlays_semantic_colors_on_normalized_content(
     assert "background:#ecfdf3" in report
     assert "Fixed annual rate 13.5%" in report
     assert "```text" not in report
+
+
+def test_source_discovery_diff_preserves_layout_and_marks_kept_and_removed() -> None:
+    bundle, discovery, _, _ = _audit_fixture()
+    removed = NormalizedBlock(
+        id="navigation",
+        type=NormalizedBlockType.LIST,
+        raw_text="Cards\nDeposits",
+        text="Cards\nDeposits",
+        source_refs=(
+            SourceReference(
+                source_item_id="navigation",
+                locator=SourceLocator(source_url=URL, source_type=SourceType.PAGE),
+            ),
+        ),
+    )
+    removed_assessment = SourceAssessment(
+        source_id="navigation",
+        document_id="page",
+        scope=DiscoveryScope.BLOCK,
+        product_association=ProductAssociation.GLOBAL_NAVIGATION,
+        role=InformationRole.NAVIGATION,
+        relevance=Relevance.IRRELEVANT,
+        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
+        temporal_status=TemporalStatus.CURRENT,
+        reason="Unrelated navigation",
+        decision_source=DecisionSource.LLM,
+        input_fingerprint="1" * 64,
+        structural_fingerprint="2" * 64,
+        source_refs=removed.source_refs,
+    )
+    document = bundle.documents[0].model_copy(
+        update={"blocks": (*bundle.documents[0].blocks, removed)}
+    )
+    bundle = bundle.model_copy(update={"documents": (document,)})
+    discovery = discovery.model_copy(
+        update={"assessments": (*discovery.assessments, removed_assessment)}
+    )
+
+    report = render_source_selection_diff(bundle, discovery)
+
+    assert "Fixed annual rate 13.5%" in report
+    assert "background:#e6ffed" in report
+    assert "- <span" in report
+    assert "<del>Cards</del>" in report
+    assert "<del>Deposits</del>" in report
+    assert "background:#ffe6e6" in report
+    assert "```diff" not in report
 
 
 def test_extraction_report_highlights_only_exact_cited_quote() -> None:
