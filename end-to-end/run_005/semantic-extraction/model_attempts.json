@@ -1,0 +1,14 @@
+[
+  {
+    "model": "gemini-3.7-flash",
+    "status": "succeeded",
+    "request_attempts": 8,
+    "application_retries": 0,
+    "input_tokens": 109879,
+    "output_tokens": 5386,
+    "thinking_tokens": 15989,
+    "total_tokens": 131254,
+    "error_type": null,
+    "message": null
+  }
+]

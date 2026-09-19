@@ -1,0 +1,118 @@
+{
+  "pages": [
+    {
+      "page_number": 1,
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "\"BARSIS\" LLC / NOR TUN",
+          "heading_path": []
+        },
+        {
+          "type": "paragraph",
+          "text": "All other terms and conditions apply as per Consumer Finance Terms /11 RBD PL 72-34/ (approved by Management Board resolution # 01/35/17 as of November 22, 2017).",
+          "heading_path": [
+            "\"BARSIS\" LLC / NOR TUN"
+          ]
+        }
+      ],
+      "tables": [
+        {
+          "title": null,
+          "headers": [
+            "Column 1",
+            "Column 2"
+          ],
+          "rows": [
+            {
+              "cells": [
+                "Currency",
+                "AMD"
+              ]
+            },
+            {
+              "cells": [
+                "Consumer finance limit",
+                "50,000 – 6,000,000"
+              ]
+            },
+            {
+              "cells": [
+                "Down payment",
+                "N/A"
+              ]
+            },
+            {
+              "cells": [
+                "Term (months)",
+                "60"
+              ]
+            },
+            {
+              "cells": [
+                "Nominal annual interest rate",
+                "0% during the first 9 months, 22.5% starting from the 10th month"
+              ]
+            },
+            {
+              "cells": [
+                "Annual percentage rate (APR)",
+                "0-24%"
+              ]
+            },
+            {
+              "cells": [
+                "Loan account monthly service fee\n(calculated based on the finance amount)",
+                "0%"
+              ]
+            },
+            {
+              "cells": [
+                "Disbursement fee (lump sum)",
+                "N/A"
+              ]
+            },
+            {
+              "cells": [
+                "Repayment method",
+                "Annuity (equal monthly installments consisting of the sum of a portion of loan and a portion of interest)"
+              ]
+            },
+            {
+              "cells": [
+                "Collateral",
+                "N/A"
+              ]
+            },
+            {
+              "cells": [
+                "Max loan-to-value ratio",
+                "-"
+              ]
+            },
+            {
+              "cells": [
+                "Required documents",
+                "• Identity document\n• Public services number (social card)"
+              ]
+            },
+            {
+              "cells": [
+                "Product type",
+                "The offer is valid for construction materials."
+              ]
+            },
+            {
+              "cells": [
+                "Validity period",
+                "14/07/26 - 12/01/27, inclusive"
+              ]
+            }
+          ],
+          "notes": []
+        }
+      ],
+      "notes": []
+    }
+  ]
+}

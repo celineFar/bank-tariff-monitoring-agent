@@ -1,0 +1,5 @@
+{{wscSlidesContainer}}
+  <div class="mng-wrapper-{{:~moduleId}}">
+    {{wscSlidesGrid type='TextHTML' /}}
+  </div>
+{{/wscSlidesContainer}}
