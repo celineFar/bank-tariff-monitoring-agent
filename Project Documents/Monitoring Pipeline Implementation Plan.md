@@ -553,12 +553,12 @@ Implementation record (2026-09-19):
 
 ### D. Knowledge-document projections
 
-- [ ] Implement source-faithful normalized-bundle to `KnowledgeDocument` projection.
-- [ ] Preserve locators for blocks, tables, PDF pages, and JSON paths.
-- [ ] Keep small documents whole and split oversized content at natural boundaries.
-- [ ] Implement deterministic `LoanProduct`/snapshot-to-summary rendering.
-- [ ] Mark document kind and ensure summaries reference underlying evidence.
-- [ ] Add stable-ID, content-hash, table, page, metadata, and repeatability tests.
+- [x] Implement source-faithful normalized-bundle to `KnowledgeDocument` projection.
+- [x] Preserve locators for blocks, tables, PDF pages, and JSON paths.
+- [x] Keep small documents whole and split oversized content at natural boundaries.
+- [x] Implement deterministic `LoanProduct`/snapshot-to-summary rendering.
+- [x] Mark document kind and ensure summaries reference underlying evidence.
+- [x] Add stable-ID, content-hash, table, page, metadata, and repeatability tests.
 
 ### E. Pipeline orchestration
 
