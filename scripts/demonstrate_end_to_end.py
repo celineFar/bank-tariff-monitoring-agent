@@ -240,7 +240,7 @@ async def demonstrate(
         _write_json(semantic_directory / "plan.json", semantic_plan)
         (semantic_directory / "extraction.md").write_text(
             render_semantic_extraction(
-                discovery_result, semantic_plan, None, error=failure
+                bundle, discovery_result, semantic_plan, None, error=failure
             ),
             encoding="utf-8",
         )
@@ -258,7 +258,9 @@ async def demonstrate(
     _write_json(semantic_directory / "loan_product.json", semantic_result.loan_product)
     _write_json(semantic_directory / "model_attempts.json", semantic_attempts)
     (semantic_directory / "extraction.md").write_text(
-        render_semantic_extraction(discovery_result, semantic_plan, semantic_result),
+        render_semantic_extraction(
+            bundle, discovery_result, semantic_plan, semantic_result
+        ),
         encoding="utf-8",
     )
 

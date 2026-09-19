@@ -56,10 +56,11 @@ Gemini PDF transcription, structural normalization, source-discovery, and semant
 extraction services in one process. It does not introduce an alternative pipeline or
 expose filesystem/network tools to either ADK agent.
 
-The script writes source artifacts and readable reconstructions, unified normalization
-diffs, an inline selected/rejected source report, and an evidence-by-evidence semantic
-extraction report. Machine-readable plans and results are retained next to those
-reports. Each invocation atomically creates the next `run_NNN` directory beneath the
+The script writes source artifacts and readable reconstructions, inline annotated
+normalization documents, a color-coded source-discovery overlay on normalized content,
+and a semantic-extraction overlay that highlights only exact cited quotations with
+field labels. Machine-readable plans and results are retained next to those reports.
+Each invocation atomically creates the next `run_NNN` directory beneath the
 configured output root, preventing concurrent or repeated audit runs from overwriting
 earlier evidence. Exact PDF, source-discovery, and semantic-extraction responses are
 shared across those numbered runs under `end-to-end/.cache/`; their existing content,

@@ -5,10 +5,12 @@ import html
 import json
 import re
 from collections import defaultdict
+from itertools import pairwise
 from pathlib import Path
 
 from app.domain.normalization import (
     NormalizedBlock,
+    NormalizedBlockType,
     NormalizedDocument,
     NormalizedSourceBundle,
     NormalizedTable,
@@ -129,9 +131,17 @@ def render_source_selection(
     parts = [
         "# Source-discovery selection",
         "",
-        "Legend: **SELECTED** is eligible for current semantic extraction; "
-        "**REJECTED** is irrelevant, historical, or future material; "
-        "**UNASSESSED** means source discovery did not produce a decision.",
+        "This is the normalized content in its original document order with a "
+        "source-discovery semantic overlay. The labels are annotations; the content "
+        "beneath them remains the normalized source structure.",
+        "",
+        "- **Green — SELECTED:** relevant, current material eligible for extraction.",
+        "- **Orange — SELECTED WITH UNCERTAINTY:** possibly relevant, time-bounded, "
+        "or temporally unknown material that remains eligible for extraction.",
+        "- **Gray — HISTORICAL:** retained for audit but excluded from current terms.",
+        "- **Blue — FUTURE:** retained for audit but excluded from current terms.",
+        "- **White — NOT SELECTED / UNASSESSED:** unchanged content without an "
+        "accepted current extraction decision.",
         "",
     ]
     if error is not None:
@@ -155,11 +165,22 @@ def render_source_selection(
             )
         )
         document_assessment = assessments.get(document.id)
-        parts.extend(_decision_lines(document.id, document_assessment))
+        parts.extend(_discovery_label(document.id, document_assessment))
+        table_by_id = {table.id: table for table in document.tables}
+        rendered_tables: set[str] = set()
         for block in document.blocks:
-            parts.extend(_render_selected_block(block, assessments.get(block.id)))
+            if block.type is NormalizedBlockType.TABLE and block.table_id:
+                table = table_by_id.get(block.table_id)
+                if table is not None:
+                    parts.extend(
+                        _render_discovery_table(table, assessments.get(table.id))
+                    )
+                    rendered_tables.add(table.id)
+                continue
+            parts.extend(_render_discovery_block(block, assessments.get(block.id)))
         for table in document.tables:
-            parts.extend(_render_selected_table(table, assessments.get(table.id)))
+            if table.id not in rendered_tables:
+                parts.extend(_render_discovery_table(table, assessments.get(table.id)))
         if document.links:
             parts.extend(
                 (
@@ -179,6 +200,7 @@ def render_source_selection(
 
 
 def render_semantic_extraction(
+    bundle: NormalizedSourceBundle,
     discovery: SourceDiscoveryResult,
     plan: SemanticExtractionPlan,
     result: SemanticExtractionResult | None,
@@ -191,12 +213,36 @@ def render_semantic_extraction(
             sent_groups[item.evidence_id].append(batch.group)
     sent_ids = set(sent_groups)
     field_citations: dict[str, list[str]] = defaultdict(list)
+    cited_by_source: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
     field_rows: list[tuple[str, str, str, str]] = []
+    field_labels: dict[str, str] = {}
     if result is not None:
+        evidence_by_id = {item.evidence_id: item for item in result.evidence_catalog}
+        found_fields = sorted(
+            {
+                item.field.value
+                for response in result.batch_results
+                for item in response.results
+                if item.status is ExtractionStatus.FOUND
+            }
+        )
+        field_labels = {
+            field: f"EX-{index:03d}"
+            for index, field in enumerate(found_fields, start=1)
+        }
         for response in result.batch_results:
             for item in response.results:
                 for citation in item.evidence:
                     field_citations[citation.evidence_id].append(item.field.value)
+                    evidence = evidence_by_id.get(citation.evidence_id)
+                    if evidence is not None and item.status is ExtractionStatus.FOUND:
+                        cited_by_source[evidence.source_item_id].append(
+                            (
+                                field_labels[item.field.value],
+                                item.field.value,
+                                citation.quote,
+                            )
+                        )
                 value = item.value_json if item.value_json is not None else "—"
                 field_rows.append(
                     (
@@ -224,6 +270,10 @@ def render_semantic_extraction(
         "deterministic ranking and size/count limiting. It was not rejected as false "
         "or irrelevant.",
         "",
+        "In the document overlays below, only exact quotations cited by successful "
+        "`found` results are highlighted. Text that was inspected but not cited remains "
+        "visually unchanged.",
+        "",
     ]
     if error is not None:
         parts.extend(
@@ -246,11 +296,14 @@ def render_semantic_extraction(
                 ExtractionStatus.AMBIGUOUS.value: "AMBIGUOUS",
                 ExtractionStatus.CONFLICTING.value: "CONFLICTING",
             }[status]
+            label = field_labels.get(field)
+            anchor = f'<a id="{label.lower()}"></a>' if label else ""
             parts.extend(
                 (
                     "---",
                     "",
-                    f"### {field} — {marker}",
+                    anchor,
+                    f"### {f'[{label}] ' if label else ''}{field} — {marker}",
                     "",
                     "```json",
                     _pretty_json(value),
@@ -262,64 +315,34 @@ def render_semantic_extraction(
                     ),
                 )
             )
+    parts.extend(("## Extraction overlay", ""))
+    if result is not None and field_rows:
+        parts.extend(
+            ("### Label index", "", "| Label | Field | Status |", "|---|---|---|")
+        )
+        for field, status, _, _ in field_rows:
+            label = field_labels.get(field, "—")
+            parts.append(f"| `{label}` | `{field}` | `{status}` |")
+        parts.append("")
+    parts.extend(_render_extraction_documents(bundle, cited_by_source))
 
-    parts.extend(("## Source-discovered evidence", ""))
-    evidence_count = len(plan.evidence_catalog)
-    for index, evidence in enumerate(plan.evidence_catalog, start=1):
+    parts.extend(("## Planner audit", ""))
+    for evidence in plan.evidence_catalog:
         cited_fields = sorted(set(field_citations.get(evidence.evidence_id, ())))
+        packets = ", ".join(sorted(set(sent_groups[evidence.evidence_id]))) or "(none)"
         if cited_fields:
-            state = "EXTRACTED"
-            explanation = "Cited for: " + ", ".join(cited_fields)
+            state = "EXTRACTED: " + ", ".join(cited_fields)
         elif evidence.evidence_id in sent_ids and error is not None:
-            state = "FAILED"
-            explanation = "Sent to the LLM, but the extraction run did not produce a validated result."
+            state = "FAILED RUN"
         elif evidence.evidence_id in sent_ids:
             state = "SENT, NOT CITED"
-            explanation = (
-                "Inspected by the LLM but not used as evidence for a returned field."
-            )
         else:
             state = "NOT SENT TO SEMANTIC LLM"
-            explanation = (
-                "Deterministic planner decision: omitted from all bounded field "
-                "packets after relevance ranking and configured item/character limits. "
-                "The evidence remains accepted and auditable."
-            )
-        parts.extend(
-            (
-                "---",
-                "",
-                f"### Evidence {index:03d} of {evidence_count:03d}",
-                "",
-                f"> **{state}**  ",
-                f"> {explanation}",
-                "",
-                "| Metadata | Value |",
-                "|---|---|",
-                f"| Evidence ID | `{evidence.evidence_id}` |",
-                f"| Source item | `{evidence.source_item_id}` |",
-                f"| Role | `{evidence.role.value}` |",
-                f"| Authority | `{evidence.authority.value}` |",
-                f"| Temporal status | `{evidence.temporal_status.value}` |",
-                "| Semantic packets | "
-                + _cell(
-                    ", ".join(sorted(set(sent_groups[evidence.evidence_id])))
-                    or "(none)"
-                )
-                + " |",
-                f"| Section | {_cell(_safe(evidence.section or '(none)'))} |",
-                "",
-                "<details open>",
-                "<summary><strong>Source content</strong></summary>",
-                "",
-                "```text",
-                evidence.content,
-                "```",
-                "",
-                "</details>",
-                "",
-            )
+        parts.append(
+            f"- `{evidence.evidence_id}` / `{evidence.source_item_id}` — "
+            f"**{state}**; packets: {packets}"
         )
+    parts.append("")
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -334,45 +357,64 @@ def _assessment_index(
     return result
 
 
-def _decision_lines(
+def _discovery_label(
     source_id: str, assessment: SourceAssessment | None
 ) -> tuple[str, ...]:
+    state, color, border = _discovery_appearance(assessment)
     if assessment is None:
-        return ("---", "", f"### UNASSESSED — `{source_id}`", "")
-    accepted = (
-        assessment.relevance is not Relevance.IRRELEVANT
-        and assessment.temporal_status
-        not in {
-            TemporalStatus.POSSIBLY_STALE,
-            TemporalStatus.FUTURE,
-        }
+        details = "No source-discovery assessment was produced."
+    else:
+        details = (
+            f"{assessment.role.value} · {assessment.relevance.value} · "
+            f"{assessment.temporal_status.value} · {assessment.decision_source.value}"
+        )
+    reason = assessment.reason if assessment is not None else ""
+    label = (
+        f'<div style="border-left:5px solid {border};background:{color};'
+        'padding:0.55em 0.8em;margin:1.2em 0 0.65em 0;">'
+        f"<strong>{html.escape(state)}</strong> &nbsp; "
+        f"<code>{html.escape(source_id)}</code><br>"
+        f"<small>{html.escape(details)}</small>"
+        + (f"<br><small>{html.escape(reason)}</small>" if reason else "")
+        + "</div>"
     )
-    state = "SELECTED" if accepted else "REJECTED"
-    return (
-        "---",
-        "",
-        f"### {state} — `{source_id}`",
-        "",
-        f"Decision: `{assessment.decision_source.value}`; relevance: "
-        f"`{assessment.relevance.value}`; role: `{assessment.role.value}`; temporal: "
-        f"`{assessment.temporal_status.value}`  ",
-        f"Reason: {_safe(assessment.reason)}",
-        "",
-    )
+    return (label, "")
 
 
-def _render_selected_block(
+def _discovery_appearance(
+    assessment: SourceAssessment | None,
+) -> tuple[str, str, str]:
+    if assessment is None:
+        return "UNASSESSED", "#ffffff", "#98a2b3"
+    if assessment.relevance is Relevance.IRRELEVANT:
+        return "NOT SELECTED", "#ffffff", "#d0d5dd"
+    if assessment.temporal_status is TemporalStatus.POSSIBLY_STALE:
+        return "HISTORICAL — NOT SELECTED", "#f2f4f7", "#667085"
+    if assessment.temporal_status is TemporalStatus.FUTURE:
+        return "FUTURE — NOT SELECTED", "#eef4ff", "#3e7bfa"
+    if (
+        assessment.relevance is Relevance.POSSIBLY_RELEVANT
+        or assessment.temporal_status
+        in {TemporalStatus.UNKNOWN, TemporalStatus.TIME_BOUNDED}
+    ):
+        return "SELECTED WITH UNCERTAINTY", "#fff4e5", "#f79009"
+    return "SELECTED", "#ecfdf3", "#12b76a"
+
+
+def _render_discovery_block(
     block: NormalizedBlock, assessment: SourceAssessment | None
 ) -> tuple[str, ...]:
-    parts = list(_decision_lines(block.id, assessment))
-    parts.extend(("```text", block.text, "```", ""))
+    parts = list(_discovery_label(block.id, assessment))
+    _, color, _ = _discovery_appearance(assessment)
+    highlight = color if color != "#ffffff" else None
+    parts.extend((_render_block_content(block, background=highlight), ""))
     return tuple(parts)
 
 
-def _render_selected_table(
+def _render_discovery_table(
     table: NormalizedTable, assessment: SourceAssessment | None
 ) -> tuple[str, ...]:
-    parts = list(_decision_lines(table.id, assessment))
+    parts = list(_discovery_label(table.id, assessment))
     if table.title:
         parts.extend((f"**Table: {_safe(table.title)}**", ""))
     width = len(table.headers) or (len(table.rows[0].cells) if table.rows else 0)
@@ -380,18 +422,188 @@ def _render_selected_table(
         headers = table.headers or tuple(f"Column {i + 1}" for i in range(width))
         parts.extend(
             (
-                "| " + " | ".join(_cell(value) for value in headers) + " |",
+                "| " + " | ".join(_table_cell(value) for value in headers) + " |",
                 "| " + " | ".join("---" for _ in range(width)) + " |",
             )
         )
         parts.extend(
-            "| " + " | ".join(_cell(cell.text) for cell in row.cells) + " |"
+            "| " + " | ".join(_table_cell(cell.text) for cell in row.cells) + " |"
             for row in table.rows
         )
         parts.append("")
     for note in table.notes:
         parts.extend((f"> {_safe(note.text)}", ""))
     return tuple(parts)
+
+
+def _render_extraction_documents(
+    bundle: NormalizedSourceBundle,
+    cited_by_source: dict[str, list[tuple[str, str, str]]],
+) -> tuple[str, ...]:
+    parts: list[str] = []
+    for document in bundle.documents:
+        parts.extend(
+            (
+                "---",
+                "",
+                f"## {_safe(document.name)}",
+                "",
+                f"Source: <{document.source_url}>",
+                "",
+            )
+        )
+        table_by_id = {table.id: table for table in document.tables}
+        rendered_tables: set[str] = set()
+        for block in document.blocks:
+            if block.type is NormalizedBlockType.TABLE and block.table_id:
+                table = table_by_id.get(block.table_id)
+                if table is not None:
+                    parts.extend(_render_extraction_table(table, cited_by_source))
+                    rendered_tables.add(table.id)
+                continue
+            annotations = cited_by_source.get(block.id, [])
+            parts.extend(
+                (
+                    _render_block_content(block, annotations=annotations),
+                    "",
+                )
+            )
+        for table in document.tables:
+            if table.id not in rendered_tables:
+                parts.extend(_render_extraction_table(table, cited_by_source))
+    return tuple(parts)
+
+
+def _render_extraction_table(
+    table: NormalizedTable,
+    cited_by_source: dict[str, list[tuple[str, str, str]]],
+) -> tuple[str, ...]:
+    parts: list[str] = []
+    fallback_notes: list[str] = []
+    if table.title:
+        parts.extend((f"### {_safe(table.title)}", ""))
+    width = len(table.headers) or (len(table.rows[0].cells) if table.rows else 0)
+    if width:
+        headers = table.headers or tuple(f"Column {i + 1}" for i in range(width))
+        parts.extend(
+            (
+                "| " + " | ".join(_table_cell(value) for value in headers) + " |",
+                "| " + " | ".join("---" for _ in range(width)) + " |",
+            )
+        )
+        for row in table.rows:
+            annotations = cited_by_source.get(row.id, [])
+            rendered_cells: list[str] = []
+            matched_labels: set[str] = set()
+            for cell in row.cells:
+                rendered, matched = _highlight_extracted_text(cell.text, annotations)
+                rendered_cells.append(_cell(rendered))
+                matched_labels.update(matched)
+            expected_labels = {label for label, _, _ in annotations}
+            missing = sorted(expected_labels - matched_labels)
+            if missing:
+                fallback_notes.append(
+                    f"`{row.id}`: {', '.join(missing)} cites combined row evidence; "
+                    "the exact quote could not be localized to one cell."
+                )
+            parts.append("| " + " | ".join(rendered_cells) + " |")
+        parts.append("")
+    for index, note in enumerate(table.notes):
+        annotations = cited_by_source.get(f"{table.id}:note:{index}", [])
+        rendered, _ = _highlight_extracted_text(note.text, annotations)
+        parts.extend((f"> {rendered}", ""))
+    if fallback_notes:
+        parts.extend(("**Row-level citation labels:**", ""))
+        parts.extend(f"- {item}" for item in fallback_notes)
+        parts.append("")
+    return tuple(parts)
+
+
+def _render_block_content(
+    block: NormalizedBlock,
+    *,
+    background: str | None = None,
+    annotations: list[tuple[str, str, str]] | None = None,
+) -> str:
+    if annotations:
+        rendered, _ = _highlight_extracted_text(block.text, annotations)
+        lines = rendered.splitlines() or [rendered]
+    elif background:
+        lines = [
+            _semantic_highlight(line, background) for line in block.text.splitlines()
+        ] or [""]
+    else:
+        lines = [html.escape(line) for line in block.text.splitlines()] or [""]
+    if block.type is NormalizedBlockType.HEADING:
+        level = min(max(len(block.heading_path), 1) + 1, 6)
+        return f"{'#' * level} " + "<br>".join(lines)
+    if block.type is NormalizedBlockType.LIST:
+        return "\n".join(f"- {line}" for line in lines if line.strip())
+    if block.type is NormalizedBlockType.CARD and block.fields:
+        title = block.fields.get("title", "")
+        body = block.fields.get("body", "")
+        if annotations:
+            title, _ = _highlight_extracted_text(title, annotations)
+            body, _ = _highlight_extracted_text(body, annotations)
+        elif background:
+            title = _semantic_highlight(title, background)
+            body = _semantic_highlight(body, background)
+        else:
+            title = html.escape(title)
+            body = html.escape(body)
+        return f"### {title}\n\n{body}".strip()
+    return "  \n".join(lines)
+
+
+def _highlight_extracted_text(
+    value: str,
+    annotations: list[tuple[str, str, str]],
+) -> tuple[str, set[str]]:
+    matches: list[tuple[int, int, str, str]] = []
+    for label, field, quote in annotations:
+        start = 0
+        while quote and (found := value.find(quote, start)) >= 0:
+            matches.append((found, found + len(quote), label, field))
+            start = found + len(quote)
+    if not matches:
+        return html.escape(value), set()
+    boundaries = sorted(
+        {0, len(value), *(point for match in matches for point in match[:2])}
+    )
+    parts: list[str] = []
+    matched_labels: set[str] = set()
+    for start, end in pairwise(boundaries):
+        segment = html.escape(value[start:end])
+        covering = [match for match in matches if match[0] <= start and end <= match[1]]
+        if not covering:
+            parts.append(segment)
+            continue
+        labels = sorted({match[2] for match in covering})
+        fields = sorted({match[3] for match in covering})
+        matched_labels.update(labels)
+        links = " ".join(
+            f'<a href="#{label.lower()}">{html.escape(label)}</a>' for label in labels
+        )
+        parts.append(
+            '<mark style="background:#d1fadf;color:#05603a;padding:0.08em 0.18em;">'
+            f'{segment}<sup title="{html.escape(", ".join(fields))}">{links}</sup>'
+            "</mark>"
+        )
+    return "".join(parts), matched_labels
+
+
+def _semantic_highlight(value: str, background: str) -> str:
+    escaped = html.escape(value).replace("\n", "<br>")
+    return (
+        f'<span style="background:{background};padding:0.08em 0.18em;">{escaped}</span>'
+    )
+
+
+def _table_cell(value: str, *, background: str | None = None) -> str:
+    rendered = (
+        _semantic_highlight(value, background) if background else html.escape(value)
+    )
+    return _cell(rendered)
 
 
 def _pretty_json(value: str) -> str:
