@@ -18,6 +18,8 @@ from app.domain.normalization import (
     SourceReference,
 )
 from app.domain.semantic_extraction import (
+    Condition,
+    ConditionalValue,
     EvidenceItem,
     ExtractedValue,
     ExtractionBatchResponse,
@@ -26,6 +28,8 @@ from app.domain.semantic_extraction import (
     ModelCitation,
     ModelFieldResult,
     SemanticExtractionRunStatus,
+    TermRange,
+    ValidatedFieldResult,
 )
 from app.domain.source_discovery import (
     Authority,
@@ -45,6 +49,7 @@ from app.services.semantic_extraction import (
     SemanticExtractionService,
     _normalize_field_contract,
     _validate_response,
+    _validate_semantic_completeness,
 )
 
 URL = "https://ameriabank.am/en/personal/loans/consumer-loan"
@@ -316,10 +321,129 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
     normalized, notes = _normalize_field_contract(result)
 
     assert json.loads(normalized.value_json) == [
-        "Identity document",
-        "Purchase agreement",
+        {
+            "value": {
+                "name": "Identity document",
+                "requirement": "required",
+            },
+            "conditions": [],
+        },
+        {
+            "value": {
+                "name": "Purchase agreement",
+                "requirement": "required",
+            },
+            "conditions": [],
+        },
     ]
     assert notes
+
+
+@pytest.mark.parametrize(
+    ("field", "raw_value", "expected_value"),
+    (
+        (
+            ExtractionField.APPLICATION_CHANNEL,
+            ["Seller's premises", "Online application"],
+            {"channel": "Seller's premises", "available": True},
+        ),
+        (
+            ExtractionField.COLLATERAL,
+            [
+                {
+                    "value": "N/A",
+                    "conditions": [{"dimension": "variant_id", "value": "services"}],
+                }
+            ],
+            {"description": None, "applicable": False},
+        ),
+        (
+            ExtractionField.AGE_REQUIREMENTS,
+            ["20 to 66 years"],
+            {"min_age": 20, "max_age": 66},
+        ),
+    ),
+)
+def test_contract_adapter_structures_conditional_product_terms(
+    field, raw_value, expected_value
+) -> None:
+    result = ModelFieldResult(
+        field=field,
+        status=ExtractionStatus.FOUND,
+        value_json=json.dumps(raw_value),
+        evidence=(ModelCitation(evidence_id="ev_" + "a" * 24, quote="supported"),),
+    )
+
+    normalized, notes = _normalize_field_contract(result)
+    value = json.loads(normalized.value_json)
+
+    assert notes
+    assert value[0]["value"] == expected_value
+
+
+def test_term_threshold_requires_a_conditional_subrange() -> None:
+    evidence = EvidenceItem(
+        evidence_id="ev_" + "a" * 24,
+        document_id="page",
+        source_item_id="term",
+        content=(
+            "Loan term is 6-60 months. Terms exceeding 48 months are available "
+            "only for furniture and home improvement."
+        ),
+        role=InformationRole.PRODUCT_TERMS,
+        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
+        temporal_status=TemporalStatus.CURRENT,
+        precedence=1,
+        locator=SourceLocator(source_url=URL, source_type=SourceType.PAGE),
+    )
+    from app.domain.semantic_extraction import ExtractionBatch
+
+    batch = ExtractionBatch(
+        id="term-batch",
+        product=ProductType.CONSUMER_LOAN,
+        group="core_financial",
+        fields=(ExtractionField.TERM,),
+        evidence=(evidence,),
+        content_fingerprint="f" * 64,
+    )
+    model_result = ModelFieldResult(
+        field=ExtractionField.TERM,
+        status=ExtractionStatus.FOUND,
+        value_json="[]",
+        evidence=(
+            ModelCitation(
+                evidence_id=evidence.evidence_id,
+                quote="Terms exceeding 48 months",
+            ),
+        ),
+    )
+    unsplit = ValidatedFieldResult(
+        field=ExtractionField.TERM,
+        status=ExtractionStatus.FOUND,
+        value=(ConditionalValue(value=TermRange(min_months=6, max_months=60)),),
+        batch_id=batch.id,
+    )
+
+    with pytest.raises(ValueError, match="separate conditional subrange"):
+        _validate_semantic_completeness(batch, model_result, unsplit)
+
+    split = unsplit.model_copy(
+        update={
+            "value": (
+                ConditionalValue(value=TermRange(min_months=6, max_months=48)),
+                ConditionalValue(
+                    value=TermRange(min_months=49, max_months=60),
+                    conditions=(
+                        Condition(
+                            dimension="purpose",
+                            value="furniture and home improvement",
+                        ),
+                    ),
+                ),
+            )
+        }
+    )
+    _validate_semantic_completeness(batch, model_result, split)
 
 
 @pytest.mark.asyncio

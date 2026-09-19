@@ -185,6 +185,11 @@ percentage-point notation); both raw and adapted responses remain in the audit o
 Remaining repairs receive the original field, exact schema, validation paths, and only
 the original batch evidence. Income verification and creditworthiness assessment are
 separate requirement policies, and fees retain product-versus-general-service scope.
+Umbrella products retain a typed variant catalog; repayment, age, application channel,
+required-document, and collateral terms are conditional structured values keyed to
+those variants where applicable. Canonical webpage identity is kept separate from
+formal linked-document titles, and threshold-limited terms must be represented as
+non-overlapping conditional subranges.
 Invalid legacy cache entries are ignored. PostgreSQL migration
 `004_semantic_extraction.sql` owns that cache. Claim generation, cross-source
 verification/repair, snapshot comparison, and HITL decisions remain downstream.

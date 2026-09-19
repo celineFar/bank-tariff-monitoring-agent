@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
@@ -22,6 +23,9 @@ from app.config import SemanticExtractionSettings
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle
 from app.domain.semantic_extraction import (
+    AgeRange,
+    ApplicationChannel,
+    CollateralTerm,
     ConditionalValue,
     ConsumerLoanDetails,
     CreditLineDetails,
@@ -42,9 +46,12 @@ from app.domain.semantic_extraction import (
     OverdraftDetails,
     PartialLoanProduct,
     PercentagePoint,
+    ProductVariant,
     PropertyMarket,
     Rate,
     RawBatchOutput,
+    RepaymentMethod,
+    RequiredDocument,
     RequirementPolicy,
     SemanticExtractionPlan,
     SemanticExtractionResult,
@@ -77,6 +84,12 @@ page. Evidence marked related_product, or clearly headed as Express, secondary-m
 construction, renovation, or a developer program, must not redefine the base product.
 It may be used only when the requested field explicitly asks for an applicable
 conditional/supplemental term. Keep that scope in the value's conditions.
+
+product_name is the customer-facing name of the canonical webpage product. Prefer the
+canonical page heading/title for it. Put formal titles of linked tariff PDFs or terms
+documents in formal_terms_names instead; a document title must not rename the product.
+For an umbrella product, enumerate its named variants in variants and use each stable
+variant_id in the conditions of variant-specific values.
 
 Different webpage and PDF evidence items remain independent sources. If they state the
 same fact for the same product and effective context, return one value and cite both
@@ -116,6 +129,21 @@ as a mortgage-product fee.
 For required_documents, inspect the entire packet, preserve document-level conditions,
 and return the deduplicated union of all documents required for the current product.
 Do not stop after the first loan-application row when later PDF evidence lists more.
+Represent each document separately with its requirement status. Solar-only or other
+variant-specific documents must carry a variant_id condition, not become globally
+required.
+
+Preserve conditional subranges. If a rule applies only above or below a threshold,
+split the broad range into non-overlapping ranges at that threshold and attach the rule
+to the affected range. For example, a 6-60 month term whose terms above 48 months are
+limited to certain purposes becomes 6-48 plus 49-60 with those purpose conditions.
+Never hide a threshold rule in an explanation.
+
+Repayment methods, age limits, application channels, and collateral are structured,
+conditional values. A channel mentioned as available at seller premises or online is
+not not_stated. If collateral is not applicable to one variant, return an explicit
+CollateralTerm with applicable=false for that variant rather than applying another
+variant's collateral globally.
 
 If repair_context_json is present, this is a bounded contract repair. Preserve the
 original facts and status. Change only JSON structure or citations needed to satisfy
@@ -129,9 +157,11 @@ Expected value shapes:
 - interest_rate/effective_rate: list of conditional Rate objects
 - term: list of conditional TermRange objects
 - down_payment_pct/ltv_pct: list of conditional decimal values
-- purpose, repayment, eligibility, residency_requirements,
-  application_channel, required_documents, special_conditions, collateral,
-  property_requirements: JSON lists of strings
+- formal_terms_names, purpose, eligibility, residency_requirements,
+  special_conditions, property_requirements: JSON lists of strings
+- variants: list of ProductVariant objects with stable snake_case variant_id values
+- repayment, age_requirements, application_channel, required_documents, collateral:
+  lists of conditional structured values using their exact supplied schemas
 - fees: list of structured LoanFee objects, including their applicability scope
 - income_verification_required/creditworthiness_assessment_required: RequirementPolicy
 - booleans and integer/string fields use their natural JSON types
@@ -708,15 +738,29 @@ def _normalize_field_contract(
             notes.append("canonicalized percentage values to percentage points")
     elif field is ExtractionField.FEES:
         value = _normalize_fees(value)
+    elif field is ExtractionField.VARIANTS:
+        value = _normalize_variants(value)
+    elif field is ExtractionField.REPAYMENT:
+        value = _normalize_structured_conditionals(value, _normalize_repayment)
+    elif field is ExtractionField.AGE_REQUIREMENTS:
+        value = _normalize_age_requirements(value)
+    elif field is ExtractionField.APPLICATION_CHANNEL:
+        value = _normalize_structured_conditionals(
+            value, _normalize_application_channel
+        )
     elif field is ExtractionField.REQUIRED_DOCUMENTS:
+        value = _deduplicate_conditionals(
+            _normalize_structured_conditionals(value, _normalize_required_document)
+        )
+    elif field is ExtractionField.COLLATERAL:
+        value = _normalize_structured_conditionals(value, _normalize_collateral)
+    elif field is ExtractionField.FORMAL_TERMS_NAMES:
         value = _deduplicate_strings(value)
     elif field in {
         ExtractionField.INCOME_VERIFICATION_REQUIRED,
         ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED,
     }:
         value = _normalize_requirement_policy(value)
-    elif field is ExtractionField.AGE_REQUIREMENTS and isinstance(value, dict):
-        value = _render_age_requirement(value)
     if value == original:
         return result, ()
     if not notes:
@@ -748,6 +792,25 @@ def _normalize_conditional_sequence(value: Any, normalizer: Any) -> Any:
         raw_value = item.get("value")
         if raw_value is None:
             raw_value = {key: part for key, part in item.items() if key != "conditions"}
+        normalized.append({"value": normalizer(raw_value), "conditions": conditions})
+    return normalized
+
+
+def _normalize_structured_conditionals(value: Any, normalizer: Any) -> Any:
+    if not isinstance(value, list):
+        value = [value]
+    normalized: list[Any] = []
+    for item in value:
+        if isinstance(item, dict) and ("value" in item or "conditions" in item):
+            raw_value = item.get("value")
+            if raw_value is None:
+                raw_value = {
+                    key: part for key, part in item.items() if key != "conditions"
+                }
+            conditions = _normalize_conditions(item.get("conditions", ()))
+        else:
+            raw_value = item
+            conditions = []
         normalized.append({"value": normalizer(raw_value), "conditions": conditions})
     return normalized
 
@@ -905,6 +968,128 @@ def _normalize_fees(value: Any) -> Any:
     return normalized
 
 
+def _normalize_variants(value: Any) -> Any:
+    if not isinstance(value, list):
+        return value
+    normalized: list[Any] = []
+    for item in value:
+        if isinstance(item, str):
+            normalized.append({"variant_id": _slug(item), "name": item})
+        elif isinstance(item, dict):
+            variant = dict(item)
+            name = variant.get("name", variant.get("variant_name"))
+            if name and not variant.get("variant_id"):
+                variant["variant_id"] = _slug(str(name))
+            normalized.append(variant)
+        else:
+            normalized.append(item)
+    return normalized
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
+    return slug or "variant"
+
+
+def _normalize_repayment(value: Any) -> Any:
+    if isinstance(value, str):
+        return {"method": value}
+    if isinstance(value, dict):
+        result = dict(value)
+        if "method" not in result and "name" in result:
+            result["method"] = result.pop("name")
+        return result
+    return value
+
+
+def _normalize_application_channel(value: Any) -> Any:
+    if isinstance(value, str):
+        return {"channel": value, "available": True}
+    if isinstance(value, dict):
+        result = dict(value)
+        if "channel" not in result and "name" in result:
+            result["channel"] = result.pop("name")
+        result.setdefault("available", True)
+        return result
+    return value
+
+
+def _normalize_required_document(value: Any) -> Any:
+    if isinstance(value, str):
+        text = " ".join(value.split())
+        lowered = text.casefold()
+        requirement = (
+            "upon_request"
+            if "upon request" in lowered
+            else "conditional"
+            if any(marker in lowered for marker in (" if ", " for ", "when "))
+            else "required"
+        )
+        return {"name": text, "requirement": requirement}
+    if isinstance(value, dict):
+        result = dict(value)
+        if "name" not in result and "document" in result:
+            result["name"] = result.pop("document")
+        result.setdefault("requirement", "required")
+        return result
+    return value
+
+
+def _normalize_collateral(value: Any) -> Any:
+    if isinstance(value, str):
+        if value.strip().casefold() in {"n/a", "not applicable", "none"}:
+            return {"description": None, "applicable": False}
+        return {"description": value, "applicable": True}
+    if isinstance(value, dict):
+        result = dict(value)
+        if "description" not in result and "name" in result:
+            result["description"] = result.pop("name")
+        result.setdefault("applicable", True)
+        return result
+    return value
+
+
+def _normalize_age_requirements(value: Any) -> Any:
+    if isinstance(value, (str, dict)):
+        value = [value]
+    if not isinstance(value, list):
+        return value
+    normalized: list[Any] = []
+    for item in value:
+        conditions: Any = []
+        raw = item
+        if isinstance(item, dict) and ("value" in item or "conditions" in item):
+            raw = item.get("value")
+            conditions = item.get("conditions", ())
+        if isinstance(raw, str):
+            numbers = [int(part) for part in re.findall(r"\b\d{1,3}\b", raw)]
+            if len(numbers) >= 2:
+                raw = {"min_age": numbers[0], "max_age": numbers[1]}
+            elif numbers and any(
+                marker in raw.casefold() for marker in ("at least", "minimum")
+            ):
+                raw = {"min_age": numbers[0]}
+            elif numbers:
+                raw = {"max_age": numbers[0]}
+        normalized.append(
+            {"value": raw, "conditions": _normalize_conditions(conditions)}
+        )
+    return normalized
+
+
+def _deduplicate_conditionals(value: Any) -> Any:
+    if not isinstance(value, list):
+        return value
+    result: list[Any] = []
+    seen: set[str] = set()
+    for item in value:
+        identity = json.dumps(item, ensure_ascii=False, sort_keys=True, default=str)
+        if identity.casefold() not in seen:
+            seen.add(identity.casefold())
+            result.append(item)
+    return result
+
+
 def _deduplicate_strings(value: Any) -> Any:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         return value
@@ -943,27 +1128,19 @@ def _normalize_requirement_policy(value: Any) -> Any:
     return policy
 
 
-def _render_age_requirement(value: dict[str, Any]) -> str:
-    minimum = value.get("min_age")
-    maximum = value.get("max_age")
-    if minimum is not None and maximum is not None:
-        return f"{minimum}-{maximum} years"
-    if minimum is not None:
-        return f"At least {minimum} years"
-    if maximum is not None:
-        return f"At most {maximum} years"
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
-
-
 _COMPLETENESS_FIELDS = frozenset(
     {
         ExtractionField.PRODUCT_NAME,
+        ExtractionField.VARIANTS,
         ExtractionField.PURPOSE,
         ExtractionField.LOAN_AMOUNT,
         ExtractionField.INTEREST_RATE,
         ExtractionField.EFFECTIVE_RATE,
         ExtractionField.TERM,
+        ExtractionField.REPAYMENT,
         ExtractionField.RESIDENCY_REQUIREMENTS,
+        ExtractionField.AGE_REQUIREMENTS,
+        ExtractionField.APPLICATION_CHANNEL,
         ExtractionField.DOWN_PAYMENT_PCT,
         ExtractionField.LTV_PCT,
         ExtractionField.COLLATERAL,
@@ -972,7 +1149,16 @@ _COMPLETENESS_FIELDS = frozenset(
     }
 )
 _CONDITION_SENSITIVE_FIELDS = frozenset(
-    {ExtractionField.DOWN_PAYMENT_PCT, ExtractionField.LTV_PCT}
+    {
+        ExtractionField.DOWN_PAYMENT_PCT,
+        ExtractionField.LTV_PCT,
+        ExtractionField.TERM,
+        ExtractionField.REPAYMENT,
+        ExtractionField.AGE_REQUIREMENTS,
+        ExtractionField.APPLICATION_CHANNEL,
+        ExtractionField.REQUIRED_DOCUMENTS,
+        ExtractionField.COLLATERAL,
+    }
 )
 _CONDITION_CUES = (
     "in case",
@@ -987,6 +1173,11 @@ _CONDITION_CUES = (
     "state-supported",
     "yerevan",
     "regions",
+    "only",
+    "upon request",
+    "solar",
+    "goods",
+    "services",
 )
 _PRIMARY_OUT_OF_SCOPE = (
     "express",
@@ -1118,6 +1309,27 @@ def _validate_semantic_completeness(
 
     if (
         result.status is ExtractionStatus.FOUND
+        and result.field is ExtractionField.PRODUCT_NAME
+        and batch.canonical_url is not None
+    ):
+        canonical = str(batch.canonical_url).rstrip("/").casefold()
+        canonical_candidates = tuple(
+            item
+            for item in target_evidence
+            if str(item.locator.source_url).rstrip("/").casefold() == canonical
+            and field_has_evidence_marker(ExtractionField.PRODUCT_NAME, item)
+        )
+        cited = {citation.evidence_id for citation in result.evidence}
+        if canonical_candidates and not any(
+            item.evidence_id in cited for item in canonical_candidates
+        ):
+            raise ValueError(
+                "product_name must be anchored to the canonical product page; "
+                "put linked document titles in formal_terms_names"
+            )
+
+    if (
+        result.status is ExtractionStatus.FOUND
         and result.field in _CONDITION_SENSITIVE_FIELDS
         and isinstance(validated.value, tuple)
         and len(validated.value) > 1
@@ -1136,6 +1348,38 @@ def _validate_semantic_completeness(
             raise ValueError(
                 "condition-specific alternatives were returned without conditions"
             )
+
+    if (
+        result.status is ExtractionStatus.FOUND
+        and result.field is ExtractionField.TERM
+        and isinstance(validated.value, tuple)
+    ):
+        cited_text = " ".join(
+            item.content.casefold()
+            for item in batch.evidence
+            if item.evidence_id
+            in {citation.evidence_id for citation in result.evidence}
+        )
+        thresholds = {
+            int(match.group(1))
+            for match in re.finditer(
+                r"(?:exceeding|above|over|more than)\s+(\d+)\s+months?",
+                cited_text,
+            )
+        }
+        for threshold in thresholds:
+            has_conditional_upper_range = any(
+                isinstance(item, ConditionalValue)
+                and isinstance(item.value, TermRange)
+                and item.value.min_months == threshold + 1
+                and bool(item.conditions)
+                for item in validated.value
+            )
+            if not has_conditional_upper_range:
+                raise ValueError(
+                    f"term restriction above {threshold} months must be represented "
+                    "as a separate conditional subrange"
+                )
 
     if (
         result.status is ExtractionStatus.FOUND
@@ -1360,6 +1604,8 @@ def _validate_field_result(
 def _field_adapter(field: ExtractionField) -> Any:
     adapters: dict[ExtractionField, Any] = {
         ExtractionField.PRODUCT_NAME: str,
+        ExtractionField.FORMAL_TERMS_NAMES: tuple[str, ...],
+        ExtractionField.VARIANTS: tuple[ProductVariant, ...],
         ExtractionField.CATEGORY: LoanCategory,
         ExtractionField.PURPOSE: tuple[str, ...],
         ExtractionField.LOAN_AMOUNT: tuple[ConditionalValue[LoanAmount], ...],
@@ -1367,14 +1613,18 @@ def _field_adapter(field: ExtractionField) -> Any:
         ExtractionField.EFFECTIVE_RATE: tuple[ConditionalValue[Rate], ...],
         ExtractionField.TERM: tuple[ConditionalValue[TermRange], ...],
         ExtractionField.FEES: tuple[LoanFee, ...],
-        ExtractionField.REPAYMENT: tuple[str, ...],
+        ExtractionField.REPAYMENT: tuple[ConditionalValue[RepaymentMethod], ...],
         ExtractionField.ELIGIBILITY: tuple[str, ...],
         ExtractionField.RESIDENCY_REQUIREMENTS: tuple[str, ...],
-        ExtractionField.AGE_REQUIREMENTS: str,
-        ExtractionField.APPLICATION_CHANNEL: tuple[str, ...],
-        ExtractionField.REQUIRED_DOCUMENTS: tuple[str, ...],
+        ExtractionField.AGE_REQUIREMENTS: tuple[ConditionalValue[AgeRange], ...],
+        ExtractionField.APPLICATION_CHANNEL: tuple[
+            ConditionalValue[ApplicationChannel], ...
+        ],
+        ExtractionField.REQUIRED_DOCUMENTS: tuple[
+            ConditionalValue[RequiredDocument], ...
+        ],
         ExtractionField.SPECIAL_CONDITIONS: tuple[str, ...],
-        ExtractionField.COLLATERAL: tuple[str, ...],
+        ExtractionField.COLLATERAL: tuple[ConditionalValue[CollateralTerm], ...],
         ExtractionField.INCOME_VERIFICATION_REQUIRED: RequirementPolicy,
         ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED: RequirementPolicy,
         ExtractionField.PROPERTY_MARKET: PropertyMarket,
@@ -1499,6 +1749,10 @@ def assemble_loan_product(
 
     common = {
         "product_name": value(ExtractionField.PRODUCT_NAME, str),
+        "formal_terms_names": value(
+            ExtractionField.FORMAL_TERMS_NAMES, tuple[str, ...]
+        ),
+        "variants": value(ExtractionField.VARIANTS, tuple[ProductVariant, ...]),
         "category": category,
         "purpose": value(ExtractionField.PURPOSE, tuple[str, ...]),
         "loan_amount": value(
@@ -1518,17 +1772,25 @@ def assemble_loan_product(
             tuple[ConditionalValue[TermRange], ...],
         ),
         "fees": value(ExtractionField.FEES, tuple[LoanFee, ...]),
-        "repayment": value(ExtractionField.REPAYMENT, tuple[str, ...]),
+        "repayment": value(
+            ExtractionField.REPAYMENT,
+            tuple[ConditionalValue[RepaymentMethod], ...],
+        ),
         "eligibility": value(ExtractionField.ELIGIBILITY, tuple[str, ...]),
         "residency_requirements": value(
             ExtractionField.RESIDENCY_REQUIREMENTS, tuple[str, ...]
         ),
-        "age_requirements": value(ExtractionField.AGE_REQUIREMENTS, str),
+        "age_requirements": value(
+            ExtractionField.AGE_REQUIREMENTS,
+            tuple[ConditionalValue[AgeRange], ...],
+        ),
         "application_channel": value(
-            ExtractionField.APPLICATION_CHANNEL, tuple[str, ...]
+            ExtractionField.APPLICATION_CHANNEL,
+            tuple[ConditionalValue[ApplicationChannel], ...],
         ),
         "required_documents": value(
-            ExtractionField.REQUIRED_DOCUMENTS, tuple[str, ...]
+            ExtractionField.REQUIRED_DOCUMENTS,
+            tuple[ConditionalValue[RequiredDocument], ...],
         ),
         "special_conditions": value(
             ExtractionField.SPECIAL_CONDITIONS, tuple[str, ...]
@@ -1547,7 +1809,10 @@ def assemble_loan_product(
                 ExtractionField.LTV_PCT,
                 tuple[ConditionalValue[PercentagePoint], ...],
             ),
-            collateral=value(ExtractionField.COLLATERAL, tuple[str, ...]),
+            collateral=value(
+                ExtractionField.COLLATERAL,
+                tuple[ConditionalValue[CollateralTerm], ...],
+            ),
             income_verification_required=value(
                 ExtractionField.INCOME_VERIFICATION_REQUIRED, RequirementPolicy
             ),
@@ -1574,7 +1839,10 @@ def assemble_loan_product(
         )
     else:
         details = ConsumerLoanDetails(
-            collateral=value(ExtractionField.COLLATERAL, tuple[str, ...]),
+            collateral=value(
+                ExtractionField.COLLATERAL,
+                tuple[ConditionalValue[CollateralTerm], ...],
+            ),
             income_verification_required=value(
                 ExtractionField.INCOME_VERIFICATION_REQUIRED, RequirementPolicy
             ),

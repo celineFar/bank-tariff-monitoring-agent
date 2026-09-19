@@ -202,6 +202,58 @@ class TermRange(ExtractionModel):
         return self
 
 
+class ProductVariant(ExtractionModel):
+    variant_id: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+    name: str = Field(min_length=1, max_length=500)
+    purpose: str | None = Field(default=None, max_length=2000)
+
+
+class RequiredDocument(ExtractionModel):
+    name: str = Field(min_length=1, max_length=2000)
+    requirement: Literal["required", "upon_request", "conditional", "unknown"] = (
+        "required"
+    )
+
+
+class RepaymentMethod(ExtractionModel):
+    method: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class ApplicationChannel(ExtractionModel):
+    channel: str = Field(min_length=1, max_length=1000)
+    available: bool = True
+
+
+class AgeRange(ExtractionModel):
+    min_age: int | None = Field(default=None, ge=0, le=120)
+    max_age: int | None = Field(default=None, ge=0, le=120)
+    measured_at: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> AgeRange:
+        if self.min_age is None and self.max_age is None:
+            raise ValueError("age range requires a minimum or maximum")
+        if (
+            self.min_age is not None
+            and self.max_age is not None
+            and self.min_age > self.max_age
+        ):
+            raise ValueError("minimum age must not exceed maximum age")
+        return self
+
+
+class CollateralTerm(ExtractionModel):
+    description: str | None = Field(default=None, max_length=2000)
+    applicable: bool = True
+
+    @model_validator(mode="after")
+    def validate_description(self) -> CollateralTerm:
+        if self.applicable and not self.description:
+            raise ValueError("applicable collateral requires a description")
+        return self
+
+
 class EvidenceCitation(ExtractionModel):
     evidence_id: str = Field(pattern=r"^ev_[0-9a-f]{24}$")
     source_item_id: str = Field(min_length=1, max_length=200)
@@ -234,7 +286,7 @@ class ExtractedValue(ExtractionModel, Generic[T]):
 
 class ConsumerLoanDetails(ExtractionModel):
     type: Literal["consumer_loan"] = "consumer_loan"
-    collateral: ExtractedValue[tuple[str, ...]]
+    collateral: ExtractedValue[tuple[ConditionalValue[CollateralTerm], ...]]
     income_verification_required: ExtractedValue[RequirementPolicy]
     creditworthiness_assessment_required: ExtractedValue[RequirementPolicy]
 
@@ -244,7 +296,7 @@ class MortgageDetails(ExtractionModel):
     property_market: ExtractedValue[PropertyMarket]
     down_payment_pct: ExtractedValue[tuple[ConditionalValue[PercentagePoint], ...]]
     ltv_pct: ExtractedValue[tuple[ConditionalValue[PercentagePoint], ...]]
-    collateral: ExtractedValue[tuple[str, ...]]
+    collateral: ExtractedValue[tuple[ConditionalValue[CollateralTerm], ...]]
     income_verification_required: ExtractedValue[RequirementPolicy]
     creditworthiness_assessment_required: ExtractedValue[RequirementPolicy]
     property_requirements: ExtractedValue[tuple[str, ...]]
@@ -273,6 +325,8 @@ LoanDetails = Annotated[
 
 class LoanProduct(ExtractionModel):
     product_name: ExtractedValue[str]
+    formal_terms_names: ExtractedValue[tuple[str, ...]]
+    variants: ExtractedValue[tuple[ProductVariant, ...]]
     category: LoanCategory
     purpose: ExtractedValue[tuple[str, ...]]
     loan_amount: ExtractedValue[tuple[ConditionalValue[LoanAmount], ...]]
@@ -280,12 +334,14 @@ class LoanProduct(ExtractionModel):
     effective_rate: ExtractedValue[tuple[ConditionalValue[Rate], ...]]
     term: ExtractedValue[tuple[ConditionalValue[TermRange], ...]]
     fees: ExtractedValue[tuple[LoanFee, ...]]
-    repayment: ExtractedValue[tuple[str, ...]]
+    repayment: ExtractedValue[tuple[ConditionalValue[RepaymentMethod], ...]]
     eligibility: ExtractedValue[tuple[str, ...]]
     residency_requirements: ExtractedValue[tuple[str, ...]]
-    age_requirements: ExtractedValue[str]
-    application_channel: ExtractedValue[tuple[str, ...]]
-    required_documents: ExtractedValue[tuple[str, ...]]
+    age_requirements: ExtractedValue[tuple[ConditionalValue[AgeRange], ...]]
+    application_channel: ExtractedValue[
+        tuple[ConditionalValue[ApplicationChannel], ...]
+    ]
+    required_documents: ExtractedValue[tuple[ConditionalValue[RequiredDocument], ...]]
     special_conditions: ExtractedValue[tuple[str, ...]]
     details: LoanDetails
     canonical_url: HttpUrl
@@ -294,6 +350,8 @@ class LoanProduct(ExtractionModel):
 
 class ExtractionField(StrEnum):
     PRODUCT_NAME = "product_name"
+    FORMAL_TERMS_NAMES = "formal_terms_names"
+    VARIANTS = "variants"
     CATEGORY = "category"
     PURPOSE = "purpose"
     LOAN_AMOUNT = "loan_amount"

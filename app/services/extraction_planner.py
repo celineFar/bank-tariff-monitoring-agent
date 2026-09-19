@@ -18,6 +18,8 @@ _GROUPS: tuple[tuple[str, tuple[ExtractionField, ...]], ...] = (
         "identity",
         (
             ExtractionField.PRODUCT_NAME,
+            ExtractionField.FORMAL_TERMS_NAMES,
+            ExtractionField.VARIANTS,
             ExtractionField.CATEGORY,
             ExtractionField.PURPOSE,
         ),
@@ -105,8 +107,28 @@ FIELD_KEYWORDS: dict[ExtractionField, tuple[str, ...]] = {
         "loan name",
         "mortgage loan",
         "consumer loan",
+        "consumer finance",
     ),
-    ExtractionField.CATEGORY: ("mortgage", "consumer loan", "overdraft", "credit line"),
+    ExtractionField.FORMAL_TERMS_NAMES: (
+        "information summary",
+        "terms and conditions",
+        "loan terms",
+        "tariff",
+    ),
+    ExtractionField.VARIANTS: (
+        "types of financing",
+        "consumer finance for goods",
+        "consumer finance for services",
+        "solar energy systems",
+        "financing type",
+    ),
+    ExtractionField.CATEGORY: (
+        "mortgage",
+        "consumer loan",
+        "consumer finance",
+        "overdraft",
+        "credit line",
+    ),
     ExtractionField.PURPOSE: ("purpose", "purchase", "refinancing"),
     ExtractionField.LOAN_AMOUNT: (
         "minimum and maximum loan",
@@ -151,6 +173,12 @@ FIELD_KEYWORDS: dict[ExtractionField, tuple[str, ...]] = {
         "application channel",
         "apply online",
         "online application",
+        "applying at",
+        "seller's premises",
+        "company's premises",
+        "remote consumer finance system",
+        "company website",
+        "application via",
     ),
     ExtractionField.REQUIRED_DOCUMENTS: (
         "required documents",
@@ -388,7 +416,7 @@ def _field_score(
     }[item.product_association]
     source_url = str(item.locator.source_url).casefold()
     canonical_score = (
-        8
+        (24 if field is ExtractionField.PRODUCT_NAME else 8)
         if canonical_url
         and source_url.rstrip("/") == canonical_url.casefold().rstrip("/")
         else 0

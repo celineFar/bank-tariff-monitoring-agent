@@ -36,7 +36,11 @@ formula, fixed/variable/mixed type, annual/monthly basis, and conditions. Percen
 use percentage points (`10` means 10%). Fees retain product/general-service scope.
 Income verification and creditworthiness assessment are separate conditional
 requirement policies. Mortgage, overdraft, credit-line, and ordinary consumer-loan
-details are discriminated types.
+details are discriminated types. Umbrella products also retain a typed variant catalog.
+Formal PDF/terms titles are separate from the canonical customer-facing product name.
+Repayment methods, age ranges, application channels, required documents, and
+collateral are structured conditional values, so a solar-only document or a
+service-only no-collateral rule cannot silently become global.
 
 ## Deterministic/model split
 
@@ -58,7 +62,11 @@ fields. A `found` value cannot exist without evidence; `not_stated` cannot conta
 value or evidence. Evidence-aware checks additionally reject `not_stated` when the
 same packet contains a strong current-product field label, reject values supported
 only by sibling/variant evidence, and detect condition-specific down-payment or LTV
-alternatives flattened into unconditional values. A suspicious or malformed field
+alternatives flattened into unconditional values. The same checks cover conditional
+documents, collateral, channels, ages, repayment methods, and term ranges. A term rule
+that begins above a stated threshold must be split into a separate conditional range,
+and a canonical product name must cite the canonical product page when that evidence
+is available. A suspicious or malformed field
 first passes through a deterministic shape adapter for known serialization variants.
 The audit output preserves both the raw and adapted response. Anything still invalid
 receives one bounded repair call containing the original result, exact field schema,
@@ -77,7 +85,8 @@ exact match on product, schema version, prompt version, model name, and evidence
 fingerprint. Invalid responses are never written, and invalid legacy entries are
 ignored when read. Any selected evidence change or deliberate schema/prompt version
 bump therefore causes only the affected field group to run again. Semantic extraction
-schema and prompt version 4 intentionally invalidate the earlier contracts.
+schema and prompt version 5 intentionally invalidate the earlier flat-string
+contracts.
 
 ## Demonstration
 
