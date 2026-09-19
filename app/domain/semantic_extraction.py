@@ -18,6 +18,7 @@ from app.domain.source_discovery import (
 )
 
 T = TypeVar("T")
+PercentagePoint = Annotated[Decimal, Field(ge=0, le=100)]
 
 
 class ExtractionModel(BaseModel):
@@ -147,13 +148,40 @@ class Rate(ExtractionModel):
     max: Decimal | None = Field(default=None, ge=0)
     rate_type: RateType = RateType.UNKNOWN
     basis: RateBasis = RateBasis.ANNUAL
+    formula: str | None = Field(default=None, min_length=1, max_length=2000)
 
     @model_validator(mode="after")
     def validate_range(self) -> Rate:
-        if self.min is None and self.max is None:
-            raise ValueError("rate requires a minimum or maximum")
+        if self.min is None and self.max is None and self.formula is None:
+            raise ValueError("rate requires a minimum, maximum, or formula")
         if self.min is not None and self.max is not None and self.min > self.max:
             raise ValueError("rate minimum must not exceed maximum")
+        return self
+
+
+class FeeScope(StrEnum):
+    PRODUCT = "product"
+    GENERAL_LOAN_SERVICE = "general_loan_service"
+    UNKNOWN = "unknown"
+
+
+class LoanFee(ExtractionModel):
+    description: str = Field(min_length=1, max_length=2000)
+    scope: FeeScope
+    amount: Decimal | None = Field(default=None, ge=0)
+    currency: Literal["AMD", "USD", "EUR"] | None = None
+    rate_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
+
+
+class RequirementPolicy(ExtractionModel):
+    default_required: bool | None = None
+    exceptions: tuple[ConditionalValue[bool], ...] = Field(default=(), max_length=30)
+
+    @model_validator(mode="after")
+    def validate_policy(self) -> RequirementPolicy:
+        if self.default_required is None and not self.exceptions:
+            raise ValueError("requirement policy needs a default or an exception")
         return self
 
 
@@ -207,16 +235,18 @@ class ExtractedValue(ExtractionModel, Generic[T]):
 class ConsumerLoanDetails(ExtractionModel):
     type: Literal["consumer_loan"] = "consumer_loan"
     collateral: ExtractedValue[tuple[str, ...]]
-    income_verification_required: ExtractedValue[bool]
+    income_verification_required: ExtractedValue[RequirementPolicy]
+    creditworthiness_assessment_required: ExtractedValue[RequirementPolicy]
 
 
 class MortgageDetails(ExtractionModel):
     type: Literal["mortgage"] = "mortgage"
     property_market: ExtractedValue[PropertyMarket]
-    down_payment_pct: ExtractedValue[tuple[ConditionalValue[Decimal], ...]]
-    ltv_pct: ExtractedValue[tuple[ConditionalValue[Decimal], ...]]
+    down_payment_pct: ExtractedValue[tuple[ConditionalValue[PercentagePoint], ...]]
+    ltv_pct: ExtractedValue[tuple[ConditionalValue[PercentagePoint], ...]]
     collateral: ExtractedValue[tuple[str, ...]]
-    income_verification_required: ExtractedValue[bool]
+    income_verification_required: ExtractedValue[RequirementPolicy]
+    creditworthiness_assessment_required: ExtractedValue[RequirementPolicy]
     property_requirements: ExtractedValue[tuple[str, ...]]
 
 
@@ -249,7 +279,7 @@ class LoanProduct(ExtractionModel):
     interest_rate: ExtractedValue[tuple[ConditionalValue[Rate], ...]]
     effective_rate: ExtractedValue[tuple[ConditionalValue[Rate], ...]]
     term: ExtractedValue[tuple[ConditionalValue[TermRange], ...]]
-    fees: ExtractedValue[tuple[str, ...]]
+    fees: ExtractedValue[tuple[LoanFee, ...]]
     repayment: ExtractedValue[tuple[str, ...]]
     eligibility: ExtractedValue[tuple[str, ...]]
     residency_requirements: ExtractedValue[tuple[str, ...]]
@@ -280,6 +310,7 @@ class ExtractionField(StrEnum):
     SPECIAL_CONDITIONS = "special_conditions"
     COLLATERAL = "collateral"
     INCOME_VERIFICATION_REQUIRED = "income_verification_required"
+    CREDITWORTHINESS_ASSESSMENT_REQUIRED = "creditworthiness_assessment_required"
     PROPERTY_MARKET = "property_market"
     DOWN_PAYMENT_PCT = "down_payment_pct"
     LTV_PCT = "ltv_pct"
@@ -342,6 +373,7 @@ class ExtractionBatch(ExtractionModel):
     content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     canonical_url: HttpUrl | None = None
     target_scope: tuple[str, ...] = ()
+    repair_context_json: str | None = Field(default=None, max_length=100_000)
 
 
 class ExtractionBatchResponse(ExtractionModel):
@@ -388,6 +420,8 @@ class RawBatchOutput(ExtractionModel):
     model_name: str
     raw_response: str
     parsed_response: ExtractionBatchResponse | None = None
+    normalized_response: ExtractionBatchResponse | None = None
+    normalization_notes: tuple[str, ...] = ()
     error: str | None = None
 
 

@@ -21,6 +21,7 @@ from app.services.model_pricing import enforce_model_price_cap, get_model_price
 from app.services.pipeline_audit import (
     render_pre_validation,
     render_review_queue,
+    render_semantic_extraction,
     render_unparsed_pre_validation,
 )
 from app.services.semantic_extraction import (
@@ -28,6 +29,7 @@ from app.services.semantic_extraction import (
     InMemorySemanticExtractionRepository,
     SemanticExtractionService,
 )
+from app.services.source_selection import build_selected_source_bundle
 
 SEMANTIC_EXTRACTION_LOGGER = "app.services.semantic_extraction"
 
@@ -55,6 +57,7 @@ async def demonstrate(
     discovery = SourceDiscoveryResult.model_validate_json(
         discovery_path.read_text(encoding="utf-8")
     )
+    selected_bundle = build_selected_source_bundle(bundle, discovery)
     settings = load_settings()
     repository = InMemorySemanticExtractionRepository()
     planning_service = SemanticExtractionService(
@@ -131,11 +134,25 @@ async def demonstrate(
                     flush=True,
                 )
                 continue
-            _write_failure(output_directory, attempts, exc, extractor=extractor)
+            _write_failure(
+                output_directory,
+                attempts,
+                exc,
+                extractor=extractor,
+                bundle=selected_bundle,
+                discovery=discovery,
+                plan=plan,
+            )
             raise SemanticExtractionRunFailed(output_directory, exc) from None
         attempts.append(_attempt(model_name, extractor, None))
         _write_json(output_directory / "model_attempts.json", attempts)
-        _write_result(result, output_directory)
+        _write_result(
+            result,
+            output_directory,
+            bundle=selected_bundle,
+            discovery=discovery,
+            plan=plan,
+        )
         print(
             f"Model {model_name} completed: "
             f"{extractor.usage.request_attempts} request attempt(s), "
@@ -156,6 +173,9 @@ def _write_preflight(
 ) -> None:
     output_directory.mkdir(parents=True, exist_ok=True)
     (output_directory / "extraction_plan.json").write_text(
+        plan.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_directory / "plan.json").write_text(
         plan.model_dump_json(indent=2), encoding="utf-8"
     )
     _write_json(output_directory / "evidence_catalog.json", plan.evidence_catalog)
@@ -179,6 +199,10 @@ def _write_preflight(
                 f"Estimated output tokens: {estimate['estimated_output_tokens']}",
                 f"Estimated cost (USD): {estimate['estimated_cost_usd']:.6f}",
                 "selected_for_llm.md shows the exact bounded evidence packets.",
+                (
+                    "A live run also writes extraction.md with the same "
+                    "layout-preserving audit overlay as the end-to-end demonstration."
+                ),
             )
         )
         + "\n",
@@ -186,8 +210,18 @@ def _write_preflight(
     )
 
 
-def _write_result(result: SemanticExtractionResult, output_directory: Path) -> None:
+def _write_result(
+    result: SemanticExtractionResult,
+    output_directory: Path,
+    *,
+    bundle: NormalizedSourceBundle,
+    discovery: SourceDiscoveryResult,
+    plan: SemanticExtractionPlan,
+) -> None:
     (output_directory / "semantic_extraction_result.json").write_text(
+        result.model_dump_json(indent=2), encoding="utf-8"
+    )
+    (output_directory / "result.json").write_text(
         result.model_dump_json(indent=2), encoding="utf-8"
     )
     if result.loan_product is not None:
@@ -208,6 +242,10 @@ def _write_result(result: SemanticExtractionResult, output_directory: Path) -> N
     )
     (output_directory / "extraction_results.md").write_text(
         _render_results(result), encoding="utf-8"
+    )
+    (output_directory / "extraction.md").write_text(
+        render_semantic_extraction(bundle, discovery, plan, result),
+        encoding="utf-8",
     )
 
 
@@ -329,6 +367,9 @@ def _write_failure(
     error: Exception,
     *,
     extractor: AdkSemanticExtractor,
+    bundle: NormalizedSourceBundle,
+    discovery: SourceDiscoveryResult,
+    plan: SemanticExtractionPlan,
 ) -> None:
     _write_json(
         output_directory / "failure.json",
@@ -343,6 +384,16 @@ def _write_failure(
     _write_json(output_directory / "pre_validation.json", extractor.raw_responses)
     (output_directory / "pre_validation.md").write_text(
         render_unparsed_pre_validation(extractor.raw_responses, error),
+        encoding="utf-8",
+    )
+    (output_directory / "extraction.md").write_text(
+        render_semantic_extraction(
+            bundle,
+            discovery,
+            plan,
+            None,
+            error=error,
+        ),
         encoding="utf-8",
     )
 

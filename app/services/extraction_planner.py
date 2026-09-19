@@ -39,16 +39,17 @@ _GROUPS: tuple[tuple[str, tuple[ExtractionField, ...]], ...] = (
             ExtractionField.RESIDENCY_REQUIREMENTS,
             ExtractionField.AGE_REQUIREMENTS,
             ExtractionField.APPLICATION_CHANNEL,
-            ExtractionField.REQUIRED_DOCUMENTS,
             ExtractionField.SPECIAL_CONDITIONS,
         ),
     ),
+    ("required_documents", (ExtractionField.REQUIRED_DOCUMENTS,)),
 )
 
 _PRODUCT_FIELDS: dict[ProductType, tuple[ExtractionField, ...]] = {
     ProductType.CONSUMER_LOAN: (
         ExtractionField.COLLATERAL,
         ExtractionField.INCOME_VERIFICATION_REQUIRED,
+        ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED,
         ExtractionField.CREDIT_LIMIT,
         ExtractionField.GRACE_PERIOD_DAYS,
         ExtractionField.REVOLVING,
@@ -60,6 +61,7 @@ _PRODUCT_FIELDS: dict[ProductType, tuple[ExtractionField, ...]] = {
         ExtractionField.LTV_PCT,
         ExtractionField.COLLATERAL,
         ExtractionField.INCOME_VERIFICATION_REQUIRED,
+        ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED,
         ExtractionField.PROPERTY_REQUIREMENTS,
     ),
 }
@@ -82,6 +84,9 @@ _ROLE_GROUPS: dict[str, frozenset[InformationRole]] = {
             InformationRole.PRODUCT_TERMS,
             InformationRole.CAMPAIGN_TERMS,
         }
+    ),
+    "required_documents": frozenset(
+        {InformationRole.DOCUMENTS, InformationRole.PRODUCT_TERMS}
     ),
     "product_details": frozenset(
         {
@@ -166,8 +171,14 @@ FIELD_KEYWORDS: dict[ExtractionField, tuple[str, ...]] = {
     ),
     ExtractionField.INCOME_VERIFICATION_REQUIRED: (
         "income verification",
-        "creditworthiness assessment",
         "proof of income",
+        "income document",
+        "income statement",
+    ),
+    ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED: (
+        "creditworthiness assessment",
+        "assessment of creditworthiness",
+        "creditworthiness criteria",
     ),
     ExtractionField.PROPERTY_MARKET: (
         "primary market",

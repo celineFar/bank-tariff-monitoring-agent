@@ -76,8 +76,9 @@ Machine-readable plans and results are retained next to those reports.
 Semantic extraction preserves source-discovery product association and effective
 periods on every evidence item. Its deterministic planner reserves evidence capacity
 per field, retains webpage/PDF provenance independently, excludes known sibling
-variants from canonical-product packets, and invokes a bounded one-field ADK repair
-only when evidence-aware validation detects a suspicious missing or flattened value.
+variants from canonical-product packets, deterministically adapts known serialization
+variants to the canonical field contracts, and invokes a bounded one-field ADK repair
+only when evidence-aware validation still detects an invalid or suspicious value.
 Each invocation atomically creates the next `run_NNN` directory beneath the
 configured output root, preventing concurrent or repeated audit runs from overwriting
 earlier evidence. Exact PDF, source-discovery, and semantic-extraction responses are
@@ -164,7 +165,10 @@ preflight workflow.
 source-discovery assessments. It deterministically restores full normalized blocks,
 table rows, and notes; assigns immutable evidence IDs; groups fields into bounded
 packets; and sends only uncached packets to a tool-free ADK agent with a strict
-structured response schema. The model cannot browse, fetch documents, query storage,
+structured response schema. Every packet includes the exact JSON Schema for each
+requested field. Required documents use a dedicated completeness-oriented packet so
+the webpage and admitted PDFs can be unioned without competing with other eligibility
+fields for evidence capacity. The model cannot browse, fetch documents, query storage,
 or alter the evidence packet.
 
 Python validates each returned field independently, requiring known in-batch evidence
@@ -175,6 +179,12 @@ and model; the run completes as `completed_with_review` with a partial product. 
 `LoanProduct` is emitted only when every field required for assembly validates. Exact
 batch reuse requires matching product, schema version, prompt version, model name,
 and selected-evidence fingerprint, and only wholly validated batches are cacheable.
+Before validation, a deterministic contract adapter may only reshape documented
+serialization variants (for example, amount ranges, term units, condition objects, and
+percentage-point notation); both raw and adapted responses remain in the audit output.
+Remaining repairs receive the original field, exact schema, validation paths, and only
+the original batch evidence. Income verification and creditworthiness assessment are
+separate requirement policies, and fees retain product-versus-general-service scope.
 Invalid legacy cache entries are ignored. PostgreSQL migration
 `004_semantic_extraction.sql` owns that cache. Claim generation, cross-source
 verification/repair, snapshot comparison, and HITL decisions remain downstream.

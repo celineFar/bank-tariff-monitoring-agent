@@ -25,14 +25,18 @@ The output is a `SemanticExtractionResult` containing:
   `conflicting`;
 - hydrated evidence citations containing immutable evidence ID, quote, source URL,
   source type, section, authority, and original locator;
-- the evidence catalog and raw per-batch structured responses for auditability;
+- the evidence catalog plus raw and contract-normalized per-batch responses for
+  auditability;
 - review items for invalid fields, including their raw model result, validation paths,
   evidence IDs, batch ID, and model name.
 
 Amounts retain their real representation: absolute currency ranges, salary
 multiples, property-value percentages, or other formulas. Rates retain range,
-fixed/variable/mixed type, annual/monthly basis, and conditions. Mortgage,
-overdraft, credit-line, and ordinary consumer-loan details are discriminated types.
+formula, fixed/variable/mixed type, annual/monthly basis, and conditions. Percentages
+use percentage points (`10` means 10%). Fees retain product/general-service scope.
+Income verification and creditworthiness assessment are separate conditional
+requirement policies. Mortgage, overdraft, credit-line, and ordinary consumer-loan
+details are discriminated types.
 
 ## Deterministic/model split
 
@@ -43,7 +47,9 @@ evidence quota before filling the remaining packet, ranks canonical/current-prod
 evidence above generic material, and excludes sibling-product and known variant
 sections from the canonical product packet. Packet fingerprints include this scope
 metadata. Gemini receives only unresolved bounded packets through a tool-free ADK
-agent.
+agent. Every packet carries the exact Pydantic-derived JSON Schema for each requested
+field. Required documents have their own packet so all current-product webpage and PDF
+document lists can be unioned without losing evidence capacity to other fields.
 
 After the model responds, Python validates fields independently. Missing, duplicate,
 or extra fields; out-of-batch evidence IDs; non-verbatim quotes; malformed JSON; and
@@ -53,8 +59,11 @@ value or evidence. Evidence-aware checks additionally reject `not_stated` when t
 same packet contains a strong current-product field label, reject values supported
 only by sibling/variant evidence, and detect condition-specific down-payment or LTV
 alternatives flattened into unconditional values. A suspicious or malformed field
-receives one targeted repair call containing field-specific evidence; only that field
-is replaced, and a still-invalid repair enters the review queue. If review items
+first passes through a deterministic shape adapter for known serialization variants.
+The audit output preserves both the raw and adapted response. Anything still invalid
+receives one bounded repair call containing the original result, exact field schema,
+validation paths, and only the original packet evidence; only that field is replaced,
+and a still-invalid repair enters the review queue. If review items
 remain, the run is `completed_with_review` and no
 full `LoanProduct` is claimed. Total termination is reserved for systemic failures,
 including configuration/input failures and every model batch failing before a usable
@@ -68,7 +77,7 @@ exact match on product, schema version, prompt version, model name, and evidence
 fingerprint. Invalid responses are never written, and invalid legacy entries are
 ignored when read. Any selected evidence change or deliberate schema/prompt version
 bump therefore causes only the affected field group to run again. Semantic extraction
-schema and prompt version 3 intentionally invalidate the earlier scope-unaware cache.
+schema and prompt version 4 intentionally invalidate the earlier contracts.
 
 ## Demonstration
 

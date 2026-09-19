@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
@@ -41,6 +43,7 @@ from app.services.extraction_evidence import build_evidence_catalog
 from app.services.semantic_extraction import (
     InMemorySemanticExtractionRepository,
     SemanticExtractionService,
+    _normalize_field_contract,
     _validate_response,
 )
 
@@ -127,9 +130,11 @@ def _fixture() -> tuple[NormalizedSourceBundle, SourceDiscoveryResult]:
 class FakeExtractor:
     def __init__(self) -> None:
         self.calls = 0
+        self.batches = []
 
     async def extract(self, batch):
         self.calls += 1
+        self.batches.append(batch)
         citation = ModelCitation(
             evidence_id=batch.evidence[0].evidence_id,
             quote=batch.evidence[0].content,
@@ -238,6 +243,85 @@ def test_response_rejects_invented_or_non_verbatim_citation() -> None:
         _validate_response(batch, response)
 
 
+@pytest.mark.parametrize(
+    ("field", "raw_value", "expected"),
+    (
+        (
+            ExtractionField.LOAN_AMOUNT,
+            [
+                {
+                    "conditions": ["AMD"],
+                    "value": {
+                        "type": "absolute",
+                        "currency": "AMD",
+                        "min": 3_000_000,
+                        "max": 150_000_000,
+                    },
+                }
+            ],
+            150_000_000,
+        ),
+        (
+            ExtractionField.TERM,
+            [
+                {
+                    "min_value": 61,
+                    "max_value": 360,
+                    "min_unit": "month",
+                    "max_unit": "month",
+                }
+            ],
+            360,
+        ),
+        (
+            ExtractionField.DOWN_PAYMENT_PCT,
+            [{"value": 0.075, "conditions": ["state-supported program"]}],
+            Decimal("7.500"),
+        ),
+    ),
+)
+def test_contract_adapter_repairs_known_semantic_shapes(
+    field, raw_value, expected
+) -> None:
+    result = ModelFieldResult(
+        field=field,
+        status=ExtractionStatus.FOUND,
+        value_json=json.dumps(raw_value),
+        evidence=(ModelCitation(evidence_id="ev_" + "a" * 24, quote="supported"),),
+    )
+
+    normalized, notes = _normalize_field_contract(result)
+    value = json.loads(normalized.value_json)
+
+    assert notes
+    if field is ExtractionField.LOAN_AMOUNT:
+        assert value[0]["value"]["range"]["max"] == expected
+        assert value[0]["conditions"][0]["dimension"] == "currency"
+    elif field is ExtractionField.TERM:
+        assert value[0]["value"]["max_months"] == expected
+    else:
+        assert Decimal(str(value[0]["value"])) == expected
+
+
+def test_required_documents_are_deduplicated_without_losing_order() -> None:
+    result = ModelFieldResult(
+        field=ExtractionField.REQUIRED_DOCUMENTS,
+        status=ExtractionStatus.FOUND,
+        value_json=json.dumps(
+            ["Identity document", " Identity   document ", "Purchase agreement"]
+        ),
+        evidence=(ModelCitation(evidence_id="ev_" + "a" * 24, quote="supported"),),
+    )
+
+    normalized, notes = _normalize_field_contract(result)
+
+    assert json.loads(normalized.value_json) == [
+        "Identity document",
+        "Purchase agreement",
+    ]
+    assert notes
+
+
 @pytest.mark.asyncio
 async def test_service_assembles_product_and_reuses_exact_cached_batches() -> None:
     bundle, discovery = _fixture()
@@ -260,9 +344,9 @@ async def test_service_assembles_product_and_reuses_exact_cached_batches() -> No
 
     assert first.loan_product.product_name.value == "Consumer loan"
     assert first.loan_product.category.value == "consumer_loan"
-    assert first_calls == 5
+    assert first_calls == 6
     assert extractor.calls == first_calls
-    assert second.reused_batch_count == 5
+    assert second.reused_batch_count == 6
 
 
 class InvalidRateExtractor(FakeExtractor):
@@ -335,9 +419,19 @@ async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> N
     assert any(
         output.batch_id.endswith("__repair_term") for output in first.raw_batch_outputs
     )
-    assert calls_after_first == 6
+    original_batch = next(
+        batch for batch in extractor.batches if batch.id == "extract_001"
+    )
+    repair_batch = next(
+        batch for batch in extractor.batches if batch.id.endswith("__repair_term")
+    )
+    assert {item.evidence_id for item in repair_batch.evidence} == {
+        item.evidence_id for item in original_batch.evidence
+    }
+    assert repair_batch.repair_context_json is not None
+    assert calls_after_first == 7
     assert extractor.calls == calls_after_first
-    assert second.reused_batch_count == 5
+    assert second.reused_batch_count == 6
 
 
 class SelectivelyFailingExtractor(FakeExtractor):
@@ -353,9 +447,7 @@ class SelectivelyFailingExtractor(FakeExtractor):
 
 
 @pytest.mark.asyncio
-async def test_invalid_field_is_preserved_for_review_without_losing_valid_fields() -> (
-    None
-):
+async def test_common_rate_shape_is_adapted_without_losing_valid_fields() -> None:
     bundle, discovery = _fixture()
     extractor = InvalidRateExtractor()
     repository = InMemorySemanticExtractionRepository()
@@ -370,27 +462,19 @@ async def test_invalid_field_is_preserved_for_review_without_losing_valid_fields
         bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
     )
 
-    assert result.status is SemanticExtractionRunStatus.COMPLETED_WITH_REVIEW
-    assert result.loan_product is None
+    assert result.status is SemanticExtractionRunStatus.COMPLETED
+    assert result.loan_product is not None
     assert result.partial_product.category.value == "consumer_loan"
     assert {item.field for item in result.validated_fields} >= {
         ExtractionField.CATEGORY,
         ExtractionField.PRODUCT_NAME,
     }
-    review = next(
-        item
-        for item in result.review_items
-        if item.field is ExtractionField.INTEREST_RATE
-    )
-    assert review.raw_result is not None
-    assert review.raw_result.value_json is not None
-    assert any(
-        "value" in map(str, issue.location) for issue in review.validation_issues
-    )
+    assert result.loan_product.interest_rate.value[0].value.min == 20
+    assert result.raw_batch_outputs[1].normalization_notes
 
     next_plan = await service.plan(bundle, discovery)
-    assert any(
-        ExtractionField.INTEREST_RATE in batch.fields for batch in next_plan.batches
+    assert all(
+        ExtractionField.INTEREST_RATE not in batch.fields for batch in next_plan.batches
     )
 
 

@@ -274,8 +274,8 @@ class SourceDiscoverySettings(SettingsGroup):
 
 
 class SemanticExtractionSettings(SettingsGroup):
-    schema_version: str = Field(default="3", min_length=1, max_length=50)
-    prompt_version: str = Field(default="3", min_length=1, max_length=50)
+    schema_version: str = Field(default="4", min_length=1, max_length=50)
+    prompt_version: str = Field(default="4", min_length=1, max_length=50)
     max_evidence_chars_per_item: int = Field(default=5000, ge=500, le=20_000)
     max_chars_per_batch: int = Field(default=20_000, ge=1000, le=100_000)
     max_items_per_batch: int = Field(default=20, ge=1, le=100)

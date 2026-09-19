@@ -471,6 +471,22 @@ def render_pre_validation(result: SemanticExtractionResult) -> str:
             continue
         for item in output.parsed_response.results:
             review = review_by_field.get(item.field)
+            normalized_item = (
+                next(
+                    (
+                        candidate
+                        for candidate in output.normalized_response.results
+                        if candidate.field is item.field
+                    ),
+                    None,
+                )
+                if output.normalized_response is not None
+                else None
+            )
+            was_adjusted = (
+                normalized_item is not None
+                and normalized_item.value_json != item.value_json
+            )
             if review is not None:
                 label, color, border = "INVALID — HUMAN REVIEW", "#fee4e2", "#d92d20"
             elif item.status in {
@@ -479,7 +495,8 @@ def render_pre_validation(result: SemanticExtractionResult) -> str:
             }:
                 label, color, border = item.status.value.upper(), "#fff4e5", "#f79009"
             elif item.field in validated:
-                label, color, border = "VALIDATED", "#ecfdf3", "#12b76a"
+                label = "CONTRACT-ADAPTED — VALIDATED" if was_adjusted else "VALIDATED"
+                color, border = "#ecfdf3", "#12b76a"
             else:
                 label, color, border = "NOT VALIDATED", "#f2f4f7", "#667085"
             parts.extend(
@@ -489,11 +506,34 @@ def render_pre_validation(result: SemanticExtractionResult) -> str:
                     f"{_safe(item.field.value)} — {label}</strong></div>",
                     "",
                     "```json",
-                    _pretty_json(item.value_json if item.value_json is not None else "—"),
+                    _pretty_json(
+                        item.value_json if item.value_json is not None else "—"
+                    ),
                     "```",
                     "",
                 )
             )
+            if was_adjusted and normalized_item is not None:
+                parts.extend(
+                    (
+                        "Deterministic contract adaptation:",
+                        "",
+                        *(
+                            f"- {_safe(note)}"
+                            for note in output.normalization_notes
+                            if note.startswith(f"{item.field.value}:")
+                        ),
+                        "",
+                        "```json",
+                        _pretty_json(
+                            normalized_item.value_json
+                            if normalized_item.value_json is not None
+                            else "—"
+                        ),
+                        "```",
+                        "",
+                    )
+                )
             if review is not None:
                 parts.extend(
                     f"- `{_safe('.'.join(map(str, issue.location)))}`: "
