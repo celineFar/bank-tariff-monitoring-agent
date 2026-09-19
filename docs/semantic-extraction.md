@@ -1,5 +1,9 @@
 # Semantic extraction
 
+For a detailed architecture explanation, current conflict behavior, known limitations,
+and improvement roadmap, see
+[semantic-extraction-maintenance-guide.md](semantic-extraction-maintenance-guide.md).
+
 Semantic extraction turns the evidence selected by source discovery into the typed
 loan-product facts used by later claim generation and verification. It does not fetch
 sources or decide which documents are relevant.
