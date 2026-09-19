@@ -67,10 +67,12 @@ normalization documents, detailed source-discovery decisions in
 `selection_decisions.md`, a layout-preserving green/orange/red selection diff in
 `selection_diff.md`, independent linked-document reports under
 `source-discovery/documents/` (including one decision and one diff file per PDF), and
-a semantic-extraction overlay that highlights only exact cited quotations with field
-labels. The root selection reports contain only the canonical webpage so their layout
-remains directly comparable with acquisition. Machine-readable plans and results are
-retained next to those reports.
+layout-preserving `selected_webpage.md` and per-document `selected_*.md` files. Those
+selected Markdown files render `selected_sources.json`, the structured filtered bundle
+used by semantic extraction. The semantic-extraction overlay highlights only exact
+cited quotations with field labels. The root selection reports contain only the
+canonical webpage so their layout remains directly comparable with acquisition.
+Machine-readable plans and results are retained next to those reports.
 Each invocation atomically creates the next `run_NNN` directory beneath the
 configured output root, preventing concurrent or repeated audit runs from overwriting
 earlier evidence. Exact PDF, source-discovery, and semantic-extraction responses are

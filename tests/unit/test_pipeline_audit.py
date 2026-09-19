@@ -226,6 +226,8 @@ def test_source_discovery_writes_each_pdf_to_independent_reports(tmp_path) -> No
     pdf_decisions = next((tmp_path / "documents" / "pdfs").glob("*.selection_decisions.md"))
     pdf_report = pdf_decisions.read_text(encoding="utf-8")
     index = (tmp_path / "documents" / "index.md").read_text(encoding="utf-8")
+    selected_pdf = next((tmp_path / "documents" / "pdfs").glob("selected_*.md"))
+    selected_pdf_report = selected_pdf.read_text(encoding="utf-8")
 
     assert "Current mortgage terms" not in root_decisions
     assert "Current mortgage terms" in pdf_report
@@ -233,7 +235,10 @@ def test_source_discovery_writes_each_pdf_to_independent_reports(tmp_path) -> No
     assert "SELECTED WITH UNCERTAINTY" in pdf_report
     assert "<strong>UNASSESSED</strong>" not in pdf_report
     assert "SELECTED WITH UNCERTAINTY" in index
-    assert len(list((tmp_path / "documents" / "pdfs").glob("*.md"))) == 2
+    assert "PDF mortgage terms" in selected_pdf_report
+    assert (tmp_path / "selected_webpage.md").is_file()
+    assert (tmp_path / "selected_sources.json").is_file()
+    assert len(list((tmp_path / "documents" / "pdfs").glob("*.md"))) == 3
 
 
 def test_extraction_report_highlights_only_exact_cited_quote() -> None:

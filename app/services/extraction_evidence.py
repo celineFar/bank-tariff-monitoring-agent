@@ -5,13 +5,12 @@ import hashlib
 from app.domain.normalization import NormalizedSourceBundle
 from app.domain.semantic_extraction import EvidenceItem
 from app.domain.source_discovery import (
-    Authority,
-    DiscoveryScope,
-    InformationRole,
-    Relevance,
     SourceAssessment,
     SourceDiscoveryResult,
-    TemporalStatus,
+)
+from app.services.source_selection import (
+    assessment_precedence,
+    selected_assessments_by_source_item,
 )
 
 
@@ -19,12 +18,12 @@ def build_evidence_catalog(
     bundle: NormalizedSourceBundle,
     discovery: SourceDiscoveryResult,
 ) -> tuple[EvidenceItem, ...]:
-    assessments = _assessment_by_source_item(discovery.assessments)
+    assessments = selected_assessments_by_source_item(discovery.assessments)
     evidence: list[EvidenceItem] = []
     for document in bundle.documents:
         for block in document.blocks:
             assessment = assessments.get(block.id)
-            if assessment is None or assessment.relevance is Relevance.IRRELEVANT:
+            if assessment is None:
                 continue
             section = " > ".join(block.heading_path) or None
             evidence.append(
@@ -39,7 +38,7 @@ def build_evidence_catalog(
             )
         for table in document.tables:
             assessment = assessments.get(table.id)
-            if assessment is None or assessment.relevance is Relevance.IRRELEVANT:
+            if assessment is None:
                 continue
             headers = " | ".join(table.headers)
             for row in table.rows:
@@ -75,23 +74,6 @@ def build_evidence_catalog(
     )
 
 
-def _assessment_by_source_item(
-    assessments: tuple[SourceAssessment, ...],
-) -> dict[str, SourceAssessment]:
-    values: dict[str, SourceAssessment] = {}
-    for assessment in assessments:
-        if assessment.relevance is Relevance.IRRELEVANT or assessment.temporal_status in {
-            TemporalStatus.POSSIBLY_STALE,
-            TemporalStatus.FUTURE,
-        }:
-            continue
-        for reference in assessment.source_refs:
-            current = values.get(reference.source_item_id)
-            if current is None or _precedence(assessment) < _precedence(current):
-                values[reference.source_item_id] = assessment
-    return values
-
-
 def _evidence_item(
     document_id: str,
     source_item_id: str,
@@ -111,25 +93,7 @@ def _evidence_item(
         role=assessment.role,
         authority=assessment.authority,
         temporal_status=assessment.temporal_status,
-        precedence=_precedence(assessment),
+        precedence=assessment_precedence(assessment),
         conditions=assessment.conditions,
         locator=locator,
     )
-
-
-def _precedence(assessment: SourceAssessment) -> int:
-    if assessment.authority is Authority.OFFICIAL_TERMS:
-        return 1
-    if assessment.scope is DiscoveryScope.TABLE and assessment.role in {
-        InformationRole.PRODUCT_TERMS,
-        InformationRole.PRICING,
-        InformationRole.FEES,
-    }:
-        return 2
-    if assessment.authority is Authority.OFFICIAL_PRODUCT_CONTENT:
-        return 3
-    if assessment.authority is Authority.OFFICIAL_FAQ:
-        return 4
-    if assessment.authority is Authority.OFFICIAL_CAMPAIGN_CONTENT:
-        return 5
-    return 6

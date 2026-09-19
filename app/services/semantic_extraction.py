@@ -55,6 +55,7 @@ from app.services.adk_logging import suppress_handled_adk_exception_logs
 from app.services.discovery_classifier import ClassifierUsage, is_retryable_api_error
 from app.services.extraction_evidence import build_evidence_catalog
 from app.services.extraction_planner import build_extraction_batches
+from app.services.source_selection import build_selected_source_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +257,8 @@ class SemanticExtractionService:
     ) -> SemanticExtractionPlan:
         if bundle.acquisition_content_hash != discovery.input_content_hash:
             raise ValueError("normalization and source-discovery hashes do not match")
-        evidence = build_evidence_catalog(bundle, discovery)
+        selected_bundle = build_selected_source_bundle(bundle, discovery)
+        evidence = build_evidence_catalog(selected_bundle, discovery)
         batches = build_extraction_batches(
             discovery.product, evidence, self._settings
         )

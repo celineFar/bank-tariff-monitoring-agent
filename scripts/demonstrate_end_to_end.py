@@ -60,6 +60,7 @@ from app.services.semantic_extraction import (
     SemanticExtractionService,
 )
 from app.services.source_discovery import SourceDiscoveryService
+from app.services.source_selection import build_selected_source_bundle
 
 DEFAULT_OUTPUT_DIRECTORY = Path("end-to-end")
 _RUN_DIRECTORY = re.compile(r"^run_(\d+)$")
@@ -216,11 +217,12 @@ async def demonstrate(
     _write_json(discovery_directory / "plan.json", discovery_plan)
     _write_json(discovery_directory / "result.json", discovery_result)
     _write_json(discovery_directory / "model_attempts.json", discovery_attempts)
-    _write_source_discovery_reports(
+    selected_bundle = _write_source_discovery_reports(
         discovery_directory,
         bundle,
         discovery_result,
     )
+    assert selected_bundle is not None
 
     semantic_directory = output / "semantic-extraction"
     semantic_directory.mkdir()
@@ -232,7 +234,7 @@ async def demonstrate(
             semantic_result,
             semantic_attempts,
         ) = await _run_semantic_extraction(
-            bundle,
+            selected_bundle,
             discovery_result,
             settings,
             api_key,
@@ -253,7 +255,7 @@ async def demonstrate(
             )
         elif semantic_plan is None:
             semantic_plan = await _build_semantic_plan(
-                bundle,
+                selected_bundle,
                 discovery_result,
                 settings,
                 repository=semantic_repository,
@@ -261,7 +263,7 @@ async def demonstrate(
         _write_json(semantic_directory / "plan.json", semantic_plan)
         (semantic_directory / "extraction.md").write_text(
             render_semantic_extraction(
-                bundle, discovery_result, semantic_plan, None, error=failure
+                selected_bundle, discovery_result, semantic_plan, None, error=failure
             ),
             encoding="utf-8",
         )
@@ -300,7 +302,7 @@ async def demonstrate(
     _write_json(semantic_directory / "model_attempts.json", semantic_attempts)
     (semantic_directory / "extraction.md").write_text(
         render_semantic_extraction(
-            bundle, discovery_result, semantic_plan, semantic_result
+            selected_bundle, discovery_result, semantic_plan, semantic_result
         ),
         encoding="utf-8",
     )
@@ -495,7 +497,7 @@ def _write_source_discovery_reports(
     result: SourceDiscoveryResult | None,
     *,
     error: Exception | None = None,
-) -> None:
+) -> NormalizedSourceBundle | None:
     page_documents = tuple(
         document
         for document in bundle.documents
@@ -509,6 +511,28 @@ def _write_source_discovery_reports(
         render_source_selection_diff(page_bundle, result, error=error),
         encoding="utf-8",
     )
+    selected_bundle = (
+        build_selected_source_bundle(bundle, result) if result is not None else None
+    )
+    selected_by_id = (
+        {document.id: document for document in selected_bundle.documents}
+        if selected_bundle is not None
+        else {}
+    )
+    if selected_bundle is not None:
+        _write_json(directory / "selected_sources.json", selected_bundle)
+        selected_page = next(
+            (
+                document
+                for document in selected_bundle.documents
+                if document.source_type is SourceType.PAGE
+            ),
+            None,
+        )
+        if selected_page is not None:
+            (directory / "selected_webpage.md").write_text(
+                render_document_markdown(selected_page), encoding="utf-8"
+            )
 
     documents_directory = directory / "documents"
     documents_directory.mkdir()
@@ -518,8 +542,8 @@ def _write_source_discovery_reports(
         "Each linked document remains independent. Its normalized content and "
         "source-discovery decisions are rendered in dedicated Markdown files.",
         "",
-        "| # | Type | Decision | Document | Reports |",
-        "|---:|---|---|---|---|",
+        "| # | Type | Decision | Document | Reports | Selected content |",
+        "|---:|---|---|---|---|---|",
     ]
     linked_documents = tuple(
         document
@@ -535,6 +559,7 @@ def _write_source_discovery_reports(
         )
         decisions_name = f"{stem}.selection_decisions.md"
         diff_name = f"{stem}.selection_diff.md"
+        selected_name = f"selected_{stem}.md"
         document_bundle = _document_bundle(bundle, (document,))
         (target_directory / decisions_name).write_text(
             render_source_selection(document_bundle, result, error=error),
@@ -545,17 +570,28 @@ def _write_source_discovery_reports(
             encoding="utf-8",
         )
         decision = _document_selection_decision(document, result)
+        selected_document = selected_by_id.get(document.id)
+        if selected_document is not None:
+            (target_directory / selected_name).write_text(
+                render_document_markdown(selected_document), encoding="utf-8"
+            )
         relative = target_directory.relative_to(documents_directory).as_posix()
+        selected_link = (
+            f"[selected]({relative}/{selected_name})"
+            if selected_document is not None
+            else "—"
+        )
         index_lines.append(
             f"| {index + 1} | `{document.source_type.value}` | **{decision}** | "
             f"[{_markdown_cell(document.name)}]({relative}/{decisions_name}) | "
             f"[decisions]({relative}/{decisions_name}) · "
-            f"[diff]({relative}/{diff_name}) |"
+            f"[diff]({relative}/{diff_name}) | {selected_link} |"
         )
     index_lines.append("")
     (documents_directory / "index.md").write_text(
         "\n".join(index_lines), encoding="utf-8"
     )
+    return selected_bundle
 
 
 def _document_bundle(

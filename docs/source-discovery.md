@@ -9,9 +9,13 @@ For the end-to-end audit, the canonical webpage is rendered in the root
 `selection_decisions.md` and `selection_diff.md`. Linked normalized documents remain
 independent under `source-discovery/documents/`: `index.md` records their selection
 state and each PDF receives its own `*.selection_decisions.md` and
-`*.selection_diff.md`. A PDF admitted as relevant from its title, link label, and
-surrounding metadata receives one document-level decision that is inherited by its
-blocks and tables; historical or future status still excludes it from current terms.
+`*.selection_diff.md`. The retained content is also written as
+`selected_webpage.md` and per-document `selected_*.md` files. These are
+human-readable renderings of `selected_sources.json`, the filtered structured bundle
+passed to semantic extraction. A PDF admitted as relevant from its title, link label,
+and surrounding metadata receives one document-level decision that is inherited by
+its blocks and tables; historical or future status still excludes it from current
+terms.
 
 ## Cost-aware execution
 

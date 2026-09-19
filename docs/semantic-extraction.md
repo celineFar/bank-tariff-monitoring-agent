@@ -6,11 +6,14 @@ sources or decide which documents are relevant.
 
 ## Inputs and outputs
 
-The service consumes the same `NormalizedSourceBundle` used by source discovery plus
-a completed `SourceDiscoveryResult`. The discovery result supplies relevance,
-authority, temporal status, role, conditions, and precedence. The normalized bundle
-supplies the full content and original `SourceLocator`; the shorter discovery prompt
-excerpt is deliberately not treated as extraction evidence.
+The service consumes the source-discovery-selected `NormalizedSourceBundle` plus a
+completed `SourceDiscoveryResult`. In the end-to-end audit this bundle is persisted as
+`source-discovery/selected_sources.json` and rendered as `selected_webpage.md` and
+per-document `selected_*.md` files. The service reapplies the deterministic selection
+filter defensively, so callers cannot accidentally reintroduce rejected content. The
+discovery result supplies relevance, authority, temporal status, role, conditions,
+and precedence. The selected normalized bundle supplies full content and original
+`SourceLocator`; the shorter discovery prompt excerpt is not extraction evidence.
 
 The output is a `SemanticExtractionResult` containing:
 
