@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import json
 import logging
+import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,8 +21,16 @@ from app.domain.semantic_extraction import (
     SemanticExtractionPlan,
     SemanticExtractionResult,
 )
-from app.domain.source_discovery import SourceDiscoveryPlan, SourceDiscoveryResult
+from app.domain.source_discovery import (
+    DecisionSource,
+    SourceDiscoveryPlan,
+    SourceDiscoveryResult,
+)
 from app.repositories.file_pdf_extraction import FileSystemPdfExtractionRepository
+from app.repositories.file_semantic_extraction import (
+    FileSystemSemanticExtractionRepository,
+)
+from app.repositories.file_source_discovery import FileSystemSourceDiscoveryRepository
 from app.services.acquisition import build_acquisition_service
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import (
@@ -40,15 +50,12 @@ from app.services.pipeline_audit import (
 )
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
-    InMemorySemanticExtractionRepository,
     SemanticExtractionService,
 )
-from app.services.source_discovery import (
-    InMemorySourceDiscoveryRepository,
-    SourceDiscoveryService,
-)
+from app.services.source_discovery import SourceDiscoveryService
 
 DEFAULT_OUTPUT_DIRECTORY = Path("end-to-end")
+_RUN_DIRECTORY = re.compile(r"^run_(\d+)$")
 
 
 class EndToEndStageError(RuntimeError):
@@ -78,7 +85,7 @@ async def demonstrate(
     output_directory: Path = DEFAULT_OUTPUT_DIRECTORY,
     product: ProductType | None = None,
 ) -> Path:
-    output = _prepare_output(output_directory)
+    output = _next_run_directory(output_directory)
     (output / "source_url.txt").write_text(source_url.strip() + "\n", encoding="utf-8")
 
     acquisition_directory = output / "acquisition"
@@ -109,7 +116,27 @@ async def demonstrate(
         )
 
     artifact_store = FileSystemArtifactStore(source_files / "artifacts")
-    pdf_repository = FileSystemPdfExtractionRepository(source_files / "pdf_cache")
+    shared_cache = output.parent / ".cache"
+    pdf_repository = FileSystemPdfExtractionRepository(shared_cache / "pdf-extraction")
+    discovery_repository = FileSystemSourceDiscoveryRepository(
+        shared_cache / "source-discovery"
+    )
+    semantic_repository = FileSystemSemanticExtractionRepository(
+        shared_cache / "semantic-extraction"
+    )
+    imported = await _import_previous_run_caches(
+        output.parent,
+        current_run=output,
+        pdf_cache=shared_cache / "pdf-extraction",
+        discovery_repository=discovery_repository,
+        semantic_repository=semantic_repository,
+    )
+    if any(imported.values()):
+        print(
+            "  imported prior run caches: "
+            + ", ".join(f"{name}={count}" for name, count in imported.items()),
+            flush=True,
+        )
     pdf_service = GeminiPdfExtractionService(
         settings.pdf_extraction,
         pdf_repository,
@@ -151,7 +178,11 @@ async def demonstrate(
     )
     try:
         discovery_plan, discovery_result, discovery_attempts = await _run_discovery(
-            bundle, selected_product, settings, api_key
+            bundle,
+            selected_product,
+            settings,
+            api_key,
+            repository=discovery_repository,
         )
     except Exception as exc:
         failure = exc.error if isinstance(exc, ModelSequenceError) else exc
@@ -191,6 +222,7 @@ async def demonstrate(
             discovery_result,
             settings,
             api_key,
+            repository=semantic_repository,
             retrieved_at=artifact.retrieved_at,
         )
     except Exception as exc:
@@ -200,7 +232,10 @@ async def demonstrate(
             _write_json(semantic_directory / "model_attempts.json", exc.attempts)
         elif semantic_plan is None:
             semantic_plan = await _build_semantic_plan(
-                bundle, discovery_result, settings
+                bundle,
+                discovery_result,
+                settings,
+                repository=semantic_repository,
             )
         _write_json(semantic_directory / "plan.json", semantic_plan)
         (semantic_directory / "extraction.md").write_text(
@@ -244,6 +279,7 @@ async def demonstrate(
             ),
             "source_discovery_model": discovery_result.model_name,
             "semantic_extraction_model": semantic_result.model_name,
+            "shared_cache_directory": str(shared_cache),
         },
     )
     print(f"End-to-end audit trail written to {output.resolve()}", flush=True)
@@ -407,6 +443,8 @@ async def _run_discovery(
     product: ProductType,
     settings: Settings,
     api_key: str,
+    *,
+    repository: FileSystemSourceDiscoveryRepository,
 ) -> tuple[SourceDiscoveryPlan, SourceDiscoveryResult, list[dict[str, Any]]]:
     models = _model_sequence(
         settings.models.generation_model,
@@ -428,13 +466,19 @@ async def _run_discovery(
         )
         service = SourceDiscoveryService(
             classifier=classifier,
-            repository=InMemorySourceDiscoveryRepository(),
+            repository=repository,
             settings=settings.source_discovery,
             model_name=model_name,
         )
         plan = await service.plan(bundle, product)
         print(
             f"  source-discovery model {index + 1}/{len(models)}: {model_name}",
+            flush=True,
+        )
+        print(
+            f"  source-discovery plan: {len(plan.cache_hits)} cached, "
+            f"{len(plan.deterministic_assessments)} deterministic, "
+            f"{len(plan.batches)} LLM batch(es)",
             flush=True,
         )
         try:
@@ -454,10 +498,12 @@ async def _build_semantic_plan(
     bundle: NormalizedSourceBundle,
     discovery: SourceDiscoveryResult,
     settings: Settings,
+    *,
+    repository: FileSystemSemanticExtractionRepository,
 ) -> SemanticExtractionPlan:
     service = SemanticExtractionService(
         extractor=None,
-        repository=InMemorySemanticExtractionRepository(),
+        repository=repository,
         settings=settings.semantic_extraction,
         model_name=settings.models.generation_model,
     )
@@ -470,6 +516,7 @@ async def _run_semantic_extraction(
     settings: Settings,
     api_key: str,
     *,
+    repository: FileSystemSemanticExtractionRepository,
     retrieved_at,
 ) -> tuple[SemanticExtractionPlan, SemanticExtractionResult, list[dict[str, Any]]]:
     models = _model_sequence(
@@ -492,12 +539,17 @@ async def _run_semantic_extraction(
         )
         service = SemanticExtractionService(
             extractor=extractor,
-            repository=InMemorySemanticExtractionRepository(),
+            repository=repository,
             settings=settings.semantic_extraction,
             model_name=model_name,
         )
         plan = await service.plan(bundle, discovery)
         print(f"  semantic model {index + 1}/{len(models)}: {model_name}", flush=True)
+        print(
+            f"  semantic plan: {len(plan.cache_hits)} cached batch(es), "
+            f"{len(plan.batches)} LLM batch(es)",
+            flush=True,
+        )
         try:
             result = await service.extract(bundle, discovery, retrieved_at=retrieved_at)
         except Exception as exc:
@@ -573,14 +625,99 @@ def _url_extension(url: str) -> str:
     return suffix if suffix and len(suffix) <= 10 else ".bin"
 
 
-def _prepare_output(path: Path) -> Path:
-    resolved = path.resolve()
-    if resolved.exists() and any(resolved.iterdir()):
-        raise FileExistsError(
-            f"Output directory is not empty: {resolved}. Pass a new --output-directory."
-        )
-    resolved.mkdir(parents=True, exist_ok=True)
-    return resolved
+def _next_run_directory(path: Path) -> Path:
+    root = path.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    existing_numbers = [
+        int(match.group(1))
+        for child in root.iterdir()
+        if child.is_dir() and (match := _RUN_DIRECTORY.fullmatch(child.name))
+    ]
+    first_index = max(existing_numbers, default=0) + 1
+    for index in range(first_index, 100_000):
+        candidate = root / f"run_{index:03d}"
+        try:
+            candidate.mkdir()
+        except FileExistsError:
+            continue
+        return candidate
+    raise RuntimeError(f"No available numbered run directory below {root}")
+
+
+async def _import_previous_run_caches(
+    root: Path,
+    *,
+    current_run: Path,
+    pdf_cache: Path,
+    discovery_repository: FileSystemSourceDiscoveryRepository,
+    semantic_repository: FileSystemSemanticExtractionRepository,
+) -> dict[str, int]:
+    counts = {"pdf": 0, "source_discovery": 0, "semantic_extraction": 0}
+    previous_runs = sorted(
+        child
+        for child in root.iterdir()
+        if child.is_dir()
+        and child != current_run
+        and _RUN_DIRECTORY.fullmatch(child.name)
+    )
+    # The root itself supports the original, pre-run_NNN demonstration layout.
+    for run in (root, *previous_runs):
+        legacy_pdf_cache = run / "acquisition" / "source files" / "pdf_cache"
+        if legacy_pdf_cache.is_dir():
+            for source in legacy_pdf_cache.rglob("*.json"):
+                destination = pdf_cache / source.relative_to(legacy_pdf_cache)
+                if destination.is_file():
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                counts["pdf"] += 1
+
+        discovery_path = run / "source-discovery" / "result.json"
+        if discovery_path.is_file():
+            result = SourceDiscoveryResult.model_validate_json(
+                discovery_path.read_text(encoding="utf-8")
+            )
+            reusable = tuple(
+                assessment
+                for assessment in result.assessments
+                if assessment.decision_source
+                in {DecisionSource.LLM, DecisionSource.CACHE}
+            )
+            if reusable:
+                await discovery_repository.save(
+                    product=result.product,
+                    policy_version=result.policy_version,
+                    prompt_version=result.prompt_version,
+                    model_name=result.model_name,
+                    assessments=reusable,
+                )
+                counts["source_discovery"] += len(reusable)
+
+        semantic_plan_path = run / "semantic-extraction" / "plan.json"
+        semantic_result_path = run / "semantic-extraction" / "result.json"
+        if semantic_plan_path.is_file() and semantic_result_path.is_file():
+            plan = SemanticExtractionPlan.model_validate_json(
+                semantic_plan_path.read_text(encoding="utf-8")
+            )
+            result = SemanticExtractionResult.model_validate_json(
+                semantic_result_path.read_text(encoding="utf-8")
+            )
+            if len(plan.batches) == len(result.batch_results):
+                values = tuple(
+                    (batch.content_fingerprint, response)
+                    for batch, response in zip(
+                        plan.batches, result.batch_results, strict=True
+                    )
+                )
+                await semantic_repository.save(
+                    product=plan.product,
+                    schema_version=plan.schema_version,
+                    prompt_version=plan.prompt_version,
+                    model_name=result.model_name,
+                    values=values,
+                )
+                counts["semantic_extraction"] += len(values)
+    return counts
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -612,7 +749,7 @@ def _parse_args() -> argparse.Namespace:
         "--output-directory",
         type=Path,
         default=DEFAULT_OUTPUT_DIRECTORY,
-        help="New or empty output directory (default: end-to-end)",
+        help="Run container; creates run_NNN inside it (default: end-to-end)",
     )
     return parser.parse_args()
 

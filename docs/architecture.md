@@ -59,8 +59,11 @@ expose filesystem/network tools to either ADK agent.
 The script writes source artifacts and readable reconstructions, unified normalization
 diffs, an inline selected/rejected source report, and an evidence-by-evidence semantic
 extraction report. Machine-readable plans and results are retained next to those
-reports. The output directory must be new or empty, preventing an audit run from
-silently overwriting an earlier run.
+reports. Each invocation atomically creates the next `run_NNN` directory beneath the
+configured output root, preventing concurrent or repeated audit runs from overwriting
+earlier evidence. Exact PDF, source-discovery, and semantic-extraction responses are
+shared across those numbered runs under `end-to-end/.cache/`; their existing content,
+model, prompt/schema version, product, and policy fingerprints must match before reuse.
 
 ## PDF retrieval boundary
 
