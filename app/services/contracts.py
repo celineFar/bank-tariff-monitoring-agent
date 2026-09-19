@@ -1,9 +1,7 @@
 from typing import Protocol
 
-from app.domain.models import ProductType
+from app.domain.monitoring import MonitoringRun
 
 
 class TariffPipeline(Protocol):
-    async def run(
-        self, product: ProductType, trigger: str, query: str | None
-    ) -> str: ...
+    async def execute(self, run: MonitoringRun) -> MonitoringRun: ...

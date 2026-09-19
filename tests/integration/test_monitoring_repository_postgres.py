@@ -268,6 +268,10 @@ async def test_atomic_publication_commits_documents_snapshot_and_manifest(
         documents=(_document(run.id),),
         snapshot=snapshot,
         manifests=(_manifest(run.id, execution.id),),
+        audit_metadata={
+            "provenance_changed": True,
+            "timings": [{"stage": "publication", "duration_ms": 4}],
+        },
     )
 
     result = await PostgresOfferingPublicationRepository(
@@ -295,8 +299,21 @@ async def test_atomic_publication_commits_documents_snapshot_and_manifest(
             text("SELECT status FROM offering_executions WHERE id = :id"),
             {"id": execution.id},
         )
+        audit_payload = await session.scalar(
+            text(
+                """
+                SELECT payload
+                FROM audit_events
+                WHERE offering_execution_id = :id
+                  AND event_type = 'offering.published'
+                """
+            ),
+            {"id": execution.id},
+        )
     assert tuple(counts) == (1, 1, 1, 1)
     assert status == "succeeded"
+    assert audit_payload["metadata"]["provenance_changed"] is True
+    assert audit_payload["metadata"]["timings"][0]["stage"] == "publication"
 
 
 @pytest.mark.asyncio

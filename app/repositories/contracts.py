@@ -61,6 +61,16 @@ class RunRepository(Protocol):
         self, offering_execution_id: UUID, *, stage: str = "starting"
     ) -> OfferingExecution: ...
 
+    async def fail_offering_execution(
+        self,
+        offering_execution_id: UUID,
+        *,
+        stage: str,
+        failure_code: str,
+        failure_detail: str | None = None,
+        audit_payload: dict[str, object] | None = None,
+    ) -> OfferingExecution: ...
+
 
 class MonitoringSnapshotRepository(Protocol):
     async def save_attempt(self, snapshot: SnapshotAttempt) -> UUID: ...

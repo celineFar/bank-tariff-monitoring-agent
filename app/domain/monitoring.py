@@ -308,6 +308,7 @@ class OfferingPublication(MonitoringModel):
     snapshot: SnapshotAttempt
     changes: SnapshotChangeSet | None = None
     manifests: tuple[SourceManifestItem, ...] = ()
+    audit_metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_publication(self) -> OfferingPublication:

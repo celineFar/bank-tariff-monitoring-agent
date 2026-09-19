@@ -562,16 +562,16 @@ Implementation record (2026-09-19):
 
 ### E. Pipeline orchestration
 
-- [ ] Implement `IndexingPipeline.refresh(offering, run_id)` using the existing
+- [x] Implement `IndexingPipeline.refresh(offering, run_id)` using the existing
       acquisition, normalization, discovery, extraction, and indexing services.
-- [ ] Return a complete typed source manifest with counts, versions, warnings, and
+- [x] Return a complete typed source manifest with counts, versions, warnings, and
       failures.
-- [ ] Implement essential deterministic acceptance checks without claim verification.
-- [ ] Implement canonical comparison payloads for rich extracted values and conditions.
-- [ ] Implement the concrete imperative `TariffPipeline`.
-- [ ] Isolate per-offering failures and compute family `PARTIAL_SUCCESS` correctly.
-- [ ] Ensure a failed offering leaves its previous index/snapshot current.
-- [ ] Add audit events and stage timings without logging source bodies or secrets.
+- [x] Implement essential deterministic acceptance checks without claim verification.
+- [x] Implement canonical comparison payloads for rich extracted values and conditions.
+- [x] Implement the concrete imperative `TariffPipeline`.
+- [x] Isolate per-offering failures and compute family `PARTIAL_SUCCESS` correctly.
+- [x] Ensure a failed offering leaves its previous index/snapshot current.
+- [x] Add audit events and stage timings without logging source bodies or secrets.
 
 ### F. Trigger adapters and worker
 

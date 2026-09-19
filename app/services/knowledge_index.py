@@ -118,9 +118,14 @@ class KnowledgeIndexer:
         self._repository = repository
 
     async def index(self, document: KnowledgeDocument) -> IndexWriteResult:
+        embedded_document = await self.embed(document)
+        return await self._repository.upsert_document(embedded_document)
+
+    async def embed(self, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
         embeddings = await self._embedding_provider.embed_documents(
             [chunk.content for chunk in document.chunks]
         )
+
         if len(embeddings) != len(document.chunks):
             raise EmbeddingError(
                 "embedding count does not match the number of document chunks"
@@ -142,8 +147,7 @@ class KnowledgeIndexer:
                 )
             )
 
-        embedded_document = EmbeddedKnowledgeDocument(
+        return EmbeddedKnowledgeDocument(
             **document.model_dump(exclude={"chunks"}),
             chunks=tuple(embedded_chunks),
         )
-        return await self._repository.upsert_document(embedded_document)

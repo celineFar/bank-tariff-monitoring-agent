@@ -406,6 +406,80 @@ class PostgresRunRepository:
             )
         return _offering_from_row(row)
 
+    async def fail_offering_execution(
+        self,
+        offering_execution_id: UUID,
+        *,
+        stage: str,
+        failure_code: str,
+        failure_detail: str | None = None,
+        audit_payload: dict[str, object] | None = None,
+    ) -> OfferingExecution:
+        if len(stage) > 100 or not stage.strip():
+            raise ValueError("stage must contain 1 to 100 characters")
+        if len(failure_code) > 100 or not failure_code.strip():
+            raise ValueError("failure_code must contain 1 to 100 characters")
+        if failure_detail is not None and len(failure_detail) > 2000:
+            raise ValueError("failure_detail must contain at most 2000 characters")
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        """
+                        UPDATE offering_executions
+                        SET
+                            status = 'failed',
+                            current_stage = :stage,
+                            completed_at = now(),
+                            failure_count = failure_count + 1,
+                            failure_code = :failure_code,
+                            failure_detail = :failure_detail,
+                            updated_at = now()
+                        WHERE id = :id
+                          AND status IN ('pending', 'running')
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "id": offering_execution_id,
+                        "stage": stage.strip(),
+                        "failure_code": failure_code.strip(),
+                        "failure_detail": failure_detail,
+                    },
+                )
+            ).first()
+            if row is None:
+                raise InvalidRunTransitionError(
+                    f"offering execution {offering_execution_id} cannot fail"
+                )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO audit_events (
+                        run_id,
+                        offering_execution_id,
+                        event_type,
+                        reason_code,
+                        payload
+                    )
+                    VALUES (
+                        :run_id,
+                        :offering_execution_id,
+                        'offering.failed',
+                        :reason_code,
+                        CAST(:payload AS jsonb)
+                    )
+                    """
+                ),
+                {
+                    "run_id": row.run_id,
+                    "offering_execution_id": offering_execution_id,
+                    "reason_code": failure_code.strip(),
+                    "payload": _json(audit_payload or {"stage": stage.strip()}),
+                },
+            )
+        return _offering_from_row(row)
+
     @staticmethod
     async def _lock(session: AsyncSession, key: str) -> None:
         await session.execute(
@@ -710,6 +784,7 @@ class PostgresOfferingPublicationRepository:
                                 if publication.changes is not None
                                 else 0
                             ),
+                            "metadata": publication.audit_metadata,
                         }
                     ),
                 },
