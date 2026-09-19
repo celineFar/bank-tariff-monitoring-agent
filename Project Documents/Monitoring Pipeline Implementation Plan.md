@@ -596,15 +596,15 @@ Implementation record (2026-09-19):
 
 ### H. RAG answering
 
-- [ ] Define `QuestionCommand`, `AnswerResult`, citation, and answer-status models.
-- [ ] Extend retrieval filters for offering/document kind where required.
-- [ ] Retrieve deterministic summaries for precision and official source chunks for
+- [x] Define `QuestionCommand`, `AnswerResult`, citation, and answer-status models.
+- [x] Extend retrieval filters for offering/document kind where required.
+- [x] Retrieve deterministic summaries for precision and official source chunks for
       evidence/coverage.
-- [ ] Implement bounded prompt construction and one generation pass.
-- [ ] Validate citation IDs, excerpts, URLs, and locations against retrieved hits.
-- [ ] Implement explicit insufficient-evidence and ambiguous-product outcomes.
-- [ ] Add the HTTP question route and ADK question tool over the same service.
-- [ ] Add deterministic tests with fake retriever/generator plus 1-2 initial ADK eval
+- [x] Implement bounded prompt construction and one generation pass.
+- [x] Validate citation IDs, excerpts, URLs, and locations against retrieved hits.
+- [x] Implement explicit insufficient-evidence and ambiguous-product outcomes.
+- [x] Add the HTTP question route and ADK question tool over the same service.
+- [x] Add deterministic tests with fake retriever/generator plus 1-2 initial ADK eval
       cases for grounded answers and abstention.
 
 ### I. Vertical-slice verification

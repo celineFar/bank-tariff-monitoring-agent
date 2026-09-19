@@ -14,16 +14,23 @@ from app.repositories.monitoring import (
     PostgresSnapshotRepository,
 )
 from app.repositories.pdf_extraction import PostgresPdfExtractionRepository
+from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
 from app.repositories.semantic_extraction import PostgresSemanticExtractionRepository
 from app.repositories.source_discovery import PostgresSourceDiscoveryRepository
 from app.services.acquisition import build_acquisition_service
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
-from app.services.knowledge_index import GeminiEmbeddingProvider, KnowledgeIndexer
+from app.services.knowledge_index import (
+    GeminiEmbeddingProvider,
+    GeminiQueryEmbeddingProvider,
+    KnowledgeIndexer,
+)
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
 from app.services.normalization import StructuralNormalizationService
 from app.services.pdf_extraction import GeminiPdfExtractionService
+from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
+from app.services.rag_retrieval import RagRetriever
 from app.services.run_service import RunService
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
@@ -39,6 +46,7 @@ class ApplicationContainer:
     runs: PostgresRunRepository
     run_service: RunService
     tariff_pipeline: TariffPipeline
+    answer_service: RagAnswerService
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -115,11 +123,23 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         snapshots=PostgresSnapshotRepository(sessions),
         publications=PostgresOfferingPublicationRepository(sessions),
     )
+    answer_service = RagAnswerService(
+        RagRetriever(
+            GeminiQueryEmbeddingProvider(
+                embedding_client,
+                settings.models.embedding_model,
+            ),
+            PostgresRagRetrievalRepository(sessions),
+            settings.rag,
+        ),
+        GeminiAnswerGenerator(embedding_client, settings.models.generation_model),
+    )
     return ApplicationContainer(
         engine=engine,
         http_client=http_client,
         runs=runs,
         run_service=RunService(runs),
+        answer_service=answer_service,
         tariff_pipeline=TariffPipeline(
             catalog=load_seed_catalog(allowed_hosts=settings.http.allowed_source_hosts),
             indexing=indexing,

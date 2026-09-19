@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
-from app.domain.models import ProductType
+from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 
 
 class RetrievalModel(BaseModel):
@@ -35,6 +35,8 @@ class RetrievalRequest(RetrievalModel):
     bank: str = Field(min_length=1, max_length=100)
     product: ProductType
     fields: tuple[TariffField, ...] = Field(min_length=1)
+    offering_id: OfferingId | None = None
+    document_kinds: tuple[KnowledgeDocumentKind, ...] = ()
 
     @field_validator("query", "bank")
     @classmethod
@@ -71,6 +73,8 @@ class RetrievalCandidate(RetrievalModel):
     retrieved_at: datetime
     extraction_method: str = Field(min_length=1)
     quality_score: float | None = Field(default=None, ge=0, le=1)
+    offering_id: OfferingId | None = None
+    document_kind: KnowledgeDocumentKind = KnowledgeDocumentKind.SOURCE
 
 
 class RankExplanation(RetrievalModel):
@@ -104,6 +108,9 @@ class RetrievalHit(RetrievalModel):
     retrieved_at: datetime
     extraction_method: str
     quality_score: float | None
+
+    offering_id: OfferingId | None = None
+    document_kind: KnowledgeDocumentKind = KnowledgeDocumentKind.SOURCE
 
 
 class RetrievalResult(RetrievalModel):

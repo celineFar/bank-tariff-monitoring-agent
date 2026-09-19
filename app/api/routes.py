@@ -6,11 +6,14 @@ from pydantic import BaseModel, Field
 
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
+    AnswerResult,
     MonitoringRun,
+    QuestionCommand,
     RunCommand,
     RunSubmissionResult,
     RunTrigger,
 )
+from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort
 
 router = APIRouter(prefix="/api/v1")
@@ -34,6 +37,10 @@ async def health() -> dict[str, str]:
 
 def get_run_service(request: Request) -> RunServicePort:
     return request.app.state.run_service
+
+
+def get_answer_service(request: Request) -> RagAnswerService:
+    return request.app.state.answer_service
 
 
 @router.post(
@@ -71,6 +78,14 @@ async def get_run(
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+@router.post("/questions", response_model=AnswerResult, tags=["questions"])
+async def answer_question(
+    command: QuestionCommand,
+    service: Annotated[RagAnswerService, Depends(get_answer_service)],
+) -> AnswerResult:
+    return await service.answer(command)
 
 
 @router.get("/reviews", status_code=501, tags=["reviews"])

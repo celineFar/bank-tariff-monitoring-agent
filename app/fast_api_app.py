@@ -27,7 +27,7 @@ from app.app_utils import services
 from app.app_utils.a2a import attach_a2a_routes
 from app.config import get_settings
 from app.runtime import build_application_container
-from app.tools import configure_run_service
+from app.tools import configure_services
 
 load_dotenv()
 settings = get_settings()
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.agent import root_agent
 
     container = build_application_container(settings)
-    configure_run_service(container.run_service)
+    configure_services(container.run_service, container.answer_service)
     runner = Runner(
         app=adk_app,
         session_service=services.get_session_service(),
@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.application_container = container
     app.state.run_service = container.run_service
+    app.state.answer_service = container.answer_service
     await attach_a2a_routes(
         app,
         agent=root_agent,
@@ -65,7 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        configure_run_service(None)
+        configure_services(None, None)
         await container.close()
 
 

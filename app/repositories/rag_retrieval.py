@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.models import ProductType
+from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 from app.domain.retrieval import RetrievalCandidate
 
 HYBRID_SEARCH_SQL = """
@@ -30,6 +30,14 @@ lexical_candidates AS (
     CROSS JOIN search_input AS i
     WHERE d.bank = :bank
       AND d.product = :product
+      AND (
+          CAST(:offering_id AS text) IS NULL
+          OR d.offering_id = CAST(:offering_id AS text)
+      )
+      AND (
+          :filter_document_kinds IS FALSE
+          OR d.document_kind = ANY(CAST(:document_kinds AS text[]))
+      )
       AND d.is_active IS TRUE
       AND c.is_active IS TRUE
       AND c.search_vector @@ i.text_query
@@ -51,6 +59,14 @@ vector_candidates AS (
     CROSS JOIN search_input AS i
     WHERE d.bank = :bank
       AND d.product = :product
+      AND (
+          CAST(:offering_id AS text) IS NULL
+          OR d.offering_id = CAST(:offering_id AS text)
+      )
+      AND (
+          :filter_document_kinds IS FALSE
+          OR d.document_kind = ANY(CAST(:document_kinds AS text[]))
+      )
       AND d.is_active IS TRUE
       AND c.is_active IS TRUE
     ORDER BY c.embedding <=> i.query_embedding, c.id
@@ -72,6 +88,8 @@ SELECT
     d.content_sha256 AS document_checksum,
     d.document_name,
     d.source_url,
+    d.offering_id,
+    d.document_kind,
     d.final_url,
     c.page_start,
     c.page_end,
@@ -89,6 +107,14 @@ WHERE d.bank = :bank
   AND d.product = :product
   AND d.is_active IS TRUE
   AND c.is_active IS TRUE
+  AND (
+      CAST(:offering_id AS text) IS NULL
+      OR d.offering_id = CAST(:offering_id AS text)
+  )
+  AND (
+      :filter_document_kinds IS FALSE
+      OR d.document_kind = ANY(CAST(:document_kinds AS text[]))
+  )
 """
 
 
@@ -106,6 +132,8 @@ class PostgresRagRetrievalRepository:
         lexical_query: str,
         query_embedding: Sequence[float],
         limit: int,
+        offering_id: OfferingId | None,
+        document_kinds: Sequence[KnowledgeDocumentKind],
     ) -> tuple[RetrievalCandidate, ...]:
         embedding_literal = (
             "[" + ",".join(str(value) for value in query_embedding) + "]"
@@ -120,6 +148,9 @@ class PostgresRagRetrievalRepository:
                         "lexical_query": lexical_query,
                         "query_embedding": embedding_literal,
                         "candidate_limit": limit,
+                        "offering_id": offering_id.value if offering_id else None,
+                        "document_kinds": [item.value for item in document_kinds],
+                        "filter_document_kinds": bool(document_kinds),
                     },
                 )
             ).mappings()

@@ -8,7 +8,12 @@ from app.domain.knowledge import (
     EmbeddedKnowledgeDocument,
     IndexWriteResult,
 )
-from app.domain.models import OfferingId, ProductType, TariffSnapshot
+from app.domain.models import (
+    KnowledgeDocumentKind,
+    OfferingId,
+    ProductType,
+    TariffSnapshot,
+)
 from app.domain.monitoring import (
     ClaimedRun,
     MonitoringRun,
@@ -117,6 +122,8 @@ class HybridRetrievalRepository(Protocol):
         *,
         bank: str,
         product: ProductType,
+        offering_id: OfferingId | None,
+        document_kinds: Sequence[KnowledgeDocumentKind],
         lexical_query: str,
         query_embedding: Sequence[float],
         limit: int,

@@ -8,10 +8,10 @@
       }
     },
     {
-      "eval_case_id": "mortgage_armenian",
+      "eval_case_id": "ambiguous_product_abstention",
       "prompt": {
         "role": "user",
-        "parts": [{"text": "Ցույց տուր Ամերիաբանկի հիփոթեքային վարկի գործող պայմանները։"}]
+        "parts": [{"text": "What are Ameria's current loan terms? Do not guess which product I mean."}]
       }
     }
   ]

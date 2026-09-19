@@ -101,6 +101,8 @@ class RagRetriever:
             await self._repository.search_candidates(
                 bank=request.bank,
                 product=request.product,
+                offering_id=request.offering_id,
+                document_kinds=request.document_kinds,
                 lexical_query=lexical_query,
                 query_embedding=embedding,
                 limit=candidate_limit,
