@@ -18,6 +18,11 @@ from app.domain.semantic_extraction import (
 from app.domain.source_discovery import SourceDiscoveryResult
 from app.services.discovery_classifier import is_retryable_api_error
 from app.services.model_pricing import enforce_model_price_cap, get_model_price
+from app.services.pipeline_audit import (
+    render_pre_validation,
+    render_review_queue,
+    render_unparsed_pre_validation,
+)
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
     InMemorySemanticExtractionRepository,
@@ -128,7 +133,7 @@ async def demonstrate(
                     flush=True,
                 )
                 continue
-            _write_failure(output_directory, attempts, exc)
+            _write_failure(output_directory, attempts, exc, extractor=extractor)
             raise SemanticExtractionRunFailed(output_directory, exc) from None
         attempts.append(_attempt(model_name, extractor, None))
         _write_json(output_directory / "model_attempts.json", attempts)
@@ -136,7 +141,9 @@ async def demonstrate(
         print(
             f"Model {model_name} completed: "
             f"{extractor.usage.request_attempts} request attempt(s), "
-            f"{extractor.usage.total_tokens} total token(s)",
+            f"{extractor.usage.total_tokens} total token(s); "
+            f"status={result.status.value}; "
+            f"review_items={len(result.review_items)}",
             flush=True,
         )
         return output_directory
@@ -187,10 +194,24 @@ def _write_result(
     (output_directory / "semantic_extraction_result.json").write_text(
         result.model_dump_json(indent=2), encoding="utf-8"
     )
-    (output_directory / "loan_product.json").write_text(
-        result.loan_product.model_dump_json(indent=2), encoding="utf-8"
+    if result.loan_product is not None:
+        (output_directory / "loan_product.json").write_text(
+            result.loan_product.model_dump_json(indent=2), encoding="utf-8"
+        )
+    (output_directory / "partial_result.json").write_text(
+        result.partial_product.model_dump_json(indent=2), encoding="utf-8"
     )
     _write_json(output_directory / "batch_results.json", result.batch_results)
+    _write_json(
+        output_directory / "pre_validation.json", result.raw_batch_outputs
+    )
+    (output_directory / "pre_validation.md").write_text(
+        render_pre_validation(result), encoding="utf-8"
+    )
+    _write_json(output_directory / "review_queue.json", result.review_items)
+    (output_directory / "review.md").write_text(
+        render_review_queue(result.review_items), encoding="utf-8"
+    )
     (output_directory / "extraction_results.md").write_text(
         _render_results(result), encoding="utf-8"
     )
@@ -312,6 +333,8 @@ def _write_failure(
     output_directory: Path,
     attempts: list[dict[str, Any]],
     error: Exception,
+    *,
+    extractor: AdkSemanticExtractor,
 ) -> None:
     _write_json(
         output_directory / "failure.json",
@@ -322,6 +345,11 @@ def _write_failure(
             "message": str(error),
             "model_attempts": attempts,
         },
+    )
+    _write_json(output_directory / "pre_validation.json", extractor.raw_responses)
+    (output_directory / "pre_validation.md").write_text(
+        render_unparsed_pre_validation(extractor.raw_responses, error),
+        encoding="utf-8",
     )
 
 

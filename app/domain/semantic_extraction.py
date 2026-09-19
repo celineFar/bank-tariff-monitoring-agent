@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
-from typing import Annotated, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
@@ -23,6 +23,11 @@ class ExtractionStatus(StrEnum):
     NOT_STATED = "not_stated"
     AMBIGUOUS = "ambiguous"
     CONFLICTING = "conflicting"
+
+
+class SemanticExtractionRunStatus(StrEnum):
+    COMPLETED = "completed"
+    COMPLETED_WITH_REVIEW = "completed_with_review"
 
 
 class LoanCategory(StrEnum):
@@ -334,6 +339,49 @@ class ExtractionBatchResponse(ExtractionModel):
     results: tuple[ModelFieldResult, ...] = Field(min_length=1)
 
 
+class ValidationIssue(ExtractionModel):
+    location: tuple[str | int, ...] = ()
+    message: str
+    error_type: str
+    input_value: str | None = None
+
+
+class ValidatedFieldResult(ExtractionModel):
+    field: ExtractionField
+    status: ExtractionStatus
+    value: Any = None
+    evidence: tuple[EvidenceCitation, ...] = ()
+    explanation: str | None = None
+    batch_id: str
+
+
+class ExtractionReviewItem(ExtractionModel):
+    review_id: str = Field(pattern=r"^review_[0-9a-f]{24}$")
+    batch_id: str
+    field: ExtractionField
+    model_name: str
+    raw_result: ModelFieldResult | None = None
+    raw_response: str | None = None
+    validation_issues: tuple[ValidationIssue, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = ()
+
+
+class PartialLoanProduct(ExtractionModel):
+    canonical_url: HttpUrl
+    retrieved_at: datetime
+    category: LoanCategory | None = None
+    fields: tuple[ValidatedFieldResult, ...] = ()
+
+
+class RawBatchOutput(ExtractionModel):
+    batch_id: str
+    group: str
+    model_name: str
+    raw_response: str
+    parsed_response: ExtractionBatchResponse | None = None
+    error: str | None = None
+
+
 class SemanticExtractionPlan(ExtractionModel):
     product: ProductType
     canonical_url: HttpUrl
@@ -343,13 +391,19 @@ class SemanticExtractionPlan(ExtractionModel):
     model_name: str
     evidence_catalog: tuple[EvidenceItem, ...]
     batches: tuple[ExtractionBatch, ...]
+    cached_batches: tuple[ExtractionBatch, ...] = ()
     cache_hits: tuple[ExtractionBatchResponse, ...] = ()
 
 
 class SemanticExtractionResult(ExtractionModel):
     product: ProductType
     model_name: str
-    loan_product: LoanProduct
+    status: SemanticExtractionRunStatus = SemanticExtractionRunStatus.COMPLETED
+    loan_product: LoanProduct | None = None
+    partial_product: PartialLoanProduct | None = None
     evidence_catalog: tuple[EvidenceItem, ...]
     batch_results: tuple[ExtractionBatchResponse, ...]
+    raw_batch_outputs: tuple[RawBatchOutput, ...] = ()
+    validated_fields: tuple[ValidatedFieldResult, ...] = ()
+    review_items: tuple[ExtractionReviewItem, ...] = ()
     reused_batch_count: int = Field(ge=0)

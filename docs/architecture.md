@@ -149,12 +149,15 @@ packets; and sends only uncached packets to a tool-free ADK agent with a strict
 structured response schema. The model cannot browse, fetch documents, query storage,
 or alter the evidence packet.
 
-Python requires an exact response field set, known evidence IDs, and citation quotes
-that occur verbatim in the cited evidence. It then parses every value into the rich
-`LoanProduct` contract, retains explicit `found`, `not_stated`, `ambiguous`, or
-`conflicting` states, and hydrates citations with the original source locator. Exact
+Python validates each returned field independently, requiring known in-batch evidence
+IDs and citation quotes that occur verbatim in the cited evidence. Valid fields are
+retained even when another field is malformed. Invalid fields become deterministic
+review records containing the raw value, validation paths, evidence references, batch,
+and model; the run completes as `completed_with_review` with a partial product. A full
+`LoanProduct` is emitted only when every field required for assembly validates. Exact
 batch reuse requires matching product, schema version, prompt version, model name,
-and selected-evidence fingerprint. PostgreSQL migration
+and selected-evidence fingerprint, and only wholly validated batches are cacheable.
+Invalid legacy cache entries are ignored. PostgreSQL migration
 `004_semantic_extraction.sql` owns that cache. Claim generation, cross-source
 verification/repair, snapshot comparison, and HITL decisions remain downstream.
 See `docs/semantic-extraction.md` for the complete contract and demonstration flow.

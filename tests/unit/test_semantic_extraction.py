@@ -23,6 +23,7 @@ from app.domain.semantic_extraction import (
     ExtractionStatus,
     ModelCitation,
     ModelFieldResult,
+    SemanticExtractionRunStatus,
 )
 from app.domain.source_discovery import (
     Authority,
@@ -249,3 +250,116 @@ async def test_service_assembles_product_and_reuses_exact_cached_batches() -> No
     assert first_calls == 5
     assert extractor.calls == first_calls
     assert second.reused_batch_count == 5
+
+
+class InvalidRateExtractor(FakeExtractor):
+    async def extract(self, batch):
+        response = await super().extract(batch)
+        if ExtractionField.INTEREST_RATE not in batch.fields:
+            return response
+        citation = ModelCitation(
+            evidence_id=batch.evidence[0].evidence_id,
+            quote=batch.evidence[0].content,
+        )
+        return ExtractionBatchResponse(
+            results=tuple(
+                ModelFieldResult(
+                    field=item.field,
+                    status=ExtractionStatus.FOUND,
+                    value_json='[{"min":20,"max":20,"conditions":["salary client"]}]',
+                    evidence=(citation,),
+                )
+                if item.field is ExtractionField.INTEREST_RATE
+                else item
+                for item in response.results
+            )
+        )
+
+
+class SelectivelyFailingExtractor(FakeExtractor):
+    def __init__(self, *, fail_all: bool = False) -> None:
+        super().__init__()
+        self.fail_all = fail_all
+
+    async def extract(self, batch):
+        if self.fail_all or ExtractionField.INTEREST_RATE in batch.fields:
+            self.calls += 1
+            raise RuntimeError("model response could not be parsed")
+        return await super().extract(batch)
+
+
+@pytest.mark.asyncio
+async def test_invalid_field_is_preserved_for_review_without_losing_valid_fields() -> None:
+    bundle, discovery = _fixture()
+    extractor = InvalidRateExtractor()
+    repository = InMemorySemanticExtractionRepository()
+    service = SemanticExtractionService(
+        extractor=extractor,
+        repository=repository,
+        settings=SemanticExtractionSettings(),
+        model_name="test-model",
+    )
+
+    result = await service.extract(
+        bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    assert result.status is SemanticExtractionRunStatus.COMPLETED_WITH_REVIEW
+    assert result.loan_product is None
+    assert result.partial_product.category.value == "consumer_loan"
+    assert {item.field for item in result.validated_fields} >= {
+        ExtractionField.CATEGORY,
+        ExtractionField.PRODUCT_NAME,
+    }
+    review = next(
+        item
+        for item in result.review_items
+        if item.field is ExtractionField.INTEREST_RATE
+    )
+    assert review.raw_result is not None
+    assert review.raw_result.value_json is not None
+    assert any("value" in map(str, issue.location) for issue in review.validation_issues)
+
+    next_plan = await service.plan(bundle, discovery)
+    assert any(
+        ExtractionField.INTEREST_RATE in batch.fields for batch in next_plan.batches
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_failed_batch_is_routed_to_review_and_other_fields_survive() -> None:
+    bundle, discovery = _fixture()
+    service = SemanticExtractionService(
+        extractor=SelectivelyFailingExtractor(),
+        repository=InMemorySemanticExtractionRepository(),
+        settings=SemanticExtractionSettings(),
+        model_name="test-model",
+    )
+
+    result = await service.extract(
+        bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    assert result.status is SemanticExtractionRunStatus.COMPLETED_WITH_REVIEW
+    assert result.validated_fields
+    assert any(
+        item.field is ExtractionField.INTEREST_RATE
+        and item.raw_result is None
+        for item in result.review_items
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_failed_batch_remains_a_systemic_failure() -> None:
+    bundle, discovery = _fixture()
+    service = SemanticExtractionService(
+        extractor=SelectivelyFailingExtractor(fail_all=True),
+        repository=InMemorySemanticExtractionRepository(),
+        settings=SemanticExtractionSettings(),
+        model_name="test-model",
+    )
+
+    with pytest.raises(RuntimeError, match="could not be parsed"):
+        await service.extract(
+            bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+        )

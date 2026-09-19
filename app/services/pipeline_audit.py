@@ -17,6 +17,7 @@ from app.domain.normalization import (
 )
 from app.domain.pdf_extraction import PdfExtractionResponse
 from app.domain.semantic_extraction import (
+    ExtractionReviewItem,
     ExtractionStatus,
     SemanticExtractionPlan,
     SemanticExtractionResult,
@@ -214,9 +215,10 @@ def render_semantic_extraction(
     sent_ids = set(sent_groups)
     field_citations: dict[str, list[str]] = defaultdict(list)
     cited_by_source: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    field_rows: list[tuple[str, str, str, str]] = []
+    field_rows: list[tuple[str, str, str, str, bool]] = []
     field_labels: dict[str, str] = {}
     if result is not None:
+        review_fields = {item.field.value for item in result.review_items}
         evidence_by_id = {item.evidence_id: item for item in result.evidence_catalog}
         found_fields = sorted(
             {
@@ -250,6 +252,7 @@ def render_semantic_extraction(
                         item.status.value,
                         value,
                         item.explanation or "",
+                        item.field.value in review_fields,
                     )
                 )
 
@@ -289,8 +292,8 @@ def render_semantic_extraction(
         )
     if field_rows:
         parts.extend(("## Field outcomes", ""))
-        for field, status, value, explanation in field_rows:
-            marker = {
+        for field, status, value, explanation, needs_review in field_rows:
+            marker = "NEEDS HUMAN REVIEW" if needs_review else {
                 ExtractionStatus.FOUND.value: "EXTRACTED",
                 ExtractionStatus.NOT_STATED.value: "NOT STATED",
                 ExtractionStatus.AMBIGUOUS.value: "AMBIGUOUS",
@@ -298,12 +301,17 @@ def render_semantic_extraction(
             }[status]
             label = field_labels.get(field)
             anchor = f'<a id="{label.lower()}"></a>' if label else ""
+            color = "#fee4e2" if needs_review else "#ecfdf3"
+            border = "#d92d20" if needs_review else "#12b76a"
             parts.extend(
                 (
                     "---",
                     "",
                     anchor,
-                    f"### {f'[{label}] ' if label else ''}{field} — {marker}",
+                    f'<div style="border-left:5px solid {border};background:{color};'
+                    f'padding:0.55em 0.8em;"><strong>'
+                    f"{f'[{label}] ' if label else ''}{field} — {marker}"
+                    "</strong></div>",
                     "",
                     "```json",
                     _pretty_json(value),
@@ -320,9 +328,10 @@ def render_semantic_extraction(
         parts.extend(
             ("### Label index", "", "| Label | Field | Status |", "|---|---|---|")
         )
-        for field, status, _, _ in field_rows:
+        for field, status, _, _, needs_review in field_rows:
             label = field_labels.get(field, "—")
-            parts.append(f"| `{label}` | `{field}` | `{status}` |")
+            rendered_status = "needs_review" if needs_review else status
+            parts.append(f"| `{label}` | `{field}` | `{rendered_status}` |")
         parts.append("")
     parts.extend(_render_extraction_documents(bundle, cited_by_source))
 
@@ -343,6 +352,148 @@ def render_semantic_extraction(
             f"**{state}**; packets: {packets}"
         )
     parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def render_pre_validation(result: SemanticExtractionResult) -> str:
+    """Render model-produced values before canonical field validation."""
+    review_by_field = {item.field: item for item in result.review_items}
+    validated = {item.field for item in result.validated_fields}
+    parts = [
+        "# Pre-validation semantic extraction audit",
+        "",
+        "This preserves what Gemini produced before canonical field validation. "
+        "Green passed validation, red failed and entered human review, and orange "
+        "is valid but semantically ambiguous or conflicting.",
+        "",
+    ]
+    for output in result.raw_batch_outputs:
+        parts.extend(("---", "", f"## {output.batch_id}: {_safe(output.group)}", ""))
+        if output.parsed_response is None:
+            parts.extend(
+                (
+                    '<div style="border-left:5px solid #d92d20;background:#fee4e2;'
+                    'padding:0.55em 0.8em;"><strong>BATCH RESPONSE COULD NOT BE '
+                    "VALIDATED</strong></div>",
+                    "",
+                    f"Error: {_safe(output.error or 'unknown parsing error')}",
+                    "",
+                    "```json",
+                    output.raw_response or "(no raw response was returned)",
+                    "```",
+                    "",
+                )
+            )
+            continue
+        for item in output.parsed_response.results:
+            review = review_by_field.get(item.field)
+            if review is not None:
+                label, color, border = "INVALID — HUMAN REVIEW", "#fee4e2", "#d92d20"
+            elif item.status in {
+                ExtractionStatus.AMBIGUOUS,
+                ExtractionStatus.CONFLICTING,
+            }:
+                label, color, border = item.status.value.upper(), "#fff4e5", "#f79009"
+            elif item.field in validated:
+                label, color, border = "VALIDATED", "#ecfdf3", "#12b76a"
+            else:
+                label, color, border = "NOT VALIDATED", "#f2f4f7", "#667085"
+            parts.extend(
+                (
+                    f'<div style="border-left:5px solid {border};background:{color};'
+                    f'padding:0.55em 0.8em;margin-top:1em;"><strong>'
+                    f"{_safe(item.field.value)} — {label}</strong></div>",
+                    "",
+                    "```json",
+                    _pretty_json(item.value_json if item.value_json is not None else "—"),
+                    "```",
+                    "",
+                )
+            )
+            if review is not None:
+                parts.extend(
+                    f"- `{_safe('.'.join(map(str, issue.location)))}`: "
+                    f"{_safe(issue.message)} (`{_safe(issue.error_type)}`)"
+                    for issue in review.validation_issues
+                )
+                parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def render_unparsed_pre_validation(
+    raw_responses: dict[str, str], error: Exception
+) -> str:
+    parts = [
+        "# Pre-validation semantic extraction audit",
+        "",
+        '<div style="border-left:5px solid #d92d20;background:#fee4e2;'
+        'padding:0.55em 0.8em;"><strong>SYSTEMIC EXTRACTION FAILURE</strong></div>',
+        "",
+        f"{type(error).__name__}: {_safe(str(error))}",
+        "",
+        "The raw model responses below were captured before response-schema or "
+        "canonical field validation. No usable batch response was produced.",
+        "",
+    ]
+    if not raw_responses:
+        parts.extend(("No raw model response was returned.", ""))
+    for batch_id, raw_response in raw_responses.items():
+        parts.extend(
+            (
+                "---",
+                "",
+                f"## {_safe(batch_id)} — INVALID",
+                "",
+                "```json",
+                raw_response,
+                "```",
+                "",
+            )
+        )
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def render_review_queue(items: tuple[ExtractionReviewItem, ...]) -> str:
+    parts = [
+        "# Semantic extraction human-review queue",
+        "",
+        f"Open review items: **{len(items)}**",
+        "",
+        "Each item preserves the original model value, validation path, evidence "
+        "IDs, batch, and model.",
+        "",
+    ]
+    if not items:
+        parts.extend(("No human review is required.", ""))
+    for item in items:
+        parts.extend(
+            (
+                "---",
+                "",
+                f"## {item.field.value}",
+                "",
+                f"Review ID: `{item.review_id}`  ",
+                f"Batch: `{item.batch_id}`  ",
+                f"Model: `{item.model_name}`  ",
+                "Evidence: "
+                + (", ".join(f"`{value}`" for value in item.evidence_ids) or "(none)"),
+                "",
+                "### Validation problems",
+                "",
+            )
+        )
+        parts.extend(
+            f"- `{_safe('.'.join(map(str, issue.location)))}`: "
+            f"{_safe(issue.message)} (`{_safe(issue.error_type)}`)"
+            for issue in item.validation_issues
+        )
+        parts.extend(("", "### Raw field output", "", "```json"))
+        parts.append(
+            item.raw_result.model_dump_json(indent=2)
+            if item.raw_result is not None
+            else item.raw_response or "(no raw field result was parsed)"
+        )
+        parts.extend(("```", ""))
     return "\n".join(parts).rstrip() + "\n"
 
 

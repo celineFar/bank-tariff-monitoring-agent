@@ -45,8 +45,11 @@ from app.services.pipeline_audit import (
     render_diff_markdown,
     render_document_markdown,
     render_pdf_response_markdown,
+    render_pre_validation,
+    render_review_queue,
     render_semantic_extraction,
     render_source_selection,
+    render_unparsed_pre_validation,
 )
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
@@ -72,11 +75,13 @@ class ModelSequenceError(RuntimeError):
         *,
         plan: SourceDiscoveryPlan | SemanticExtractionPlan,
         attempts: list[dict[str, Any]],
+        raw_responses: dict[str, str] | None = None,
     ) -> None:
         super().__init__(str(error))
         self.error = error
         self.plan = plan
         self.attempts = attempts
+        self.raw_responses = raw_responses or {}
 
 
 async def demonstrate(
@@ -230,6 +235,13 @@ async def demonstrate(
         if isinstance(exc, ModelSequenceError):
             semantic_plan = exc.plan
             _write_json(semantic_directory / "model_attempts.json", exc.attempts)
+            _write_json(
+                semantic_directory / "pre_validation.json", exc.raw_responses
+            )
+            (semantic_directory / "pre_validation.md").write_text(
+                render_unparsed_pre_validation(exc.raw_responses, failure),
+                encoding="utf-8",
+            )
         elif semantic_plan is None:
             semantic_plan = await _build_semantic_plan(
                 bundle,
@@ -255,7 +267,27 @@ async def demonstrate(
         raise EndToEndStageError("semantic-extraction", failure) from None
     _write_json(semantic_directory / "plan.json", semantic_plan)
     _write_json(semantic_directory / "result.json", semantic_result)
-    _write_json(semantic_directory / "loan_product.json", semantic_result.loan_product)
+    _write_json(
+        semantic_directory / "pre_validation.json",
+        semantic_result.raw_batch_outputs,
+    )
+    (semantic_directory / "pre_validation.md").write_text(
+        render_pre_validation(semantic_result), encoding="utf-8"
+    )
+    _write_json(
+        semantic_directory / "review_queue.json", semantic_result.review_items
+    )
+    (semantic_directory / "review.md").write_text(
+        render_review_queue(semantic_result.review_items), encoding="utf-8"
+    )
+    _write_json(
+        semantic_directory / "partial_result.json",
+        semantic_result.partial_product,
+    )
+    if semantic_result.loan_product is not None:
+        _write_json(
+            semantic_directory / "loan_product.json", semantic_result.loan_product
+        )
     _write_json(semantic_directory / "model_attempts.json", semantic_attempts)
     (semantic_directory / "extraction.md").write_text(
         render_semantic_extraction(
@@ -263,6 +295,12 @@ async def demonstrate(
         ),
         encoding="utf-8",
     )
+    if semantic_result.review_items:
+        print(
+            "  semantic extraction completed with "
+            f"{len(semantic_result.review_items)} human-review item(s)",
+            flush=True,
+        )
 
     _write_json(
         source_files / "run_metadata.json",
@@ -281,6 +319,8 @@ async def demonstrate(
             ),
             "source_discovery_model": discovery_result.model_name,
             "semantic_extraction_model": semantic_result.model_name,
+            "semantic_extraction_status": semantic_result.status.value,
+            "semantic_review_item_count": len(semantic_result.review_items),
             "shared_cache_directory": str(shared_cache),
         },
     )
@@ -559,7 +599,12 @@ async def _run_semantic_extraction(
             if is_retryable_api_error(exc) and index + 1 < len(models):
                 print(f"  falling back to {models[index + 1]}", flush=True)
                 continue
-            raise ModelSequenceError(exc, plan=plan, attempts=attempts) from exc
+            raise ModelSequenceError(
+                exc,
+                plan=plan,
+                attempts=attempts,
+                raw_responses=dict(extractor.raw_responses),
+            ) from exc
         attempts.append(_model_attempt(model_name, extractor.usage, None))
         return plan, result, attempts
     raise AssertionError("semantic-extraction model sequence exhausted")
@@ -704,7 +749,11 @@ async def _import_previous_run_caches(
             result = SemanticExtractionResult.model_validate_json(
                 semantic_result_path.read_text(encoding="utf-8")
             )
-            if len(plan.batches) == len(result.batch_results):
+            if (
+                result.status.value == "completed"
+                and not plan.cache_hits
+                and len(plan.batches) == len(result.batch_results)
+            ):
                 values = tuple(
                     (batch.content_fingerprint, response)
                     for batch, response in zip(
