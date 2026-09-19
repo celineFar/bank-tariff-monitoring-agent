@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from app.config.models import RagSettings
 from app.domain.knowledge import (
@@ -57,7 +58,7 @@ async def database_engine() -> AsyncIterator[AsyncEngine]:
     finally:
         await connection.close()
 
-    engine = create_async_engine(database_url)
+    engine = create_async_engine(database_url, poolclass=NullPool)
     try:
         yield engine
     finally:

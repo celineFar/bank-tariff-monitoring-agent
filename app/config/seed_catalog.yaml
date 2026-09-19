@@ -1,0 +1,80 @@
+version: 1
+offerings:
+  - product: consumer_loan
+    offering_id: consumer_standard
+    display_name: Consumer Loans
+    seed_url: https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans
+    enabled: true
+    language: en
+  - product: consumer_loan
+    offering_id: overdraft
+    display_name: Overdraft
+    seed_url: https://ameriabank.am/en/personal/loans/consumer-loans/overdraft
+    enabled: true
+    language: en
+  - product: consumer_loan
+    offering_id: credit_line
+    display_name: Credit Line
+    seed_url: https://ameriabank.am/en/personal/loans/consumer-loans/credit-line
+    enabled: true
+    language: en
+  - product: consumer_loan
+    offering_id: online_consumer_finance
+    display_name: Online Consumer Finance
+    seed_url: https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_online
+    display_name: Online Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/online
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_primary
+    display_name: Primary Market Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/primary
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_diaspora
+    display_name: Mortgage Loan for Diaspora
+    seed_url: https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_secondary_market
+    display_name: Secondary Market Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/secondary-market
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_commercial
+    display_name: Commercial Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/commercial-mortgage
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_express
+    display_name: Express Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/express-loan
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_no_income_verification
+    display_name: Mortgage without Income Verification
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/no-income-verification
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_renovation
+    display_name: Renovation Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/renovation-mortgage
+    enabled: true
+    language: en
+  - product: mortgage
+    offering_id: mortgage_construction
+    display_name: Construction Mortgage
+    seed_url: https://ameriabank.am/en/personal/loans/mortgage/construction-mortgage
+    enabled: true
+    language: en

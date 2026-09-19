@@ -15,6 +15,7 @@ from app.config.models import (
     Settings,
     SourceDiscoverySettings,
 )
+from app.config.seed_catalog import SeedCatalogError, load_seed_catalog
 
 __all__ = [
     "AcquisitionSettings",
@@ -28,9 +29,11 @@ __all__ = [
     "PdfExtractionSettings",
     "RagSettings",
     "SchedulerSettings",
+    "SeedCatalogError",
     "SemanticExtractionSettings",
     "Settings",
     "SourceDiscoverySettings",
     "get_settings",
+    "load_seed_catalog",
     "load_settings",
 ]

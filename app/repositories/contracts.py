@@ -7,7 +7,19 @@ from app.domain.knowledge import (
     EmbeddedKnowledgeDocument,
     IndexWriteResult,
 )
-from app.domain.models import ProductType, TariffSnapshot
+from app.domain.models import OfferingId, ProductType, TariffSnapshot
+from app.domain.monitoring import (
+    ClaimedRun,
+    MonitoringRun,
+    OfferingExecution,
+    OfferingPublication,
+    PublicationResult,
+    RunCommand,
+    RunStatus,
+    RunSubmissionResult,
+    SnapshotAttempt,
+    SnapshotChangeSet,
+)
 from app.domain.pdf_extraction import PdfExtractionResponse
 from app.domain.retrieval import RetrievalCandidate
 from app.domain.semantic_extraction import ExtractionBatchResponse
@@ -17,6 +29,56 @@ from app.domain.source_discovery import SourceAssessment
 class SnapshotRepository(Protocol):
     async def get_latest(self, product: ProductType) -> TariffSnapshot | None: ...
     async def save(self, snapshot: TariffSnapshot) -> UUID: ...
+
+
+class RunRepository(Protocol):
+    async def submit(
+        self, command: RunCommand, *, idempotency_key: str | None = None
+    ) -> RunSubmissionResult: ...
+
+    async def get(self, run_id: UUID) -> MonitoringRun | None: ...
+
+    async def claim_next(self, worker_id: str) -> ClaimedRun | None: ...
+
+    async def finish(
+        self,
+        run_id: UUID,
+        status: RunStatus,
+        *,
+        failure_code: str | None = None,
+        failure_detail: str | None = None,
+        summary: dict[str, object] | None = None,
+    ) -> MonitoringRun: ...
+
+    async def create_offering_execution(
+        self,
+        run_id: UUID,
+        product: ProductType,
+        offering_id: OfferingId,
+    ) -> OfferingExecution: ...
+
+    async def start_offering_execution(
+        self, offering_execution_id: UUID, *, stage: str = "starting"
+    ) -> OfferingExecution: ...
+
+
+class MonitoringSnapshotRepository(Protocol):
+    async def save_attempt(self, snapshot: SnapshotAttempt) -> UUID: ...
+
+    async def get_latest_accepted(
+        self,
+        *,
+        bank: str,
+        product: ProductType,
+        offering_id: OfferingId,
+        before_run_id: UUID | None = None,
+    ) -> SnapshotAttempt | None: ...
+
+    async def save_changes(self, changes: SnapshotChangeSet) -> UUID: ...
+
+
+class OfferingPublicationRepository(Protocol):
+    async def publish(self, publication: OfferingPublication) -> PublicationResult: ...
 
 
 class ReviewRepository(Protocol):

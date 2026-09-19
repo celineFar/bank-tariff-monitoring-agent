@@ -61,6 +61,8 @@ class KnowledgeDocumentRecord(KnowledgeBase):
     )
     bank: Mapped[str] = mapped_column(String(100), nullable=False)
     product: Mapped[str] = mapped_column(String(50), nullable=False)
+    offering_id: Mapped[str | None] = mapped_column(String(100))
+    document_kind: Mapped[str] = mapped_column(String(50), nullable=False)
     document_key: Mapped[str] = mapped_column(String(500), nullable=False)
     document_name: Mapped[str] = mapped_column(String(1000), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -86,6 +88,8 @@ class KnowledgeDocumentRecord(KnowledgeBase):
         UniqueConstraint(
             "bank",
             "product",
+            "offering_id",
+            "document_kind",
             "document_key",
             "content_sha256",
             name="knowledge_documents_version_uq",
@@ -94,6 +98,8 @@ class KnowledgeDocumentRecord(KnowledgeBase):
             "knowledge_documents_identity_idx",
             "bank",
             "product",
+            "offering_id",
+            "document_kind",
             "document_key",
             "is_active",
         ),
@@ -189,6 +195,8 @@ class PostgresKnowledgeStore:
                         (
                             document.bank.lower(),
                             document.product.value,
+                            document.offering_id.value if document.offering_id else "",
+                            document.document_kind.value,
                             document.document_key,
                         )
                     )
@@ -221,6 +229,10 @@ class PostgresKnowledgeStore:
                     last_seen_run_id=document.run_id,
                     bank=document.bank.lower(),
                     product=document.product.value,
+                    offering_id=document.offering_id.value
+                    if document.offering_id
+                    else None,
+                    document_kind=document.document_kind.value,
                     document_key=document.document_key,
                     document_name=document.document_name,
                     source_url=str(document.source_url),
@@ -240,6 +252,10 @@ class PostgresKnowledgeStore:
                     index_elements=[KnowledgeDocumentRecord.id],
                     set_={
                         "last_seen_run_id": document.run_id,
+                        "offering_id": document.offering_id.value
+                        if document.offering_id
+                        else None,
+                        "document_kind": document.document_kind.value,
                         "document_name": document.document_name,
                         "source_url": str(document.source_url),
                         "final_url": str(document.final_url),
@@ -261,6 +277,14 @@ class PostgresKnowledgeStore:
                         select(KnowledgeDocumentRecord.id).where(
                             KnowledgeDocumentRecord.bank == document.bank.lower(),
                             KnowledgeDocumentRecord.product == document.product.value,
+                            KnowledgeDocumentRecord.offering_id
+                            == (
+                                document.offering_id.value
+                                if document.offering_id
+                                else None
+                            ),
+                            KnowledgeDocumentRecord.document_kind
+                            == document.document_kind.value,
                             KnowledgeDocumentRecord.document_key
                             == document.document_key,
                             KnowledgeDocumentRecord.id != version_id,

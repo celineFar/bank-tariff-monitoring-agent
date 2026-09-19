@@ -199,3 +199,51 @@ same-document overlap deduplication, and top-k limiting. It returns immutable ty
 hits with complete document/chunk provenance, or an explicit
 `INSUFFICIENT_EVIDENCE` result. See `docs/rag-retrieval.md` for the exact formula and
 query contract.
+
+## Offering and seed-catalog boundary
+
+`OfferingId` is the stable identity of a concrete bank offering; `ProductType` remains
+the broader consumer-loan or mortgage family. The frozen catalog models in
+`app/domain/catalog.py` bind each offering to exactly one family and approved seed URL.
+`app/config/seed_catalog.yaml` is the runtime source of truth for the thirteen approved
+URLs from `Project Documents/Loan_data_extraction.md`. The loader rejects duplicate
+offering identities, duplicate enabled URLs, family mismatches, non-HTTPS URLs, and
+hosts outside the acquisition allowlist before a run can be submitted.
+
+Offering identity and `KnowledgeDocumentKind` participate in knowledge-document and
+chunk identities. Consequently, two offerings cannot overwrite one another even if they
+share structural source keys. Knowledge rows are never retired merely because an
+offering was absent or a run failed; only publication of changed content for the same
+bank, product, offering, document kind, and document key supersedes that source’s
+previous active version.
+
+## Monitoring run and publication persistence
+
+The frozen contracts in `app/domain/monitoring.py` define run commands and lifecycle,
+offering executions, source manifests, extraction attempts/snapshots, change sets,
+publication results, and question/answer results. Lifecycle and outcome values are enums,
+and stable namespaced failure codes make API, worker, audit, and retry behavior
+machine-readable.
+
+Migration `006_monitoring_pipeline_foundation.sql` adds the durable queue and publication
+foundation:
+
+- `monitoring_runs` owns trigger, scope, idempotency, claim, timing, summary, and failure
+  state. One active API/schedule/ADK run is allowed per product family.
+- `offering_executions` isolates per-offering lifecycle and counters inside a family run.
+- `source_manifests` links observed sources to their offering execution and optional
+  knowledge-document version.
+- `tariff_snapshots` stores every extraction attempt, its acceptance status, canonical
+  hash, evidence, validation output, and link to the preceding accepted snapshot.
+- `tariff_changes` links canonical field changes to the current and previous snapshots.
+- `knowledge_documents` and `knowledge_chunks` carry offering and document-kind scope for
+  retrieval and supersession.
+
+`PostgresRunRepository.submit` serializes family submission with a PostgreSQL advisory
+transaction lock, applies idempotency keys, and returns an existing active run when
+appropriate. Workers claim queued rows with `FOR UPDATE SKIP LOCKED`; claim state is
+stored in PostgreSQL, so process restarts cannot duplicate a successful claim.
+
+`PostgresOfferingPublicationRepository` publishes the offering’s knowledge versions,
+source manifest, snapshot, optional change set, execution status, and audit event in one
+database transaction. Any indexing or persistence failure rolls back the entire offering
