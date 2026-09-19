@@ -585,13 +585,13 @@ Implementation record (2026-09-19):
 
 ### G. Snapshot and change lifecycle
 
-- [ ] Persist every extraction attempt.
-- [ ] Promote only complete, deterministically valid results.
-- [ ] Retain review-required/conflicting/invalid results as candidates.
-- [ ] Compare only against the preceding accepted snapshot for the same offering.
-- [ ] Ignore formatting, timestamp, citation-order, and evidence-location-only changes.
-- [ ] Persist provenance-only events separately from tariff changes.
-- [ ] Test first observation, unchanged, meaningful change, status transition,
+- [x] Persist every extraction attempt.
+- [x] Promote only complete, deterministically valid results.
+- [x] Retain review-required/conflicting/invalid results as candidates.
+- [x] Compare only against the preceding accepted snapshot for the same offering.
+- [x] Ignore formatting, timestamp, citation-order, and evidence-location-only changes.
+- [x] Persist provenance-only events separately from tariff changes.
+- [x] Test first observation, unchanged, meaningful change, status transition,
       candidate rejection, and failed publication rollback.
 
 ### H. RAG answering

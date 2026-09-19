@@ -221,3 +221,27 @@ def test_equivalent_tariff_with_changed_evidence_is_provenance_only() -> None:
     assert changes is not None
     assert changes.changes == ()
     assert evidence_changed(previous, current) is True
+
+
+def test_first_observation_and_unchanged_snapshot_emit_no_field_changes() -> None:
+    current = _snapshot({"term": {"status": "found", "value": 60}})
+    first = compare_accepted_snapshots(None, current)
+    repeated = compare_accepted_snapshots(current, _snapshot(current.normalized_tariff))
+
+    assert first is not None
+    assert first.previous_snapshot_id is None
+    assert first.changes == ()
+    assert repeated is not None
+    assert repeated.previous_snapshot_id == current.id
+    assert repeated.changes == ()
+
+
+def test_status_transition_is_a_meaningful_change() -> None:
+    previous = _snapshot({"interest_rate": {"status": "not_stated", "value": None}})
+    current = _snapshot({"interest_rate": {"status": "found", "value": "13.5"}})
+
+    changes = compare_accepted_snapshots(previous, current)
+
+    assert changes is not None
+    assert len(changes.changes) == 1
+    assert changes.changes[0].field == "interest_rate"

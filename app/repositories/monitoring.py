@@ -845,6 +845,30 @@ class PostgresOfferingPublicationRepository:
                     ),
                 },
             )
+            if publication.audit_metadata.get("provenance_changed") is True:
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO audit_events (
+                            run_id,
+                            offering_execution_id,
+                            event_type,
+                            payload
+                        )
+                        VALUES (
+                            :run_id,
+                            :offering_execution_id,
+                            'snapshot.provenance_changed',
+                            CAST(:payload AS jsonb)
+                        )
+                        """
+                    ),
+                    {
+                        "run_id": snapshot.run_id,
+                        "offering_execution_id": publication.offering_execution_id,
+                        "payload": _json({"snapshot_id": str(snapshot.id)}),
+                    },
+                )
 
         return PublicationResult(
             snapshot_id=snapshot_id,
