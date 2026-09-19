@@ -1,0 +1,387 @@
+{
+  "pages": [
+    {
+      "page_number": 1,
+      "blocks": [
+        {
+          "type": "key_value",
+          "text": "AMERIABANK CJSC\n11RBD PL 72-03-98\nEdition 69\nEffective date: February 4, 2026",
+          "heading_path": []
+        },
+        {
+          "type": "heading",
+          "text": "Retail Lending Terms and Conditions (Home Mortgage Loan)¹",
+          "heading_path": [
+            "Retail Lending Terms and Conditions (Home Mortgage Loan)¹"
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Approved by Management Board Resolution # 08/1/01/14 as of February 4, 2014\nCurrent edition approved by resolution # 01/15/26 as of February 2, 2026",
+          "heading_path": [
+            "Retail Lending Terms and Conditions (Home Mortgage Loan)¹"
+          ]
+        }
+      ],
+      "tables": [
+        {
+          "title": "Home Purchase Loan (primary market)",
+          "headers": [
+            "Section",
+            "Clause",
+            "AMD",
+            "USD",
+            "EUR"
+          ],
+          "rows": [
+            {
+              "cells": [
+                "1. Purpose",
+                "1.1. Purpose",
+                "1.1.1. (i) Purchase of residential property (including parking space) for residential, lease or investment purposes, or\n(ii) transfer of a loan for purchase of property for residential, lease or investment purposes from another bank/credit organization to Ameriabank CJSC (the “Bank”)",
+                "1.1.1. (i) Purchase of residential property (including parking space) for residential, lease or investment purposes, or\n(ii) transfer of a loan for purchase of property for residential, lease or investment purposes from another bank/credit organization to Ameriabank CJSC (the “Bank”)",
+                "1.1.1. (i) Purchase of residential property (including parking space) for residential, lease or investment purposes, or\n(ii) transfer of a loan for purchase of property for residential, lease or investment purposes from another bank/credit organization to Ameriabank CJSC (the “Bank”)"
+              ]
+            },
+            {
+              "cells": [
+                "2. Client's personal details",
+                "2.1. Eligible age of the client/co-borrower/guarantor",
+                "2.1.1. 18-70 years old, provided that the borrower’s age at the time of expiry of the loan agreement will not have exceeded 70, otherwise a co-borrower or guarantor is required. The eligible age of the co-borrower or guarantor is 18-70 provided that at the time of expiry of the agreement it will not have exceeded 70.\nIf involvement of a co-borrower or guarantor is a required condition under loan terms (except where co-borrowers or guarantors possess at least 70% of income included in OTI calculation), the eligible age of the co-borrower or guarantor is 18-70 provided that at the time of expiry of agreement it will not have exceeded 70.",
+                "2.1.1. 18-70 years old, provided that the borrower’s age at the time of expiry of the loan agreement will not have exceeded 70, otherwise a co-borrower or guarantor is required. The eligible age of the co-borrower or guarantor is 18-70 provided that at the time of expiry of the agreement it will not have exceeded 70.\nIf involvement of a co-borrower or guarantor is a required condition under loan terms (except where co-borrowers or guarantors possess at least 70% of income included in OTI calculation), the eligible age of the co-borrower or guarantor is 18-70 provided that at the time of expiry of agreement it will not have exceeded 70.",
+                "2.1.1. 18-70 years old, provided that the borrower’s age at the time of expiry of the loan agreement will not have exceeded 70, otherwise a co-borrower or guarantor is required. The eligible age of the co-borrower or guarantor is 18-70 provided that at the time of expiry of the agreement it will not have exceeded 70.\nIf involvement of a co-borrower or guarantor is a required condition under loan terms (except where co-borrowers or guarantors possess at least 70% of income included in OTI calculation), the eligible age of the co-borrower or guarantor is 18-70 provided that at the time of expiry of agreement it will not have exceeded 70."
+              ]
+            },
+            {
+              "cells": [
+                "2. Client's personal details",
+                "2.2. Residency",
+                "2.2.1. For loans in AMD: citizens and non-citizens of Armenia who are resident in Armenia\nFor loans in foreign currency: individuals not considered residents of Armenia",
+                "2.2.1. For loans in AMD: citizens and non-citizens of Armenia who are resident in Armenia\nFor loans in foreign currency: individuals not considered residents of Armenia",
+                "2.2.1. For loans in AMD: citizens and non-citizens of Armenia who are resident in Armenia\nFor loans in foreign currency: individuals not considered residents of Armenia"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.1. Currency",
+                "3.1.1. AMD",
+                "3.1.2. USD",
+                "3.1.2. EUR"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.2. Minimum and maximum loan limits",
+                "3.2.1. AMD 3,000,000 - AMD 150,000,000",
+                "3.2.2. USD 5,000 - USD 300,000",
+                "3.2.3. EUR 5,000 - EUR 300,000"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.3. Term (months)",
+                "3.3.1. 60",
+                "3.3.1. 60",
+                "3.3.1. 60"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.4. Nominal annual interest rate²",
+                "3.4.1. Fixed\n13.5%",
+                "3.4.2. Fixed\n11.0%",
+                "3.4.3. Fixed\n8.5%"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.5. Annual percentage rate (APR)³",
+                "3.5.1. Fixed\n14.39-15.76%",
+                "3.5.2. Fixed\n11.6-13.56%",
+                "3.5.3. Fixed\n8.86-10.71%"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.6. Term (months)",
+                "3.6.1. 61-360",
+                "3.6.1. 61-360",
+                "3.6.1. 61-360"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.7. Nominal annual interest rate²",
+                "3.7.1. Adjustable fixed⁴ (rate can be changed starting from the 37th month)\nFixed component 5.5% + variable component (base rate)",
+                "3.7.2. Adjustable fixed⁴ (rate can be changed starting from the 37th month)\nFixed component 8% + variable component (base rate)",
+                "3.7.3. Adjustable fixed⁴ (rate can be changed starting from the 37th month)\nFixed component 7% + variable component (base rate)"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.8. Annual percentage rate (APR)³",
+                "3.8.1. Adjustable fixed (rate can be changed starting from the 37th month)\n14.35-15.74%",
+                "3.8.2. Adjustable fixed (rate can be changed starting from the 37th month)\n10.47-12.39%",
+                "3.8.3. Adjustable fixed (rate can be changed starting from the 37th month)\n8.3-10.12%"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.9. Other terms related to the interest rate",
+                "3.9.1. If repayment schedule is differentiated or mixed, the applicable interest rate is increased by 0.5%",
+                "3.9.1. If repayment schedule is differentiated or mixed, the applicable interest rate is increased by 0.5%",
+                "3.9.1. If repayment schedule is differentiated or mixed, the applicable interest rate is increased by 0.5%"
+              ]
+            }
+          ],
+          "notes": []
+        }
+      ],
+      "notes": []
+    },
+    {
+      "page_number": 2,
+      "blocks": [],
+      "tables": [
+        {
+          "title": "Home Purchase Loan (primary market) (Continued - Page 2)",
+          "headers": [
+            "Section",
+            "Clause",
+            "Details"
+          ],
+          "rows": [
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.9. Other terms related to the interest rate",
+                "3.9.2. If the collateral related ratios (loan-to-value ratio) deviate from those approved by the internal regulations of the Bank, the applicable interest rate is increased by 0.25%."
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.9. Other terms related to the interest rate",
+                "3.9.3. If the creditworthiness criteria deviate from those approved by the internal regulations of the Bank (any or several of the declared income related criteria, OTI and OSM), the applicable interest rate is increased by 0.25%."
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.9. Other terms related to the interest rate",
+                "3.9.5. If the client prefers a lending option without the early repayment fee, the applicable interest rate is increased by 0.5% (not applicable to loans secured by cash or bonds)."
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.9. Other terms related to the interest rate",
+                "3.9.6. In case of other deviations, the applicable interest rate may be increased by 0.25%."
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.10. Lump sum disbursement fee",
+                "3.10.1. N/A"
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.11. Minimum down payment",
+                "3.11.1. At least 10% of the purchase price of the property In case of additional collateral: in the amount of 5% of the purchase price.\n3.11.1.1. In case of lending under 2024-2026 state-supported housing programs for families with children: at least 7.5% of the appraised market price of the residential real estate to be purchased, subject to provision of additional collateral."
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.12. Manner of disbursement",
+                "1. Lump sum\n2. By tranches, in which case the amount/term of each tranche is defined in accordance with the provisions of the agreements executed between the seller company and the borrower."
+              ]
+            },
+            {
+              "cells": [
+                "3. Loan terms",
+                "3.13. Cashing of the loan amount by the seller from his account with the Bank after loan disbursement (where applicable)",
+                "3.13.1.\nAMD: Free\nOther currency: 0.5 %"
+              ]
+            },
+            {
+              "cells": [
+                "4. Forms of loan repayment",
+                "4.1. Repayment method",
+                "4.1.1. Annuity (equal monthly installments consisting of a portion of loan and a portion of interest)"
+              ]
+            },
+            {
+              "cells": [
+                "4. Forms of loan repayment",
+                "4.1. Repayment method",
+                "4.1.2. Differentiated (monthly repayment of equal portions of principal amount while interest accrues to outstanding loan and decreases each month)"
+              ]
+            },
+            {
+              "cells": [
+                "4. Forms of loan repayment",
+                "4.1. Repayment method",
+                "4.1.3. Mixed (client may choose an individual repayment schedule based on seasonality of cash flows, provided that at least 5% of contractual loan amount is repaid each year; interest payable on monthly basis)"
+              ]
+            },
+            {
+              "cells": [
+                "5. Security",
+                "5.1. Eligible collateral",
+                "5.1.1.\n1. The loan is secured by the real estate being purchased. The Bank may consider as additional security pledge of other real estate to the reasonable satisfaction of the Bank, as well as cash in the Bank or bonds issued by the Bank.\n2. If the borrower wishes to purchase property under construction without registered certificate of title, the loan will be secured by other Armenia-based real estate to the reasonable satisfaction of the Bank.\n3. If the borrower wishes to purchase property abroad, the loan will be secured by Armenia-based real estate to the reasonable satisfaction of the Bank."
+              ]
+            }
+          ],
+          "notes": []
+        }
+      ],
+      "notes": []
+    },
+    {
+      "page_number": 3,
+      "blocks": [],
+      "tables": [
+        {
+          "title": "Home Purchase Loan (primary market) (Continued - Page 3)",
+          "headers": [
+            "Section",
+            "Clause",
+            "Details"
+          ],
+          "rows": [
+            {
+              "cells": [
+                "5. Security",
+                "5.2. Loan-to-value (LTV) ratio",
+                "5.2.1. The loan is issued:\n1. For AMD loans with a term of 61-240 months: up to 90%² of the (i) lesser of the two: appraised market value of the property and purchase price, or (ii) value specified in the developer’s⁵ reference provided to the client,\nFor AMD loans with a term above 240 months: up to 80%² of the (i) lesser of the two: appraised market value of the property and purchase price, or (ii) value specified in the developer’s⁶ reference provided to the client, unless otherwise determined by the Bank,\n2. For foreign currency loans with a term of 61-240 months: up to 70%² of the (i) lesser of the two: appraised market value of the property and purchase price, or (ii) value specified in the developer’s⁵ reference provided to the client,\nFor foreign currency loans with a term above 240 months: up to 60%² of the (i) lesser of the two: appraised market value of the property and purchase price, or (ii) value specified in the developer’s⁵ reference provided to the client, unless otherwise determined by the Bank,\n3. up to 100% of the value of cash in the Bank or bonds issued by the Bank.\n4. In case of loans without creditworthiness assessment: up to 60%² of the (i) lesser of the two: appraised market value of the property and purchase price, or (ii) value specified in the developer’s⁵ reference provided to the client"
+              ]
+            },
+            {
+              "cells": [
+                "5. Security",
+                "5.3. Location of the real estate to be pledged",
+                "5.3.1. Yerevan, regional centers of Armenia, towns where Ameriabank has branches, as well as Jrvezh, Arinj, Dzoraghbyur, Kasakh, Tsaghkadzor, Masis and Yeghvard\n5.3.1.1. In case of lending under 2024-2026 state-supported housing programs for families with children, also regional cities of Armenia not specified in clause 5.3.1 and particular rural settlements approved by the Republic of Armenia Government decree N 968-Լ as of May 14, 2020."
+              ]
+            },
+            {
+              "cells": [
+                "5. Security",
+                "5.4. Appraisal of the collateral",
+                "5.4.1.\n1. No appraisal is required in case of acquisition of the right to purchase property from the developer. Pledge value is considered to be equal to the price specified in the developer's reference, unless otherwise determined by the Bank.\n2. In case of acquisition of the title to the real estate from the developer, appraisal is performed by appraisal companies cooperating with the Bank."
+              ]
+            },
+            {
+              "cells": [
+                "5. Security",
+                "5.5. Additional security",
+                "5.5.1. The Bank may request guarantees of individuals and/or companies as additional security."
+              ]
+            },
+            {
+              "cells": [
+                "6. Insurance of the collateral",
+                "6.1. Insurance of the collateral",
+                "6.1.1. The real estate being pledged is insured by the Bank in the following cases:\n6.1.1.1. If at the time of registration of the title to the real estate and/or at the time of reappraisal, the market value of the property is over AMD 100 million (one hundred million); or\n6.1.1.2. where the address of the pledged real estate is included in the list of properties published on the Bank’s website."
+              ]
+            },
+            {
+              "cells": [
+                "6. Insurance of the collateral",
+                "6.1. Insurance of the collateral",
+                "6.1.2. The Bank obtains insurance each year for the amount of the outstanding principal throughout the loan term if any of the above specified conditions is in place (in this case, the calculation of the interest rate also covers all the possible costs, including those associated with the insurance, where applicable)."
+              ]
+            },
+            {
+              "cells": [
+                "7. Required documents",
+                "7.1. Required documents",
+                "7.1.1. Required documents filed together with the loan application\n• Loan application\n• ID (original)\n• Certificate of ownership/purchase right of real estate to be purchased/pledged [copy]\n• Other documents upon the Bank’s request"
+              ]
+            },
+            {
+              "cells": [
+                "7. Required documents",
+                "7.1. Required documents",
+                "7.1.2. Documents required after pre-approval\n• Proof of employment and/or other income"
+              ]
+            }
+          ],
+          "notes": []
+        }
+      ],
+      "notes": []
+    },
+    {
+      "page_number": 4,
+      "blocks": [],
+      "tables": [
+        {
+          "title": "Home Purchase Loan (primary market) (Continued - Page 4)",
+          "headers": [
+            "Section",
+            "Clause",
+            "Details"
+          ],
+          "rows": [
+            {
+              "cells": [
+                "7. Required documents",
+                "7.1. Required documents",
+                "• Marriage (divorce, spouse death) certificate (original)\n• Certificate of title to real estate to be pledged (original)\n• Other documents upon the Bank request"
+              ]
+            },
+            {
+              "cells": [
+                "7. Required documents",
+                "7.1. Required documents",
+                "7.1.3. Documents required after loan approval\n• Copies of bases of title to real estate (to be submitted upon the Bank’s request)\n• IDs of owners of the property to be purchased/pledged (originals)\n• Copies of marriage (divorce, spouse death) certificates of owners of the property to be pledged, to be presented if available\n• Statement from the State Committee of Real Estate Cadaster on encumbrance of real estate (unified statement)\n• Tax clearance certificate for the real estate\n• Real estate insurance policy\n• Documentary proof that the down payment was made in a non-cash manner (e.g.: original receipt, or, if paid electronically, a document showing that the electronic payment was confirmed). Such proof is not required if the payment was made from the accounts held with the Bank and the Bank specialist has exported the payment document from the system.\n• Other documents upon the Bank’s request"
+              ]
+            },
+            {
+              "cells": [
+                "8. Early repayment fee",
+                "8.1. Early repayment fee",
+                "8.1.1.\nAt any time during a contractual year the borrower can make an early repayment to the extent of outstanding principal amount of loan for that contractual year. A contractual year is each period of 12 months following the date of execution of credit agreement.\nWhere the amount of early repayment exceeds the specified limit, the following fees will be charged:\n• Max 0.6% of early repayment, if made during the first year of the agreement\n• Max 0.4% of early repayment, if made during the second year of the agreement\n• Max 0.2% of early repayment, if made during the third year of the agreement"
+              ]
+            },
+            {
+              "cells": [
+                "9. Late payment fines and penalties",
+                "9.1. Late payment fines and penalties",
+                "9.1.1. The interest rate specified in the loan agreement will continue to be applied to overdue loans.\nFine in the amount of 0.13% of overdue loan/interest for each overdue day"
+              ]
+            },
+            {
+              "cells": [
+                "10. Other fees",
+                "10.1. Other fees payable by the client",
+                "10.1.1.\n• Fee for unified statement from the State Committee of Real Estate Cadaster of the Government of the Republic of Armenia\n• Fees for notarization of pledge (real estate) and filing of the bank’s security interest under pledge agreement"
+              ]
+            }
+          ],
+          "notes": []
+        }
+      ],
+      "notes": [
+        "¹These terms have been previously known as Retail Lending Terms and Conditions under code 11RBD PL 72-03-01. Some of the Bank documents may contain references to these terms and conditions under the former name and code.",
+        "²Depending on the creditworthiness of the borrower, term of loan and LTV ratio, a higher or lower interest rate can be applied.",
+        "³The annual percentage rate (APR) may differ from the above specified values if there is any or a few of the following factors:\n- When the property insurance is obtained by the Bank at the customer’s request\n- When the borrower selects differentiated or mixed form of loan repayment\n- If there are deviations from the creditworthiness criteria approved under the internal regulations of the Bank\n- If additional property is pledged as collateral\n- If there are other deviations",
+        "⁴ Attention! The adjustable nominal interest rate may be revised no more than twice a year. Furthermore, depending on the change of the adjustable nominal interest rate, the threshold above or below which the nominal rate cannot change is ±5%.",
+        "⁵ The list of developers is determined by the Bank. If the developer is not included in the Bank's list, the terms of the loans for purchase of residential real estate from secondary market will apply."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "source_url": "https://ameriabank.am/en/personal/loans/mortgage/primary",
+  "canonical_url": "https://ameriabank.am/en/personal/loans/mortgage/primary",
+  "product": "mortgage",
+  "acquisition_content_hash": "d181640dfd543b5b2029857c770d478629c6a766309221167feffbf50f4ceb46",
+  "pdf_model_sequence": [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite"
+  ],
+  "source_discovery_model": "gemini-3.7-flash",
+  "semantic_extraction_model": "gemini-3.7-flash",
+  "semantic_extraction_status": "completed_with_review",
+  "semantic_review_item_count": 2,
+  "shared_cache_directory": "D:\\Job Hunt - Ultimate Game\\ACBA\\Practical Project\\tariff-monitor-v3\\end-to-end\\.cache"
+}

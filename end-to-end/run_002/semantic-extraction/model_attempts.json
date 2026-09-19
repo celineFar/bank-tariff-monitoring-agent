@@ -1,0 +1,14 @@
+[
+  {
+    "model": "gemini-3.7-flash",
+    "status": "failed",
+    "request_attempts": 5,
+    "application_retries": 0,
+    "input_tokens": 44389,
+    "output_tokens": 5544,
+    "thinking_tokens": 10567,
+    "total_tokens": 60500,
+    "error_type": "ValidationError",
+    "message": "7 validation errors for tuple[ConditionalValue[Rate], ...]\n0.value\n  Field required [type=missing, input_value={'currency': 'AMD', 'type...ixed', 'rate_pct': 13.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n1.value\n  Field required [type=missing, input_value={'currency': 'USD', 'type...ixed', 'rate_pct': 11.0}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n2.value\n  Field required [type=missing, input_value={'currency': 'EUR', 'type...fixed', 'rate_pct': 8.5}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n3.value\n  Field required [type=missing, input_value={'currency': 'AMD', 'type... component (base rate)'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n4.value\n  Field required [type=missing, input_value={'currency': 'USD', 'type... component (base rate)'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n5.value\n  Field required [type=missing, input_value={'currency': 'EUR', 'type... component (base rate)'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n6.value\n  Field required [type=missing, input_value={'currency': 'AMD', 'type... component (base rate)'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  }
+]

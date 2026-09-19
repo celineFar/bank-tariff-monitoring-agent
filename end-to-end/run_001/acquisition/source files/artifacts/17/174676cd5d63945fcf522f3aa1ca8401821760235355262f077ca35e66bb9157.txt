@@ -1,0 +1,9 @@
+<div class="wsc-box-item">
+  <div class="mng-text-theme">
+    {{:description}}
+  </div>
+</div>
+
+{{if ~isEditMode }}
+{{include tmpl="wscMCMSlideActionPanel" ~noDrag=true /}}
+{{/if}}

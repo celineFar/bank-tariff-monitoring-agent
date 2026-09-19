@@ -1,0 +1,14 @@
+[
+  {
+    "model": "gemini-3.7-flash",
+    "status": "failed",
+    "request_attempts": 5,
+    "application_retries": 0,
+    "input_tokens": 44575,
+    "output_tokens": 6018,
+    "thinking_tokens": 11916,
+    "total_tokens": 62509,
+    "error_type": "ValidationError",
+    "message": "7 validation errors for tuple[ConditionalValue[Rate], ...]\n0.value\n  Field required [type=missing, input_value={'condition': 'Fixed', 'c...5, 'rate_type': 'fixed'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n1.value\n  Field required [type=missing, input_value={'condition': 'Fixed', 'c...0, 'rate_type': 'fixed'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n2.value\n  Field required [type=missing, input_value={'condition': 'Fixed', 'c...5, 'rate_type': 'fixed'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n3.value\n  Field required [type=missing, input_value={'condition': 'Adjustable...'rate_type': 'floating'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n4.value\n  Field required [type=missing, input_value={'condition': 'Adjustable...'rate_type': 'floating'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n5.value\n  Field required [type=missing, input_value={'condition': 'Adjustable...'rate_type': 'floating'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing\n6.value\n  Field required [type=missing, input_value={'condition': 'Online ref...'rate_type': 'floating'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing"
+  }
+]

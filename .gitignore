@@ -216,4 +216,4 @@ tools/a2a-inspector/
 credentials*.json
 scripts/build_extraction_review_bundle.py
 tests/unit/test_build_extraction_review_bundle.py
-end-to-end/*
+# end-to-end/*

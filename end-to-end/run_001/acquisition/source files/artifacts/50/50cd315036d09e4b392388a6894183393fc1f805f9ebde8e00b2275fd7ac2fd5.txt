@@ -1,0 +1,8 @@
+{{wscSlidesContainer className='titles-' + ~moduleId}}
+  {{wscSlidesGrid type='Title' noItemStyle=true /}}
+{{/wscSlidesContainer}}
+
+
+
+
+
