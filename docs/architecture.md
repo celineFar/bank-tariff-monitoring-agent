@@ -48,6 +48,20 @@ shell, or SQL tool.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
 
+## Human-readable end-to-end inspection
+
+`scripts/demonstrate_end_to_end.py` is the manual audit entry point for the implemented
+pipeline stages. Given an official source URL, it invokes the normal acquisition,
+Gemini PDF transcription, structural normalization, source-discovery, and semantic-
+extraction services in one process. It does not introduce an alternative pipeline or
+expose filesystem/network tools to either ADK agent.
+
+The script writes source artifacts and readable reconstructions, unified normalization
+diffs, an inline selected/rejected source report, and an evidence-by-evidence semantic
+extraction report. Machine-readable plans and results are retained next to those
+reports. The output directory must be new or empty, preventing an audit run from
+silently overwriting an earlier run.
+
 ## PDF retrieval boundary
 
 Official-source discovery hands a typed `PdfCandidate` to `PdfDownloader`; the
