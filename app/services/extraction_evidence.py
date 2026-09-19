@@ -21,6 +21,11 @@ def build_evidence_catalog(
     assessments = selected_assessments_by_source_item(discovery.assessments)
     evidence: list[EvidenceItem] = []
     for document in bundle.documents:
+        table_sections = {
+            block.table_id: _table_section(block.heading_path, block.text)
+            for block in document.blocks
+            if block.table_id is not None
+        }
         for block in document.blocks:
             assessment = assessments.get(block.id)
             if assessment is None:
@@ -40,6 +45,9 @@ def build_evidence_catalog(
             assessment = assessments.get(table.id)
             if assessment is None:
                 continue
+            section = table_sections.get(table.id) or table.title
+            if table.title and table.title not in (section or ""):
+                section = " > ".join(part for part in (section, table.title) if part)
             headers = " | ".join(table.headers)
             for row in table.rows:
                 values = " | ".join(cell.text for cell in row.cells)
@@ -49,7 +57,7 @@ def build_evidence_catalog(
                         document.id,
                         row.id,
                         content,
-                        table.title,
+                        section,
                         row.cells[0].source_refs[0].locator,
                         assessment,
                     )
@@ -60,7 +68,7 @@ def build_evidence_catalog(
                         document.id,
                         f"{table.id}:note:{index}",
                         note.text,
-                        table.title,
+                        section,
                         note.source_refs[0].locator,
                         assessment,
                     )
@@ -72,6 +80,12 @@ def build_evidence_catalog(
             key=lambda item: (item.precedence, item.document_id, item.source_item_id),
         )
     )
+
+
+def _table_section(heading_path: tuple[str, ...], text: str) -> str | None:
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    parts = tuple(part for part in (*heading_path, first_line) if part)
+    return " > ".join(dict.fromkeys(parts)) or None
 
 
 def _evidence_item(
@@ -94,6 +108,8 @@ def _evidence_item(
         authority=assessment.authority,
         temporal_status=assessment.temporal_status,
         precedence=assessment_precedence(assessment),
+        product_association=assessment.product_association,
+        effective_periods=assessment.effective_periods,
         conditions=assessment.conditions,
         locator=locator,
     )

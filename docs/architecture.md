@@ -73,6 +73,11 @@ used by semantic extraction. The semantic-extraction overlay highlights only exa
 cited quotations with field labels. The root selection reports contain only the
 canonical webpage so their layout remains directly comparable with acquisition.
 Machine-readable plans and results are retained next to those reports.
+Semantic extraction preserves source-discovery product association and effective
+periods on every evidence item. Its deterministic planner reserves evidence capacity
+per field, retains webpage/PDF provenance independently, excludes known sibling
+variants from canonical-product packets, and invokes a bounded one-field ADK repair
+only when evidence-aware validation detects a suspicious missing or flattened value.
 Each invocation atomically creates the next `run_NNN` directory beneath the
 configured output root, preventing concurrent or repeated audit runs from overwriting
 earlier evidence. Exact PDF, source-discovery, and semantic-extraction responses are

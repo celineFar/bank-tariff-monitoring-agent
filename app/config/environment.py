@@ -86,8 +86,8 @@ class EnvironmentSettings(BaseSettings):
         "gemini-3.1-flash-lite",
     )
     source_discovery_max_price_per_million_tokens_usd: float = 4.0
-    semantic_extraction_schema_version: str = "2"
-    semantic_extraction_prompt_version: str = "2"
+    semantic_extraction_schema_version: str = "3"
+    semantic_extraction_prompt_version: str = "3"
     semantic_extraction_max_evidence_chars_per_item: int = 5000
     semantic_extraction_max_chars_per_batch: int = 20_000
     semantic_extraction_max_items_per_batch: int = 20

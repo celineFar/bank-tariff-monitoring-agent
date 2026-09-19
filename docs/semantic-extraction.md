@@ -11,8 +11,9 @@ completed `SourceDiscoveryResult`. In the end-to-end audit this bundle is persis
 `source-discovery/selected_sources.json` and rendered as `selected_webpage.md` and
 per-document `selected_*.md` files. The service reapplies the deterministic selection
 filter defensively, so callers cannot accidentally reintroduce rejected content. The
-discovery result supplies relevance, authority, temporal status, role, conditions,
-and precedence. The selected normalized bundle supplies full content and original
+discovery result supplies relevance, product association, authority, temporal status,
+effective periods, role, conditions, and precedence. These attributes remain attached
+to every extraction evidence item. The selected normalized bundle supplies full content and original
 `SourceLocator`; the shorter discovery prompt excerpt is not extraction evidence.
 
 The output is a `SemanticExtractionResult` containing:
@@ -35,17 +36,26 @@ overdraft, credit-line, and ordinary consumer-loan details are discriminated typ
 
 ## Deterministic/model split
 
-Python builds an evidence catalog only from non-irrelevant discovery assessments,
-restores complete normalized blocks and table rows, ranks evidence by role and
-authority, groups related fields, enforces packet limits, fingerprints packets, and
-checks the exact cache. Gemini receives only unresolved bounded packets through a
-tool-free ADK agent.
+Python builds an evidence catalog only from selected discovery assessments, restores
+complete normalized blocks and table rows, and carries a table's surrounding tab and
+product heading into every row. The planner gives every requested field a reserved
+evidence quota before filling the remaining packet, ranks canonical/current-product
+evidence above generic material, and excludes sibling-product and known variant
+sections from the canonical product packet. Packet fingerprints include this scope
+metadata. Gemini receives only unresolved bounded packets through a tool-free ADK
+agent.
 
 After the model responds, Python validates fields independently. Missing, duplicate,
 or extra fields; out-of-batch evidence IDs; non-verbatim quotes; malformed JSON; and
 canonical Pydantic type failures become review items without discarding valid sibling
 fields. A `found` value cannot exist without evidence; `not_stated` cannot contain a
-value or evidence. If review items remain, the run is `completed_with_review` and no
+value or evidence. Evidence-aware checks additionally reject `not_stated` when the
+same packet contains a strong current-product field label, reject values supported
+only by sibling/variant evidence, and detect condition-specific down-payment or LTV
+alternatives flattened into unconditional values. A suspicious or malformed field
+receives one targeted repair call containing field-specific evidence; only that field
+is replaced, and a still-invalid repair enters the review queue. If review items
+remain, the run is `completed_with_review` and no
 full `LoanProduct` is claimed. Total termination is reserved for systemic failures,
 including configuration/input failures and every model batch failing before a usable
 response exists. This step does not yet decide whether a supported claim is ultimately
@@ -57,7 +67,8 @@ publishable—that belongs to verification and repair.
 exact match on product, schema version, prompt version, model name, and evidence
 fingerprint. Invalid responses are never written, and invalid legacy entries are
 ignored when read. Any selected evidence change or deliberate schema/prompt version
-bump therefore causes only the affected field group to run again.
+bump therefore causes only the affected field group to run again. Semantic extraction
+schema and prompt version 3 intentionally invalidate the earlier scope-unaware cache.
 
 ## Demonstration
 

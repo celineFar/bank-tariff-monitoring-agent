@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceLocator, SourceType
 from app.domain.models import ProductType
-from app.domain.source_discovery import Authority, InformationRole, TemporalStatus
+from app.domain.source_discovery import (
+    Authority,
+    EffectivePeriod,
+    InformationRole,
+    ProductAssociation,
+    TemporalStatus,
+)
 
 T = TypeVar("T")
 
@@ -131,10 +137,7 @@ class OtherAmountFormula(ExtractionModel):
 
 
 LoanAmount = Annotated[
-    AbsoluteMoneyRange
-    | SalaryMultiple
-    | PropertyValuePercentage
-    | OtherAmountFormula,
+    AbsoluteMoneyRange | SalaryMultiple | PropertyValuePercentage | OtherAmountFormula,
     Field(discriminator="type"),
 ]
 
@@ -297,6 +300,8 @@ class EvidenceItem(ExtractionModel):
     authority: Authority
     temporal_status: TemporalStatus
     precedence: int = Field(ge=1)
+    product_association: ProductAssociation = ProductAssociation.UNKNOWN
+    effective_periods: tuple[EffectivePeriod, ...] = ()
     conditions: tuple[str, ...] = ()
     locator: SourceLocator
 
@@ -320,7 +325,9 @@ class ModelFieldResult(ExtractionModel):
                 raise ValueError("found model result requires value and evidence")
         elif self.status is ExtractionStatus.NOT_STATED:
             if self.value_json is not None or self.evidence:
-                raise ValueError("not_stated model result requires no value or evidence")
+                raise ValueError(
+                    "not_stated model result requires no value or evidence"
+                )
         elif not self.evidence:
             raise ValueError("ambiguous/conflicting model result requires evidence")
         return self
@@ -333,6 +340,8 @@ class ExtractionBatch(ExtractionModel):
     fields: tuple[ExtractionField, ...] = Field(min_length=1)
     evidence: tuple[EvidenceItem, ...] = Field(min_length=1)
     content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_url: HttpUrl | None = None
+    target_scope: tuple[str, ...] = ()
 
 
 class ExtractionBatchResponse(ExtractionModel):

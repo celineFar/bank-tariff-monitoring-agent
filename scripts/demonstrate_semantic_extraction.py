@@ -46,9 +46,7 @@ async def demonstrate(
     execute_llm: bool = False,
 ) -> Path:
     bundle_path, case_directory = _resolve_case(case_path)
-    discovery_path = _resolve_discovery_result(
-        case_directory, source_discovery_result
-    )
+    discovery_path = _resolve_discovery_result(case_directory, source_discovery_result)
     print(f"Loading normalized input from {bundle_path}", flush=True)
     print(f"Loading discovery result from {discovery_path}", flush=True)
     bundle = NormalizedSourceBundle.model_validate_json(
@@ -188,9 +186,7 @@ def _write_preflight(
     )
 
 
-def _write_result(
-    result: SemanticExtractionResult, output_directory: Path
-) -> None:
+def _write_result(result: SemanticExtractionResult, output_directory: Path) -> None:
     (output_directory / "semantic_extraction_result.json").write_text(
         result.model_dump_json(indent=2), encoding="utf-8"
     )
@@ -202,9 +198,7 @@ def _write_result(
         result.partial_product.model_dump_json(indent=2), encoding="utf-8"
     )
     _write_json(output_directory / "batch_results.json", result.batch_results)
-    _write_json(
-        output_directory / "pre_validation.json", result.raw_batch_outputs
-    )
+    _write_json(output_directory / "pre_validation.json", result.raw_batch_outputs)
     (output_directory / "pre_validation.md").write_text(
         render_pre_validation(result), encoding="utf-8"
     )
@@ -217,9 +211,7 @@ def _write_result(
     )
 
 
-def _render_selected(
-    plan: SemanticExtractionPlan, *, execution_run: bool
-) -> str:
+def _render_selected(plan: SemanticExtractionPlan, *, execution_run: bool) -> str:
     lines = [
         "# Semantic extraction LLM input",
         "",
@@ -233,6 +225,7 @@ def _render_selected(
     for batch in plan.batches:
         lines.extend((f"## {batch.id}: {batch.group}", ""))
         lines.append("Fields: " + ", ".join(field.value for field in batch.fields))
+        lines.append("Target scope: " + "; ".join(batch.target_scope))
         lines.append("")
         for item in batch.evidence:
             lines.extend(
@@ -241,6 +234,7 @@ def _render_selected(
                     "",
                     f"Source item: `{item.source_item_id}`",
                     f"Role / authority: `{item.role.value}` / `{item.authority.value}`",
+                    f"Product association: `{item.product_association.value}`",
                     f"Section: {item.section or '(none)'}",
                     "",
                     "```text",
@@ -363,7 +357,9 @@ def _resolve_case(path: Path) -> tuple[Path, Path]:
     bundle = next((item for item in candidates if item.is_file()), None)
     if bundle is None:
         raise FileNotFoundError(f"No normalized_bundle.json found at {resolved}")
-    case = bundle.parent.parent if bundle.parent.name == "normalization" else bundle.parent
+    case = (
+        bundle.parent.parent if bundle.parent.name == "normalization" else bundle.parent
+    )
     return bundle, case
 
 

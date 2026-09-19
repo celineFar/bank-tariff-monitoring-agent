@@ -150,6 +150,15 @@ class FakeExtractor:
                     value_json='"Consumer loan"',
                     evidence=(citation,),
                 )
+            elif field is ExtractionField.TERM:
+                result = ModelFieldResult(
+                    field=field,
+                    status=ExtractionStatus.FOUND,
+                    value_json=(
+                        '[{"value":{"min_months":60,"max_months":60},"conditions":[]}]'
+                    ),
+                    evidence=(citation,),
+                )
             else:
                 result = ModelFieldResult(
                     field=field, status=ExtractionStatus.NOT_STATED
@@ -178,6 +187,10 @@ def test_evidence_catalog_restores_full_normalized_content() -> None:
     assert {item.source_item_id for item in evidence} == {"title", "terms"}
     assert any("10,000,000" in item.content for item in evidence)
     assert all(item.evidence_id.startswith("ev_") for item in evidence)
+    assert all(
+        item.product_association is ProductAssociation.CURRENT_PRODUCT
+        for item in evidence
+    )
 
 
 def test_response_rejects_invented_or_non_verbatim_citation() -> None:
@@ -276,6 +289,57 @@ class InvalidRateExtractor(FakeExtractor):
         )
 
 
+class RepairingTermExtractor(FakeExtractor):
+    async def extract(self, batch):
+        response = await super().extract(batch)
+        if ExtractionField.TERM not in batch.fields or any(
+            item == "repair_field=term" for item in batch.target_scope
+        ):
+            return response
+        return ExtractionBatchResponse(
+            results=tuple(
+                ModelFieldResult(
+                    field=item.field,
+                    status=ExtractionStatus.NOT_STATED,
+                )
+                if item.field is ExtractionField.TERM
+                else item
+                for item in response.results
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> None:
+    bundle, discovery = _fixture()
+    extractor = RepairingTermExtractor()
+    repository = InMemorySemanticExtractionRepository()
+    service = SemanticExtractionService(
+        extractor=extractor,
+        repository=repository,
+        settings=SemanticExtractionSettings(),
+        model_name="test-model",
+    )
+
+    first = await service.extract(
+        bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    calls_after_first = extractor.calls
+    second = await service.extract(
+        bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    assert first.status is SemanticExtractionRunStatus.COMPLETED
+    assert first.loan_product is not None
+    assert first.loan_product.term.value[0].value.max_months == 60
+    assert any(
+        output.batch_id.endswith("__repair_term") for output in first.raw_batch_outputs
+    )
+    assert calls_after_first == 6
+    assert extractor.calls == calls_after_first
+    assert second.reused_batch_count == 5
+
+
 class SelectivelyFailingExtractor(FakeExtractor):
     def __init__(self, *, fail_all: bool = False) -> None:
         super().__init__()
@@ -289,7 +353,9 @@ class SelectivelyFailingExtractor(FakeExtractor):
 
 
 @pytest.mark.asyncio
-async def test_invalid_field_is_preserved_for_review_without_losing_valid_fields() -> None:
+async def test_invalid_field_is_preserved_for_review_without_losing_valid_fields() -> (
+    None
+):
     bundle, discovery = _fixture()
     extractor = InvalidRateExtractor()
     repository = InMemorySemanticExtractionRepository()
@@ -318,7 +384,9 @@ async def test_invalid_field_is_preserved_for_review_without_losing_valid_fields
     )
     assert review.raw_result is not None
     assert review.raw_result.value_json is not None
-    assert any("value" in map(str, issue.location) for issue in review.validation_issues)
+    assert any(
+        "value" in map(str, issue.location) for issue in review.validation_issues
+    )
 
     next_plan = await service.plan(bundle, discovery)
     assert any(
@@ -343,8 +411,7 @@ async def test_one_failed_batch_is_routed_to_review_and_other_fields_survive() -
     assert result.status is SemanticExtractionRunStatus.COMPLETED_WITH_REVIEW
     assert result.validated_fields
     assert any(
-        item.field is ExtractionField.INTEREST_RATE
-        and item.raw_result is None
+        item.field is ExtractionField.INTEREST_RATE and item.raw_result is None
         for item in result.review_items
     )
 
