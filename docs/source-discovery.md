@@ -5,6 +5,14 @@ extraction. It classifies which normalized material belongs to the requested pro
 what information role it plays, its relevance and authority, and whether it appears
 current or time-bounded. It does not extract tariff values.
 
+For the end-to-end audit, the canonical webpage is rendered in the root
+`selection_decisions.md` and `selection_diff.md`. Linked normalized documents remain
+independent under `source-discovery/documents/`: `index.md` records their selection
+state and each PDF receives its own `*.selection_decisions.md` and
+`*.selection_diff.md`. A PDF admitted as relevant from its title, link label, and
+surrounding metadata receives one document-level decision that is inherited by its
+blocks and tables; historical or future status still excludes it from current terms.
+
 ## Cost-aware execution
 
 `SourceDiscoveryService.plan()` performs all work that can happen before a model call:

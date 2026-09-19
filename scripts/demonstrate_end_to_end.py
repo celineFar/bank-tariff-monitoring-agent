@@ -16,15 +16,18 @@ from pydantic import BaseModel
 from app.config import Settings, load_settings
 from app.domain.acquisition import PageArtifact, SourceType
 from app.domain.models import ProductType
-from app.domain.normalization import NormalizedSourceBundle
+from app.domain.normalization import NormalizedDocument, NormalizedSourceBundle
 from app.domain.semantic_extraction import (
     SemanticExtractionPlan,
     SemanticExtractionResult,
 )
 from app.domain.source_discovery import (
     DecisionSource,
+    DiscoveryScope,
+    Relevance,
     SourceDiscoveryPlan,
     SourceDiscoveryResult,
+    TemporalStatus,
 )
 from app.repositories.file_pdf_extraction import FileSystemPdfExtractionRepository
 from app.repositories.file_semantic_extraction import (
@@ -195,12 +198,11 @@ async def demonstrate(
         if isinstance(exc, ModelSequenceError):
             _write_json(discovery_directory / "plan.json", exc.plan)
             _write_json(discovery_directory / "model_attempts.json", exc.attempts)
-        (discovery_directory / "selection_decisions.md").write_text(
-            render_source_selection(bundle, None, error=failure), encoding="utf-8"
-        )
-        (discovery_directory / "selection_diff.md").write_text(
-            render_source_selection_diff(bundle, None, error=failure),
-            encoding="utf-8",
+        _write_source_discovery_reports(
+            discovery_directory,
+            bundle,
+            None,
+            error=failure,
         )
         _write_json(
             discovery_directory / "failure.json",
@@ -214,11 +216,10 @@ async def demonstrate(
     _write_json(discovery_directory / "plan.json", discovery_plan)
     _write_json(discovery_directory / "result.json", discovery_result)
     _write_json(discovery_directory / "model_attempts.json", discovery_attempts)
-    (discovery_directory / "selection_decisions.md").write_text(
-        render_source_selection(bundle, discovery_result), encoding="utf-8"
-    )
-    (discovery_directory / "selection_diff.md").write_text(
-        render_source_selection_diff(bundle, discovery_result), encoding="utf-8"
+    _write_source_discovery_reports(
+        discovery_directory,
+        bundle,
+        discovery_result,
     )
 
     semantic_directory = output / "semantic-extraction"
@@ -486,6 +487,119 @@ def _write_normalization_reports(
         render_diff_markdown("Document normalization diffs", tuple(comparisons)),
         encoding="utf-8",
     )
+
+
+def _write_source_discovery_reports(
+    directory: Path,
+    bundle: NormalizedSourceBundle,
+    result: SourceDiscoveryResult | None,
+    *,
+    error: Exception | None = None,
+) -> None:
+    page_documents = tuple(
+        document
+        for document in bundle.documents
+        if document.source_type is SourceType.PAGE
+    )
+    page_bundle = _document_bundle(bundle, page_documents or bundle.documents[:1])
+    (directory / "selection_decisions.md").write_text(
+        render_source_selection(page_bundle, result, error=error), encoding="utf-8"
+    )
+    (directory / "selection_diff.md").write_text(
+        render_source_selection_diff(page_bundle, result, error=error),
+        encoding="utf-8",
+    )
+
+    documents_directory = directory / "documents"
+    documents_directory.mkdir()
+    index_lines = [
+        "# Source-discovery document index",
+        "",
+        "Each linked document remains independent. Its normalized content and "
+        "source-discovery decisions are rendered in dedicated Markdown files.",
+        "",
+        "| # | Type | Decision | Document | Reports |",
+        "|---:|---|---|---|---|",
+    ]
+    linked_documents = tuple(
+        document
+        for document in bundle.documents
+        if document.source_type is not SourceType.PAGE
+    )
+    for index, document in enumerate(linked_documents):
+        group = "pdfs" if document.source_type is SourceType.PDF else "api"
+        target_directory = documents_directory / group
+        target_directory.mkdir(exist_ok=True)
+        stem = human_filename(document.name, index=index, extension=".md").removesuffix(
+            ".md"
+        )
+        decisions_name = f"{stem}.selection_decisions.md"
+        diff_name = f"{stem}.selection_diff.md"
+        document_bundle = _document_bundle(bundle, (document,))
+        (target_directory / decisions_name).write_text(
+            render_source_selection(document_bundle, result, error=error),
+            encoding="utf-8",
+        )
+        (target_directory / diff_name).write_text(
+            render_source_selection_diff(document_bundle, result, error=error),
+            encoding="utf-8",
+        )
+        decision = _document_selection_decision(document, result)
+        relative = target_directory.relative_to(documents_directory).as_posix()
+        index_lines.append(
+            f"| {index + 1} | `{document.source_type.value}` | **{decision}** | "
+            f"[{_markdown_cell(document.name)}]({relative}/{decisions_name}) | "
+            f"[decisions]({relative}/{decisions_name}) · "
+            f"[diff]({relative}/{diff_name}) |"
+        )
+    index_lines.append("")
+    (documents_directory / "index.md").write_text(
+        "\n".join(index_lines), encoding="utf-8"
+    )
+
+
+def _document_bundle(
+    bundle: NormalizedSourceBundle,
+    documents: tuple[NormalizedDocument, ...],
+) -> NormalizedSourceBundle:
+    return bundle.model_copy(update={"documents": documents})
+
+
+def _document_selection_decision(
+    document: NormalizedDocument,
+    result: SourceDiscoveryResult | None,
+) -> str:
+    if result is None:
+        return "UNASSESSED"
+    assessment = next(
+        (
+            item
+            for item in result.assessments
+            if item.document_id == document.id
+            and item.source_id == f"document::{document.id}"
+            and item.scope in {DiscoveryScope.DOCUMENT, DiscoveryScope.API_PAYLOAD}
+        ),
+        None,
+    )
+    if assessment is None:
+        return "UNASSESSED"
+    if assessment.relevance is Relevance.IRRELEVANT:
+        return "NOT SELECTED"
+    if assessment.temporal_status is TemporalStatus.POSSIBLY_STALE:
+        return "HISTORICAL — NOT SELECTED"
+    if assessment.temporal_status is TemporalStatus.FUTURE:
+        return "FUTURE — NOT SELECTED"
+    if (
+        assessment.relevance is Relevance.POSSIBLY_RELEVANT
+        or assessment.temporal_status
+        in {TemporalStatus.UNKNOWN, TemporalStatus.TIME_BOUNDED}
+    ):
+        return "SELECTED WITH UNCERTAINTY"
+    return "SELECTED"
+
+
+def _markdown_cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
 
 async def _run_discovery(

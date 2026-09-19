@@ -587,6 +587,8 @@ def _assessment_index(
     result: dict[str, SourceAssessment] = {}
     for assessment in assessments:
         result[assessment.source_id] = assessment
+        if assessment.source_id == f"document::{assessment.document_id}":
+            result[assessment.document_id] = assessment
         for reference in assessment.source_refs:
             result.setdefault(reference.source_item_id, assessment)
     return result

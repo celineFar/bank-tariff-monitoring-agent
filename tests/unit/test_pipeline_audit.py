@@ -46,7 +46,10 @@ from app.services.pipeline_audit import (
     render_source_selection,
     render_source_selection_diff,
 )
-from scripts.demonstrate_end_to_end import _next_run_directory
+from scripts.demonstrate_end_to_end import (
+    _next_run_directory,
+    _write_source_discovery_reports,
+)
 
 URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
 
@@ -170,6 +173,67 @@ def test_source_discovery_diff_preserves_layout_and_marks_kept_and_removed() -> 
     assert "<del>Deposits</del>" in report
     assert "background:#ffe6e6" in report
     assert "```diff" not in report
+
+
+def test_source_discovery_writes_each_pdf_to_independent_reports(tmp_path) -> None:
+    bundle, discovery, _, _ = _audit_fixture()
+    locator = SourceLocator(
+        source_url="https://ameriabank.am/terms.pdf", source_type=SourceType.PDF
+    )
+    reference = SourceReference(source_item_id="pdf-terms", locator=locator)
+    block = NormalizedBlock(
+        id="pdf-terms",
+        type=NormalizedBlockType.PARAGRAPH,
+        raw_text="PDF mortgage terms",
+        text="PDF mortgage terms",
+        source_refs=(reference,),
+    )
+    document = NormalizedDocument(
+        id="document:pdf",
+        name="Current mortgage terms",
+        source_url=locator.source_url,
+        source_type=SourceType.PDF,
+        mime_type="application/pdf",
+        content_sha256="9" * 64,
+        extraction_method="gemini",
+        blocks=(block,),
+    )
+    assessment = SourceAssessment(
+        source_id="document::document:pdf",
+        document_id=document.id,
+        scope=DiscoveryScope.DOCUMENT,
+        product_association=ProductAssociation.CURRENT_PRODUCT,
+        role=InformationRole.PRODUCT_TERMS,
+        relevance=Relevance.RELEVANT,
+        authority=Authority.OFFICIAL_TERMS,
+        temporal_status=TemporalStatus.UNKNOWN,
+        reason="Relevant PDF link title",
+        decision_source=DecisionSource.RULE,
+        input_fingerprint="7" * 64,
+        structural_fingerprint="8" * 64,
+        source_refs=(reference,),
+    )
+    bundle = bundle.model_copy(
+        update={"documents": (*bundle.documents, document)}
+    )
+    discovery = discovery.model_copy(
+        update={"assessments": (*discovery.assessments, assessment)}
+    )
+
+    _write_source_discovery_reports(tmp_path, bundle, discovery)
+
+    root_decisions = (tmp_path / "selection_decisions.md").read_text(encoding="utf-8")
+    pdf_decisions = next((tmp_path / "documents" / "pdfs").glob("*.selection_decisions.md"))
+    pdf_report = pdf_decisions.read_text(encoding="utf-8")
+    index = (tmp_path / "documents" / "index.md").read_text(encoding="utf-8")
+
+    assert "Current mortgage terms" not in root_decisions
+    assert "Current mortgage terms" in pdf_report
+    assert "<code>document:pdf</code>" in pdf_report
+    assert "SELECTED WITH UNCERTAINTY" in pdf_report
+    assert "<strong>UNASSESSED</strong>" not in pdf_report
+    assert "SELECTED WITH UNCERTAINTY" in index
+    assert len(list((tmp_path / "documents" / "pdfs").glob("*.md"))) == 2
 
 
 def test_extraction_report_highlights_only_exact_cited_quote() -> None:
