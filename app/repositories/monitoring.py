@@ -282,6 +282,62 @@ class PostgresRunRepository:
             return None
         return ClaimedRun(run=_run_from_row(row), worker_id=normalized_worker)
 
+    async def recover_abandoned(self, *, before: datetime) -> int:
+        if before.tzinfo is None or before.utcoffset() is None:
+            raise ValueError("before must be timezone-aware")
+        async with self._session_factory() as session, session.begin():
+            run_ids = tuple(
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT id
+                            FROM monitoring_runs
+                            WHERE status = 'running'
+                              AND claimed_at < :before
+                            FOR UPDATE SKIP LOCKED
+                            """
+                        ),
+                        {"before": before},
+                    )
+                ).scalars()
+            )
+            if not run_ids:
+                return 0
+            await session.execute(
+                text(
+                    """
+                    UPDATE offering_executions
+                    SET
+                        status = 'failed',
+                        completed_at = now(),
+                        failure_count = failure_count + 1,
+                        failure_code = 'run.abandoned',
+                        failure_detail = 'Worker lease expired',
+                        updated_at = now()
+                    WHERE run_id = ANY(:run_ids)
+                      AND status IN ('pending', 'running')
+                    """
+                ),
+                {"run_ids": list(run_ids)},
+            )
+            await session.execute(
+                text(
+                    """
+                    UPDATE monitoring_runs
+                    SET
+                        status = 'failed',
+                        completed_at = now(),
+                        error_code = 'run.abandoned',
+                        failure_detail = 'Worker lease expired',
+                        updated_at = now()
+                    WHERE id = ANY(:run_ids)
+                    """
+                ),
+                {"run_ids": list(run_ids)},
+            )
+        return len(run_ids)
+
     async def finish(
         self,
         run_id: UUID,

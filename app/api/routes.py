@@ -1,14 +1,24 @@
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
+
+from app.domain.models import OfferingId, ProductType
+from app.domain.monitoring import (
+    MonitoringRun,
+    RunCommand,
+    RunSubmissionResult,
+    RunTrigger,
+)
+from app.services.run_service import RunServicePort
 
 router = APIRouter(prefix="/api/v1")
 
 
 class RunRequest(BaseModel):
-    query: str = Field(min_length=2, max_length=500)
+    product: ProductType
+    offering_id: OfferingId | None = None
 
 
 class ReviewDecision(BaseModel):
@@ -22,14 +32,45 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/runs", status_code=status.HTTP_501_NOT_IMPLEMENTED, tags=["runs"])
-async def create_run(request: RunRequest) -> None:
-    raise HTTPException(status_code=501, detail="TariffPipeline is not implemented.")
+def get_run_service(request: Request) -> RunServicePort:
+    return request.app.state.run_service
 
 
-@router.get("/runs/{run_id}", status_code=501, tags=["runs"])
-async def get_run(run_id: UUID) -> None:
-    raise HTTPException(status_code=501, detail="RunRepository is not implemented.")
+@router.post(
+    "/runs",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=RunSubmissionResult,
+    tags=["runs"],
+)
+async def create_run(
+    request: RunRequest,
+    service: Annotated[RunServicePort, Depends(get_run_service)],
+    idempotency_key: str | None = Header(
+        default=None,
+        alias="Idempotency-Key",
+        max_length=200,
+    ),
+) -> RunSubmissionResult:
+    try:
+        command = RunCommand(
+            product=request.product,
+            offering_id=request.offering_id,
+            trigger=RunTrigger.API,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await service.submit(command, idempotency_key=idempotency_key)
+
+
+@router.get("/runs/{run_id}", response_model=MonitoringRun, tags=["runs"])
+async def get_run(
+    run_id: UUID,
+    service: Annotated[RunServicePort, Depends(get_run_service)],
+) -> MonitoringRun:
+    run = await service.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 
 @router.get("/reviews", status_code=501, tags=["reviews"])

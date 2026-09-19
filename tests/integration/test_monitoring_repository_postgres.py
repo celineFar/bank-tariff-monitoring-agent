@@ -1,7 +1,7 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -230,6 +230,40 @@ async def test_queue_claim_is_skip_locked_and_restart_safe(
     assert second is not None
     assert {first.run.id, second.run.id} == {consumer.run.id, mortgage.run.id}
     assert await restarted_worker.claim_next("worker-c") is None
+
+
+@pytest.mark.asyncio
+async def test_abandoned_running_run_is_failed_and_family_can_restart(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    submitted = await repository.submit(_command())
+    claimed = await repository.claim_next("lost-worker")
+    assert claimed is not None
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                """
+                UPDATE monitoring_runs
+                SET claimed_at = now() - interval '2 hours'
+                WHERE id = :id
+                """
+            ),
+            {"id": submitted.run.id},
+        )
+
+    recovered = await repository.recover_abandoned(
+        before=datetime.now(UTC) - timedelta(minutes=30)
+    )
+    failed = await repository.get(submitted.run.id)
+    replacement = await repository.submit(_command())
+
+    assert recovered == 1
+    assert failed is not None
+    assert failed.status is RunStatus.FAILED
+    assert failed.failure_code == "run.abandoned"
+    assert replacement.created is True
+    assert replacement.run.id != submitted.run.id
 
 
 @pytest.mark.asyncio

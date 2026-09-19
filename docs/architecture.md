@@ -1,11 +1,14 @@
 # Architecture
 
 ```text
-FastAPI user trigger ----+
-                         +--> ADK intent/product resolution
-Daily worker trigger ----+              |
-                                        v
-                           deterministic pipeline
+FastAPI typed trigger ----+
+                          +--> RunService --> PostgreSQL durable queue
+ADK resolved trigger -----+                         |
+Daily scheduler ----------+                         v
+                                            worker claim/recovery
+                                                    |
+                                                    v
+                                           deterministic pipeline
  discovery -> secure retrieval -> deterministic PDF admission/input probe
  -> bounded Gemini PDF structure extraction + deterministic HTML parsing
  -> structural normalization -> cached/rule prefilter -> bounded Gemini source classification
@@ -43,7 +46,9 @@ shell, or SQL tool.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
   including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
-- `app/worker.py`: daily Asia/Yerevan scheduler entry point.
+- `app/runtime.py`: shared composition root for HTTP and worker processes.
+- `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
+  scheduled families are submitted independently through `RunService`.
 - `migrations/`: PostgreSQL/pgvector schema.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
@@ -242,7 +247,14 @@ foundation:
 `PostgresRunRepository.submit` serializes family submission with a PostgreSQL advisory
 transaction lock, applies idempotency keys, and returns an existing active run when
 appropriate. Workers claim queued rows with `FOR UPDATE SKIP LOCKED`; claim state is
-stored in PostgreSQL, so process restarts cannot duplicate a successful claim.
+stored in PostgreSQL. On startup, the worker marks expired running claims failed before
+claiming new work, which releases the family constraint without replaying partially
+published work.
+
+`POST /api/v1/runs`, the ADK monitoring tool, and the 06:00 scheduler all submit the
+same typed `RunCommand` through `RunService`. The HTTP adapter returns `202` with the
+durable run record and honors `Idempotency-Key`; `GET /api/v1/runs/{run_id}` reads the
+same repository state. Only the worker invokes `TariffPipeline`, after a durable claim.
 
 `PostgresOfferingPublicationRepository` publishes the offering’s knowledge versions,
 source manifest, snapshot, optional change set, execution status, and audit event in one

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -39,6 +40,8 @@ class RunRepository(Protocol):
     async def get(self, run_id: UUID) -> MonitoringRun | None: ...
 
     async def claim_next(self, worker_id: str) -> ClaimedRun | None: ...
+
+    async def recover_abandoned(self, *, before: datetime) -> int: ...
 
     async def finish(
         self,

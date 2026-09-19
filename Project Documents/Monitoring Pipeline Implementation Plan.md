@@ -575,12 +575,12 @@ Implementation record (2026-09-19):
 
 ### F. Trigger adapters and worker
 
-- [ ] Implement typed run submission and run-status FastAPI routes.
-- [ ] Implement idempotency-header and active-family behavior.
-- [ ] Implement worker queue claiming/execution and abandoned-run recovery.
-- [ ] Make the scheduler enqueue independent consumer-loan and mortgage runs.
-- [ ] Replace the ADK monitoring tool placeholder with the shared run service.
-- [ ] Add API/worker/tool tests proving all entry paths reach the same application
+- [x] Implement typed run submission and run-status FastAPI routes.
+- [x] Implement idempotency-header and active-family behavior.
+- [x] Implement worker queue claiming/execution and abandoned-run recovery.
+- [x] Make the scheduler enqueue independent consumer-loan and mortgage runs.
+- [x] Replace the ADK monitoring tool placeholder with the shared run service.
+- [x] Add API/worker/tool tests proving all entry paths reach the same application
       service and cannot duplicate active family work.
 
 ### G. Snapshot and change lifecycle
