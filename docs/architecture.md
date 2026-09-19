@@ -46,7 +46,8 @@ shell, or SQL tool.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
   including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
-- `app/runtime.py`: shared composition root for HTTP and worker processes.
+- `app/runtime.py`: shared composition root for HTTP/worker repositories, ingestion,
+  `TariffPipeline`, `RunService`, retrieval, and `RagAnswerService`.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`.
 - `migrations/`: PostgreSQL/pgvector schema.
@@ -171,7 +172,7 @@ See `docs/semantic-extraction.md` for the complete contract and demonstration fl
 
 ## RAG index / knowledge-store boundary
 
-`KnowledgeIndexer` accepts page-aware chunks from the future chunking component,
+`KnowledgeIndexer` accepts page-aware source-faithful and deterministic-summary chunks,
 requests `RETRIEVAL_DOCUMENT` embeddings through an injected embedding provider, and
 passes only validated 768-dimensional vectors to `PostgresKnowledgeStore`. Neither
 the embedding client nor the repository is exposed as an ADK tool.
@@ -204,6 +205,26 @@ same-document overlap deduplication, and top-k limiting. It returns immutable ty
 hits with complete document/chunk provenance, or an explicit
 `INSUFFICIENT_EVIDENCE` result. See `docs/rag-retrieval.md` for the exact formula and
 query contract.
+
+
+## RAG answer boundary
+
+`RagAnswerService` is shared by `POST /api/v1/questions` and the ADK question tool.
+It retrieves active offering summaries and official source chunks with typed
+bank/product/offering/document-kind filters, constructs a bounded evidence packet, and
+performs one structured generation call. Summaries improve precision but cannot be
+cited. Citation IDs and exact excerpts must match retrieved source chunks; URL,
+document, page, and section are restored server-side. Missing scope returns
+`ambiguous_product`; missing or invalid evidence returns `insufficient_evidence`.
+Question answering never invokes acquisition. See `docs/rag-answering.md`.
+## Indexing coordinator boundary
+
+`IndexingPipeline.refresh()` orders acquisition, normalization, discovery, extraction,
+projection, embedding, and atomic publication for one offering. `TariffPipeline` owns
+the family run and isolates siblings, allowing `partial_success`. Source-faithful
+documents preserve normalized evidence locations; accepted snapshots additionally
+produce deterministic offering summaries. See `docs/indexing-projection.md`,
+`docs/run-lifecycle.md`, and `docs/snapshot-lifecycle.md`.
 
 ## Offering and seed-catalog boundary
 

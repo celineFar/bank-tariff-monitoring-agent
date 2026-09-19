@@ -6,12 +6,12 @@ classification, native PDF structure transcription, and evidence-bound extractio
 security controls, ingestion, validation, persistence, comparison, scheduling, and
 HITL routing are deterministic.
 
-The repository contains the project scaffold, deterministic acquisition, structural
-normalization, cache-aware source discovery, secure PDF retrieval and bounded Gemini PDF extraction,
-a transactional PostgreSQL/pgvector knowledge store, hybrid retrieval, and bounded
-evidence-linked semantic extraction. Claim generation, verification, and snapshot
-comparison remain later implementation phases; unimplemented HTTP operations return
-`501` rather than fabricating results.
+The repository contains deterministic acquisition, structural normalization,
+cache-aware source discovery, secure PDF retrieval, bounded Gemini PDF extraction and
+semantic extraction, dual source/summary knowledge projections, a transactional
+PostgreSQL/pgvector store, hybrid retrieval, durable monitoring runs and snapshots,
+change detection, and evidence-bound RAG answering. Claim generation and semantic
+claim verification are intentionally deferred.
 
 ## Runtime
 
@@ -25,7 +25,10 @@ See [the architecture](docs/architecture.md), [configuration reference](docs/con
 [acquisition design](docs/acquisition.md), [normalization design](docs/normalization.md),
 [source-discovery design](docs/source-discovery.md),
 [semantic-extraction design](docs/semantic-extraction.md),
-[knowledge-store design](docs/knowledge-store.md), and
+[knowledge-store design](docs/knowledge-store.md),
+[seed catalog](docs/seed-catalog.md), [monitoring run lifecycle](docs/run-lifecycle.md),
+[snapshot lifecycle](docs/snapshot-lifecycle.md),
+[indexing projections](docs/indexing-projection.md), [RAG answering](docs/rag-answering.md), and
 [.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
@@ -38,8 +41,8 @@ See [the architecture](docs/architecture.md), [configuration reference](docs/con
 6. Open API documentation at `http://localhost:8080/docs`.
 
 The ADK playground can be started with `agents-cli playground` after dependencies are
-installed. Behavioral evaluation uses `agents-cli eval run` after live pipeline tools
-are implemented.
+installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured
+model credentials and an indexed local corpus.
 
 ## Main layout
 

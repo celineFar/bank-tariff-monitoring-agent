@@ -90,3 +90,23 @@ variables directly.
 Inject `GEMINI_API_KEY` and database credentials from AWS Secrets Manager into
 the container environment. Do not store them in the image, Compose file, source
 repository, application logs, or task definitions containing plaintext values.
+
+
+## Secret-free local example
+
+Use placeholders locally and inject real values through the environment; do not commit
+the resulting `.env` file.
+
+```dotenv
+ENVIRONMENT=development
+DATABASE_URL=postgresql+asyncpg://tariff:replace-me@localhost:5432/tariff_monitor
+SESSION_SERVICE_URI=postgresql+asyncpg://tariff:replace-me@localhost:5432/tariff_monitor
+GEMINI_API_KEY=replace-me
+ALLOWED_SOURCE_HOSTS=ameriabank.am,www.ameriabank.am
+SCHEDULE_TIMEZONE=Asia/Yerevan
+SCHEDULE_HOUR=6
+SCHEDULE_MINUTE=0
+```
+
+The checked-in seed catalog is loaded from `app/config/seed_catalog.yaml`; it is not an
+environment variable and accepts only HTTPS URLs on the configured source hosts.

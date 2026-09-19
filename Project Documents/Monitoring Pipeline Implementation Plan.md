@@ -620,15 +620,15 @@ Implementation record (2026-09-19):
 
 ### J. Documentation and checklist reconciliation
 
-- [ ] Update `docs/architecture.md` for new package boundaries, entry points, routes,
+- [x] Update `docs/architecture.md` for new package boundaries, entry points, routes,
       models, scheduler behavior, queueing, and persistence responsibilities.
-- [ ] Add/update focused docs for seed catalog, run lifecycle, snapshot lifecycle,
+- [x] Add/update focused docs for seed catalog, run lifecycle, snapshot lifecycle,
       indexing projection, and RAG answer contract.
-- [ ] Reconcile `Project Documents/architecture-components-todo-list.md` with actual
+- [x] Reconcile `Project Documents/architecture-components-todo-list.md` with actual
       completed acquisition, normalization, discovery, extraction, indexing, and
       retrieval work.
-- [ ] Mark newly completed items only after their tests and acceptance criteria pass.
-- [ ] Update API/configuration examples without adding secrets.
+- [x] Mark newly completed items only after their tests and acceptance criteria pass.
+- [x] Update API/configuration examples without adding secrets.
 
 ### K. Quality gates
 

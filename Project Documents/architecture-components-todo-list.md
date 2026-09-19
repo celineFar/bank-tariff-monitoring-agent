@@ -4,6 +4,11 @@ This list contains the components that need to be implemented. The order should 
 
 Each item defines its responsibility, implementation contract, important boundaries, and completion criteria. Ameria Bank, consumer loans, mortgages, Gemini Developer API, PostgreSQL/pgvector, FastAPI, and the daily `06:00 Asia/Yerevan` schedule are the initial scope.
 
+Reconciled on 2026-09-19 against implementation and tests. Checked items reflect the
+implemented responsibility where the final design uses the typed seed catalog, bounded
+Gemini PDF transcription, or dual source/summary projections instead of an earlier draft
+mechanism. Claim extraction/verification, OCR, and HITL completion remain deferred.
+
 - [x]  1. Configuration Component
 
   - **Responsibility:** Provide one typed source of runtime configuration for the API, worker, ADK agent, repositories, and processing pipeline.
@@ -39,28 +44,28 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Browser traffic remains HTTPS and allowlisted; block non-GET requests, forms, downloads, cross-domain traffic, service workers, and unnecessary heavy assets. Never bypass authentication, CAPTCHA, access restrictions, or anti-bot measures. Retain checksums and retrieval metadata; treat HTML and network payloads as untrusted data.
   - **Done when:** Fixtures preserve Armenian text/tables, locators, official links, rendered content, network payloads, and linked PDFs; unsafe/non-HTML/oversized responses fail closed; identical sources hash identically; and unavailable/protected pages produce controlled errors.
 
-- [ ]  6. Official Source Discovery
+- [x]  6. Official Source Discovery
 
   - **Responsibility:** Find candidate product pages and official information documents within the configured Ameria domain.
   - **Implement:** Traverse configured seeds, public sitemap entries, navigation, and official page links under strict crawl budgets. Normalize/deduplicate URLs and match Armenian/English product synonyms plus official-document terms such as `տեղեկատվական ամփոփագիր` and `ամփոփաթերթիկ`.
   - **Contract:** Return candidates with URL, type, discovery path, anchor/title/context, match signals, and retrieval status. Discovery proposes candidates; it does not silently declare authority.
   - **Done when:** Consumer-loan and mortgage fixtures produce relevant same-domain candidates, off-domain/unsupported resources are excluded, budgets hold, and product-not-found is explicit.
 
-- [ ]  7. Chunking & Metadata Builder
+- [x]  7. Chunking & Metadata Builder
 
   - **Responsibility:** Convert cleaned, page-aware content into stable retrieval units without losing evidence locations.
   - **Implement:** Chunk by page, heading, subsection, and table before splitting oversized sections with configurable size/overlap. Keep table headings with rows where possible. Generate deterministic IDs and metadata for bank/product, document identity/version/checksum, source URL, language, time, page, section, order, extraction method, and quality.
   - **Boundaries:** Never mix documents; record any page range. Avoid tiny orphan chunks, repeated boilerplate, and overlap-driven duplicate evidence.
   - **Done when:** Repeated input creates identical chunks/IDs, Armenian text and tables survive, every chunk maps to its source, and boundary/overlap tests pass.
 
-- [ ]  8. PDF Parser / Document Content Extractor
+- [x]  8. PDF Parser / Document Content Extractor
 
   - **Responsibility:** Extract structured, page-addressable content from digital PDFs before OCR.
   - **Implement:** Parse every page into text, blocks/tables, page dimensions, document metadata, warnings, and extraction statistics while preserving page boundaries and reading order. Detect encrypted, malformed, empty, and excessively complex documents.
   - **Boundaries:** Accept only downloader-approved bytes and never infer tariff values. Report extraction facts to the quality checker, which decides whether OCR is required.
   - **Done when:** Tests cover Armenian Unicode, normal/multi-page/table PDFs, empty pages, malformed/encrypted files, and page output usable by evidence references.
 
-- [ ]  9. Relevant Document Recognition / Source Ranking
+- [x]  9. Relevant Document Recognition / Source Ranking
 
   - **Responsibility:** Rank candidates by authority, product relevance, recency, and extractability while exposing ambiguity.
   - **Implement:** Use explainable weighted signals: official-document terminology, canonical source, product match, link context, title, publication/effective date, type, checksum duplication, and quality. Penalize generic marketing, archived/expired, unrelated, and weakly matched sources. Gemini may assist semantic matching only after deterministic hard filters.
@@ -74,7 +79,7 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Do not assert model wording in pytest. Record dataset/model/config versions and an acceptance threshold; keep generated traces/results free of secrets.
   - **Done when:** `agents-cli eval run` yields traceable stage-level results, both products are covered, a baseline is documented, and an expansion plan exists.
 
-- [ ]  11. Structured Tariff Extraction
+- [x]  11. Structured Tariff Extraction
 
   - **Responsibility:** Convert retrieved evidence into the required loan-tariff schema without invention.
   - **Implement:** Use Gemini structured output with a strict Pydantic/JSON schema covering currency, term, amount, nominal rate, EIR, collateral, application fee, disbursement fee, service fee, and salary-customer privileges. Each field requires `FOUND`/`NOT_FOUND`, raw value, evidence chunk IDs, and extraction status/confidence.
@@ -88,35 +93,35 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Triggering:** Only deterministic quality results invoke OCR. Keep OCR provenance separate. Failed or low-confidence OCR routes to HITL/failure, never fabricated interpretation.
   - **Done when:** A committed scanned fixture exercises OCR, direct PDFs skip it, Armenian/numerical text is usable, limits hold, and low quality is explicit.
 
-- [ ]  13. Document Cleaning & Structuring
+- [x]  13. Document Cleaning & Structuring
 
   - **Responsibility:** Remove extraction noise while preserving financial meaning and coordinates.
   - **Implement:** Normalize Unicode/whitespace, safely repair line breaks/hyphenation, detect repeated headers/footers, remove standalone page numbers, deduplicate blocks, identify headings/sections, and represent tables consistently. Preserve Armenian, decimals, currencies, rates, ranges, conditions, footnotes, and page boundaries.
   - **Boundaries:** Map every cleaned block to original page/block coordinates, log transformations, and never rewrite numeric values or discard qualifications.
   - **Done when:** Golden fixtures remove noise without tariff mutation, tables stay understandable, and provenance survives cleaning.
 
-- [ ]  14. Normalization Component
+- [x]  14. Normalization Component
 
   - **Responsibility:** Convert extracted values to canonical typed forms for validation and comparison while retaining raw text.
   - **Implement:** Normalize currencies, grouped/decimal numbers, percentages, ranges/open bounds, AMD amounts, month/year durations, fee amount/basis, conditional privileges, and missing states. Represent compound values structurally, not only as display strings.
   - **Boundaries:** Be deterministic and locale-aware. Keep `NOT_FOUND`, zero, free/no-fee, and not-applicable distinct; preserve raw values and evidence.
   - **Done when:** Equivalent formats such as `10 000 000 AMD` and `10,000,000 AMD` normalize identically while material differences remain distinct.
 
-- [ ]  15. Snapshot Storage / Repository
+- [x]  15. Snapshot Storage / Repository
 
   - **Responsibility:** Persist accepted observations and retrieve the correct preceding snapshot.
   - **Implement:** Add SQLAlchemy/asyncpg repositories for runs, source documents, snapshots, and audit metadata. Store product identity, timestamps, full normalized/raw schema, validation status, source version/checksum, and evidence. Save atomically and provide `get_latest_accepted(bank, product, before_run)`.
   - **Boundaries:** Pending/rejected reviews cannot become accepted snapshots. Narrow injected repositories prevent Gemini from seeing SQL or handles. Identical observations must not create false changes.
   - **Done when:** PostgreSQL tests cover first observation, states, rollback, idempotency, concurrency, previous-selection correctness, and restart persistence.
 
-- [ ]  16. Change Detection Component
+- [x]  16. Change Detection Component
 
   - **Responsibility:** Report only meaningful differences between accepted canonical snapshots.
   - **Implement:** Compare all fields including bounds, currencies, term units, rate types, fee bases, collateral conditions, and privileges. Return typed changes with prior/current raw/canonical values, evidence, severity, and review reason for large changes.
   - **Boundaries:** Missing prior data means `FIRST_OBSERVATION`. Ignore formatting-only differences. Treat found↔missing transitions as meaningful.
   - **Done when:** Tests cover equivalent formats, value/range changes, missing transitions, unchanged/first snapshots, and large-change HITL inputs.
 
-- [ ]  17. Evidence / Provenance Component
+- [x]  17. Evidence / Provenance Component
 
   - **Responsibility:** Make every accepted non-missing tariff field independently verifiable.
   - **Implement:** Create immutable references containing final/source URL, document identity/version/checksum, page/section, chunk/block ID, bounded excerpt, retrieval time, extraction method, and quality. Resolve model-returned IDs against stored chunks server-side.
@@ -130,28 +135,28 @@ Each item defines its responsibility, implementation contract, important boundar
   - **Boundaries:** Escape untrusted excerpts, use canonical formatters, keep ordering stable, and never hide validation failures or pending review.
   - **Done when:** Golden tests cover success, no prior snapshot, changes, missing fields, HITL, and controlled failure without fabricated values.
 
-- [ ]  19. Start / Trigger Component
+- [x]  19. Start / Trigger Component
 
   - **Responsibility:** Start the same pipeline from a user request or scheduled event.
   - **Implement:** Add a bounded FastAPI request endpoint with optional idempotency key, create a run record, invoke/enqueue `TariffPipeline.run`, and expose run/result status. Add a scheduled adapter that submits canonical consumer-loan and mortgage requests to the same service.
   - **Boundaries:** Record trigger, run/correlation ID, original request, requester when available, timestamps, and status. Keep HTTP/scheduling outside the agent tool layer and prevent duplicate submission.
   - **Done when:** Both triggers enter one pipeline, return stable IDs, validate input/idempotency, and expose pending/success/failure/review states.
 
-- [ ]  20. Scheduler
+- [x]  20. Scheduler
 
   - **Responsibility:** Trigger both products daily at 06:00 `Asia/Yerevan`.
   - **Implement:** Run a timezone-aware scheduler in a separate worker with stable job identity, startup logs, graceful shutdown, misfire/coalescing policy, bounded concurrency, and database advisory lock/uniqueness preventing duplicate product/date runs. Provide a manual tick for demonstration.
   - **Boundaries:** No business/extraction logic; it calls the shared trigger/application service. One product failure must not suppress the other or future schedules.
   - **Done when:** Timezone behavior, duplicate-worker locking, missed runs, manual simulation, isolation, and failure recovery are tested/documented.
 
-- [ ]  21. ADK Agent / Orchestrator
+- [x]  21. ADK Agent / Orchestrator
 
   - **Responsibility:** Interpret requests and coordinate a constrained workflow while deterministic services retain control.
   - **Implement:** Define one root ADK agent with explicit role, supported scope, no-fabrication rules, stopping conditions, and prompt-injection resistance. Expose focused typed tool adapters—not raw network, filesystem, shell, SQL, or database tools. Use session state only for conversational/run context; PostgreSQL owns durable state.
   - **Execution boundary:** Gemini handles intent/product understanding and evidence-bound extraction. The application service controls stage order, validation, retries, stopping, persistence, comparison, reporting, and HITL.
   - **Done when:** Smoke/eval cases cover both products and ambiguity, traces show only approved tools, document instructions cannot bypass controls, and generated ADK/A2A plumbing remains intact.
 
-- [ ]  22. Deterministic Validation Component
+- [x]  22. Deterministic Validation Component
 
   - **Responsibility:** Decide whether extraction is acceptable without relying on Gemini judgment.
   - **Implement:** Validate schema/statuses, required fields, supported currencies, numeric/range ordering, percentage bounds, duration/amount/fee formats, product compatibility, domains, file constraints, evidence existence/match, and missing-value rules. Return field errors/warnings and aggregate `ACCEPT`, `REVIEW`, or `REJECT`.
