@@ -23,6 +23,7 @@ from app.services.browser_renderer import (
     BrowserRenderer,
     BrowserRenderingError,
 )
+from app.services.failure_mapping import source_failure_code
 from app.services.html_parser import HtmlArtifactParser, ParsedHtml
 from app.services.html_retriever import HtmlRetriever
 from app.services.pdf_downloader import (
@@ -245,7 +246,8 @@ class AcquisitionService:
                 )
             except PdfDownloadError as exc:
                 warnings.append(
-                    f"Linked document {link.id} was not downloaded: {exc.reason.value}"
+                    f"Linked document {link.id} was not downloaded: "
+                    f"{source_failure_code(exc, stage='acquisition').value}"
                 )
                 continue
             artifact = await self._artifact_store.save(

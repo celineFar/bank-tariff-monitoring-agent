@@ -50,6 +50,14 @@ class _RunService:
         return self.runs.get(run_id)
 
 
+class _FailingRunService:
+    async def submit(self, command, *, idempotency_key=None):
+        raise RuntimeError("database DSN and internal detail")
+
+    async def get(self, run_id):
+        raise RuntimeError("database DSN and internal detail")
+
+
 class _ToolContext:
     def __init__(self, state: dict[str, object]) -> None:
         self.state = state
@@ -129,6 +137,31 @@ async def test_review_routes_are_diagnostic_and_read_only() -> None:
     assert fetched.status_code == 200
     assert fetched.json()["id"] == str(review.id)
     assert decision.status_code in {404, 405}
+
+
+@pytest.mark.asyncio
+async def test_http_persistence_failures_use_stable_bounded_envelopes() -> None:
+    app = FastAPI()
+    app.state.run_service = _FailingRunService()
+    app.include_router(router)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        submitted = await client.post(
+            "/api/v1/runs",
+            json={"product": "consumer_loan"},
+        )
+        fetched = await client.get(f"/api/v1/runs/{uuid4()}")
+
+    assert submitted.status_code == 503
+    assert submitted.json()["detail"] == {
+        "code": "run.persistence_failed",
+        "message": "The monitoring run could not be persisted.",
+    }
+    assert fetched.status_code == 503
+    assert "database" not in fetched.text.lower()
 
 
 @pytest.mark.asyncio

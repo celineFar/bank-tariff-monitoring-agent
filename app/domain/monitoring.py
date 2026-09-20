@@ -93,6 +93,23 @@ class OfferingFailureCode(StrEnum):
     VALIDATION_FAILED = "offering.validation_failed"
 
 
+class SourceFailureCode(StrEnum):
+    URL_REJECTED = "source.url_rejected"
+    TIMEOUT = "source.timeout"
+    TRANSPORT = "source.transport"
+    HTTP_STATUS = "source.http_status"
+    NOT_FOUND = "source.not_found"
+    MIME_REJECTED = "source.mime_rejected"
+    SIZE_REJECTED = "source.size_rejected"
+    REDIRECT_REJECTED = "source.redirect_rejected"
+    SIGNATURE_REJECTED = "source.signature_rejected"
+    PARSING_FAILED = "source.parsing_failed"
+    PDF_EXTRACTION_FAILED = "source.pdf_extraction_failed"
+    MODEL_FAILED = "source.model_failed"
+    MALFORMED_STRUCTURED_OUTPUT = "source.malformed_structured_output"
+    VALIDATION_FAILED = "source.validation_failed"
+
+
 class IndexingFailureCode(StrEnum):
     INVALID_DOCUMENT = "indexing.invalid_document"
     EMBEDDING_FAILED = "indexing.embedding_failed"
@@ -117,6 +134,7 @@ class AnswerFailureCode(StrEnum):
 FailureCode = (
     RunFailureCode
     | OfferingFailureCode
+    | SourceFailureCode
     | IndexingFailureCode
     | SnapshotFailureCode
     | AnswerFailureCode

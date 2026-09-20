@@ -126,6 +126,11 @@ locators, timestamps, and a deterministic content hash. Raw bytes are stored
 under SHA-256-derived paths; source-controlled strings never become filesystem paths.
 See `docs/acquisition.md` for the complete contract.
 
+Acquisition, parsing, PDF, model, and validation exceptions are translated at the
+pipeline boundary into stable source failure codes while retaining only exception type
+and stage in bounded audit payloads. RAG generation/malformed-output failures return a
+typed no-answer result. See `docs/failure-behavior.md`.
+
 ## Structural normalization boundary
 
 Acquisition preserves what each source delivered; structural normalization makes

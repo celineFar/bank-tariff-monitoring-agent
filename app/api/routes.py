@@ -25,6 +25,13 @@ from app.services.tariff_queries import CurrentTariffService, TariffHistoryServi
 router = APIRouter(prefix="/api/v1")
 
 
+def _failure(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": message},
+    )
+
+
 class RunRequest(BaseModel):
     product: ProductType
     offering_id: OfferingId | None = None
@@ -77,8 +84,17 @@ async def create_run(
             trigger=RunTrigger.API,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return await service.submit(command, idempotency_key=idempotency_key)
+        raise _failure(422, "request.invalid_scope", str(exc)) from exc
+    try:
+        return await service.submit(command, idempotency_key=idempotency_key)
+    except ValueError as exc:
+        raise _failure(422, "request.invalid", str(exc)) from exc
+    except Exception as exc:
+        raise _failure(
+            503,
+            "run.persistence_failed",
+            "The monitoring run could not be persisted.",
+        ) from exc
 
 
 @router.get("/runs/{run_id}", response_model=MonitoringRun, tags=["runs"])
@@ -86,9 +102,14 @@ async def get_run(
     run_id: UUID,
     service: Annotated[RunServicePort, Depends(get_run_service)],
 ) -> MonitoringRun:
-    run = await service.get(run_id)
+    try:
+        run = await service.get(run_id)
+    except Exception as exc:
+        raise _failure(
+            503, "run.persistence_failed", "Run status is temporarily unavailable."
+        ) from exc
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise _failure(404, "run.not_found", "Run not found")
     return run
 
 
@@ -97,7 +118,14 @@ async def answer_question(
     command: QuestionCommand,
     service: Annotated[RagAnswerService, Depends(get_answer_service)],
 ) -> AnswerResult:
-    return await service.answer(command)
+    try:
+        return await service.answer(command)
+    except Exception as exc:
+        raise _failure(
+            503,
+            "answer.persistence_failed",
+            "Tariff evidence is temporarily unavailable.",
+        ) from exc
 
 
 @router.get(
@@ -113,7 +141,13 @@ async def get_current_tariffs(
     try:
         return await service.get_current(product=product, offering_id=offering_id)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise _failure(422, "request.invalid_scope", str(exc)) from exc
+    except Exception as exc:
+        raise _failure(
+            503,
+            "snapshot.persistence_failed",
+            "Current tariff data is temporarily unavailable.",
+        ) from exc
 
 
 @router.get(
@@ -142,7 +176,13 @@ async def get_tariff_history(
             )
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise _failure(422, "request.invalid_history", str(exc)) from exc
+    except Exception as exc:
+        raise _failure(
+            503,
+            "history.persistence_failed",
+            "Tariff history is temporarily unavailable.",
+        ) from exc
 
 
 @router.get("/reviews", response_model=list[ReviewTask], tags=["reviews"])
@@ -163,7 +203,13 @@ async def list_reviews(
             limit=limit,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise _failure(422, "request.invalid_review_filter", str(exc)) from exc
+    except Exception as exc:
+        raise _failure(
+            503,
+            "review.persistence_failed",
+            "Review records are temporarily unavailable.",
+        ) from exc
     return list(reviews)
 
 
@@ -172,7 +218,14 @@ async def get_review(
     review_id: UUID,
     repository: Annotated[ReviewRepository, Depends(get_review_repository)],
 ) -> ReviewTask:
-    review = await repository.get(review_id)
+    try:
+        review = await repository.get(review_id)
+    except Exception as exc:
+        raise _failure(
+            503,
+            "review.persistence_failed",
+            "Review records are temporarily unavailable.",
+        ) from exc
     if review is None:
-        raise HTTPException(status_code=404, detail="Review not found")
+        raise _failure(404, "review.not_found", "Review not found")
     return review

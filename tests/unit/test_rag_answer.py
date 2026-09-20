@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from app.api.routes import router
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
-from app.domain.monitoring import AnswerStatus, QuestionCommand
+from app.domain.monitoring import AnswerFailureCode, AnswerStatus, QuestionCommand
 from app.domain.retrieval import (
     RankExplanation,
     RetrievalHit,
@@ -79,6 +79,11 @@ class _Generator:
     async def generate(self, prompt: str) -> AnswerDraft:
         self.prompts.append(prompt)
         return self.draft
+
+
+class _FailingGenerator:
+    async def generate(self, prompt: str) -> AnswerDraft:
+        raise RuntimeError("credential or provider detail must not escape")
 
 
 @pytest.mark.asyncio
@@ -155,7 +160,33 @@ async def test_answer_abstains_for_ambiguous_or_invalid_evidence() -> None:
 
     assert ambiguous.status is AnswerStatus.AMBIGUOUS_PRODUCT
     assert invalid.status is AnswerStatus.INSUFFICIENT_EVIDENCE
+    assert invalid.failure_code is AnswerFailureCode.INVALID_CITATION
     assert len(generator.prompts) == 1
+
+
+@pytest.mark.asyncio
+async def test_answer_contains_generator_failure_without_model_prose() -> None:
+    source = _hit(KnowledgeDocumentKind.SOURCE, "Rate is 13.5%.", "source")
+    service = RagAnswerService(
+        _Retriever(
+            RetrievalResult(
+                status=RetrievalStatus.FOUND,
+                hits=(source,),
+                candidates_considered=1,
+            )
+        ),
+        _FailingGenerator(),
+    )
+
+    result = await service.answer(
+        QuestionCommand(query="Rate?", product=ProductType.CONSUMER_LOAN)
+    )
+
+    assert result.status is AnswerStatus.INSUFFICIENT_EVIDENCE
+    assert result.answer is None
+    assert result.citations == ()
+    assert result.failure_code is AnswerFailureCode.GENERATION_FAILED
+    assert result.audit_metadata["reason"] == "RuntimeError"
 
 
 @pytest.mark.asyncio

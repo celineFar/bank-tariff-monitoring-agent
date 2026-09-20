@@ -40,6 +40,7 @@ from app.repositories.contracts import (
     ReviewRepository,
     RunRepository,
 )
+from app.services.failure_mapping import source_failure_code
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.snapshot_lifecycle import (
     build_snapshot_attempt,
@@ -287,9 +288,13 @@ class IndexingPipeline:
         except OfferingPipelineError:
             raise
         except Exception as exc:
-            code = (
-                failure_code.value if hasattr(failure_code, "value") else failure_code
-            )
+            code = source_failure_code(exc, stage=stage).value
+            if stage in {"embedding", "publication", "previous_snapshot"}:
+                code = (
+                    failure_code.value
+                    if hasattr(failure_code, "value")
+                    else failure_code
+                )
             raise OfferingPipelineError(stage, str(code), exc) from exc
         finally:
             timings.append(

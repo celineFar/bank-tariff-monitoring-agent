@@ -98,12 +98,25 @@ class RagAnswerService:
         if retrieval.status is not RetrievalStatus.FOUND or not source_hits:
             return self._insufficient(command, retrieval, "no_official_source_hit")
 
-        draft = await self._generator.generate(
-            _build_prompt(command.query, retrieval.hits)
-        )
+        try:
+            draft = await self._generator.generate(
+                _build_prompt(command.query, retrieval.hits)
+            )
+        except Exception as exc:
+            return self._failed(
+                command,
+                retrieval,
+                AnswerFailureCode.GENERATION_FAILED,
+                type(exc).__name__,
+            )
         citations = _validate_citations(draft, source_hits)
         if citations is None:
-            return self._insufficient(command, retrieval, "invalid_citation")
+            return self._failed(
+                command,
+                retrieval,
+                AnswerFailureCode.INVALID_CITATION,
+                "invalid_citation",
+            )
         return AnswerResult(
             status=AnswerStatus.ANSWERED,
             answer=draft.answer,
@@ -128,6 +141,24 @@ class RagAnswerService:
             product=command.product,
             offering_id=command.offering_id,
             failure_code=AnswerFailureCode.INSUFFICIENT_EVIDENCE,
+            audit_metadata={
+                "reason": reason,
+                "candidates_considered": retrieval.candidates_considered,
+            },
+        )
+
+    @staticmethod
+    def _failed(
+        command: QuestionCommand,
+        retrieval: RetrievalResult,
+        code: AnswerFailureCode,
+        reason: str,
+    ) -> AnswerResult:
+        return AnswerResult(
+            status=AnswerStatus.INSUFFICIENT_EVIDENCE,
+            product=command.product,
+            offering_id=command.offering_id,
+            failure_code=code,
             audit_metadata={
                 "reason": reason,
                 "candidates_considered": retrieval.candidates_considered,

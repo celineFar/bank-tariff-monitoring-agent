@@ -644,13 +644,13 @@ separate correctness boundary.
 
 ### J. Failure-code and adapter hardening
 
-- [ ] Introduce stable source-level codes for timeout, status, MIME, size, signature,
+- [x] Introduce stable source-level codes for timeout, status, MIME, size, signature,
       redirect, parsing, PDF, model, and validation failures.
-- [ ] Preserve precise causes in manifests/audit while bounding user-visible detail.
-- [ ] Convert RAG generator/API and malformed-answer errors into typed controlled results.
-- [ ] Map validation, missing resource, active-run reuse, and persistence failures to
+- [x] Preserve precise causes in manifests/audit while bounding user-visible detail.
+- [x] Convert RAG generator/API and malformed-answer errors into typed controlled results.
+- [x] Map validation, missing resource, active-run reuse, and persistence failures to
       stable HTTP responses.
-- [ ] Verify no failure path creates or activates a fabricated tariff value.
+- [x] Verify no failure path creates or activates a fabricated tariff value.
 
 ### K. Agent instruction and session integration
 
