@@ -3,6 +3,7 @@ from uuid import UUID
 
 from google.adk.tools import ToolContext
 
+from app.domain.catalog import normalize_catalog_term
 from app.domain.intent import (
     ConversationResolutionState,
     HistoryQuery,
@@ -28,6 +29,7 @@ _tariff_history_service: TariffHistoryService | None = None
 _run_wait_service: RunWaitService | None = None
 _RESOLUTION_STATE_KEY = "intent_resolution"
 _MONITOR_AUTHORIZATION_KEY = "temp:monitoring_authorization"
+_AFFIRMATIVE_REPLIES = frozenset({"yes", "yes please", "refresh", "այո", "թարմացրու"})
 
 
 def configure_run_service(service: RunServicePort | None) -> None:
@@ -69,6 +71,28 @@ async def resolve_request(
         state = ConversationResolutionState.model_validate(raw_state or {})
     except ValueError:
         state = ConversationResolutionState()
+    if (
+        normalize_catalog_term(query) in _AFFIRMATIVE_REPLIES
+        and state.latest_product is not None
+    ):
+        authorization = {
+            "product": state.latest_product.value,
+            "offering_id": (
+                state.latest_offering_id.value
+                if state.latest_offering_id is not None
+                else None
+            ),
+        }
+        tool_context.state[_MONITOR_AUTHORIZATION_KEY] = authorization
+        return {
+            "intent": RequestIntent.START_MONITORING_RUN.value,
+            "language": "hy" if any("\u0531" <= char <= "\u0586" for char in query) else "en",
+            "method": "exact",
+            **authorization,
+            "needs_clarification": False,
+            "expects_single_value": False,
+            "refresh_confirmation": True,
+        }
     turn = await _request_resolver.resolve_turn(query, state)
     tool_context.state[_RESOLUTION_STATE_KEY] = turn.state.model_dump(mode="json")
     resolved_intent = turn.resolution.continuation_intent or turn.resolution.intent
@@ -87,7 +111,18 @@ async def resolve_request(
         }
     else:
         tool_context.state.pop(_MONITOR_AUTHORIZATION_KEY, None)
-    return turn.resolution.model_dump(mode="json")
+    result = turn.resolution.model_dump(mode="json")
+    if not state.introduction_shown:
+        result["catalog_intro"] = _request_resolver.catalog_payload(
+            turn.resolution.language,
+            complete=False,
+        )
+    if resolved_intent is RequestIntent.LIST_SUPPORTED_PRODUCTS:
+        result["supported_catalog"] = _request_resolver.catalog_payload(
+            turn.resolution.language,
+            complete=True,
+        )
+    return result
 
 
 async def start_tariff_monitoring(

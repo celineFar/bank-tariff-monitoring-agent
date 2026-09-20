@@ -146,6 +146,7 @@ _TARIFF_SIGNAL_PATTERNS = (
     "վարկ",
     "հիփոթեք",
 )
+_CANCEL_PATTERNS = ("cancel", "never mind", "nevermind", "stop", "չեղարկել")
 
 
 class GeminiResolutionDecision(BaseModel):
@@ -310,15 +311,21 @@ class RequestResolver:
         language = detect_request_language(query)
 
         if current_state.pending_clarification is not None:
-            resolution = self._resolve_clarification(
+            clarification = self._resolve_clarification(
                 normalized_query,
                 language,
                 current_state.pending_clarification,
             )
-            return ResolutionTurn(
-                resolution=resolution,
-                state=self._next_state(current_state, resolution, query),
-            )
+            replacement_intent = _classify_intent(normalized_query)
+            if (
+                not clarification.needs_clarification
+                or (replacement_intent is RequestIntent.UNSUPPORTED_OR_GENERAL
+                and not _contains_any(normalized_query, _CANCEL_PATTERNS))
+            ):
+                return ResolutionTurn(
+                    resolution=clarification,
+                    state=self._next_state(current_state, clarification, query),
+                )
 
         resolution = await self._resolve_new(
             query=query,
@@ -329,6 +336,41 @@ class RequestResolver:
             resolution=resolution,
             state=self._next_state(current_state, resolution, query),
         )
+
+    def catalog_payload(
+        self,
+        language: RequestLanguage,
+        *,
+        complete: bool,
+    ) -> dict[str, object]:
+        selected_language = (
+            CatalogLanguage.ARMENIAN
+            if language is RequestLanguage.ARMENIAN
+            else CatalogLanguage.ENGLISH
+        )
+        families = []
+        for family in self._catalog.families:
+            offerings = self._catalog.enabled_for(family.product)
+            displayed = offerings if complete else offerings[:3]
+            families.append(
+                {
+                    "product": family.product.value,
+                    "name": family.localized_names[selected_language].name,
+                    "offerings": [
+                        {
+                            "offering_id": entry.offering_id.value,
+                            "name": entry.localized_names[selected_language].name,
+                        }
+                        for entry in displayed
+                    ],
+                    "has_more": len(displayed) < len(offerings),
+                }
+            )
+        return {
+            "families": families,
+            "complete": complete,
+            "offer_full_list": not complete,
+        }
 
     async def _resolve_new(
         self,
@@ -730,6 +772,7 @@ class RequestResolver:
             )
         return current.model_copy(
             update={
+                "introduction_shown": True,
                 "pending_clarification": pending,
                 "latest_product": resolution.product or current.latest_product,
                 "latest_offering_id": (

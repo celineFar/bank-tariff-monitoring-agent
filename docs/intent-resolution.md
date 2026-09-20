@@ -54,8 +54,29 @@ A clarification reply can select an option by number, canonical ID, complete lab
 unambiguous phrase such as “the express one.” The resulting
 `clarification_response` retains the original `continuation_intent`, clears pending state,
 and updates the latest scope. Invalid serialized state is discarded rather than trusted.
+An explicit new tariff intent or cancellation replaces and clears pending clarification;
+an ambiguous short reply keeps the same bounded choices. The first resolver result also
+returns a short catalog introduction generated from the checked-in catalog. It names both
+families and up to three offerings per family, offers the full list, and is suppressed on
+later turns. A list request returns all thirteen configured offerings.
+
+If the agent has just offered a refresh for stale or missing accepted data, an explicit
+affirmative reply resolves to `start_monitoring_run` for the last canonical scope and
+creates the same one-use authorization as a direct refresh request. An affirmative reply
+without a prior resolved scope cannot authorize monitoring.
 
 No personal preference or cross-session memory is created.
+
+## Agent routing and wording
+
+The root instruction requires `resolve_request` before every business tool. Armenian
+input receives Armenian output, English receives English, and mixed input uses its
+dominant language. Broad family monitoring covers every enabled offering; broad overview
+reads cover all indexed offerings; single-value family questions clarify the offering.
+Current values come only from accepted snapshots. Stale values state their accepted time
+and seven-day threshold, missing values are not invented, and pending-review candidate
+values stay hidden. Unsupported requests produce a short capability-boundary response
+without financial advice or unrelated tools.
 
 ## Monitoring authorization
 

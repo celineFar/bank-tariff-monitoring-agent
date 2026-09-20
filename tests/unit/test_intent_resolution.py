@@ -249,8 +249,10 @@ async def test_resolve_request_tool_persists_only_session_clarification_state() 
         configure_services(None, None, None)
 
     assert first["needs_clarification"] is True
+    assert first["catalog_intro"]["complete"] is False
     assert second["intent"] == RequestIntent.CLARIFICATION_RESPONSE.value
     assert second["offering_id"] == OfferingId.MORTGAGE_EXPRESS.value
+    assert "catalog_intro" not in second
     assert set(context.state) == {"intent_resolution"}
 
 
@@ -272,3 +274,50 @@ async def test_resolve_request_grants_and_revokes_scope_bound_monitoring_authori
     }
     assert question["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
     assert "temp:monitoring_authorization" not in context.state
+
+
+@pytest.mark.asyncio
+async def test_catalog_list_is_complete_and_intro_is_not_repeated() -> None:
+    context = _ToolContext(state={})
+    configure_services(None, None, _resolver())
+    try:
+        first = await resolve_request("What products are supported?", context)
+        second = await resolve_request("What products are supported?", context)
+    finally:
+        configure_services(None, None, None)
+
+    assert first["catalog_intro"]["offer_full_list"] is True
+    catalog = first["supported_catalog"]
+    assert catalog["complete"] is True
+    assert sum(len(family["offerings"]) for family in catalog["families"]) == 13
+    assert "catalog_intro" not in second
+
+
+@pytest.mark.asyncio
+async def test_explicit_new_request_replaces_pending_clarification() -> None:
+    resolver = _resolver()
+    first = await resolver.resolve_turn("current mortgage rate")
+
+    second = await resolver.resolve_turn("What changed for consumer loans?", first.state)
+
+    assert second.resolution.intent is RequestIntent.GET_CHANGE_HISTORY
+    assert second.resolution.product is ProductType.CONSUMER_LOAN
+    assert second.state.pending_clarification is None
+
+
+@pytest.mark.asyncio
+async def test_affirmative_refresh_uses_last_resolved_scope() -> None:
+    context = _ToolContext(state={})
+    configure_services(None, None, _resolver())
+    try:
+        await resolve_request("current Express Mortgage rate", context)
+        confirmation = await resolve_request("yes", context)
+    finally:
+        configure_services(None, None, None)
+
+    assert confirmation["intent"] == RequestIntent.START_MONITORING_RUN.value
+    assert confirmation["refresh_confirmation"] is True
+    assert context.state["temp:monitoring_authorization"] == {
+        "product": ProductType.MORTGAGE.value,
+        "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
+    }

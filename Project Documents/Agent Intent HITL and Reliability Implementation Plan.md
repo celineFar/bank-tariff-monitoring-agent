@@ -654,14 +654,14 @@ separate correctness boundary.
 
 ### K. Agent instruction and session integration
 
-- [ ] Update the agent instruction and tools without changing the configured model.
-- [ ] Add one-time short catalog introduction behavior.
-- [ ] Store and clear pending clarification state correctly.
-- [ ] Implement intent-sensitive family behavior.
-- [ ] Implement Armenian/English response selection.
-- [ ] Implement stale/current/review-pending wording that cannot imply unaccepted data is
+- [x] Update the agent instruction and tools without changing the configured model.
+- [x] Add one-time short catalog introduction behavior.
+- [x] Store and clear pending clarification state correctly.
+- [x] Implement intent-sensitive family behavior.
+- [x] Implement Armenian/English response selection.
+- [x] Implement stale/current/review-pending wording that cannot imply unaccepted data is
       current.
-- [ ] Keep unsupported/general requests within the tariff-monitoring capability boundary.
+- [x] Keep unsupported/general requests within the tariff-monitoring capability boundary.
 
 ### L. Deterministic tests
 
