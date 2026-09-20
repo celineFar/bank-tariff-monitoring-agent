@@ -8,7 +8,13 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.routes import router
-from app.domain.catalog import SeedCatalog, SeedCatalogEntry
+from app.domain.catalog import (
+    CatalogLanguage,
+    LocalizedCatalogTerms,
+    ProductFamilyCatalogEntry,
+    SeedCatalog,
+    SeedCatalogEntry,
+)
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     ClaimedRun,
@@ -201,12 +207,34 @@ class _Indexing:
 
 def _catalog(*offerings: OfferingId) -> SeedCatalog:
     return SeedCatalog(
+        families=tuple(
+            ProductFamilyCatalogEntry(
+                product=product,
+                localized_names={
+                    CatalogLanguage.ENGLISH: LocalizedCatalogTerms(
+                        name=f"{product.value}-family"
+                    ),
+                    CatalogLanguage.ARMENIAN: LocalizedCatalogTerms(
+                        name=f"hy-{product.value}-family"
+                    ),
+                },
+            )
+            for product in ProductType
+        ),
         offerings=tuple(
             SeedCatalogEntry(
                 product=offering.product,
                 offering_id=offering,
                 display_name=offering.value,
                 seed_url=f"https://ameriabank.am/{offering.value}",
+                localized_names={
+                    CatalogLanguage.ENGLISH: LocalizedCatalogTerms(
+                        name=offering.value
+                    ),
+                    CatalogLanguage.ARMENIAN: LocalizedCatalogTerms(
+                        name=f"hy-{offering.value}"
+                    ),
+                },
             )
             for offering in offerings
         )

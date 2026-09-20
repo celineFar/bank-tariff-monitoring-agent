@@ -5,7 +5,13 @@ from uuid import uuid4
 import pytest
 
 from app.domain.acquisition import PageArtifact, SourceLocator, SourceType
-from app.domain.catalog import SeedCatalog, SeedCatalogEntry
+from app.domain.catalog import (
+    CatalogLanguage,
+    LocalizedCatalogTerms,
+    ProductFamilyCatalogEntry,
+    SeedCatalog,
+    SeedCatalogEntry,
+)
 from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
     EmbeddedKnowledgeChunk,
@@ -68,6 +74,29 @@ def _offering(offering_id=OfferingId.CONSUMER_STANDARD) -> SeedCatalogEntry:
         display_name=offering_id.value,
         seed_url=f"{URL}/{offering_id.value}",
         language="en",
+        localized_names={
+            CatalogLanguage.ENGLISH: LocalizedCatalogTerms(name=offering_id.value),
+            CatalogLanguage.ARMENIAN: LocalizedCatalogTerms(
+                name=f"hy-{offering_id.value}"
+            ),
+        },
+    )
+
+
+def _families() -> tuple[ProductFamilyCatalogEntry, ...]:
+    return tuple(
+        ProductFamilyCatalogEntry(
+            product=product,
+            localized_names={
+                CatalogLanguage.ENGLISH: LocalizedCatalogTerms(
+                    name=f"{product.value}-family"
+                ),
+                CatalogLanguage.ARMENIAN: LocalizedCatalogTerms(
+                    name=f"hy-{product.value}-family"
+                ),
+            },
+        )
+        for product in ProductType
     )
 
 
@@ -393,6 +422,7 @@ class _Runs:
 @pytest.mark.asyncio
 async def test_tariff_pipeline_isolates_offerings_and_reports_partial_success() -> None:
     catalog = SeedCatalog(
+        families=_families(),
         offerings=(
             _offering(OfferingId.CONSUMER_STANDARD),
             _offering(OfferingId.OVERDRAFT),

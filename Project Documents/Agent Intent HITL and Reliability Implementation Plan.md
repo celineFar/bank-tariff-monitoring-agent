@@ -544,14 +544,14 @@ separate correctness boundary.
 
 ### B. Intent and catalog contracts
 
-- [ ] Add intent, resolution, candidate, clarification, language, freshness, and history
+- [x] Add intent, resolution, candidate, clarification, language, freshness, and history
       domain models.
-- [ ] Extend the YAML/Pydantic seed catalog with localized names, aliases, synonyms, and
+- [x] Extend the YAML/Pydantic seed catalog with localized names, aliases, synonyms, and
       transliterations for all thirteen offerings and both families.
-- [ ] Add collision, uniqueness, family/offering compatibility, and normalized-empty-value
+- [x] Add collision, uniqueness, family/offering compatibility, and normalized-empty-value
       validation.
-- [ ] Add bilingual catalog fixtures reviewed against the current Ameria offering names.
-- [ ] Update `docs/seed-catalog.md`.
+- [x] Add bilingual catalog fixtures reviewed against the current Ameria offering names.
+- [x] Update `docs/seed-catalog.md`.
 
 ### C. Deterministic and Gemini resolution
 
