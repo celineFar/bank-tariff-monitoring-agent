@@ -580,15 +580,15 @@ separate correctness boundary.
 
 ### E. Review and quarantine domain
 
-- [ ] Define typed review reason, decision, choice, status, and correlation models.
-- [ ] Add a forward migration extending/replacing the legacy `human_reviews` shape safely.
-- [ ] Add review repository operations: create idempotently, list/get, attach workflow
+- [x] Define typed review reason, decision, choice, status, and correlation models.
+- [x] Add a forward migration extending/replacing the legacy `human_reviews` shape safely.
+- [x] Add review repository operations: create idempotently, list/get, attach workflow
       identifiers, claim/lock for decision, approve, reject, supersede, and fail.
-- [ ] Add candidate document visibility/staging state and supporting indexes.
-- [ ] Change publication so review-required documents remain inactive and prior accepted
+- [x] Add candidate document visibility/staging state and supporting indexes.
+- [x] Change publication so review-required documents remain inactive and prior accepted
       documents remain active.
-- [ ] Add deterministic supersession rules for newer same-scope observations.
-- [ ] Add PostgreSQL integration tests for duplicate create/decision, concurrent reviewers,
+- [x] Add deterministic supersession rules for newer same-scope observations.
+- [x] Add PostgreSQL integration tests for duplicate create/decision, concurrent reviewers,
       rollback, supersession, and active-index isolation.
 
 ### F. Deterministic review routing

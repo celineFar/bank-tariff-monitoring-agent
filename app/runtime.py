@@ -15,6 +15,7 @@ from app.repositories.monitoring import (
 )
 from app.repositories.pdf_extraction import PostgresPdfExtractionRepository
 from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
+from app.repositories.reviews import PostgresReviewRepository
 from app.repositories.semantic_extraction import PostgresSemanticExtractionRepository
 from app.repositories.source_discovery import PostgresSourceDiscoveryRepository
 from app.services.acquisition import build_acquisition_service
@@ -50,6 +51,7 @@ class ApplicationContainer:
     engine: AsyncEngine
     http_client: httpx.AsyncClient
     runs: PostgresRunRepository
+    reviews: PostgresReviewRepository
     run_service: RunService
     tariff_pipeline: TariffPipeline
     answer_service: RagAnswerService
@@ -160,6 +162,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         engine=engine,
         http_client=http_client,
         runs=runs,
+        reviews=PostgresReviewRepository(sessions),
         run_service=run_service,
         answer_service=answer_service,
         request_resolver=request_resolver,

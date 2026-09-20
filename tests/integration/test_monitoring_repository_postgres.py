@@ -37,11 +37,20 @@ from app.domain.monitoring import (
     SnapshotStatus,
     SourceManifestItem,
 )
+from app.domain.review import (
+    ReviewCandidate,
+    ReviewDecision,
+    ReviewDecisionType,
+    ReviewReason,
+    ReviewStatus,
+    ReviewTask,
+)
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
     PostgresRunRepository,
     PostgresSnapshotRepository,
 )
+from app.repositories.reviews import PostgresReviewRepository, ReviewConflictError
 
 pytestmark = pytest.mark.postgres
 
@@ -514,3 +523,213 @@ async def test_atomic_publication_rolls_back_everything_on_index_failure(
         )
     assert tuple(counts) == (0, 0, 0, 0)
     assert status == "running"
+
+
+@pytest.mark.asyncio
+async def test_review_candidate_documents_remain_hidden_and_keep_prior_active(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    run_repository, first_run, first_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    publisher = PostgresOfferingPublicationRepository(monitoring_session_factory)
+    await publisher.publish(
+        OfferingPublication(
+            offering_execution_id=first_execution.id,
+            documents=(_document(first_run.id),),
+            snapshot=_snapshot(first_run.id, first_execution.id),
+        )
+    )
+    await run_repository.finish(first_run.id, RunStatus.SUCCEEDED)
+
+    _, candidate_run, candidate_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    candidate_snapshot = _snapshot(candidate_run.id, candidate_execution.id).model_copy(
+        update={
+            "status": SnapshotStatus.REVIEW_REQUIRED,
+            "accepted_at": None,
+        }
+    )
+    result = await publisher.publish(
+        OfferingPublication(
+            offering_execution_id=candidate_execution.id,
+            documents=(_document(candidate_run.id, checksum="b" * 64),),
+            snapshot=candidate_snapshot,
+        )
+    )
+
+    async with monitoring_session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    """
+                    SELECT content_sha256, is_active, publication_state
+                    FROM knowledge_documents
+                    ORDER BY content_sha256
+                    """
+                )
+            )
+        ).all()
+        candidate_active_chunks = await session.scalar(
+            text(
+                """
+                SELECT count(*)
+                FROM knowledge_chunks AS chunk
+                JOIN knowledge_documents AS document ON document.id = chunk.document_id
+                WHERE document.content_sha256 = :checksum AND chunk.is_active
+                """
+            ),
+            {"checksum": "b" * 64},
+        )
+
+    assert result.offering_status is OfferingRunStatus.CANDIDATE_REVIEW
+    assert [tuple(row) for row in rows] == [
+        ("a" * 64, True, "active"),
+        ("b" * 64, False, "pending_review"),
+    ]
+    assert candidate_active_chunks == 0
+
+
+def _review_task(
+    run_id,
+    execution_id,
+    snapshot_id,
+    *,
+    idempotency_key: str,
+    created_at: datetime,
+) -> ReviewTask:
+    return ReviewTask(
+        id=uuid4(),
+        idempotency_key=idempotency_key,
+        run_id=run_id,
+        offering_execution_id=execution_id,
+        snapshot_id=snapshot_id,
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        reason=ReviewReason.OFFICIAL_SOURCE_CONFLICT,
+        issue_scope="nominal_interest_rate:default",
+        candidates=(
+            ReviewCandidate(
+                candidate_id="web-rate",
+                field="nominal_interest_rate",
+                value="13.5%",
+                evidence_references=("evidence:web:rates:1",),
+            ),
+        ),
+        status=ReviewStatus.PENDING,
+        created_at=created_at,
+        updated_at=created_at,
+    )
+
+
+@pytest.mark.asyncio
+async def test_review_create_decide_and_supersession_are_idempotent(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await PostgresSnapshotRepository(monitoring_session_factory).save_attempt(snapshot)
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    first_input = _review_task(
+        run.id,
+        execution.id,
+        snapshot.id,
+        idempotency_key="review:first",
+        created_at=snapshot.created_at,
+    )
+
+    first, repeated = await asyncio.gather(
+        reviews.create(first_input),
+        reviews.create(first_input.model_copy(update={"id": uuid4()})),
+    )
+    approved = await reviews.approve(
+        first.id,
+        ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+        reviewer="reviewer@example.test",
+    )
+    duplicate = await reviews.approve(
+        first.id,
+        ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+        reviewer="reviewer@example.test",
+    )
+
+    assert repeated.id == first.id
+    assert approved.status is ReviewStatus.APPROVED
+    assert duplicate.id == approved.id
+
+    competing = await reviews.create(
+        first_input.model_copy(
+            update={
+                "id": uuid4(),
+                "idempotency_key": "review:competing",
+                "issue_scope": "effective_interest_rate:default",
+            }
+        )
+    )
+    outcomes = await asyncio.gather(
+        reviews.approve(
+            competing.id,
+            ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+            reviewer="reviewer-a",
+        ),
+        reviews.reject(competing.id, reviewer="reviewer-b"),
+        return_exceptions=True,
+    )
+    assert sum(isinstance(item, ReviewTask) for item in outcomes) == 1
+    assert sum(isinstance(item, ReviewConflictError) for item in outcomes) == 1
+
+
+@pytest.mark.asyncio
+async def test_newer_same_scope_review_supersedes_pending_review(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    run_repository, first_run, first_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    snapshots = PostgresSnapshotRepository(monitoring_session_factory)
+    first_snapshot = _snapshot(first_run.id, first_execution.id).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await snapshots.save_attempt(first_snapshot)
+    await run_repository.finish(first_run.id, RunStatus.FAILED)
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    first = await reviews.create(
+        _review_task(
+            first_run.id,
+            first_execution.id,
+            first_snapshot.id,
+            idempotency_key="review:old",
+            created_at=first_snapshot.created_at,
+        )
+    )
+
+    _, second_run, second_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    second_snapshot = _snapshot(second_run.id, second_execution.id).model_copy(
+        update={
+            "status": SnapshotStatus.REVIEW_REQUIRED,
+            "accepted_at": None,
+            "created_at": first_snapshot.created_at + timedelta(seconds=1),
+        }
+    )
+    await snapshots.save_attempt(second_snapshot)
+    second = await reviews.create(
+        _review_task(
+            second_run.id,
+            second_execution.id,
+            second_snapshot.id,
+            idempotency_key="review:new",
+            created_at=second_snapshot.created_at,
+        )
+    )
+
+    old = await reviews.get(first.id)
+    assert old is not None
+    assert old.status is ReviewStatus.SUPERSEDED
+    assert second.status is ReviewStatus.PENDING
+    with pytest.raises(ReviewConflictError):
+        await reviews.reject(first.id, reviewer="late-reviewer")

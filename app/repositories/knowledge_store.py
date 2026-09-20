@@ -76,6 +76,7 @@ class KnowledgeDocumentRecord(KnowledgeBase):
     quality_score: Mapped[float | None] = mapped_column(Float)
     extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    publication_state: Mapped[str] = mapped_column(String(50), nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

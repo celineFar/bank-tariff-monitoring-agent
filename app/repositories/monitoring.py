@@ -924,7 +924,12 @@ class PostgresOfferingPublicationRepository:
 
             document_results = tuple(
                 [
-                    await _upsert_document(session, document, now)
+                    await _upsert_document(
+                        session,
+                        document,
+                        now,
+                        activate=snapshot.status is SnapshotStatus.ACCEPTED,
+                    )
                     for document in publication.documents
                 ]
             )
@@ -1248,6 +1253,8 @@ async def _upsert_document(
     session: AsyncSession,
     document: EmbeddedKnowledgeDocument,
     now: datetime,
+    *,
+    activate: bool,
 ) -> IndexWriteResult:
     PostgresKnowledgeStore._validate_embeddings(document)
     version_id = document_version_id(document)
@@ -1305,7 +1312,8 @@ async def _upsert_document(
             extraction_method=document.extraction_method,
             quality_score=document.quality_score,
             extra_metadata=document.metadata,
-            is_active=True,
+            is_active=activate,
+            publication_state="active" if activate else "pending_review",
             first_seen_at=now,
             last_seen_at=now,
             retired_at=None,
@@ -1322,9 +1330,16 @@ async def _upsert_document(
                 "extraction_method": document.extraction_method,
                 "quality_score": document.quality_score,
                 "metadata": document.metadata,
-                "is_active": True,
                 "last_seen_at": now,
-                "retired_at": None,
+                **(
+                    {
+                        "is_active": True,
+                        "publication_state": "active",
+                        "retired_at": None,
+                    }
+                    if activate
+                    else {}
+                ),
             },
         )
     )
@@ -1348,6 +1363,8 @@ async def _upsert_document(
                 )
             )
         ).all()
+        if activate
+        else ()
     )
     retired_chunks = 0
     if superseded_ids:
@@ -1363,7 +1380,7 @@ async def _upsert_document(
         await session.execute(
             update(KnowledgeDocumentRecord)
             .where(KnowledgeDocumentRecord.id.in_(superseded_ids))
-            .values(is_active=False, retired_at=now)
+            .values(is_active=False, publication_state="retired", retired_at=now)
         )
     for identifier, chunk in zip(incoming_chunk_ids, document.chunks, strict=True):
         await session.execute(
@@ -1382,7 +1399,7 @@ async def _upsert_document(
                 quality_score=chunk.quality_score,
                 extra_metadata=chunk.metadata,
                 embedding=list(chunk.embedding),
-                is_active=True,
+                is_active=activate,
                 retired_at=None,
                 created_at=now,
                 updated_at=now,
@@ -1397,22 +1414,26 @@ async def _upsert_document(
                     "quality_score": chunk.quality_score,
                     "metadata": chunk.metadata,
                     "embedding": list(chunk.embedding),
-                    "is_active": True,
-                    "retired_at": None,
+                    **(
+                        {"is_active": True, "retired_at": None}
+                        if activate
+                        else {}
+                    ),
                     "updated_at": now,
                 },
             )
         )
-    result = await session.execute(
-        update(KnowledgeChunkRecord)
-        .where(
-            KnowledgeChunkRecord.document_id == version_id,
-            KnowledgeChunkRecord.id.not_in(incoming_chunk_ids),
-            KnowledgeChunkRecord.is_active.is_(True),
+    if activate:
+        result = await session.execute(
+            update(KnowledgeChunkRecord)
+            .where(
+                KnowledgeChunkRecord.document_id == version_id,
+                KnowledgeChunkRecord.id.not_in(incoming_chunk_ids),
+                KnowledgeChunkRecord.is_active.is_(True),
+            )
+            .values(is_active=False, retired_at=now, updated_at=now)
         )
-        .values(is_active=False, retired_at=now, updated_at=now)
-    )
-    retired_chunks += result.rowcount
+        retired_chunks += result.rowcount
     chunks_created = len(set(incoming_chunk_ids) - existing_chunk_ids)
     return IndexWriteResult(
         document_id=version_id,

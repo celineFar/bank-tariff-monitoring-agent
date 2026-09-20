@@ -45,9 +45,10 @@ shell, or SQL tool.
   and JSON-path flattening remain deterministic. PDF bytes cross only the tool-free,
   strict-schema Gemini PDF extraction boundary.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
-  including the transactional pgvector knowledge store.
+  including the transactional pgvector knowledge store and durable review repository.
 - `app/security/`: URL, download, redirect, and logging guardrails.
-- `app/runtime.py`: shared composition root for HTTP/worker repositories, ingestion,
+- `app/runtime.py`: shared composition root for HTTP/worker run, review, and snapshot
+  repositories, ingestion,
   `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
   retrieval, and `RagAnswerService`.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
@@ -270,6 +271,14 @@ snapshot and change reads with sixty-day “what changed?” and thirty-day hist
 Both services have typed HTTP and ADK adapters. `RunWaitService` is chat-side only and
 polls persisted state for at most two minutes; `POST /api/v1/runs` remains asynchronous.
 See `docs/tariff-query-services.md`.
+
+## Review and quarantine boundary
+
+Typed review tasks are durable business records correlated to candidate snapshots and,
+when available, ADK workflow identifiers. Candidate documents and chunks are persisted
+inactive; they cannot displace the prior accepted active version. Same-scope newer reviews
+supersede older pending reviews under a database lock and uniqueness constraint. Review
+approval does not itself publish candidate data. See `docs/review-quarantine.md`.
 
 ## Indexing coordinator boundary
 

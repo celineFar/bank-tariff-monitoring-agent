@@ -28,6 +28,12 @@ from app.domain.monitoring import (
 )
 from app.domain.pdf_extraction import PdfExtractionResponse
 from app.domain.retrieval import RetrievalCandidate
+from app.domain.review import (
+    ReviewCorrelation,
+    ReviewDecision,
+    ReviewStatus,
+    ReviewTask,
+)
 from app.domain.semantic_extraction import ExtractionBatchResponse
 from app.domain.source_discovery import SourceAssessment
 
@@ -146,10 +152,36 @@ class OfferingPublicationRepository(Protocol):
 
 
 class ReviewRepository(Protocol):
-    async def create(self, run_id: UUID, reason: str, evidence: dict) -> UUID: ...
-    async def decide(
-        self, review_id: UUID, decision: str, reviewer: str, comment: str | None
-    ) -> None: ...
+    async def create(self, review: ReviewTask) -> ReviewTask: ...
+    async def get(self, review_id: UUID) -> ReviewTask | None: ...
+    async def list(
+        self,
+        *,
+        status: ReviewStatus | None = None,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        limit: int = 100,
+    ) -> tuple[ReviewTask, ...]: ...
+    async def attach_workflow(
+        self, review_id: UUID, correlation: ReviewCorrelation
+    ) -> ReviewTask: ...
+    async def approve(
+        self,
+        review_id: UUID,
+        decision: ReviewDecision,
+        *,
+        reviewer: str,
+        comment: str | None = None,
+    ) -> ReviewTask: ...
+    async def reject(
+        self,
+        review_id: UUID,
+        *,
+        reviewer: str,
+        comment: str | None = None,
+    ) -> ReviewTask: ...
+    async def supersede(self, review_id: UUID) -> ReviewTask: ...
+    async def fail(self, review_id: UUID, detail: str) -> ReviewTask: ...
 
 
 class KnowledgeStoreRepository(Protocol):
