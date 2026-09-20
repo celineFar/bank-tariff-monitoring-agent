@@ -146,6 +146,9 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         embedder=indexer,
         snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
+        large_rate_change_percentage_points=(
+            settings.hitl.large_rate_change_percentage_points
+        ),
     )
     answer_service = RagAnswerService(
         RagRetriever(

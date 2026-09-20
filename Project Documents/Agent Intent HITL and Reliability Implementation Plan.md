@@ -593,14 +593,14 @@ separate correctness boundary.
 
 ### F. Deterministic review routing
 
-- [ ] Add conflict detection that preserves distinct PDF/web candidates and conditions.
-- [ ] Ensure any unresolved `conflicting` field blocks snapshot acceptance.
-- [ ] Add the three-percentage-point nominal/effective rate-change rule.
-- [ ] Add unresolved document-applicability routing.
-- [ ] Distinguish evidence-backed explicit absence from unsupported missing required fields.
-- [ ] Route reviewable missing fields to review and non-reviewable extraction/quality
+- [x] Add conflict detection that preserves distinct PDF/web candidates and conditions.
+- [x] Ensure any unresolved `conflicting` field blocks snapshot acceptance.
+- [x] Add the three-percentage-point nominal/effective rate-change rule.
+- [x] Add unresolved document-applicability routing.
+- [x] Distinguish evidence-backed explicit absence from unsupported missing required fields.
+- [x] Route reviewable missing fields to review and non-reviewable extraction/quality
       failures to offering failure.
-- [ ] Prove agreeing official sources retain all evidence without creating review.
+- [x] Prove agreeing official sources retain all evidence without creating review.
 
 ### G. Durable ADK monitoring workflow
 

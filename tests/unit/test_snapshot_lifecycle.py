@@ -9,6 +9,7 @@ from app.domain.semantic_extraction import (
     EvidenceItem,
     ExtractedValue,
     ExtractionField,
+    ExtractionReviewItem,
     ExtractionStatus,
     LoanCategory,
     LoanProduct,
@@ -16,6 +17,7 @@ from app.domain.semantic_extraction import (
     SemanticExtractionResult,
     SemanticExtractionRunStatus,
     ValidatedFieldResult,
+    ValidationIssue,
 )
 from app.domain.source_discovery import (
     Authority,
@@ -27,8 +29,11 @@ from app.services.snapshot_lifecycle import (
     canonical_sha256,
     canonical_tariff_payload,
     compare_accepted_snapshots,
+    detect_large_rate_changes,
+    detect_review_signals,
     evidence_changed,
     extraction_is_acceptable,
+    non_reviewable_extraction_failure,
 )
 
 NOW = datetime(2026, 9, 19, tzinfo=UTC)
@@ -189,6 +194,205 @@ def test_review_result_remains_candidate_and_is_not_compared() -> None:
     assert snapshot.status is SnapshotStatus.REVIEW_REQUIRED
     assert snapshot.accepted_at is None
     assert compare_accepted_snapshots(None, snapshot) is None
+
+
+def test_conflicting_pdf_and_web_values_are_preserved_as_review_candidates() -> None:
+    base = _result()
+    pdf_id = "ev_abcdef0123456789abcdef01"
+    web_citation = base.validated_fields[0].evidence[0].model_copy(
+        update={"quote": "Interest rate 12.5%"}
+    )
+    pdf_locator = SourceLocator(
+        source_url="https://ameriabank.am/tariffs.pdf",
+        source_type=SourceType.PDF,
+    )
+    pdf_citation = web_citation.model_copy(
+        update={
+            "evidence_id": pdf_id,
+            "source_item_id": "pdf-rate",
+            "source_url": "https://ameriabank.am/tariffs.pdf",
+            "source_type": SourceType.PDF,
+            "quote": "Interest rate 15.5%",
+            "locator": pdf_locator,
+        }
+    )
+    web_evidence = base.evidence_catalog[0].model_copy(
+        update={"content": "Interest rate 12.5%", "conditions": ("AMD",)}
+    )
+    pdf_evidence = web_evidence.model_copy(
+        update={
+            "evidence_id": pdf_id,
+            "document_id": "pdf",
+            "source_item_id": "pdf-rate",
+            "content": "Interest rate 15.5%",
+            "conditions": ("AMD",),
+            "locator": pdf_locator,
+        }
+    )
+    conflicting = base.validated_fields[0].model_copy(
+        update={
+            "field": ExtractionField.INTEREST_RATE,
+            "status": ExtractionStatus.CONFLICTING,
+            "value": None,
+            "evidence": (web_citation, pdf_citation),
+        }
+    )
+    result = base.model_copy(
+        update={
+            "validated_fields": (conflicting,),
+            "evidence_catalog": (web_evidence, pdf_evidence),
+        }
+    )
+
+    signals = detect_review_signals(result)
+
+    assert extraction_is_acceptable(result) is False
+    assert signals[0]["reason"] == "official_source_conflict"
+    candidates = signals[0]["candidates"]
+    assert isinstance(candidates, list)
+    assert all(isinstance(item, dict) for item in candidates)
+    assert [item.get("value") for item in candidates if isinstance(item, dict)] == [
+        "12.5",
+        "15.5",
+    ]
+    assert [
+        item.get("source_type") for item in candidates if isinstance(item, dict)
+    ] == ["page", "pdf"]
+    first_candidate = candidates[0]
+    assert isinstance(first_candidate, dict)
+    assert first_candidate["conditions"] == ["AMD"]
+
+
+def test_ambiguous_applicability_and_missing_required_field_route_to_review() -> None:
+    base = _result()
+    citation = base.validated_fields[0].evidence
+    ambiguous = base.validated_fields[0].model_copy(
+        update={
+            "field": ExtractionField.FEES,
+            "status": ExtractionStatus.AMBIGUOUS,
+            "value": None,
+            "evidence": citation,
+        }
+    )
+    missing = base.validated_fields[0].model_copy(
+        update={
+            "field": ExtractionField.REQUIRED_DOCUMENTS,
+            "status": ExtractionStatus.NOT_STATED,
+            "value": None,
+            "evidence": (),
+        }
+    )
+    result = base.model_copy(update={"validated_fields": (ambiguous, missing)})
+
+    signals = detect_review_signals(result)
+
+    assert [item["reason"] for item in signals] == [
+        "source_applicability",
+        "missing_required_field",
+    ]
+    assert extraction_is_acceptable(result) is False
+
+
+def test_evidence_backed_explicit_empty_value_is_not_unsupported_missing() -> None:
+    base = _result()
+    explicit_empty = base.validated_fields[0].model_copy(
+        update={
+            "field": ExtractionField.REQUIRED_DOCUMENTS,
+            "status": ExtractionStatus.FOUND,
+            "value": (),
+        }
+    )
+    result = base.model_copy(update={"validated_fields": (explicit_empty,)})
+
+    assert detect_review_signals(result) == ()
+    assert extraction_is_acceptable(result) is True
+
+
+def test_model_execution_failure_fails_without_human_review() -> None:
+    base = _result(review=True)
+    failed = ExtractionReviewItem(
+        review_id="review_0123456789abcdef01234567",
+        batch_id="rates",
+        field=ExtractionField.INTEREST_RATE,
+        model_name="test-model",
+        validation_issues=(
+            ValidationIssue(
+                message="model request failed",
+                error_type="APIError",
+            ),
+        ),
+    )
+    result = base.model_copy(update={"review_items": (failed,)})
+
+    assert (
+        non_reviewable_extraction_failure(result)
+        == "semantic_extraction.execution_failed"
+    )
+
+
+def test_agreeing_official_sources_do_not_create_review_signal() -> None:
+    base = _result()
+    assert base.loan_product is not None
+    duplicate = base.validated_fields[0].evidence[0].model_copy(
+        update={
+            "evidence_id": "ev_abcdef0123456789abcdef01",
+            "source_item_id": "second-source",
+        }
+    )
+    agreed = base.validated_fields[0].model_copy(
+        update={"evidence": (*base.validated_fields[0].evidence, duplicate)}
+    )
+    duplicate_evidence = base.evidence_catalog[0].model_copy(
+        update={
+            "evidence_id": duplicate.evidence_id,
+            "source_item_id": duplicate.source_item_id,
+            "document_id": "second-official-source",
+        }
+    )
+    product = base.loan_product.model_copy(
+        update={
+            "product_name": base.loan_product.product_name.model_copy(
+                update={"evidence": agreed.evidence}
+            )
+        }
+    )
+    result = base.model_copy(
+        update={
+            "loan_product": product,
+            "validated_fields": (agreed,),
+            "evidence_catalog": (*base.evidence_catalog, duplicate_evidence),
+        }
+    )
+
+    assert detect_review_signals(result) == ()
+    assert extraction_is_acceptable(result) is True
+    assert len(result.loan_product.product_name.evidence) == 2
+
+
+def test_large_rate_change_threshold_is_three_absolute_percentage_points() -> None:
+    previous = {
+        "interest_rate": {
+            "status": "found",
+            "value": [{"value": {"min": "10", "max": "12"}}],
+        }
+    }
+    below = {
+        "interest_rate": {
+            "status": "found",
+            "value": [{"value": {"min": "12.99", "max": "12"}}],
+        }
+    }
+    threshold = {
+        "interest_rate": {
+            "status": "found",
+            "value": [{"value": {"min": "13", "max": "12"}}],
+        }
+    }
+
+    assert detect_large_rate_changes(previous, below) == ()
+    signals = detect_large_rate_changes(previous, threshold)
+    assert signals[0]["reason"] == "large_rate_change"
+    assert signals[0]["absolute_percentage_point_change"] == "3"
 
 
 def test_comparison_reports_only_meaningful_top_level_changes() -> None:

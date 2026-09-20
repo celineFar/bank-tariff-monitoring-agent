@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Sequence
+from decimal import Decimal
 from time import perf_counter
 from typing import Protocol, TypeVar
 from uuid import UUID, uuid4
@@ -37,6 +38,7 @@ from app.services.snapshot_lifecycle import (
     build_snapshot_attempt,
     compare_accepted_snapshots,
     evidence_changed,
+    non_reviewable_extraction_failure,
 )
 
 T = TypeVar("T")
@@ -90,6 +92,7 @@ class IndexingPipeline:
         embedder: KnowledgeEmbeddingPort,
         snapshots: MonitoringSnapshotRepository,
         publications: OfferingPublicationRepository,
+        large_rate_change_percentage_points: float = 3.0,
     ) -> None:
         self._acquisition = acquisition
         self._normalization = normalization
@@ -99,6 +102,9 @@ class IndexingPipeline:
         self._embedder = embedder
         self._snapshots = snapshots
         self._publications = publications
+        self._large_rate_change_percentage_points = Decimal(
+            str(large_rate_change_percentage_points)
+        )
 
     async def refresh(
         self,
@@ -135,6 +141,13 @@ class IndexingPipeline:
             ),
             timings,
         )
+        extraction_failure = non_reviewable_extraction_failure(extraction)
+        if extraction_failure is not None:
+            raise OfferingPipelineError(
+                "semantic_extraction",
+                OfferingFailureCode.SEMANTIC_EXTRACTION_FAILED.value,
+                ValueError(extraction_failure),
+            )
         previous = await self._stage(
             "previous_snapshot",
             RunFailureCode.PERSISTENCE_FAILED,
@@ -153,6 +166,10 @@ class IndexingPipeline:
             offering_id=offering.offering_id,
             result=extraction,
             previous_accepted_snapshot_id=previous.id if previous else None,
+            previous_accepted_snapshot=previous,
+            large_rate_change_percentage_points=(
+                self._large_rate_change_percentage_points
+            ),
         )
         selected_document_ids = frozenset(
             item.document_id for item in discovery.extraction_context.items

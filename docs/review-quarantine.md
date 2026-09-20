@@ -19,3 +19,17 @@ snapshot, change set, and eligible documents.
 
 Reviewer choices and native ADK pause/resume are added in the later workflow phases. The
 ordinary conversational agent never receives a review-decision tool.
+
+## Deterministic routing
+
+Snapshot validation blocks unresolved `ambiguous` and `conflicting` fields. Conflicting
+web/PDF citations are preserved as distinct candidates with their evidence references,
+source types, quoted values, and conditions. Missing core tariff fields route to review
+when captured evidence remains usable; a model execution failure without a valid response
+fails the offering without creating a human task. A `found` empty or inapplicable value
+with official evidence is distinct from unsupported `not_stated` output.
+
+Nominal and effective rate endpoints are compared by their canonical conditional paths.
+An absolute change of at least the configured three percentage points quarantines the
+otherwise valid candidate. Multiple agreeing official citations remain attached to the
+accepted value and do not create a review signal.
