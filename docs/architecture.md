@@ -8,6 +8,9 @@ Daily scheduler ----------+                         v
                                             worker claim/recovery
                                                     |
                                                     v
+                                      resumable ADK monitoring workflow
+                                                    |
+                                                    v
                                            deterministic pipeline
  discovery -> secure retrieval -> deterministic PDF admission/input probe
  -> bounded Gemini PDF structure extraction + deterministic HTML parsing
@@ -52,7 +55,9 @@ shell, or SQL tool.
   `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
   retrieval, and `RagAnswerService`.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
-  scheduled families are submitted independently through `RunService`.
+  scheduled families are submitted independently through `RunService`. Claimed work
+  enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`
+  once and returns immediately when native human input is requested.
 - `migrations/`: PostgreSQL/pgvector schema.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
@@ -279,6 +284,36 @@ when available, ADK workflow identifiers. Candidate documents and chunks are per
 inactive; they cannot displace the prior accepted active version. Same-scope newer reviews
 supersede older pending reviews under a database lock and uniqueness constraint. Review
 approval does not itself publish candidate data. See `docs/review-quarantine.md`.
+
+## Resumable monitoring workflow boundary
+
+`app/services/monitoring_workflow.py` wraps the imperative `TariffPipeline` in a
+coarse-grained ADK 2.9.2 `Workflow`; deterministic acquisition, extraction,
+normalization, validation, and persistence remain inside the application service rather
+than becoming artificial agent nodes. The graph has explicit execute, outcome-routing,
+native `RequestInput`, deterministic decision, and final-result nodes and enables
+`ResumabilityConfig(is_resumable=True)`.
+
+Each business run uses a stable session ID (`monitoring-run-{run_id}`) and a user ID
+scoped to its API, schedule, ADK, or legacy-user origin. The runner uses the same shared
+session and artifact services as the other ADK surfaces. When candidate data requires
+review, `TariffPipeline` durably creates review tasks and changes the run from `RUNNING`
+to nonterminal `AWAITING_REVIEW`; the request-input node then stores its app, user,
+session, invocation, and interrupt identifiers on every pending task. The worker returns
+as soon as the interrupt event is emitted.
+
+Migration `008_monitoring_workflow.sql` extends the active-family uniqueness boundary to
+include `AWAITING_REVIEW`, so a paused run cannot be bypassed by a second API, scheduled,
+or ADK-triggered run for that family.
+
+Resumption sends a native `adk_request_input` function response with the persisted
+interrupt ID into that same session. ADK restores the paused invocation from its events,
+so completed pipeline work is replayed as node output rather than executed again. Only a
+narrow deterministic decision service may accept the bounded response, validate its
+candidate/evidence references, update the durable review, and transition the business
+run to a terminal state. PostgreSQL-backed ADK event/session configuration and restart
+reconciliation are the next durability layer; no module-level repository handle is used
+by workflow nodes.
 
 ## Indexing coordinator boundary
 

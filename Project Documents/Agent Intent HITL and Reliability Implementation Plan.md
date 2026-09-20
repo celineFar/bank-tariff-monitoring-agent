@@ -604,20 +604,20 @@ separate correctness boundary.
 
 ### G. Durable ADK monitoring workflow
 
-- [ ] Add typed workflow input/output/state schemas.
-- [ ] Implement coarse-grained execute, route, request-input, decision, and final-result
+- [x] Add typed workflow input/output/state schemas.
+- [x] Implement coarse-grained execute, route, request-input, decision, and final-result
       nodes.
-- [ ] Configure `ResumabilityConfig(is_resumable=True)`.
-- [ ] Build the workflow Runner over the shared session service and existing application
+- [x] Configure `ResumabilityConfig(is_resumable=True)`.
+- [x] Build the workflow Runner over the shared session service and existing application
       container; avoid new global repository access from nodes.
-- [ ] Create/tag one durable workflow session per monitoring run with stable user/session
+- [x] Create/tag one durable workflow session per monitoring run with stable user/session
       identity rules for API, schedule, and chat origins.
-- [ ] Store workflow correlation identifiers in the business review record.
-- [ ] Mark the business run `AWAITING_REVIEW` when `RequestInput` is emitted.
-- [ ] Return worker control immediately on pause.
-- [ ] Resume the same invocation from the native function response and do not rerun
+- [x] Store workflow correlation identifiers in the business review record.
+- [x] Mark the business run `AWAITING_REVIEW` when `RequestInput` is emitted.
+- [x] Return worker control immediately on pause.
+- [x] Resume the same invocation from the native function response and do not rerun
       completed pipeline work.
-- [ ] Apply decisions through a narrow deterministic service and finalize run state.
+- [x] Apply decisions through a narrow deterministic service and finalize run state.
 
 ### H. ADK session/event durability
 

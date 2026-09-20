@@ -64,6 +64,21 @@ class RunRepository(Protocol):
         summary: dict[str, object] | None = None,
     ) -> MonitoringRun: ...
 
+    async def pause_for_review(
+        self,
+        run_id: UUID,
+        *,
+        summary: dict[str, object],
+    ) -> MonitoringRun: ...
+
+    async def finish_after_review(
+        self,
+        run_id: UUID,
+        status: RunStatus,
+        *,
+        summary: dict[str, object],
+    ) -> MonitoringRun: ...
+
     async def create_offering_execution(
         self,
         run_id: UUID,
@@ -160,6 +175,7 @@ class ReviewRepository(Protocol):
         status: ReviewStatus | None = None,
         product: ProductType | None = None,
         offering_id: OfferingId | None = None,
+        run_id: UUID | None = None,
         limit: int = 100,
     ) -> tuple[ReviewTask, ...]: ...
     async def attach_workflow(

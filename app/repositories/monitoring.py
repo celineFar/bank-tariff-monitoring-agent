@@ -463,6 +463,70 @@ class PostgresRunRepository:
                 )
         return _run_from_row(row)
 
+    async def pause_for_review(
+        self,
+        run_id: UUID,
+        *,
+        summary: dict[str, object],
+    ) -> MonitoringRun:
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        f"""
+                        UPDATE monitoring_runs
+                        SET status = 'awaiting_review',
+                            summary = CAST(:summary AS jsonb),
+                            claimed_by = NULL,
+                            claimed_at = NULL,
+                            updated_at = now()
+                        WHERE id = :run_id AND status = 'running'
+                        RETURNING {_RUN_COLUMNS}
+                        """
+                    ),
+                    {"run_id": run_id, "summary": _json(summary)},
+                )
+            ).first()
+            if row is None:
+                raise InvalidRunTransitionError(
+                    f"run {run_id} cannot pause for review"
+                )
+        return _run_from_row(row)
+
+    async def finish_after_review(
+        self,
+        run_id: UUID,
+        status: RunStatus,
+        *,
+        summary: dict[str, object],
+    ) -> MonitoringRun:
+        if not status.is_terminal:
+            raise ValueError("review completion requires terminal run status")
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        f"""
+                        UPDATE monitoring_runs
+                        SET status = :status, completed_at = now(),
+                            summary = CAST(:summary AS jsonb), updated_at = now()
+                        WHERE id = :run_id AND status = 'awaiting_review'
+                        RETURNING {_RUN_COLUMNS}
+                        """
+                    ),
+                    {
+                        "run_id": run_id,
+                        "status": status.value,
+                        "summary": _json(summary),
+                    },
+                )
+            ).first()
+            if row is None:
+                raise InvalidRunTransitionError(
+                    f"run {run_id} cannot finish after review"
+                )
+        return _run_from_row(row)
+
     async def create_offering_execution(
         self,
         run_id: UUID,
@@ -644,7 +708,7 @@ class PostgresRunRepository:
                     SELECT {_RUN_COLUMNS}
                     FROM monitoring_runs
                     WHERE product = :product
-                      AND status IN ('queued', 'running')
+                      AND status IN ('queued', 'running', 'awaiting_review')
                     ORDER BY queued_at, id
                     LIMIT 1
                     """

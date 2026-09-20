@@ -185,6 +185,7 @@ class PostgresReviewRepository:
         status: ReviewStatus | None = None,
         product: ProductType | None = None,
         offering_id: OfferingId | None = None,
+        run_id: UUID | None = None,
         limit: int = 100,
     ) -> tuple[ReviewTask, ...]:
         if not 1 <= limit <= 500:
@@ -197,6 +198,7 @@ class PostgresReviewRepository:
             ("status", status.value if status else None),
             ("product", product.value if product else None),
             ("offering_id", offering_id.value if offering_id else None),
+            ("run_id", run_id),
         ):
             if value is not None:
                 clauses.append(f"AND {column} = :{column}")

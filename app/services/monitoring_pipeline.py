@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Sequence
 from decimal import Decimal
 from time import perf_counter
 from typing import Protocol, TypeVar
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from app.domain.acquisition import PageArtifact
 from app.domain.catalog import SeedCatalog, SeedCatalogEntry
@@ -26,11 +26,18 @@ from app.domain.monitoring import (
 )
 from app.domain.normalization import NormalizedSourceBundle
 from app.domain.pipeline import IndexingRefreshResult, SourceManifest, StageTiming
+from app.domain.review import (
+    ReviewCandidate,
+    ReviewReason,
+    ReviewStatus,
+    ReviewTask,
+)
 from app.domain.semantic_extraction import SemanticExtractionResult
 from app.domain.source_discovery import SourceDiscoveryResult
 from app.repositories.contracts import (
     MonitoringSnapshotRepository,
     OfferingPublicationRepository,
+    ReviewRepository,
     RunRepository,
 )
 from app.services.knowledge_projection import KnowledgeProjectionService
@@ -300,10 +307,12 @@ class TariffPipeline:
         catalog: SeedCatalog,
         indexing: IndexingPipeline,
         runs: RunRepository,
+        reviews: ReviewRepository | None = None,
     ) -> None:
         self._catalog = catalog
         self._indexing = indexing
         self._runs = runs
+        self._reviews = reviews
 
     async def execute(self, run: MonitoringRun) -> MonitoringRun:
         if run.status is not RunStatus.RUNNING:
@@ -317,6 +326,7 @@ class TariffPipeline:
             )
         succeeded = 0
         review_required = 0
+        review_ids: list[UUID] = []
         failed = 0
         for offering in offerings:
             execution = await self._runs.create_offering_execution(
@@ -364,8 +374,22 @@ class TariffPipeline:
                 succeeded += 1
             else:
                 review_required += 1
+                if self._reviews is None:
+                    raise RuntimeError("review repository is required for candidate data")
+                for review in _review_tasks(result.snapshot):
+                    persisted = await self._reviews.create(review)
+                    review_ids.append(persisted.id)
 
         total = len(offerings)
+        summary = {
+            "offering_count": total,
+            "succeeded": succeeded,
+            "review_required": review_required,
+            "failed": failed,
+            "review_ids": [str(review_id) for review_id in review_ids],
+        }
+        if review_required:
+            return await self._runs.pause_for_review(run.id, summary=summary)
         if succeeded == total:
             status = RunStatus.SUCCEEDED
         elif succeeded or review_required:
@@ -380,13 +404,62 @@ class TariffPipeline:
                 if status is RunStatus.FAILED
                 else None
             ),
-            summary={
-                "offering_count": total,
-                "succeeded": succeeded,
-                "review_required": review_required,
-                "failed": failed,
-            },
+            summary=summary,
         )
+
+
+def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
+    signals = snapshot.validation.get("review_signals", [])
+    tasks: list[ReviewTask] = []
+    for raw_signal in signals if isinstance(signals, list) else ():
+        if not isinstance(raw_signal, dict):
+            continue
+        try:
+            reason = ReviewReason(str(raw_signal["reason"]))
+            issue_scope = str(raw_signal["issue_scope"])
+        except (KeyError, ValueError):
+            continue
+        candidates: list[ReviewCandidate] = []
+        raw_candidates = raw_signal.get("candidates", [])
+        if isinstance(raw_candidates, list):
+            for raw_candidate in raw_candidates:
+                if not isinstance(raw_candidate, dict):
+                    continue
+                references = raw_candidate.get("evidence_references", [])
+                if not isinstance(references, list) or not references:
+                    continue
+                candidates.append(
+                    ReviewCandidate(
+                        candidate_id=str(raw_candidate["candidate_id"]),
+                        field=str(raw_signal.get("field", issue_scope)),
+                        value=raw_candidate.get("value"),
+                        evidence_references=tuple(str(item) for item in references),
+                        conditions={
+                            "source_type": raw_candidate.get("source_type"),
+                            "conditions": raw_candidate.get("conditions", []),
+                        },
+                    )
+                )
+        key = f"{snapshot.id}:{reason.value}:{issue_scope}"
+        tasks.append(
+            ReviewTask(
+                id=uuid5(NAMESPACE_URL, key),
+                idempotency_key=key,
+                run_id=snapshot.run_id,
+                offering_execution_id=snapshot.offering_execution_id,
+                snapshot_id=snapshot.id,
+                product=snapshot.product,
+                offering_id=snapshot.offering_id,
+                reason=reason,
+                issue_scope=issue_scope,
+                candidates=tuple(candidates),
+                evidence={"items": list(snapshot.evidence)},
+                status=ReviewStatus.PENDING,
+                created_at=snapshot.created_at,
+                updated_at=snapshot.created_at,
+            )
+        )
+    return tuple(tasks)
 
 
 def _manifest_item(

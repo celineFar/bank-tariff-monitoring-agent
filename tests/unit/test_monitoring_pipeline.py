@@ -418,6 +418,57 @@ class _Runs:
             summary=kwargs.get("summary", {}),
         )
 
+    async def pause_for_review(self, run_id, *, summary):
+        self.finished = (RunStatus.AWAITING_REVIEW, {"summary": summary})
+        return MonitoringRun(
+            id=run_id,
+            command=RunCommand(
+                product=ProductType.CONSUMER_LOAN,
+                trigger=RunTrigger.API,
+            ),
+            status=RunStatus.AWAITING_REVIEW,
+            queued_at=NOW,
+            started_at=NOW,
+            summary=summary,
+        )
+
+
+class _CandidateIndexing:
+    async def refresh(self, offering, run_id, offering_execution_id):
+        snapshot = SimpleNamespace(
+            id=uuid4(),
+            run_id=run_id,
+            offering_execution_id=offering_execution_id,
+            product=offering.product,
+            offering_id=offering.offering_id,
+            validation={
+                "review_signals": [
+                    {
+                        "reason": "large_rate_change",
+                        "issue_scope": "interest_rate",
+                        "field": "interest_rate",
+                    }
+                ]
+            },
+            evidence=(),
+            created_at=NOW,
+        )
+        return SimpleNamespace(
+            snapshot=snapshot,
+            publication=SimpleNamespace(
+                offering_status=OfferingRunStatus.CANDIDATE_REVIEW
+            ),
+        )
+
+
+class _Reviews:
+    def __init__(self):
+        self.values = []
+
+    async def create(self, review):
+        self.values.append(review)
+        return review
+
 
 @pytest.mark.asyncio
 async def test_tariff_pipeline_isolates_offerings_and_reports_partial_success() -> None:
@@ -453,8 +504,42 @@ async def test_tariff_pipeline_isolates_offerings_and_reports_partial_success() 
         "succeeded": 1,
         "review_required": 0,
         "failed": 1,
+        "review_ids": [],
     }
     assert len(runs.failures) == 1
     failure_payload = runs.failures[0][1]
     assert failure_payload["failure_detail"] == "RuntimeError"
     assert "fixture failure" not in str(failure_payload)
+
+
+@pytest.mark.asyncio
+async def test_candidate_snapshot_creates_review_and_pauses_run() -> None:
+    catalog = SeedCatalog(
+        families=_families(),
+        offerings=(_offering(OfferingId.CONSUMER_STANDARD),),
+    )
+    runs = _Runs()
+    reviews = _Reviews()
+    pipeline = TariffPipeline(
+        catalog=catalog,
+        indexing=_CandidateIndexing(),
+        runs=runs,
+        reviews=reviews,
+    )
+    running = MonitoringRun(
+        id=uuid4(),
+        command=RunCommand(
+            product=ProductType.CONSUMER_LOAN,
+            trigger=RunTrigger.API,
+        ),
+        status=RunStatus.RUNNING,
+        queued_at=NOW,
+        started_at=NOW,
+    )
+
+    paused = await pipeline.execute(running)
+
+    assert paused.status is RunStatus.AWAITING_REVIEW
+    assert paused.summary["review_required"] == 1
+    assert paused.summary["review_ids"] == [str(reviews.values[0].id)]
+    assert reviews.values[0].run_id == running.id

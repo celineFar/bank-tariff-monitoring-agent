@@ -250,7 +250,15 @@ async def test_consumer_standard_api_to_worker_publication_vertical_slice() -> N
         indexing=indexing,
         runs=runs,
     )
-    worker = MonitoringWorker(runs=runs, pipeline=pipeline, worker_id="test-worker")
+    class _Workflow:
+        async def start(self, run):
+            return await pipeline.execute(run)
+
+    worker = MonitoringWorker(
+        runs=runs,
+        workflow=_Workflow(),
+        worker_id="test-worker",
+    )
     app = FastAPI()
     app.state.run_service = RunService(runs)
     app.include_router(router)

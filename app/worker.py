@@ -5,19 +5,30 @@ import logging
 import signal
 import socket
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import get_settings
 from app.domain.models import ProductType
-from app.domain.monitoring import RunCommand, RunFailureCode, RunStatus, RunTrigger
+from app.domain.monitoring import (
+    MonitoringRun,
+    RunCommand,
+    RunFailureCode,
+    RunStatus,
+    RunTrigger,
+)
+from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.repositories.contracts import RunRepository
 from app.runtime import build_application_container
-from app.services.contracts import TariffPipeline
 from app.services.run_service import RunServicePort
 
 logger = logging.getLogger(__name__)
 PRODUCTS = (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
+
+
+class MonitoringWorkflowPort(Protocol):
+    async def start(self, run: MonitoringRun) -> MonitoringWorkflowResult: ...
 
 
 async def run_scheduled_monitoring(service: RunServicePort) -> None:
@@ -40,13 +51,13 @@ class MonitoringWorker:
         self,
         *,
         runs: RunRepository,
-        pipeline: TariffPipeline,
+        workflow: MonitoringWorkflowPort,
         worker_id: str,
         abandoned_after: timedelta = timedelta(minutes=30),
         poll_interval_seconds: float = 2.0,
     ) -> None:
         self._runs = runs
-        self._pipeline = pipeline
+        self._workflow = workflow
         self._worker_id = worker_id
         self._abandoned_after = abandoned_after
         self._poll_interval_seconds = poll_interval_seconds
@@ -64,7 +75,7 @@ class MonitoringWorker:
         if claimed is None:
             return False
         try:
-            await self._pipeline.execute(claimed.run)
+            await self._workflow.start(claimed.run)
         except Exception as exc:
             logger.exception(
                 "monitoring run failed unexpectedly",
@@ -98,7 +109,7 @@ async def main() -> None:
     container = build_application_container(settings)
     worker = MonitoringWorker(
         runs=container.runs,
-        pipeline=container.tariff_pipeline,
+        workflow=container.monitoring_workflow_runner,
         worker_id=f"{socket.gethostname()}:{id(container)}",
     )
     scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)

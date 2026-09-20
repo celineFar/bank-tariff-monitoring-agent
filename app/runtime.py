@@ -29,10 +29,16 @@ from app.services.knowledge_index import (
 )
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
+from app.services.monitoring_workflow import (
+    MonitoringWorkflowRunner,
+    build_monitoring_app,
+    build_monitoring_workflow,
+)
 from app.services.normalization import StructuralNormalizationService
 from app.services.pdf_extraction import GeminiPdfExtractionService
 from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
 from app.services.rag_retrieval import RagRetriever
+from app.services.review_decisions import ReviewDecisionService
 from app.services.run_service import RunService
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
@@ -54,6 +60,7 @@ class ApplicationContainer:
     reviews: PostgresReviewRepository
     run_service: RunService
     tariff_pipeline: TariffPipeline
+    monitoring_workflow_runner: MonitoringWorkflowRunner
     answer_service: RagAnswerService
     request_resolver: RequestResolver
     current_tariff_service: CurrentTariffService
@@ -161,11 +168,26 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         ),
         GeminiAnswerGenerator(embedding_client, settings.models.generation_model),
     )
+    reviews = PostgresReviewRepository(sessions)
+    tariff_pipeline = TariffPipeline(
+        catalog=catalog,
+        indexing=indexing,
+        runs=runs,
+        reviews=reviews,
+    )
+    monitoring_workflow = build_monitoring_workflow(
+        runs=runs,
+        pipeline=tariff_pipeline,
+        reviews=reviews,
+        decisions=ReviewDecisionService(reviews),
+    )
+    from app.app_utils import services as adk_services
+
     return ApplicationContainer(
         engine=engine,
         http_client=http_client,
         runs=runs,
-        reviews=PostgresReviewRepository(sessions),
+        reviews=reviews,
         run_service=run_service,
         answer_service=answer_service,
         request_resolver=request_resolver,
@@ -182,9 +204,10 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             run_service,
             settings.tariff_queries,
         ),
-        tariff_pipeline=TariffPipeline(
-            catalog=catalog,
-            indexing=indexing,
-            runs=runs,
+        tariff_pipeline=tariff_pipeline,
+        monitoring_workflow_runner=MonitoringWorkflowRunner(
+            app=build_monitoring_app(monitoring_workflow),
+            session_service=adk_services.get_session_service(),
+            artifact_service=adk_services.get_artifact_service(),
         ),
     )

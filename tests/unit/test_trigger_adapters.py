@@ -172,13 +172,17 @@ class _WorkerRuns:
         raise AssertionError("successful pipeline owns the terminal transition")
 
 
-class _Pipeline:
+class _Workflow:
     def __init__(self) -> None:
         self.runs: list[MonitoringRun] = []
 
-    async def execute(self, run: MonitoringRun) -> MonitoringRun:
+    async def start(self, run: MonitoringRun):
         self.runs.append(run)
-        return run
+        return {
+            "run_id": str(run.id),
+            "status": run.status.value,
+            "paused": False,
+        }
 
 
 @pytest.mark.asyncio
@@ -188,10 +192,10 @@ async def test_worker_claims_queue_and_invokes_shared_pipeline() -> None:
         status=RunStatus.RUNNING,
     )
     runs = _WorkerRuns(run)
-    pipeline = _Pipeline()
+    workflow = _Workflow()
     worker = MonitoringWorker(
         runs=runs,
-        pipeline=pipeline,
+        workflow=workflow,
         worker_id="worker-1",
         abandoned_after=timedelta(minutes=15),
     )
@@ -199,5 +203,5 @@ async def test_worker_claims_queue_and_invokes_shared_pipeline() -> None:
     assert await worker.recover_abandoned() == 1
     assert await worker.process_next() is True
     assert await worker.process_next() is False
-    assert pipeline.runs == [run]
+    assert workflow.runs == [run]
     assert runs.recovery_before is not None

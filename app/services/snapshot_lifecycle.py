@@ -233,6 +233,24 @@ def detect_review_signals(
                     ],
                 }
             )
+    existing_scopes = {
+        str(signal["issue_scope"])
+        for signal in signals
+        if "issue_scope" in signal
+    }
+    for item in result.review_items:
+        if item.field.value in existing_scopes:
+            continue
+        if item.raw_result is None and item.raw_response is None:
+            continue
+        signals.append(
+            {
+                "reason": "missing_required_field",
+                "issue_scope": item.field.value,
+                "field": item.field.value,
+                "evidence_references": list(item.evidence_ids),
+            }
+        )
     return tuple(signals)
 
 
