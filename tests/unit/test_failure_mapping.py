@@ -50,6 +50,28 @@ from app.services.pdf_downloader import PdfDownloadError, PdfDownloadFailure
             ),
             SourceFailureCode.SIGNATURE_REJECTED,
         ),
+        (
+            HtmlRetrievalError(
+                HtmlRetrievalFailure.DISALLOWED_URL,
+                "unsafe",
+            ),
+            SourceFailureCode.URL_REJECTED,
+        ),
+        (
+            HtmlRetrievalError(
+                HtmlRetrievalFailure.TRANSPORT,
+                "transport",
+            ),
+            SourceFailureCode.TRANSPORT,
+        ),
+        (
+            HtmlRetrievalError(
+                HtmlRetrievalFailure.HTTP_STATUS,
+                "status",
+                status_code=403,
+            ),
+            SourceFailureCode.HTTP_STATUS,
+        ),
     ],
 )
 def test_source_failures_have_stable_bounded_codes(error, expected) -> None:

@@ -665,16 +665,23 @@ separate correctness boundary.
 
 ### L. Deterministic tests
 
-- [ ] Unit-test every new domain invariant and resolver branch.
-- [ ] Unit-test review routing and decision validation with no live model.
-- [ ] Unit-test workflow routing with fake pipeline/decision services.
-- [ ] Integration-test native pause/resume using an in-memory service for fast coverage.
-- [ ] PostgreSQL-test durable pause/resume, restart, concurrency, supersession, and atomic
+- [x] Unit-test every new domain invariant and resolver branch.
+- [x] Unit-test review routing and decision validation with no live model.
+- [x] Unit-test workflow routing with fake pipeline/decision services.
+- [x] Integration-test native pause/resume using an in-memory service for fast coverage.
+- [x] PostgreSQL-test durable pause/resume, restart, concurrency, supersession, and atomic
       activation.
-- [ ] Extend trigger-adapter tests to prove chat/API/schedule reach the same workflow and
+- [x] Extend trigger-adapter tests to prove chat/API/schedule reach the same workflow and
       `TariffPipeline`.
-- [ ] Add controlled failure fixtures for every row in the failure matrix.
-- [ ] Run `uv run pytest tests/unit tests/integration` until green.
+- [x] Add controlled failure fixtures for every row in the failure matrix.
+- [x] Run `uv run pytest tests/unit tests/integration` until green.
+
+Phase L verification (2026-09-20): the deterministic command excludes the opt-in live
+Gemini/server files with `--ignore tests/integration/test_agent.py --ignore
+tests/integration/test_server_e2e.py`; it passes locally. PostgreSQL cases remain collected
+and skip only when `TEST_DATABASE_URL` is absent. The unfiltered command still reports the
+known missing Gemini credential and unavailable configured database host rather than a
+deterministic regression.
 
 ### M. Agent evaluation loop
 

@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.models import OfferingId, ProductType
+from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.review import (
     ReviewCandidate,
     ReviewDecision,
@@ -95,6 +96,7 @@ class _ReviewRepository:
         self.task = task
         self.approved = None
         self.rejected = None
+        self.snapshot_update = None
 
     async def get(self, review_id):
         return self.task if review_id == self.task.id else None
@@ -110,6 +112,12 @@ class _ReviewRepository:
             }
         )
 
+    async def approve_with_snapshot(
+        self, review_id, decision, update, *, reviewer
+    ):
+        self.snapshot_update = update
+        return await self.approve(review_id, decision, reviewer=reviewer)
+
     async def reject(self, review_id, *, reviewer, comment=None):
         self.rejected = (review_id, reviewer)
         decision = ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL)
@@ -121,6 +129,17 @@ class _ReviewRepository:
                 "decided_at": self.task.updated_at,
             }
         )
+
+
+class _Snapshots:
+    def __init__(self, snapshot: SnapshotAttempt) -> None:
+        self.snapshot = snapshot
+
+    async def get(self, snapshot_id):
+        return self.snapshot if snapshot_id == self.snapshot.id else None
+
+    async def get_latest_accepted(self, **kwargs):
+        return None
 
 
 @pytest.mark.asyncio
@@ -156,3 +175,46 @@ async def test_decision_service_routes_reject_all_without_value() -> None:
 
     assert result.status is ReviewStatus.REJECTED
     assert repository.rejected == (task.id, "reviewer-1")
+
+
+@pytest.mark.asyncio
+async def test_large_change_approval_builds_atomic_snapshot_update() -> None:
+    task = _review_task().model_copy(
+        update={
+            "reason": ReviewReason.LARGE_RATE_CHANGE,
+            "issue_scope": "interest_rate",
+            "candidates": (),
+        }
+    )
+    snapshot = SnapshotAttempt(
+        id=task.snapshot_id,
+        run_id=task.run_id,
+        offering_execution_id=task.offering_execution_id,
+        product=task.product,
+        offering_id=task.offering_id,
+        status=SnapshotStatus.REVIEW_REQUIRED,
+        normalized_tariff={"interest_rate": {"value": "13.5"}},
+        semantic_extraction={"status": "completed"},
+        validation={
+            "accepted": False,
+            "review_signals": [
+                {"reason": "large_rate_change", "issue_scope": "interest_rate"}
+            ],
+        },
+        canonical_sha256="a" * 64,
+        created_at=NOW,
+    )
+    repository = _ReviewRepository(task)
+    service = ReviewDecisionService(repository, _Snapshots(snapshot))
+
+    result = await service.apply(
+        task.id,
+        ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+        reviewer="monitoring-api",
+    )
+
+    assert result.status is ReviewStatus.APPROVED
+    assert repository.snapshot_update.snapshot_id == snapshot.id
+    assert repository.snapshot_update.ready_for_activation is True
+    assert repository.snapshot_update.validation["review_signals"] == []
+    assert repository.snapshot_update.changes is not None
