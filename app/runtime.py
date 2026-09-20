@@ -20,6 +20,7 @@ from app.repositories.source_discovery import PostgresSourceDiscoveryRepository
 from app.services.acquisition import build_acquisition_service
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
+from app.services.intent_resolution import AdkIntentClassifier, RequestResolver
 from app.services.knowledge_index import (
     GeminiEmbeddingProvider,
     GeminiQueryEmbeddingProvider,
@@ -47,6 +48,7 @@ class ApplicationContainer:
     run_service: RunService
     tariff_pipeline: TariffPipeline
     answer_service: RagAnswerService
+    request_resolver: RequestResolver
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -66,6 +68,16 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         else None
     )
     runs = PostgresRunRepository(sessions)
+    catalog = load_seed_catalog(allowed_hosts=settings.http.allowed_source_hosts)
+    request_resolver = RequestResolver(
+        catalog,
+        settings.intent_resolution,
+        classifier=AdkIntentClassifier(
+            settings.models.generation_model,
+            api_key=api_key,
+            max_attempts=settings.intent_resolution.classifier_max_attempts,
+        ),
+    )
     artifacts = FileSystemArtifactStore(settings.application.artifact_temp_dir)
     normalization = StructuralNormalizationService(
         artifact_reader=artifacts,
@@ -140,8 +152,9 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         runs=runs,
         run_service=RunService(runs),
         answer_service=answer_service,
+        request_resolver=request_resolver,
         tariff_pipeline=TariffPipeline(
-            catalog=load_seed_catalog(allowed_hosts=settings.http.allowed_source_hosts),
+            catalog=catalog,
             indexing=indexing,
             runs=runs,
         ),

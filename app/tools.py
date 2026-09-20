@@ -1,12 +1,19 @@
 from typing import Literal
 
+from google.adk.tools import ToolContext
+
+from app.domain.intent import ConversationResolutionState, RequestIntent
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import QuestionCommand, RunCommand, RunTrigger
+from app.services.intent_resolution import RequestResolver
 from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort
 
 _run_service: RunServicePort | None = None
 _answer_service: RagAnswerService | None = None
+_request_resolver: RequestResolver | None = None
+_RESOLUTION_STATE_KEY = "intent_resolution"
+_MONITOR_AUTHORIZATION_KEY = "temp:monitoring_authorization"
 
 
 def configure_run_service(service: RunServicePort | None) -> None:
@@ -18,29 +25,54 @@ def configure_run_service(service: RunServicePort | None) -> None:
 def configure_services(
     run_service: RunServicePort | None,
     answer_service: RagAnswerService | None,
+    request_resolver: RequestResolver | None = None,
 ) -> None:
-    global _answer_service
+    global _answer_service, _request_resolver
     configure_run_service(run_service)
     _answer_service = answer_service
+    _request_resolver = request_resolver
 
 
-def resolve_product(query: str) -> dict[str, object]:
-    """Resolve a request to one supported Ameria loan family."""
-    query_lower = query.casefold()
-    mortgage = any(term in query_lower for term in ("mortgage", "հիփոթեք", "բնակարան"))
-    consumer = any(
-        term in query_lower for term in ("consumer", "սպառողական", "personal loan")
-    )
-    if mortgage == consumer:
-        return {"status": "AMBIGUOUS", "product": None}
-    return {
-        "status": "RESOLVED",
-        "product": "mortgage" if mortgage else "consumer_loan",
-    }
+async def resolve_request(
+    query: str,
+    tool_context: ToolContext,
+) -> dict[str, object]:
+    """Resolve intent and product/offering scope without starting business work."""
+    if _request_resolver is None:
+        return {
+            "status": "unavailable",
+            "reason_code": "intent.service_unavailable",
+        }
+    raw_state = tool_context.state.get(_RESOLUTION_STATE_KEY)
+    try:
+        state = ConversationResolutionState.model_validate(raw_state or {})
+    except ValueError:
+        state = ConversationResolutionState()
+    turn = await _request_resolver.resolve_turn(query, state)
+    tool_context.state[_RESOLUTION_STATE_KEY] = turn.state.model_dump(mode="json")
+    resolved_intent = turn.resolution.continuation_intent or turn.resolution.intent
+    if (
+        resolved_intent is RequestIntent.START_MONITORING_RUN
+        and not turn.resolution.needs_clarification
+        and turn.resolution.product is not None
+    ):
+        tool_context.state[_MONITOR_AUTHORIZATION_KEY] = {
+            "product": turn.resolution.product.value,
+            "offering_id": (
+                turn.resolution.offering_id.value
+                if turn.resolution.offering_id is not None
+                else None
+            ),
+        }
+    else:
+        tool_context.state.pop(_MONITOR_AUTHORIZATION_KEY, None)
+    return turn.resolution.model_dump(mode="json")
 
 
 async def start_tariff_monitoring(
     product: Literal["consumer_loan", "mortgage"],
+    offering_id: str | None,
+    tool_context: ToolContext,
 ) -> dict[str, object]:
     """Hand a canonical product to the deterministic monitoring pipeline."""
     if _run_service is None:
@@ -49,13 +81,46 @@ async def start_tariff_monitoring(
             "product": product,
             "reason_code": "run.service_unavailable",
         }
+    try:
+        resolved_product = ProductType(product)
+        resolved_offering = OfferingId(offering_id) if offering_id else None
+        command = RunCommand(
+            product=resolved_product,
+            offering_id=resolved_offering,
+            trigger=RunTrigger.ADK,
+        )
+    except ValueError:
+        return {
+            "status": "rejected",
+            "product": product,
+            "offering_id": offering_id,
+            "reason_code": "run.invalid_scope",
+        }
+    authorization = tool_context.state.get(_MONITOR_AUTHORIZATION_KEY)
+    expected_authorization = {
+        "product": product,
+        "offering_id": resolved_offering.value if resolved_offering else None,
+    }
+    if authorization != expected_authorization:
+        return {
+            "status": "rejected",
+            "product": product,
+            "offering_id": offering_id,
+            "reason_code": "run.intent_not_authorized",
+        }
+    tool_context.state.pop(_MONITOR_AUTHORIZATION_KEY, None)
     result = await _run_service.submit(
-        RunCommand(product=ProductType(product), trigger=RunTrigger.ADK)
+        command
     )
     return {
         "status": result.run.status.value,
         "run_id": str(result.run.id),
         "product": result.run.command.product.value,
+        "offering_id": (
+            result.run.command.offering_id.value
+            if result.run.command.offering_id is not None
+            else None
+        ),
         "created": result.created,
         "reused_reason": (
             result.reused_reason.value if result.reused_reason is not None else None

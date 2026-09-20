@@ -29,7 +29,7 @@ class CatalogLanguage(StrEnum):
 def normalize_catalog_term(value: str) -> str:
     """Return the stable catalog-key form used for validation and exact matching."""
     normalized = unicodedata.normalize("NFKC", value).casefold().strip()
-    return re.sub(r"\s+", " ", normalized)
+    return re.sub(r"[_\W]+", " ", normalized, flags=re.UNICODE).strip()
 
 
 class LocalizedCatalogTerms(CatalogModel):

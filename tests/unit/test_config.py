@@ -36,6 +36,10 @@ def test_defaults_match_the_approved_architecture() -> None:
         "gemini-3.1-flash-lite",
     )
     assert settings.source_discovery.max_price_per_million_tokens_usd == 4.0
+    assert settings.intent_resolution.fuzzy_min_score == 0.82
+    assert settings.intent_resolution.fuzzy_min_gap == 0.08
+    assert settings.intent_resolution.max_candidates == 5
+    assert settings.intent_resolution.classifier_max_attempts == 2
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 
@@ -168,6 +172,10 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("chunk_overlap_chars", -1),
         ("retrieval_top_k", 0),
         ("retrieval_min_score", 1.1),
+        ("intent_fuzzy_min_score", 1.1),
+        ("intent_fuzzy_min_gap", 1.1),
+        ("intent_max_candidates", 1),
+        ("intent_classifier_max_attempts", 0),
         ("source_discovery_max_items_per_batch", 0),
         ("source_discovery_max_chars_per_item", 499),
         ("source_discovery_max_chars_per_batch", 999),

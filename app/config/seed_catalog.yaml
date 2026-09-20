@@ -4,7 +4,7 @@ families:
     localized_names:
       en:
         name: Consumer Loans
-        aliases: [consumer lending]
+        aliases: [consumer loan, consumer lending]
         synonyms: [personal lending, retail credit]
       hy:
         name: Սպառողական վարկեր
@@ -15,7 +15,7 @@ families:
     localized_names:
       en:
         name: Mortgage Loans
-        aliases: [mortgages]
+        aliases: [mortgage, mortgages]
         synonyms: [home loans, housing loans]
       hy:
         name: Հիփոթեքային վարկեր

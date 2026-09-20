@@ -29,7 +29,8 @@ shell, or SQL tool.
 - `app/agent.py`: ADK root agent and stable instructions.
 - `app/config/`: one environment adapter plus nested typed groups shared by API,
   agent, and worker; consumers depend only on the relevant group.
-- `app/tools.py`: narrow ADK adapters that call application services.
+- `app/tools.py`: narrow ADK adapters that call application services. Monitoring
+  submission requires a one-use, scope-bound authorization produced by the resolver.
 - `app/api/`: user-trigger, run-status, and HITL review HTTP contracts.
 - `app/domain/`: validated tariff/evidence models and pure business rules.
 - `app/services/`: pipeline orchestration interfaces and deterministic application
@@ -47,7 +48,7 @@ shell, or SQL tool.
   including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/runtime.py`: shared composition root for HTTP/worker repositories, ingestion,
-  `TariffPipeline`, `RunService`, retrieval, and `RagAnswerService`.
+  `TariffPipeline`, `RunService`, `RequestResolver`, retrieval, and `RagAnswerService`.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`.
 - `migrations/`: PostgreSQL/pgvector schema.
@@ -242,6 +243,23 @@ cited. Citation IDs and exact excerpts must match retrieved source chunks; URL,
 document, page, and section are restored server-side. Missing scope returns
 `ambiguous_product`; missing or invalid evidence returns `insufficient_evidence`.
 Question answering never invokes acquisition. See `docs/rag-answering.md`.
+
+## Intent and offering resolution boundary
+
+`RequestResolver` consumes only the versioned seed catalog and resolution settings. It
+classifies the approved eight intents, detects English/Armenian/mixed input, resolves both
+`ProductType` and `OfferingId`, and returns typed ambiguity rather than invoking business
+services. Unicode/canonical/name/alias/transliteration exact matching runs first, followed
+by conservative fuzzy ranking. Only insufficient deterministic results reach a tool-free
+Gemini classifier, and Python restricts its output to the supplied enum values and catalog
+candidate IDs.
+
+Pending clarification and latest scope live only in ADK session state. A monitoring
+intent creates a temporary one-use authorization for the exact resolved scope; the ADK
+monitoring tool rejects missing, stale, mismatched, and non-monitoring authorization.
+Typed API and scheduler commands remain classifier-free. See
+`docs/intent-resolution.md`.
+
 ## Indexing coordinator boundary
 
 `IndexingPipeline.refresh()` orders acquisition, normalization, discovery, extraction,
@@ -255,7 +273,9 @@ produce deterministic offering summaries. See `docs/indexing-projection.md`,
 
 `OfferingId` is the stable identity of a concrete bank offering; `ProductType` remains
 the broader consumer-loan or mortgage family. The frozen catalog models in
-`app/domain/catalog.py` bind each offering to exactly one family and approved seed URL.
+`app/domain/catalog.py` bind each offering to exactly one family and approved seed URL,
+with validated English and Armenian names, aliases, synonyms, and transliterations for
+both families and every offering.
 `app/config/seed_catalog.yaml` is the runtime source of truth for the thirteen approved
 URLs from `Project Documents/Loan_data_extraction.md`. The loader rejects duplicate
 offering identities, duplicate enabled URLs, family mismatches, non-HTTPS URLs, and

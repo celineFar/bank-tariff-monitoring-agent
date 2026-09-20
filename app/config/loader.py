@@ -11,6 +11,7 @@ from app.config.models import (
     DatabaseSettings,
     HitlSettings,
     HttpSettings,
+    IntentResolutionSettings,
     ModelSettings,
     ObservabilitySettings,
     PdfExtractionSettings,
@@ -85,6 +86,12 @@ def load_settings(
             chunk_overlap_chars=raw.chunk_overlap_chars,
             retrieval_top_k=raw.retrieval_top_k,
             retrieval_min_score=raw.retrieval_min_score,
+        ),
+        intent_resolution=IntentResolutionSettings(
+            fuzzy_min_score=raw.intent_fuzzy_min_score,
+            fuzzy_min_gap=raw.intent_fuzzy_min_gap,
+            max_candidates=raw.intent_max_candidates,
+            classifier_max_attempts=raw.intent_classifier_max_attempts,
         ),
         source_discovery=SourceDiscoverySettings(
             policy_version=raw.source_discovery_policy_version,

@@ -7,7 +7,7 @@ once; `load_settings` then validates and groups them. Copy `.env.example` to
 `.env` and never commit a real API key.
 
 The service-facing groups are `application`, `models`, `database`, `http`,
-`acquisition`, `pdf_extraction`, `rag`, `source_discovery`, `semantic_extraction`, `hitl`,
+`acquisition`, `pdf_extraction`, `rag`, `intent_resolution`, `source_discovery`, `semantic_extraction`, `hitl`,
 `scheduler`, and `observability`. A component should receive only the group it needs—for example, a
 downloader receives `settings.http` and the PDF extraction service receives
 `settings.pdf_extraction`.
@@ -43,6 +43,10 @@ downloader receives `settings.http` and the PDF extraction service receives
   whose input or output rate exceeds the ceiling before a live call.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
+- **Intent resolution:** `INTENT_FUZZY_MIN_SCORE`, `INTENT_FUZZY_MIN_GAP`,
+  `INTENT_MAX_CANDIDATES`, and `INTENT_CLASSIFIER_MAX_ATTEMPTS`. These bound the
+  deterministic fuzzy acceptance rule and the candidate/model fallback surface; they do
+  not change the configured Gemini model.
 - **Source discovery:** `SOURCE_DISCOVERY_POLICY_VERSION`,
   `SOURCE_DISCOVERY_PROMPT_VERSION`, `SOURCE_DISCOVERY_MAX_ITEMS_PER_BATCH`,
   `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`, and

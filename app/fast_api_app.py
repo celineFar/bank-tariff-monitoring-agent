@@ -43,7 +43,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.agent import root_agent
 
     container = build_application_container(settings)
-    configure_services(container.run_service, container.answer_service)
+    configure_services(
+        container.run_service,
+        container.answer_service,
+        container.request_resolver,
+    )
     runner = Runner(
         app=adk_app,
         session_service=services.get_session_service(),
@@ -66,7 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        configure_services(None, None)
+        configure_services(None, None, None)
         await container.close()
 
 

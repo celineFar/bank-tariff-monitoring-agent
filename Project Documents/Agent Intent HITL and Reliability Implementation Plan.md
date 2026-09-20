@@ -555,15 +555,15 @@ separate correctness boundary.
 
 ### C. Deterministic and Gemini resolution
 
-- [ ] Implement the single Unicode/transliteration normalization function.
-- [ ] Implement exact canonical/name/alias resolution.
-- [ ] Implement conservative fuzzy ranking with configurable minimum score and score gap.
-- [ ] Implement constrained Gemini fallback over supplied candidate IDs only.
-- [ ] Implement clarification choices and session continuation for replies such as “the
+- [x] Implement the single Unicode/transliteration normalization function.
+- [x] Implement exact canonical/name/alias resolution.
+- [x] Implement conservative fuzzy ranking with configurable minimum score and score gap.
+- [x] Implement constrained Gemini fallback over supplied candidate IDs only.
+- [x] Implement clarification choices and session continuation for replies such as “the
       express one.”
-- [ ] Implement the eight-intent classifier and ensure non-monitoring intents cannot call
+- [x] Implement the eight-intent classifier and ensure non-monitoring intents cannot call
       acquisition.
-- [ ] Add unit tests for Armenian, English, mixed language, aliases, typos, collisions,
+- [x] Add unit tests for Armenian, English, mixed language, aliases, typos, collisions,
       unsupported requests, ties, and Gemini failure.
 
 ### D. Current, status, wait, and history services

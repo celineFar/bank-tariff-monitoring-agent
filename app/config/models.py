@@ -232,6 +232,13 @@ class RagSettings(SettingsGroup):
         return self
 
 
+class IntentResolutionSettings(SettingsGroup):
+    fuzzy_min_score: float = Field(default=0.82, ge=0, le=1)
+    fuzzy_min_gap: float = Field(default=0.08, ge=0, le=1)
+    max_candidates: int = Field(default=5, ge=2, le=20)
+    classifier_max_attempts: int = Field(default=2, ge=1, le=5)
+
+
 class SourceDiscoverySettings(SettingsGroup):
     policy_version: str = Field(default="1", min_length=1, max_length=50)
     prompt_version: str = Field(default="1", min_length=1, max_length=50)
@@ -330,6 +337,7 @@ class Settings(SettingsGroup):
     acquisition: AcquisitionSettings
     pdf_extraction: PdfExtractionSettings
     rag: RagSettings
+    intent_resolution: IntentResolutionSettings
     source_discovery: SourceDiscoverySettings
     semantic_extraction: SemanticExtractionSettings
     hitl: HitlSettings

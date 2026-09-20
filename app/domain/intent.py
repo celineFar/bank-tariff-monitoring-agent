@@ -71,6 +71,7 @@ class ResolutionCandidate(IntentModel):
 
 class IntentResolution(IntentModel):
     intent: RequestIntent
+    continuation_intent: RequestIntent | None = None
     language: RequestLanguage
     normalized_query: str = Field(min_length=1, max_length=1000)
     method: ResolutionMethod
@@ -78,6 +79,7 @@ class IntentResolution(IntentModel):
     offering_id: OfferingId | None = None
     candidates: tuple[ResolutionCandidate, ...] = ()
     needs_clarification: bool = False
+    expects_single_value: bool = False
 
     @model_validator(mode="after")
     def validate_resolution(self) -> IntentResolution:
@@ -94,6 +96,18 @@ class IntentResolution(IntentModel):
                 raise ValueError("ambiguous resolution cannot select a scope")
         elif self.method is ResolutionMethod.CLARIFICATION:
             raise ValueError("clarification method requires needs_clarification")
+        if self.intent is RequestIntent.CLARIFICATION_RESPONSE:
+            if self.continuation_intent in {
+                None,
+                RequestIntent.CLARIFICATION_RESPONSE,
+            }:
+                raise ValueError(
+                    "clarification response requires a continuation intent"
+                )
+        elif self.continuation_intent is not None:
+            raise ValueError(
+                "continuation_intent is only valid for clarification responses"
+            )
         return self
 
 
@@ -124,6 +138,29 @@ class PendingClarification(IntentModel):
         if len(option_ids) != len(set(option_ids)):
             raise ValueError("clarification option IDs must be unique")
         return self
+
+
+class ConversationResolutionState(IntentModel):
+    introduction_shown: bool = False
+    pending_clarification: PendingClarification | None = None
+    latest_product: ProductType | None = None
+    latest_offering_id: OfferingId | None = None
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> ConversationResolutionState:
+        if self.latest_product is None and self.latest_offering_id is not None:
+            raise ValueError("latest_offering_id requires latest_product")
+        if self.latest_product is not None:
+            validate_offering_product(
+                self.latest_product,
+                self.latest_offering_id,
+            )
+        return self
+
+
+class ResolutionTurn(IntentModel):
+    resolution: IntentResolution
+    state: ConversationResolutionState
 
 
 class FreshnessStatus(StrEnum):

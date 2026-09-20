@@ -70,6 +70,10 @@ class EnvironmentSettings(BaseSettings):
     chunk_overlap_chars: int = 150
     retrieval_top_k: int = 8
     retrieval_min_score: float = 0.25
+    intent_fuzzy_min_score: float = 0.82
+    intent_fuzzy_min_gap: float = 0.08
+    intent_max_candidates: int = 5
+    intent_classifier_max_attempts: int = 2
     source_discovery_policy_version: str = "1"
     source_discovery_prompt_version: str = "1"
     source_discovery_max_items_per_batch: int = 8

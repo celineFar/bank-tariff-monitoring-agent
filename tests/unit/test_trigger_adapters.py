@@ -49,6 +49,11 @@ class _RunService:
         return self.runs.get(run_id)
 
 
+class _ToolContext:
+    def __init__(self, state: dict[str, object]) -> None:
+        self.state = state
+
+
 @pytest.mark.asyncio
 async def test_http_submit_and_status_use_shared_run_service() -> None:
     service = _RunService()
@@ -81,7 +86,18 @@ async def test_scheduler_and_adk_tool_submit_through_same_service() -> None:
     configure_run_service(service)
     try:
         await run_scheduled_monitoring(service)
-        result = await start_tariff_monitoring("consumer_loan")
+        result = await start_tariff_monitoring(
+            "consumer_loan",
+            None,
+            _ToolContext(
+                state={
+                    "temp:monitoring_authorization": {
+                        "product": "consumer_loan",
+                        "offering_id": None,
+                    }
+                }
+            ),
+        )
     finally:
         configure_run_service(None)
 
@@ -91,6 +107,49 @@ async def test_scheduler_and_adk_tool_submit_through_same_service() -> None:
         RunTrigger.ADK,
     ]
     assert result["status"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_adk_monitoring_tool_rejects_missing_or_non_monitoring_intent() -> None:
+    service = _RunService()
+    configure_run_service(service)
+    try:
+        result = await start_tariff_monitoring(
+            "mortgage",
+            "mortgage_express",
+            _ToolContext(state={}),
+        )
+    finally:
+        configure_run_service(None)
+
+    assert result["status"] == "rejected"
+    assert result["reason_code"] == "run.intent_not_authorized"
+    assert service.commands == []
+
+
+@pytest.mark.asyncio
+async def test_adk_monitoring_tool_rejects_invalid_cross_family_scope() -> None:
+    service = _RunService()
+    configure_run_service(service)
+    try:
+        result = await start_tariff_monitoring(
+            "consumer_loan",
+            "mortgage_express",
+            _ToolContext(
+                state={
+                    "temp:monitoring_authorization": {
+                        "product": "consumer_loan",
+                        "offering_id": "mortgage_express",
+                    }
+                }
+            ),
+        )
+    finally:
+        configure_run_service(None)
+
+    assert result["status"] == "rejected"
+    assert result["reason_code"] == "run.invalid_scope"
+    assert service.commands == []
 
 
 class _WorkerRuns:

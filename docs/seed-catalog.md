@@ -38,9 +38,9 @@ Loans”—because the approved intent-sensitive rules distinguish a family-wide
 a request requiring one tariff value. Collisions between two offerings or two families
 are rejected because deterministic exact matching could not safely choose between them.
 
-Normalization currently applies Unicode NFKC, case folding, trimming, and whitespace
-collapse. Phase C reuses this single function and adds the deterministic exact/fuzzy
-resolution cascade around it.
+Normalization applies Unicode NFKC, case folding, punctuation/separator collapse,
+trimming, and whitespace collapse. The deterministic exact/fuzzy resolver reuses this
+single function for user input, IDs, names, aliases, synonyms, and transliterations.
 
 ## Name review
 
