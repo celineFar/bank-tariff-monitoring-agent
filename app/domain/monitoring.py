@@ -33,6 +33,7 @@ class RunTrigger(StrEnum):
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
+    AWAITING_REVIEW = "awaiting_review"
     SUCCEEDED = "succeeded"
     PARTIAL_SUCCESS = "partial_success"
     FAILED = "failed"
@@ -176,8 +177,10 @@ class MonitoringRun(MonitoringModel):
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> MonitoringRun:
-        if self.status is RunStatus.RUNNING and self.started_at is None:
-            raise ValueError("running run requires started_at")
+        if self.status in {RunStatus.RUNNING, RunStatus.AWAITING_REVIEW} and (
+            self.started_at is None
+        ):
+            raise ValueError("running or review-waiting run requires started_at")
         if self.status.is_terminal and self.completed_at is None:
             raise ValueError("terminal run requires completed_at")
         if self.started_at is not None and self.started_at < self.queued_at:

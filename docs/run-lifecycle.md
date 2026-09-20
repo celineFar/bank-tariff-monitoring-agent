@@ -5,8 +5,10 @@ returns `202`, the ADK monitoring tool submits after product resolution, and the
 scheduler independently submits consumer-loan and mortgage commands at 06:00
 `Asia/Yerevan`.
 
-PostgreSQL is the durable queue. Runs transition `queued -> running -> succeeded`,
-`partial_success`, or `failed`. An idempotency key returns its original run, and the
+PostgreSQL is the durable queue. Runs transition `queued -> running`, may pause in the
+nonterminal `awaiting_review` state, and finish as `succeeded`, `partial_success`, or
+`failed`. The database transition into `awaiting_review` is added with the durable HITL
+workflow. An idempotency key returns its original run, and the
 active-family constraint returns existing queued/running work rather than duplicating
 it. Workers claim with `FOR UPDATE SKIP LOCKED`; startup recovery marks expired claims
 failed so a later submission can proceed safely.

@@ -1,17 +1,31 @@
 from typing import Literal
+from uuid import UUID
 
 from google.adk.tools import ToolContext
 
-from app.domain.intent import ConversationResolutionState, RequestIntent
+from app.domain.intent import (
+    ConversationResolutionState,
+    HistoryQuery,
+    HistoryRequestKind,
+    RequestIntent,
+)
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import QuestionCommand, RunCommand, RunTrigger
 from app.services.intent_resolution import RequestResolver
 from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort
+from app.services.tariff_queries import (
+    CurrentTariffService,
+    RunWaitService,
+    TariffHistoryService,
+)
 
 _run_service: RunServicePort | None = None
 _answer_service: RagAnswerService | None = None
 _request_resolver: RequestResolver | None = None
+_current_tariff_service: CurrentTariffService | None = None
+_tariff_history_service: TariffHistoryService | None = None
+_run_wait_service: RunWaitService | None = None
 _RESOLUTION_STATE_KEY = "intent_resolution"
 _MONITOR_AUTHORIZATION_KEY = "temp:monitoring_authorization"
 
@@ -26,11 +40,18 @@ def configure_services(
     run_service: RunServicePort | None,
     answer_service: RagAnswerService | None,
     request_resolver: RequestResolver | None = None,
+    current_tariff_service: CurrentTariffService | None = None,
+    tariff_history_service: TariffHistoryService | None = None,
+    run_wait_service: RunWaitService | None = None,
 ) -> None:
     global _answer_service, _request_resolver
+    global _current_tariff_service, _tariff_history_service, _run_wait_service
     configure_run_service(run_service)
     _answer_service = answer_service
     _request_resolver = request_resolver
+    _current_tariff_service = current_tariff_service
+    _tariff_history_service = tariff_history_service
+    _run_wait_service = run_wait_service
 
 
 async def resolve_request(
@@ -142,3 +163,65 @@ async def answer_tariff_question(
         offering_id=OfferingId(offering_id) if offering_id else None,
     )
     return (await _answer_service.answer(command)).model_dump(mode="json")
+
+
+async def get_current_tariffs(
+    product: Literal["consumer_loan", "mortgage"] | None = None,
+    offering_id: str | None = None,
+) -> dict[str, object]:
+    """Read latest accepted tariffs and freshness without exposing review candidates."""
+    if _current_tariff_service is None:
+        return {"status": "unavailable", "reason_code": "current.service_unavailable"}
+    try:
+        result = await _current_tariff_service.get_current(
+            product=ProductType(product) if product else None,
+            offering_id=OfferingId(offering_id) if offering_id else None,
+        )
+    except ValueError:
+        return {"status": "rejected", "reason_code": "current.invalid_scope"}
+    return result.model_dump(mode="json")
+
+
+async def get_tariff_history(
+    kind: Literal["what_changed", "show_history"],
+    product: Literal["consumer_loan", "mortgage"] | None = None,
+    offering_id: str | None = None,
+    start_at: str | None = None,
+    end_at: str | None = None,
+    limit: int = 20,
+) -> dict[str, object]:
+    """Read bounded accepted snapshot history or accepted change sets."""
+    if _tariff_history_service is None:
+        return {"status": "unavailable", "reason_code": "history.service_unavailable"}
+    try:
+        query = HistoryQuery.model_validate(
+            {
+                "kind": HistoryRequestKind(kind),
+                "product": ProductType(product) if product else None,
+                "offering_id": OfferingId(offering_id) if offering_id else None,
+                "start_at": start_at,
+                "end_at": end_at,
+                "limit": limit,
+            }
+        )
+        result = await _tariff_history_service.query(query)
+    except ValueError:
+        return {"status": "rejected", "reason_code": "history.invalid_query"}
+    return result.model_dump(mode="json")
+
+
+async def wait_for_monitoring_run(
+    run_id: str,
+    timeout_seconds: float | None = None,
+) -> dict[str, object]:
+    """Wait briefly for a persisted run, stopping on terminal or review state."""
+    if _run_wait_service is None:
+        return {"status": "unavailable", "reason_code": "run_wait.service_unavailable"}
+    try:
+        result = await _run_wait_service.wait(
+            UUID(run_id),
+            timeout_seconds=timeout_seconds,
+        )
+    except ValueError:
+        return {"status": "rejected", "reason_code": "run_wait.invalid_request"}
+    return result.model_dump(mode="json")

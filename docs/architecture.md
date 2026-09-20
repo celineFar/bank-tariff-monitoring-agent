@@ -48,7 +48,8 @@ shell, or SQL tool.
   including the transactional pgvector knowledge store.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/runtime.py`: shared composition root for HTTP/worker repositories, ingestion,
-  `TariffPipeline`, `RunService`, `RequestResolver`, retrieval, and `RagAnswerService`.
+  `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
+  retrieval, and `RagAnswerService`.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`.
 - `migrations/`: PostgreSQL/pgvector schema.
@@ -259,6 +260,16 @@ intent creates a temporary one-use authorization for the exact resolved scope; t
 monitoring tool rejects missing, stale, mismatched, and non-monitoring authorization.
 Typed API and scheduler commands remain classifier-free. See
 `docs/intent-resolution.md`.
+
+## Current tariff, history, and wait boundary
+
+`CurrentTariffService` reads only latest accepted snapshots and classifies them with the
+configured seven-day freshness policy. A newer review candidate is exposed only as a
+boolean; its tariff values remain hidden. `TariffHistoryService` provides bounded accepted
+snapshot and change reads with sixty-day “what changed?” and thirty-day history defaults.
+Both services have typed HTTP and ADK adapters. `RunWaitService` is chat-side only and
+polls persisted state for at most two minutes; `POST /api/v1/runs` remains asynchronous.
+See `docs/tariff-query-services.md`.
 
 ## Indexing coordinator boundary
 

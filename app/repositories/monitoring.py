@@ -145,6 +145,78 @@ def _snapshot_from_row(row: object) -> SnapshotAttempt:
     )
 
 
+def _change_from_row(row: object) -> SnapshotChangeSet:
+    values = row._mapping if hasattr(row, "_mapping") else row
+    return SnapshotChangeSet(
+        id=values["id"],
+        run_id=values["run_id"],
+        product=ProductType(values["product"]),
+        offering_id=OfferingId(values["offering_id"]),
+        previous_snapshot_id=values["previous_snapshot_id"],
+        current_snapshot_id=values["current_snapshot_id"],
+        changes=tuple(values["changes"] or ()),
+        created_at=values["created_at"],
+    )
+
+
+def _snapshot_scope(
+    product: ProductType | None,
+    offering_id: OfferingId | None,
+) -> tuple[str, dict[str, object]]:
+    if offering_id is not None and product is None:
+        raise ValueError("offering_id requires product")
+    if offering_id is not None and offering_id.product is not product:
+        raise ValueError("offering does not belong to product")
+    clauses: list[str] = []
+    parameters: dict[str, object] = {}
+    if product is not None:
+        clauses.append("AND product = :product")
+        parameters["product"] = product.value
+    if offering_id is not None:
+        clauses.append("AND offering_id = :offering_id")
+        parameters["offering_id"] = offering_id.value
+    return "\n".join(clauses), parameters
+
+
+def _change_scope(
+    product: ProductType | None,
+    offering_id: OfferingId | None,
+) -> tuple[str, dict[str, object]]:
+    return _snapshot_scope(product, offering_id)
+
+
+def _validate_read_bounds(
+    start_at: datetime | None,
+    end_at: datetime | None,
+    limit: int,
+) -> None:
+    for value in (start_at, end_at):
+        if value is not None and (
+            value.tzinfo is None or value.utcoffset() is None
+        ):
+            raise ValueError("read bounds must be timezone-aware")
+    if start_at is not None and end_at is not None and end_at < start_at:
+        raise ValueError("end_at must not precede start_at")
+    if limit < 1 or limit > 1000:
+        raise ValueError("limit must be between 1 and 1000")
+
+
+def _time_filter(
+    column: str,
+    start_at: datetime | None,
+    end_at: datetime | None,
+    parameters: dict[str, object],
+) -> str:
+    clauses: list[str] = []
+    if start_at is not None:
+        clauses.append(f"AND {column} >= :start_at")
+        parameters["start_at"] = start_at
+    if end_at is not None:
+        clauses.append(f"AND {column} <= :end_at")
+        parameters["end_at"] = end_at
+    return "\n".join(clauses)
+
+
 class PostgresRunRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
@@ -641,6 +713,168 @@ class PostgresSnapshotRepository:
         async with self._session_factory() as session, session.begin():
             await _insert_changes(session, changes)
         return changes.id
+
+    async def list_latest_accepted(
+        self,
+        *,
+        bank: str,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+    ) -> tuple[SnapshotAttempt, ...]:
+        scope_sql, parameters = _snapshot_scope(product, offering_id)
+        parameters["bank"] = bank.lower()
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        f"""
+                        SELECT DISTINCT ON (snapshot.offering_id) snapshot.*
+                        FROM tariff_snapshots AS snapshot
+                        WHERE snapshot.bank = :bank
+                          AND snapshot.status = 'accepted'
+                          {scope_sql}
+                        ORDER BY
+                            snapshot.offering_id,
+                            snapshot.accepted_at DESC,
+                            snapshot.id DESC
+                        """
+                    ),
+                    parameters,
+                )
+            ).all()
+        return tuple(_snapshot_from_row(row) for row in rows)
+
+    async def has_newer_pending_review(
+        self,
+        *,
+        bank: str,
+        product: ProductType,
+        offering_id: OfferingId,
+        accepted_at: datetime | None,
+    ) -> bool:
+        if offering_id.product is not product:
+            raise ValueError("offering does not belong to product")
+        after_sql = ""
+        parameters: dict[str, object] = {
+            "bank": bank.lower(),
+            "product": product.value,
+            "offering_id": offering_id.value,
+        }
+        if accepted_at is not None:
+            after_sql = "AND created_at > :accepted_at"
+            parameters["accepted_at"] = accepted_at
+        async with self._session_factory() as session:
+            found = await session.scalar(
+                text(
+                    f"""
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM tariff_snapshots
+                        WHERE bank = :bank
+                          AND product = :product
+                          AND offering_id = :offering_id
+                          AND status IN ('candidate', 'review_required')
+                          {after_sql}
+                    )
+                    """
+                ),
+                parameters,
+            )
+        return bool(found)
+
+    async def list_accepted_history(
+        self,
+        *,
+        bank: str,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        start_at: datetime | None = None,
+        end_at: datetime | None = None,
+        limit: int,
+    ) -> tuple[SnapshotAttempt, ...]:
+        _validate_read_bounds(start_at, end_at, limit)
+        scope_sql, parameters = _snapshot_scope(product, offering_id)
+        parameters.update({"bank": bank.lower(), "limit": limit})
+        time_sql = _time_filter("accepted_at", start_at, end_at, parameters)
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        f"""
+                        SELECT *
+                        FROM tariff_snapshots
+                        WHERE bank = :bank
+                          AND status = 'accepted'
+                          {scope_sql}
+                          {time_sql}
+                        ORDER BY accepted_at DESC, id DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    parameters,
+                )
+            ).all()
+        return tuple(_snapshot_from_row(row) for row in rows)
+
+    async def list_changes(
+        self,
+        *,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        start_at: datetime | None = None,
+        end_at: datetime | None = None,
+        limit: int,
+    ) -> tuple[SnapshotChangeSet, ...]:
+        _validate_read_bounds(start_at, end_at, limit)
+        scope_sql, parameters = _change_scope(product, offering_id)
+        parameters["limit"] = limit
+        time_sql = _time_filter("created_at", start_at, end_at, parameters)
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        f"""
+                        SELECT *
+                        FROM tariff_changes
+                        WHERE true
+                          {scope_sql}
+                          {time_sql}
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    parameters,
+                )
+            ).all()
+        return tuple(_change_from_row(row) for row in rows)
+
+    async def get_latest_change_before(
+        self,
+        *,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        before: datetime,
+    ) -> SnapshotChangeSet | None:
+        _validate_read_bounds(None, before, 1)
+        scope_sql, parameters = _change_scope(product, offering_id)
+        parameters["before"] = before
+        async with self._session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        f"""
+                        SELECT *
+                        FROM tariff_changes
+                        WHERE created_at < :before
+                          {scope_sql}
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 1
+                        """
+                    ),
+                    parameters,
+                )
+            ).first()
+        return _change_from_row(row) if row is not None else None
 
 
 class PostgresOfferingPublicationRepository:

@@ -47,6 +47,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         container.run_service,
         container.answer_service,
         container.request_resolver,
+        container.current_tariff_service,
+        container.tariff_history_service,
+        container.run_wait_service,
     )
     runner = Runner(
         app=adk_app,
@@ -60,6 +63,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.application_container = container
     app.state.run_service = container.run_service
     app.state.answer_service = container.answer_service
+    app.state.current_tariff_service = container.current_tariff_service
+    app.state.tariff_history_service = container.tariff_history_service
     await attach_a2a_routes(
         app,
         agent=root_agent,
@@ -70,7 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        configure_services(None, None, None)
+        configure_services(None, None, None, None, None, None)
         await container.close()
 
 

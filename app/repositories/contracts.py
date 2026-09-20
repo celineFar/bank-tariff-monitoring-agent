@@ -94,6 +94,52 @@ class MonitoringSnapshotRepository(Protocol):
 
     async def save_changes(self, changes: SnapshotChangeSet) -> UUID: ...
 
+    async def list_latest_accepted(
+        self,
+        *,
+        bank: str,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+    ) -> tuple[SnapshotAttempt, ...]: ...
+
+    async def has_newer_pending_review(
+        self,
+        *,
+        bank: str,
+        product: ProductType,
+        offering_id: OfferingId,
+        accepted_at: datetime | None,
+    ) -> bool: ...
+
+    async def list_accepted_history(
+        self,
+        *,
+        bank: str,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        start_at: datetime | None = None,
+        end_at: datetime | None = None,
+        limit: int,
+    ) -> tuple[SnapshotAttempt, ...]: ...
+
+    async def list_changes(
+        self,
+        *,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        start_at: datetime | None = None,
+        end_at: datetime | None = None,
+        limit: int,
+    ) -> tuple[SnapshotChangeSet, ...]: ...
+
+    async def get_latest_change_before(
+        self,
+        *,
+        product: ProductType | None = None,
+        offering_id: OfferingId | None = None,
+        before: datetime,
+    ) -> SnapshotChangeSet | None: ...
+
 
 class OfferingPublicationRepository(Protocol):
     async def publish(self, publication: OfferingPublication) -> PublicationResult: ...

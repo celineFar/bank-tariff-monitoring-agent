@@ -239,6 +239,15 @@ class IntentResolutionSettings(SettingsGroup):
     classifier_max_attempts: int = Field(default=2, ge=1, le=5)
 
 
+class TariffQuerySettings(SettingsGroup):
+    freshness_days: int = Field(default=7, ge=1, le=365)
+    recent_change_days: int = Field(default=60, ge=1, le=3650)
+    default_history_days: int = Field(default=30, ge=1, le=3650)
+    max_history_results: int = Field(default=100, ge=1, le=1000)
+    run_wait_seconds: float = Field(default=120, gt=0, le=120)
+    run_poll_seconds: float = Field(default=0.5, gt=0, le=10)
+
+
 class SourceDiscoverySettings(SettingsGroup):
     policy_version: str = Field(default="1", min_length=1, max_length=50)
     prompt_version: str = Field(default="1", min_length=1, max_length=50)
@@ -338,6 +347,7 @@ class Settings(SettingsGroup):
     pdf_extraction: PdfExtractionSettings
     rag: RagSettings
     intent_resolution: IntentResolutionSettings
+    tariff_queries: TariffQuerySettings
     source_discovery: SourceDiscoverySettings
     semantic_extraction: SemanticExtractionSettings
     hitl: HitlSettings

@@ -1,9 +1,11 @@
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.domain.intent import HistoryQuery, HistoryRequestKind
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     AnswerResult,
@@ -13,8 +15,10 @@ from app.domain.monitoring import (
     RunSubmissionResult,
     RunTrigger,
 )
+from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
 from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort
+from app.services.tariff_queries import CurrentTariffService, TariffHistoryService
 
 router = APIRouter(prefix="/api/v1")
 
@@ -41,6 +45,14 @@ def get_run_service(request: Request) -> RunServicePort:
 
 def get_answer_service(request: Request) -> RagAnswerService:
     return request.app.state.answer_service
+
+
+def get_current_tariff_service(request: Request) -> CurrentTariffService:
+    return request.app.state.current_tariff_service
+
+
+def get_tariff_history_service(request: Request) -> TariffHistoryService:
+    return request.app.state.tariff_history_service
 
 
 @router.post(
@@ -86,6 +98,51 @@ async def answer_question(
     service: Annotated[RagAnswerService, Depends(get_answer_service)],
 ) -> AnswerResult:
     return await service.answer(command)
+
+
+@router.get(
+    "/tariffs/current",
+    response_model=CurrentTariffResult,
+    tags=["tariffs"],
+)
+async def get_current_tariffs(
+    service: Annotated[CurrentTariffService, Depends(get_current_tariff_service)],
+    product: ProductType | None = None,
+    offering_id: OfferingId | None = None,
+) -> CurrentTariffResult:
+    try:
+        return await service.get_current(product=product, offering_id=offering_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/tariffs/history",
+    response_model=TariffHistoryResult,
+    tags=["tariffs"],
+)
+async def get_tariff_history(
+    service: Annotated[TariffHistoryService, Depends(get_tariff_history_service)],
+    kind: HistoryRequestKind,
+    product: ProductType | None = None,
+    offering_id: OfferingId | None = None,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+    limit: int = 20,
+) -> TariffHistoryResult:
+    try:
+        return await service.query(
+            HistoryQuery(
+                kind=kind,
+                product=product,
+                offering_id=offering_id,
+                start_at=start_at,
+                end_at=end_at,
+                limit=limit,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/reviews", status_code=501, tags=["reviews"])

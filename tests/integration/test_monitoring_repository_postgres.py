@@ -32,6 +32,8 @@ from app.domain.monitoring import (
     RunStatus,
     RunTrigger,
     SnapshotAttempt,
+    SnapshotChange,
+    SnapshotChangeSet,
     SnapshotStatus,
     SourceManifestItem,
 )
@@ -289,6 +291,123 @@ async def test_latest_accepted_snapshot_is_offering_scoped(
     assert latest is not None
     assert latest.id == snapshot.id
     assert latest.offering_id is OfferingId.CONSUMER_STANDARD
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reads_exclude_pending_values_and_report_newer_review(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    run_repository, run, execution = await _running_offering(monitoring_session_factory)
+    snapshots = PostgresSnapshotRepository(monitoring_session_factory)
+    accepted = _snapshot(run.id, execution.id)
+    assert accepted.accepted_at is not None
+    await snapshots.save_attempt(accepted)
+    await run_repository.finish(run.id, RunStatus.SUCCEEDED)
+
+    _, pending_run, pending_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    pending = accepted.model_copy(
+        update={
+            "id": uuid4(),
+            "run_id": pending_run.id,
+            "offering_execution_id": pending_execution.id,
+            "status": SnapshotStatus.REVIEW_REQUIRED,
+            "normalized_tariff": {"nominal_interest_rate": "99%"},
+            "created_at": accepted.created_at + timedelta(seconds=1),
+            "accepted_at": None,
+        }
+    )
+    await snapshots.save_attempt(pending)
+
+    latest = await snapshots.list_latest_accepted(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+    )
+    history = await snapshots.list_accepted_history(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        start_at=accepted.accepted_at - timedelta(days=1),
+        end_at=accepted.accepted_at + timedelta(days=1),
+        limit=10,
+    )
+    has_pending = await snapshots.has_newer_pending_review(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        accepted_at=accepted.accepted_at,
+    )
+
+    assert [item.id for item in latest] == [accepted.id]
+    assert [item.id for item in history] == [accepted.id]
+    assert has_pending is True
+
+
+@pytest.mark.asyncio
+async def test_change_reads_are_scope_time_and_limit_bounded(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    run_repository, first_run, first_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    repository = PostgresSnapshotRepository(monitoring_session_factory)
+    first = _snapshot(first_run.id, first_execution.id)
+    assert first.accepted_at is not None
+    await repository.save_attempt(first)
+    await run_repository.finish(first_run.id, RunStatus.SUCCEEDED)
+
+    _, second_run, second_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    second_time = first.accepted_at + timedelta(seconds=1)
+    second = first.model_copy(
+        update={
+            "id": uuid4(),
+            "run_id": second_run.id,
+            "offering_execution_id": second_execution.id,
+            "normalized_tariff": {"nominal_interest_rate": "14.0%"},
+            "previous_accepted_snapshot_id": first.id,
+            "created_at": second_time,
+            "accepted_at": second_time,
+        }
+    )
+    await repository.save_attempt(second)
+    change_set = SnapshotChangeSet(
+        id=uuid4(),
+        run_id=second_run.id,
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        previous_snapshot_id=first.id,
+        current_snapshot_id=second.id,
+        changes=(
+            SnapshotChange(
+                field="nominal_interest_rate",
+                previous="13.5%",
+                current="14.0%",
+            ),
+        ),
+        created_at=second_time,
+    )
+    await repository.save_changes(change_set)
+
+    changes = await repository.list_changes(
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        start_at=first.accepted_at,
+        end_at=second_time + timedelta(seconds=1),
+        limit=1,
+    )
+    older = await repository.get_latest_change_before(
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        before=second_time + timedelta(seconds=1),
+    )
+
+    assert [item.id for item in changes] == [change_set.id]
+    assert older is not None
+    assert older.id == change_set.id
 
 
 @pytest.mark.asyncio

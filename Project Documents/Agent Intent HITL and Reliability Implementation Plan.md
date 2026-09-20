@@ -568,14 +568,14 @@ separate correctness boundary.
 
 ### D. Current, status, wait, and history services
 
-- [ ] Add repositories for latest accepted snapshots and bounded accepted history/change
+- [x] Add repositories for latest accepted snapshots and bounded accepted history/change
       reads.
-- [ ] Implement seven-day freshness classification.
-- [ ] Implement sixty-day “what changed?” and thirty-day history defaults.
-- [ ] Implement the bounded two-minute run wait helper with early stop on review/terminal
+- [x] Implement seven-day freshness classification.
+- [x] Implement sixty-day “what changed?” and thirty-day history defaults.
+- [x] Implement the bounded two-minute run wait helper with early stop on review/terminal
       state.
-- [ ] Add focused agent tools and typed HTTP parity where appropriate.
-- [ ] Test stale, missing, pending-newer-review, first observation, unchanged, old change,
+- [x] Add focused agent tools and typed HTTP parity where appropriate.
+- [x] Test stale, missing, pending-newer-review, first observation, unchanged, old change,
       timeout, and terminal results.
 
 ### E. Review and quarantine domain

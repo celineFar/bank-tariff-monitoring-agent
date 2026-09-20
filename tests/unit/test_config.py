@@ -40,6 +40,10 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.intent_resolution.fuzzy_min_gap == 0.08
     assert settings.intent_resolution.max_candidates == 5
     assert settings.intent_resolution.classifier_max_attempts == 2
+    assert settings.tariff_queries.freshness_days == 7
+    assert settings.tariff_queries.recent_change_days == 60
+    assert settings.tariff_queries.default_history_days == 30
+    assert settings.tariff_queries.run_wait_seconds == 120
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 

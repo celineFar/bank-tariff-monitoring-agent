@@ -15,6 +15,7 @@ from app.config.models import (
     SemanticExtractionSettings,
     Settings,
     SourceDiscoverySettings,
+    TariffQuerySettings,
 )
 from app.config.seed_catalog import SeedCatalogError, load_seed_catalog
 
@@ -35,6 +36,7 @@ __all__ = [
     "SemanticExtractionSettings",
     "Settings",
     "SourceDiscoverySettings",
+    "TariffQuerySettings",
     "get_settings",
     "load_seed_catalog",
     "load_settings",

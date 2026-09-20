@@ -74,6 +74,12 @@ class EnvironmentSettings(BaseSettings):
     intent_fuzzy_min_gap: float = 0.08
     intent_max_candidates: int = 5
     intent_classifier_max_attempts: int = 2
+    tariff_freshness_days: int = 7
+    tariff_recent_change_days: int = 60
+    tariff_default_history_days: int = 30
+    tariff_max_history_results: int = 100
+    tariff_run_wait_seconds: float = 120
+    tariff_run_poll_seconds: float = 0.5
     source_discovery_policy_version: str = "1"
     source_discovery_prompt_version: str = "1"
     source_discovery_max_items_per_batch: int = 8

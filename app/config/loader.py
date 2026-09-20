@@ -20,6 +20,7 @@ from app.config.models import (
     SemanticExtractionSettings,
     Settings,
     SourceDiscoverySettings,
+    TariffQuerySettings,
 )
 
 
@@ -92,6 +93,14 @@ def load_settings(
             fuzzy_min_gap=raw.intent_fuzzy_min_gap,
             max_candidates=raw.intent_max_candidates,
             classifier_max_attempts=raw.intent_classifier_max_attempts,
+        ),
+        tariff_queries=TariffQuerySettings(
+            freshness_days=raw.tariff_freshness_days,
+            recent_change_days=raw.tariff_recent_change_days,
+            default_history_days=raw.tariff_default_history_days,
+            max_history_results=raw.tariff_max_history_results,
+            run_wait_seconds=raw.tariff_run_wait_seconds,
+            run_poll_seconds=raw.tariff_run_poll_seconds,
         ),
         source_discovery=SourceDiscoverySettings(
             policy_version=raw.source_discovery_policy_version,

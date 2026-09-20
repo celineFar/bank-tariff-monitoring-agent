@@ -38,6 +38,11 @@ from app.services.semantic_extraction import (
     SemanticExtractionService,
 )
 from app.services.source_discovery import SourceDiscoveryService
+from app.services.tariff_queries import (
+    CurrentTariffService,
+    RunWaitService,
+    TariffHistoryService,
+)
 
 
 @dataclass
@@ -49,6 +54,9 @@ class ApplicationContainer:
     tariff_pipeline: TariffPipeline
     answer_service: RagAnswerService
     request_resolver: RequestResolver
+    current_tariff_service: CurrentTariffService
+    tariff_history_service: TariffHistoryService
+    run_wait_service: RunWaitService
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -68,6 +76,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         else None
     )
     runs = PostgresRunRepository(sessions)
+    run_service = RunService(runs)
     catalog = load_seed_catalog(allowed_hosts=settings.http.allowed_source_hosts)
     request_resolver = RequestResolver(
         catalog,
@@ -79,6 +88,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         ),
     )
     artifacts = FileSystemArtifactStore(settings.application.artifact_temp_dir)
+    snapshots = PostgresSnapshotRepository(sessions)
     normalization = StructuralNormalizationService(
         artifact_reader=artifacts,
         pdf_extractor=GeminiPdfExtractionService(
@@ -132,7 +142,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             max_chunk_chars=settings.rag.chunk_size_chars
         ),
         embedder=indexer,
-        snapshots=PostgresSnapshotRepository(sessions),
+        snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
     )
     answer_service = RagAnswerService(
@@ -150,9 +160,22 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         engine=engine,
         http_client=http_client,
         runs=runs,
-        run_service=RunService(runs),
+        run_service=run_service,
         answer_service=answer_service,
         request_resolver=request_resolver,
+        current_tariff_service=CurrentTariffService(
+            catalog,
+            snapshots,
+            settings.tariff_queries,
+        ),
+        tariff_history_service=TariffHistoryService(
+            snapshots,
+            settings.tariff_queries,
+        ),
+        run_wait_service=RunWaitService(
+            run_service,
+            settings.tariff_queries,
+        ),
         tariff_pipeline=TariffPipeline(
             catalog=catalog,
             indexing=indexing,
