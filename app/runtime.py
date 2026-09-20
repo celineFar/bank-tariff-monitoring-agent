@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import httpx
 from google import genai
+from google.adk.apps import App
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.config import Settings, load_seed_catalog
@@ -62,6 +63,7 @@ class ApplicationContainer:
     run_service: RunService
     tariff_pipeline: TariffPipeline
     monitoring_workflow_runner: MonitoringWorkflowRunner
+    monitoring_workflow_app: App
     workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     request_resolver: RequestResolver
@@ -181,13 +183,14 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         runs=runs,
         pipeline=tariff_pipeline,
         reviews=reviews,
-        decisions=ReviewDecisionService(reviews),
+        decisions=ReviewDecisionService(reviews, snapshots),
     )
     from app.app_utils import services as adk_services
 
     session_service = adk_services.get_session_service()
+    monitoring_workflow_app = build_monitoring_app(monitoring_workflow)
     monitoring_workflow_runner = MonitoringWorkflowRunner(
-        app=build_monitoring_app(monitoring_workflow),
+        app=monitoring_workflow_app,
         session_service=session_service,
         artifact_service=adk_services.get_artifact_service(),
     )
@@ -215,6 +218,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         ),
         tariff_pipeline=tariff_pipeline,
         monitoring_workflow_runner=monitoring_workflow_runner,
+        monitoring_workflow_app=monitoring_workflow_app,
         workflow_reconciliation=WorkflowReconciliationService(
             runs=runs,
             reviews=reviews,

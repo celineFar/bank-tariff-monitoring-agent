@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.domain.intent import HistoryQuery, HistoryRequestKind
 from app.domain.models import OfferingId, ProductType
@@ -15,7 +15,9 @@ from app.domain.monitoring import (
     RunSubmissionResult,
     RunTrigger,
 )
+from app.domain.review import ReviewStatus, ReviewTask
 from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
+from app.repositories.contracts import ReviewRepository
 from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort
 from app.services.tariff_queries import CurrentTariffService, TariffHistoryService
@@ -26,12 +28,6 @@ router = APIRouter(prefix="/api/v1")
 class RunRequest(BaseModel):
     product: ProductType
     offering_id: OfferingId | None = None
-
-
-class ReviewDecision(BaseModel):
-    decision: Literal["approve", "reject"]
-    reviewer: str = Field(min_length=1, max_length=200)
-    comment: str | None = Field(default=None, max_length=2000)
 
 
 @router.get("/healthz", tags=["operations"])
@@ -53,6 +49,10 @@ def get_current_tariff_service(request: Request) -> CurrentTariffService:
 
 def get_tariff_history_service(request: Request) -> TariffHistoryService:
     return request.app.state.tariff_history_service
+
+
+def get_review_repository(request: Request) -> ReviewRepository:
+    return request.app.state.review_repository
 
 
 @router.post(
@@ -145,11 +145,34 @@ async def get_tariff_history(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/reviews", status_code=501, tags=["reviews"])
-async def list_reviews() -> None:
-    raise HTTPException(status_code=501, detail="ReviewRepository is not implemented.")
+@router.get("/reviews", response_model=list[ReviewTask], tags=["reviews"])
+async def list_reviews(
+    repository: Annotated[ReviewRepository, Depends(get_review_repository)],
+    review_status: ReviewStatus | None = None,
+    product: ProductType | None = None,
+    offering_id: OfferingId | None = None,
+    run_id: UUID | None = None,
+    limit: int = 100,
+) -> list[ReviewTask]:
+    try:
+        reviews = await repository.list(
+            status=review_status,
+            product=product,
+            offering_id=offering_id,
+            run_id=run_id,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return list(reviews)
 
 
-@router.post("/reviews/{review_id}/decision", status_code=501, tags=["reviews"])
-async def decide_review(review_id: UUID, decision: ReviewDecision) -> None:
-    raise HTTPException(status_code=501, detail="ReviewRepository is not implemented.")
+@router.get("/reviews/{review_id}", response_model=ReviewTask, tags=["reviews"])
+async def get_review(
+    review_id: UUID,
+    repository: Annotated[ReviewRepository, Depends(get_review_repository)],
+) -> ReviewTask:
+    review = await repository.get(review_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return review

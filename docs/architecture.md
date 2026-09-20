@@ -34,7 +34,8 @@ shell, or SQL tool.
   agent, and worker; consumers depend only on the relevant group.
 - `app/tools.py`: narrow ADK adapters that call application services. Monitoring
   submission requires a one-use, scope-bound authorization produced by the resolver.
-- `app/api/`: user-trigger, run-status, and HITL review HTTP contracts.
+- `app/api/`: user-trigger, run-status, and read-only HITL review diagnostics. Native
+  review decisions enter only through the resumed ADK invocation.
 - `app/domain/`: validated tariff/evidence models and pure business rules.
 - `app/services/`: pipeline orchestration interfaces and deterministic application
   services. `AcquisitionService` combines restricted static HTML retrieval, faithful
@@ -282,8 +283,12 @@ See `docs/tariff-query-services.md`.
 Typed review tasks are durable business records correlated to candidate snapshots and,
 when available, ADK workflow identifiers. Candidate documents and chunks are persisted
 inactive; they cannot displace the prior accepted active version. Same-scope newer reviews
-supersede older pending reviews under a database lock and uniqueness constraint. Review
-approval does not itself publish candidate data. See `docs/review-quarantine.md`.
+supersede older pending reviews under a database lock and uniqueness constraint. A native
+decision is validated against its field schema and captured evidence. After all reviews
+for a snapshot are approved, one database transaction updates and accepts the snapshot,
+records its change set, activates candidate documents/chunks, retires replaced active
+versions, and completes the offering. Rejection leaves the previous accepted publication
+active. See `docs/review-quarantine.md` and `docs/native-hitl-review.md`.
 
 ## Resumable monitoring workflow boundary
 
@@ -310,8 +315,11 @@ Resumption sends a native `adk_request_input` function response with the persist
 interrupt ID into that same session. ADK restores the paused invocation from its events,
 so completed pipeline work is replayed as node output rather than executed again. Only a
 narrow deterministic decision service may accept the bounded response, validate its
-candidate/evidence references, update the durable review, and transition the business
-run to a terminal state. No module-level repository handle is used by workflow nodes.
+candidate/evidence references, rebuild the reviewed snapshot, and transition the business
+run to a terminal state. Reviewer identity is derived from and checked against the
+persisted ADK user/session correlation rather than accepted from the response payload.
+`RuntimeAgentLoader` exposes the composition-root workflow `App` in ADK Web while keeping
+its repositories injected. No module-level repository handle is used by workflow nodes.
 
 The shared service factory resolves the validated PostgreSQL `SESSION_SERVICE_URI` even
 in the headless worker, whose Pydantic `.env` loading does not mutate process environment

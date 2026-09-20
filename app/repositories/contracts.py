@@ -31,6 +31,7 @@ from app.domain.retrieval import RetrievalCandidate
 from app.domain.review import (
     ReviewCorrelation,
     ReviewDecision,
+    ReviewSnapshotUpdate,
     ReviewStatus,
     ReviewTask,
 )
@@ -116,6 +117,8 @@ class RunRepository(Protocol):
 
 
 class MonitoringSnapshotRepository(Protocol):
+    async def get(self, snapshot_id: UUID) -> SnapshotAttempt | None: ...
+
     async def save_attempt(self, snapshot: SnapshotAttempt) -> UUID: ...
 
     async def get_latest_accepted(
@@ -202,6 +205,14 @@ class ReviewRepository(Protocol):
         *,
         reviewer: str,
         comment: str | None = None,
+    ) -> ReviewTask: ...
+    async def approve_with_snapshot(
+        self,
+        review_id: UUID,
+        decision: ReviewDecision,
+        update: ReviewSnapshotUpdate,
+        *,
+        reviewer: str,
     ) -> ReviewTask: ...
     async def reject(
         self,

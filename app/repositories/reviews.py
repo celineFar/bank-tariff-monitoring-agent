@@ -13,6 +13,7 @@ from app.domain.review import (
     ReviewDecision,
     ReviewDecisionType,
     ReviewReason,
+    ReviewSnapshotUpdate,
     ReviewStatus,
     ReviewTask,
 )
@@ -111,7 +112,7 @@ class PostgresReviewRepository:
                               AND offering_id = :offering_id
                               AND issue_scope = :issue_scope
                               AND status = 'pending'
-                            RETURNING id, run_id, offering_execution_id
+                            RETURNING id, run_id, offering_execution_id, offering_id
                             """
                         ),
                         {
@@ -124,12 +125,13 @@ class PostgresReviewRepository:
                 ).all()
             )
             if superseded_rows:
-                await self._mark_documents(
-                    session,
-                    tuple(row.run_id for row in superseded_rows),
-                    "superseded",
-                )
                 for superseded in superseded_rows:
+                    await self._mark_documents(
+                        session,
+                        (superseded.run_id,),
+                        "superseded",
+                        offering_id=OfferingId(superseded.offering_id),
+                    )
                     await session.execute(
                         text(
                             """
@@ -144,9 +146,7 @@ class PostgresReviewRepository:
                         ),
                         {
                             "run_id": superseded.run_id,
-                            "offering_execution_id": (
-                                superseded.offering_execution_id
-                            ),
+                            "offering_execution_id": (superseded.offering_execution_id),
                             "payload": _json(
                                 {
                                     "review_id": str(superseded.id),
@@ -236,7 +236,7 @@ class PostgresReviewRepository:
                         f"""
                         SELECT * FROM human_reviews
                         WHERE idempotency_key IS NOT NULL
-                        {' '.join(clauses)}
+                        {" ".join(clauses)}
                         ORDER BY created_at DESC, id DESC
                         LIMIT :limit
                         """
@@ -291,6 +291,102 @@ class PostgresReviewRepository:
             reviewer=reviewer,
             comment=comment,
         )
+
+    async def approve_with_snapshot(
+        self,
+        review_id: UUID,
+        decision: ReviewDecision,
+        update: ReviewSnapshotUpdate,
+        *,
+        reviewer: str,
+    ) -> ReviewTask:
+        if decision.decision_type is ReviewDecisionType.REJECT_ALL:
+            raise ValueError("approval cannot use reject_all")
+        normalized_reviewer = reviewer.strip()
+        if not normalized_reviewer or len(normalized_reviewer) > 200:
+            raise ValueError("reviewer must contain 1 to 200 characters")
+        now = datetime.now(UTC)
+        async with self._session_factory() as session, session.begin():
+            current = await self._lock(session, review_id)
+            if current.status is ReviewStatus.APPROVED and current.decision == decision:
+                return current
+            if current.status is not ReviewStatus.PENDING:
+                raise ReviewConflictError("review is no longer pending")
+            if current.snapshot_id != update.snapshot_id:
+                raise ValueError("snapshot update is outside the review scope")
+            snapshot = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT id, canonical_sha256, status
+                        FROM tariff_snapshots
+                        WHERE id = :id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"id": update.snapshot_id},
+                )
+            ).first()
+            if snapshot is None:
+                raise LookupError(str(update.snapshot_id))
+            if snapshot.status != "review_required":
+                raise ReviewConflictError("candidate snapshot is no longer reviewable")
+            if snapshot.canonical_sha256 != update.expected_canonical_sha256:
+                raise ReviewConflictError("candidate snapshot changed during review")
+            row = (
+                await session.execute(
+                    text(
+                        """
+                        UPDATE human_reviews
+                        SET status = 'approved', reviewer = :reviewer,
+                            decision = CAST(:decision AS jsonb), decided_at = :now,
+                            updated_at = :now
+                        WHERE id = :id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "id": review_id,
+                        "reviewer": normalized_reviewer,
+                        "decision": _json(decision.model_dump(mode="json")),
+                        "now": now,
+                    },
+                )
+            ).one()
+            await session.execute(
+                text(
+                    """
+                    UPDATE tariff_snapshots
+                    SET normalized_tariff = CAST(:normalized_tariff AS jsonb),
+                        semantic_extraction = CAST(:semantic_extraction AS jsonb),
+                        validation = CAST(:validation AS jsonb),
+                        canonical_sha256 = :canonical_sha256
+                    WHERE id = :id
+                    """
+                ),
+                {
+                    "id": update.snapshot_id,
+                    "normalized_tariff": _json(update.normalized_tariff),
+                    "semantic_extraction": _json(update.semantic_extraction),
+                    "validation": _json(update.validation),
+                    "canonical_sha256": update.canonical_sha256,
+                },
+            )
+            unresolved = await session.scalar(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM human_reviews
+                        WHERE snapshot_id = :snapshot_id
+                          AND status <> 'approved'
+                    )
+                    """
+                ),
+                {"snapshot_id": update.snapshot_id},
+            )
+            if update.ready_for_activation and not unresolved:
+                await self._activate_snapshot(session, current, update, now)
+        return _review_from_row(row)
 
     async def reject(
         self,
@@ -363,6 +459,32 @@ class PostgresReviewRepository:
                     session,
                     (current.run_id,),
                     "rejected",
+                    offering_id=current.offering_id,
+                )
+                await session.execute(
+                    text(
+                        """
+                        UPDATE tariff_snapshots
+                        SET status = 'rejected', accepted_at = NULL
+                        WHERE id = :snapshot_id
+                          AND status = 'review_required'
+                        """
+                    ),
+                    {"snapshot_id": current.snapshot_id},
+                )
+                await session.execute(
+                    text(
+                        """
+                        UPDATE offering_executions
+                        SET status = 'failed', current_stage = 'review_rejected',
+                            failure_count = failure_count + 1,
+                            completed_at = COALESCE(completed_at, now()),
+                            updated_at = now()
+                        WHERE id = :execution_id
+                          AND status = 'candidate_review'
+                        """
+                    ),
+                    {"execution_id": current.offering_execution_id},
                 )
         return _review_from_row(row)
 
@@ -400,13 +522,178 @@ class PostgresReviewRepository:
             await self._mark_documents(
                 session,
                 (current.run_id,),
-                (
-                    "superseded"
-                    if status is ReviewStatus.SUPERSEDED
-                    else "rejected"
-                ),
+                ("superseded" if status is ReviewStatus.SUPERSEDED else "rejected"),
+                offering_id=current.offering_id,
             )
         return _review_from_row(row)
+
+    @staticmethod
+    async def _activate_snapshot(
+        session: AsyncSession,
+        review: ReviewTask,
+        update: ReviewSnapshotUpdate,
+        now: datetime,
+    ) -> None:
+        identity_match = """
+            old.bank = candidate.bank
+            AND old.product = candidate.product
+            AND old.offering_id = candidate.offering_id
+            AND old.document_kind = candidate.document_kind
+            AND old.document_key = candidate.document_key
+            AND old.id <> candidate.id
+        """
+        await session.execute(
+            text(
+                f"""
+                WITH candidate AS (
+                    SELECT * FROM knowledge_documents
+                    WHERE run_id = :run_id
+                      AND offering_id = :offering_id
+                      AND publication_state = 'pending_review'
+                ), old_documents AS (
+                    SELECT DISTINCT old.id
+                    FROM knowledge_documents AS old
+                    JOIN candidate ON {identity_match}
+                    WHERE old.is_active = true
+                )
+                UPDATE knowledge_chunks
+                SET is_active = false, retired_at = :now, updated_at = :now
+                WHERE document_id IN (SELECT id FROM old_documents)
+                  AND is_active = true
+                """
+            ),
+            {
+                "run_id": review.run_id,
+                "offering_id": review.offering_id.value,
+                "now": now,
+            },
+        )
+        await session.execute(
+            text(
+                f"""
+                WITH candidate AS (
+                    SELECT * FROM knowledge_documents
+                    WHERE run_id = :run_id
+                      AND offering_id = :offering_id
+                      AND publication_state = 'pending_review'
+                )
+                UPDATE knowledge_documents AS old
+                SET is_active = false, publication_state = 'retired',
+                    retired_at = :now
+                FROM candidate
+                WHERE {identity_match}
+                  AND old.is_active = true
+                """
+            ),
+            {
+                "run_id": review.run_id,
+                "offering_id": review.offering_id.value,
+                "now": now,
+            },
+        )
+        await session.execute(
+            text(
+                """
+                UPDATE knowledge_documents
+                SET is_active = true, publication_state = 'active', retired_at = NULL
+                WHERE run_id = :run_id
+                  AND offering_id = :offering_id
+                  AND publication_state = 'pending_review'
+                """
+            ),
+            {"run_id": review.run_id, "offering_id": review.offering_id.value},
+        )
+        await session.execute(
+            text(
+                """
+                UPDATE knowledge_chunks AS chunk
+                SET is_active = true, retired_at = NULL, updated_at = :now
+                FROM knowledge_documents AS document
+                WHERE chunk.document_id = document.id
+                  AND document.run_id = :run_id
+                  AND document.offering_id = :offering_id
+                  AND document.publication_state = 'active'
+                """
+            ),
+            {
+                "run_id": review.run_id,
+                "offering_id": review.offering_id.value,
+                "now": now,
+            },
+        )
+        await session.execute(
+            text(
+                """
+                UPDATE tariff_snapshots
+                SET status = 'accepted', accepted_at = :now
+                WHERE id = :snapshot_id AND status = 'review_required'
+                """
+            ),
+            {"snapshot_id": update.snapshot_id, "now": now},
+        )
+        await session.execute(
+            text(
+                """
+                UPDATE offering_executions
+                SET status = 'succeeded', current_stage = 'review_approved',
+                    completed_at = COALESCE(completed_at, :now), updated_at = :now
+                WHERE id = :execution_id AND status = 'candidate_review'
+                """
+            ),
+            {"execution_id": review.offering_execution_id, "now": now},
+        )
+        await session.execute(
+            text("DELETE FROM tariff_changes WHERE current_snapshot_id = :snapshot_id"),
+            {"snapshot_id": update.snapshot_id},
+        )
+        if update.changes is not None:
+            changes = update.changes
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO tariff_changes (
+                        id, run_id, product, offering_id, previous_snapshot_id,
+                        current_snapshot_id, changes, change_count, created_at
+                    )
+                    VALUES (
+                        :id, :run_id, :product, :offering_id,
+                        :previous_snapshot_id, :current_snapshot_id,
+                        CAST(:changes AS jsonb), :change_count, :created_at
+                    )
+                    """
+                ),
+                {
+                    "id": changes.id,
+                    "run_id": changes.run_id,
+                    "product": changes.product.value,
+                    "offering_id": changes.offering_id.value,
+                    "previous_snapshot_id": changes.previous_snapshot_id,
+                    "current_snapshot_id": changes.current_snapshot_id,
+                    "changes": _json(
+                        [item.model_dump(mode="json") for item in changes.changes]
+                    ),
+                    "change_count": len(changes.changes),
+                    "created_at": changes.created_at,
+                },
+            )
+        await session.execute(
+            text(
+                """
+                INSERT INTO audit_events (
+                    run_id, offering_execution_id, event_type, payload
+                )
+                VALUES (
+                    :run_id, :offering_execution_id,
+                    'review.snapshot_activated', CAST(:payload AS jsonb)
+                )
+                """
+            ),
+            {
+                "run_id": review.run_id,
+                "offering_execution_id": review.offering_execution_id,
+                "payload": _json({"snapshot_id": str(update.snapshot_id)}),
+            },
+        )
 
     @staticmethod
     async def _lock(session: AsyncSession, review_id: UUID) -> ReviewTask:
@@ -425,16 +712,24 @@ class PostgresReviewRepository:
         session: AsyncSession,
         run_ids: tuple[UUID, ...],
         state: str,
+        *,
+        offering_id: OfferingId | None = None,
     ) -> None:
+        offering_clause = ""
+        parameters: dict[str, object] = {"run_ids": list(run_ids), "state": state}
+        if offering_id is not None:
+            offering_clause = "AND offering_id = :offering_id"
+            parameters["offering_id"] = offering_id.value
         await session.execute(
             text(
-                """
+                f"""
                 UPDATE knowledge_documents
                 SET publication_state = :state
                 WHERE run_id = ANY(:run_ids)
                   AND publication_state = 'pending_review'
                   AND is_active = false
+                  {offering_clause}
                 """
             ),
-            {"run_ids": list(run_ids), "state": state},
+            parameters,
         )

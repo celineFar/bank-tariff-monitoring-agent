@@ -790,7 +790,7 @@ async def test_postgres_session_restart_resumes_same_workflow_invocation(
         runs=runs,
         pipeline=pipeline,
         reviews=reviews,
-        decisions=ReviewDecisionService(reviews),
+        decisions=ReviewDecisionService(reviews, snapshots),
     )
     first_sessions = DatabaseSessionService(db_url=_test_database_url())
     await first_sessions.prepare_tables()

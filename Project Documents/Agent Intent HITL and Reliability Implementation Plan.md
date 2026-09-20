@@ -632,15 +632,15 @@ separate correctness boundary.
 
 ### I. Native reviewer experience
 
-- [ ] Define bounded `RequestInput` message/payload schemas for large change, source
+- [x] Define bounded `RequestInput` message/payload schemas for large change, source
       conflict, applicability, and missing field.
-- [ ] Ensure ADK Web displays enough product, field, candidate, source URL, page/section,
+- [x] Ensure ADK Web displays enough product, field, candidate, source URL, page/section,
       and excerpt information to decide.
-- [ ] Support select, reject, and evidence-linked override inputs.
-- [ ] Validate reviewer identity from the ADK/session boundary.
-- [ ] Keep any project review HTTP routes read-only and document ADK Web as the sole
+- [x] Support select, reject, and evidence-linked override inputs.
+- [x] Validate reviewer identity from the ADK/session boundary.
+- [x] Keep any project review HTTP routes read-only and document ADK Web as the sole
       decision interface.
-- [ ] Demonstrate a paused scheduled/API-triggered run being resumed by a reviewer.
+- [x] Demonstrate a paused scheduled/API-triggered run being resumed by a reviewer.
 
 ### J. Failure-code and adapter hardening
 

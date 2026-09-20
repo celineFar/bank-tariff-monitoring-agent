@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.routes import router
-from app.domain.models import ProductType
+from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     ClaimedRun,
     MonitoringRun,
@@ -17,6 +17,7 @@ from app.domain.monitoring import (
     RunSubmissionResult,
     RunTrigger,
 )
+from app.domain.review import ReviewReason, ReviewStatus, ReviewTask
 from app.tools import configure_run_service, start_tariff_monitoring
 from app.worker import MonitoringWorker, run_scheduled_monitoring
 
@@ -54,6 +55,17 @@ class _ToolContext:
         self.state = state
 
 
+class _ReviewRepository:
+    def __init__(self, review: ReviewTask) -> None:
+        self.review = review
+
+    async def list(self, **kwargs):
+        return (self.review,)
+
+    async def get(self, review_id):
+        return self.review if review_id == self.review.id else None
+
+
 @pytest.mark.asyncio
 async def test_http_submit_and_status_use_shared_run_service() -> None:
     service = _RunService()
@@ -78,6 +90,45 @@ async def test_http_submit_and_status_use_shared_run_service() -> None:
     assert command.trigger is RunTrigger.API
     assert command.product is ProductType.CONSUMER_LOAN
     assert key == "request-1"
+
+
+@pytest.mark.asyncio
+async def test_review_routes_are_diagnostic_and_read_only() -> None:
+    now = datetime.now(UTC)
+    review = ReviewTask(
+        id=uuid4(),
+        idempotency_key="review:http:1",
+        run_id=uuid4(),
+        offering_execution_id=uuid4(),
+        snapshot_id=uuid4(),
+        product=ProductType.MORTGAGE,
+        offering_id=OfferingId.MORTGAGE_PRIMARY,
+        reason=ReviewReason.LARGE_RATE_CHANGE,
+        issue_scope="interest_rate",
+        candidates=(),
+        status=ReviewStatus.PENDING,
+        created_at=now,
+        updated_at=now,
+    )
+    app = FastAPI()
+    app.state.review_repository = _ReviewRepository(review)
+    app.include_router(router)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        listed = await client.get("/api/v1/reviews")
+        fetched = await client.get(f"/api/v1/reviews/{review.id}")
+        decision = await client.post(
+            f"/api/v1/reviews/{review.id}/decision",
+            json={"decision_type": "approve"},
+        )
+
+    assert listed.status_code == 200
+    assert fetched.status_code == 200
+    assert fetched.json()["id"] == str(review.id)
+    assert decision.status_code in {404, 405}
 
 
 @pytest.mark.asyncio

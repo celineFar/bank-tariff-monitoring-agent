@@ -16,14 +16,20 @@ from google.genai import types
 
 from app.domain.monitoring import MonitoringRun, RunStatus
 from app.domain.monitoring_workflow import (
+    MonitoringReviewRequest,
     MonitoringReviewResponse,
     MonitoringWorkflowInput,
     MonitoringWorkflowResult,
     MonitoringWorkflowState,
+    ReviewCandidateView,
+    ReviewEvidenceView,
+    ReviewPromptView,
 )
 from app.domain.review import (
     ReviewCorrelation,
     ReviewDecision,
+    ReviewDecisionType,
+    ReviewReason,
     ReviewStatus,
     ReviewTask,
 )
@@ -64,9 +70,7 @@ def build_monitoring_workflow(
 
     def route_outcome(node_input: MonitoringRun) -> Event:
         route = (
-            "review"
-            if node_input.status is RunStatus.AWAITING_REVIEW
-            else "finished"
+            "review" if node_input.status is RunStatus.AWAITING_REVIEW else "finished"
         )
         return Event(
             output=node_input.model_dump(mode="json"),
@@ -109,16 +113,14 @@ def build_monitoring_workflow(
                 "interrupt_id": correlation.interrupt_id,
             },
         )
+        request = build_review_request(node_input.id, attached)
         yield RequestInput(
             interrupt_id=interrupt_id,
             message=(
                 f"{len(attached)} tariff review decision(s) are required. "
                 "Use only the captured candidate and evidence references shown."
             ),
-            payload={
-                "run_id": str(node_input.id),
-                "reviews": [item.model_dump(mode="json") for item in attached],
-            },
+            payload=request.model_dump(mode="json"),
             response_schema=MonitoringReviewResponse,
         )
 
@@ -136,6 +138,13 @@ def build_monitoring_workflow(
         run_ids = {item.run_id for item in current}
         if len(run_ids) != 1:
             raise ValueError("all review decisions must belong to one run")
+        if any(
+            item.correlation is None
+            or item.correlation.user_id != reviewer
+            or item.correlation.session_id != str(ctx.session.id)
+            for item in current
+        ):
+            raise ValueError("reviewer session does not own this review interruption")
         run_id = next(iter(run_ids))
         await runs.record_audit(
             run_id,
@@ -157,18 +166,43 @@ def build_monitoring_workflow(
                 "review.resume_failed",
                 reason_code="review_set_mismatch",
             )
-            raise ValueError("response must decide every current pending review exactly once")
-        try:
-            decided = tuple(
-                [
-                    await decisions.apply(
-                        item.review_id,
-                        item.decision,
-                        reviewer=reviewer,
-                    )
-                    for item in node_input.decisions
-                ]
+            raise ValueError(
+                "response must decide every current pending review exactly once"
             )
+        try:
+            rejected_item = next(
+                (
+                    item
+                    for item in node_input.decisions
+                    if item.decision.decision_type is ReviewDecisionType.REJECT_ALL
+                ),
+                None,
+            )
+            if rejected_item is not None:
+                rejected_task = await decisions.apply(
+                    rejected_item.review_id,
+                    rejected_item.decision,
+                    reviewer=reviewer,
+                )
+                superseded = tuple(
+                    [
+                        await reviews.supersede(item.review_id)
+                        for item in node_input.decisions
+                        if item.review_id != rejected_item.review_id
+                    ]
+                )
+                decided = (rejected_task, *superseded)
+            else:
+                decided = tuple(
+                    [
+                        await decisions.apply(
+                            item.review_id,
+                            item.decision,
+                            reviewer=reviewer,
+                        )
+                        for item in node_input.decisions
+                    ]
+                )
         except Exception as exc:
             await runs.record_audit(
                 run_id,
@@ -366,3 +400,93 @@ def terminal_review_status(
     if approved or prior_succeeded:
         return RunStatus.PARTIAL_SUCCESS
     return RunStatus.FAILED
+
+
+def build_review_request(
+    run_id: UUID,
+    tasks: tuple[ReviewTask, ...],
+) -> MonitoringReviewRequest:
+    return MonitoringReviewRequest(
+        run_id=run_id,
+        reviews=tuple(_review_prompt(task) for task in tasks),
+    )
+
+
+def _review_prompt(task: ReviewTask) -> ReviewPromptView:
+    allowed, guidance = _review_policy(task.reason)
+    raw_items = task.evidence.get("items", [])
+    raw_items = raw_items if isinstance(raw_items, list) else []
+    evidence = tuple(
+        view
+        for raw in raw_items
+        if isinstance(raw, dict)
+        if (view := _evidence_view(raw)) is not None
+    )
+    return ReviewPromptView(
+        review_id=task.id,
+        reason=task.reason,
+        product=task.product,
+        offering_id=task.offering_id,
+        issue_scope=task.issue_scope,
+        guidance=guidance,
+        allowed_decisions=allowed,
+        candidates=tuple(
+            ReviewCandidateView.model_validate(candidate.model_dump(mode="json"))
+            for candidate in task.candidates
+        ),
+        evidence=evidence[:20],
+    )
+
+
+def _review_policy(
+    reason: ReviewReason,
+) -> tuple[tuple[ReviewDecisionType, ...], str]:
+    if reason is ReviewReason.LARGE_RATE_CHANGE:
+        return (
+            (
+                ReviewDecisionType.APPROVE,
+                ReviewDecisionType.REJECT_ALL,
+                ReviewDecisionType.OVERRIDE,
+            ),
+            "Confirm the evidence-backed large rate change, reject the candidate "
+            "snapshot, or provide an evidence-linked structured override.",
+        )
+    if reason is ReviewReason.OFFICIAL_SOURCE_CONFLICT:
+        return (
+            (
+                ReviewDecisionType.SELECT_CANDIDATE,
+                ReviewDecisionType.REJECT_ALL,
+                ReviewDecisionType.OVERRIDE,
+            ),
+            "Select one captured official-source candidate, reject all candidates, "
+            "or provide a structured override tied to captured evidence.",
+        )
+    return (
+        (ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE),
+        "Reject the candidate snapshot or provide a structured value with a reason "
+        "and reference to captured official evidence.",
+    )
+
+
+def _evidence_view(raw: dict) -> ReviewEvidenceView | None:
+    evidence_id = raw.get("evidence_id")
+    content = raw.get("content")
+    locator = raw.get("locator")
+    if not isinstance(evidence_id, str) or not isinstance(content, str):
+        return None
+    locator = locator if isinstance(locator, dict) else {}
+    source_url = locator.get("source_url")
+    if not isinstance(source_url, str):
+        return None
+    page = locator.get("pdf_page")
+    return ReviewEvidenceView(
+        evidence_id=evidence_id,
+        source_url=source_url,
+        source_type=(
+            str(locator["source_type"]) if locator.get("source_type") else None
+        ),
+        document_id=(str(raw["document_id"]) if raw.get("document_id") else None),
+        page=page if isinstance(page, int) else None,
+        section=str(raw["section"]) if raw.get("section") else None,
+        excerpt=content[:1500],
+    )

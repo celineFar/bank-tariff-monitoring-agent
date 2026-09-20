@@ -28,6 +28,7 @@ See [the architecture](docs/architecture.md), [configuration reference](docs/con
 [knowledge-store design](docs/knowledge-store.md),
 [seed catalog](docs/seed-catalog.md), [monitoring run lifecycle](docs/run-lifecycle.md),
 [snapshot lifecycle](docs/snapshot-lifecycle.md),
+[native ADK review](docs/native-hitl-review.md),
 [indexing projections](docs/indexing-projection.md), [RAG answering](docs/rag-answering.md), and
 [.agents-cli-spec.md](.agents-cli-spec.md).
 

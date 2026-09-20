@@ -127,7 +127,7 @@ class _ReviewRepository:
 async def test_decision_service_rejects_candidate_outside_review_scope() -> None:
     task = _review_task()
     repository = _ReviewRepository(task)
-    service = ReviewDecisionService(repository)
+    service = ReviewDecisionService(repository, object())
 
     with pytest.raises(ValueError, match="outside the review scope"):
         await service.apply(
@@ -146,7 +146,7 @@ async def test_decision_service_rejects_candidate_outside_review_scope() -> None
 async def test_decision_service_routes_reject_all_without_value() -> None:
     task = _review_task()
     repository = _ReviewRepository(task)
-    service = ReviewDecisionService(repository)
+    service = ReviewDecisionService(repository, object())
 
     result = await service.apply(
         task.id,

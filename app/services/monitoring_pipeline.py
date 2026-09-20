@@ -375,7 +375,9 @@ class TariffPipeline:
             else:
                 review_required += 1
                 if self._reviews is None:
-                    raise RuntimeError("review repository is required for candidate data")
+                    raise RuntimeError(
+                        "review repository is required for candidate data"
+                    )
                 for review in _review_tasks(result.snapshot):
                     persisted = await self._reviews.create(review)
                     review_ids.append(persisted.id)
@@ -436,6 +438,7 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
                         evidence_references=tuple(str(item) for item in references),
                         conditions={
                             "source_type": raw_candidate.get("source_type"),
+                            "quote": raw_candidate.get("quote"),
                             "conditions": raw_candidate.get("conditions", []),
                         },
                     )

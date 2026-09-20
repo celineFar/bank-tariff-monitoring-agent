@@ -13,12 +13,14 @@ are idempotent; a conflicting late decision is rejected.
 Documents published with a `candidate` or `review_required` snapshot are inserted with
 `publication_state=pending_review`, with inactive chunks. Existing accepted documents stay
 active. Rejected, failed, or superseded review documents remain inactive and receive the
-corresponding terminal publication state. Approval alone does not activate documents;
-the later deterministic decision service will revalidate and atomically activate the
-snapshot, change set, and eligible documents.
+corresponding terminal publication state. The deterministic decision service validates
+native ADK input against the field schema and captured evidence. Once every review for a
+snapshot is approved, the repository atomically activates the snapshot, change set, and
+eligible documents. A rejection preserves the preceding accepted publication.
 
-Reviewer choices and native ADK pause/resume are added in the later workflow phases. The
-ordinary conversational agent never receives a review-decision tool.
+Reviewer choices enter only through native ADK pause/resume in ADK Web. Project review
+HTTP routes are read-only, and the ordinary conversational agent never receives a
+review-decision tool. See `docs/native-hitl-review.md`.
 
 ## Deterministic routing
 

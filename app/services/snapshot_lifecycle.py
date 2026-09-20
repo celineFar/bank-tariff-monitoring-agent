@@ -234,9 +234,7 @@ def detect_review_signals(
                 }
             )
     existing_scopes = {
-        str(signal["issue_scope"])
-        for signal in signals
-        if "issue_scope" in signal
+        str(signal["issue_scope"]) for signal in signals if "issue_scope" in signal
     }
     for item in result.review_items:
         if item.field.value in existing_scopes:
@@ -310,6 +308,7 @@ def _conflict_candidates(field, evidence_by_id: dict[str, EvidenceItem]):
                 "value": percentages[0] if len(percentages) == 1 else citation.quote,
                 "evidence_references": [citation.evidence_id],
                 "source_type": citation.source_type.value,
+                "quote": citation.quote,
                 "conditions": list(evidence.conditions),
             }
         )
@@ -319,7 +318,9 @@ def _conflict_candidates(field, evidence_by_id: dict[str, EvidenceItem]):
 def _rate_values(value: JsonValue) -> tuple[tuple[str, Decimal], ...]:
     values: list[tuple[str, Decimal]] = []
 
-    def visit(item: JsonValue, path: tuple[str, ...], *, rate_key: bool = False) -> None:
+    def visit(
+        item: JsonValue, path: tuple[str, ...], *, rate_key: bool = False
+    ) -> None:
         if isinstance(item, dict):
             for key, nested in item.items():
                 visit(
@@ -330,13 +331,13 @@ def _rate_values(value: JsonValue) -> tuple[tuple[str, Decimal], ...]:
         elif isinstance(item, list):
             for index, nested in enumerate(item):
                 visit(nested, (*path, str(index)), rate_key=rate_key)
-        elif rate_key and isinstance(item, (str, int, float)) and not isinstance(
-            item, bool
+        elif (
+            rate_key
+            and isinstance(item, (str, int, float))
+            and not isinstance(item, bool)
         ):
             try:
-                values.append(
-                    (".".join(path), Decimal(str(item).replace(",", ".")))
-                )
+                values.append((".".join(path), Decimal(str(item).replace(",", "."))))
             except InvalidOperation:
                 pass
 

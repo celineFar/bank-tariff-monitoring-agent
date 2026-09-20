@@ -25,6 +25,7 @@ from google.adk.runners import Runner
 from app.api.routes import router as project_router
 from app.app_utils import services
 from app.app_utils.a2a import attach_a2a_routes
+from app.app_utils.agent_loader import RuntimeAgentLoader
 from app.config import get_settings
 from app.runtime import build_application_container
 from app.tools import configure_services
@@ -35,6 +36,7 @@ allow_origins = list(settings.http.allow_origins) or None
 otel_to_cloud = settings.observability.otel_to_cloud
 
 AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+agent_loader = RuntimeAgentLoader(AGENT_DIR)
 
 
 @contextlib.asynccontextmanager
@@ -44,6 +46,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     container = build_application_container(settings)
     await services.ensure_session_service_ready()
+    agent_loader.register(
+        container.monitoring_workflow_app.name,
+        container.monitoring_workflow_app,
+    )
     configure_services(
         container.run_service,
         container.answer_service,
@@ -66,6 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.answer_service = container.answer_service
     app.state.current_tariff_service = container.current_tariff_service
     app.state.tariff_history_service = container.tariff_history_service
+    app.state.review_repository = container.reviews
     await attach_a2a_routes(
         app,
         agent=root_agent,
@@ -76,12 +83,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        agent_loader.unregister(container.monitoring_workflow_app.name)
         configure_services(None, None, None, None, None, None)
         await container.close()
 
 
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
+    agent_loader=agent_loader,
     web=True,
     artifact_service_uri=services.ARTIFACT_SERVICE_URI,
     allow_origins=allow_origins,

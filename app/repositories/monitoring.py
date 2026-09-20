@@ -191,9 +191,7 @@ def _validate_read_bounds(
     limit: int,
 ) -> None:
     for value in (start_at, end_at):
-        if value is not None and (
-            value.tzinfo is None or value.utcoffset() is None
-        ):
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("read bounds must be timezone-aware")
     if start_at is not None and end_at is not None and end_at < start_at:
         raise ValueError("end_at must not precede start_at")
@@ -513,9 +511,7 @@ class PostgresRunRepository:
                 )
             ).first()
             if row is None:
-                raise InvalidRunTransitionError(
-                    f"run {run_id} cannot pause for review"
-                )
+                raise InvalidRunTransitionError(f"run {run_id} cannot pause for review")
         return _run_from_row(row)
 
     async def finish_after_review(
@@ -781,6 +777,16 @@ class PostgresRunRepository:
 class PostgresSnapshotRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+
+    async def get(self, snapshot_id: UUID) -> SnapshotAttempt | None:
+        async with self._session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT * FROM tariff_snapshots WHERE id = :id"),
+                    {"id": snapshot_id},
+                )
+            ).first()
+        return _snapshot_from_row(row) if row is not None else None
 
     async def save_attempt(self, snapshot: SnapshotAttempt) -> UUID:
         async with self._session_factory() as session, session.begin():
@@ -1537,11 +1543,7 @@ async def _upsert_document(
                     "quality_score": chunk.quality_score,
                     "metadata": chunk.metadata,
                     "embedding": list(chunk.embedding),
-                    **(
-                        {"is_active": True, "retired_at": None}
-                        if activate
-                        else {}
-                    ),
+                    **({"is_active": True, "retired_at": None} if activate else {}),
                     "updated_at": now,
                 },
             )

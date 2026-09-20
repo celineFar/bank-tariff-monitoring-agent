@@ -41,6 +41,7 @@ from app.domain.semantic_extraction import (
     LoanCategory,
     LoanFee,
     LoanProduct,
+    ModelCitation,
     ModelFieldResult,
     MortgageDetails,
     OverdraftDetails,
@@ -1852,6 +1853,56 @@ def assemble_loan_product(
             ),
         )
     return LoanProduct(**common, details=details)
+
+
+def validate_review_field_value(field: ExtractionField, value: Any) -> Any:
+    """Validate a human-selected value against the extraction field contract."""
+    return TypeAdapter(_field_adapter(field)).validate_python(value)
+
+
+def assemble_reviewed_loan_product(
+    result: SemanticExtractionResult,
+    fields: Sequence[ValidatedFieldResult],
+) -> LoanProduct:
+    """Rebuild a complete product after deterministic human-review resolution."""
+    source = result.loan_product or result.partial_product
+    if source is None:
+        raise ValueError("reviewed extraction has no product context")
+    plan = SemanticExtractionPlan(
+        product=result.product,
+        canonical_url=source.canonical_url,
+        input_content_hash="0" * 64,
+        schema_version="review",
+        prompt_version="review",
+        model_name=result.model_name,
+        evidence_catalog=result.evidence_catalog,
+        batches=(),
+    )
+    model_results = tuple(
+        ModelFieldResult(
+            field=item.field,
+            status=item.status,
+            value_json=(
+                TypeAdapter(Any).dump_json(item.value).decode("utf-8")
+                if item.value is not None
+                else None
+            ),
+            evidence=tuple(
+                ModelCitation(
+                    evidence_id=citation.evidence_id,
+                    quote=citation.quote,
+                )
+                for citation in item.evidence
+            ),
+            explanation=item.explanation,
+        )
+        for item in fields
+    )
+    return assemble_loan_product(
+        plan,
+        (ExtractionBatchResponse(results=model_results),),
+        retrieved_at=source.retrieved_at,
+    )
 
 
 def _hydrate_citation(evidence_id: str, quote: str, catalog: dict) -> EvidenceCitation:

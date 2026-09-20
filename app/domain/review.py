@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.domain.models import OfferingId, ProductType
-from app.domain.monitoring import validate_offering_product
+from app.domain.monitoring import SnapshotChangeSet, validate_offering_product
 
 
 class ReviewModel(BaseModel):
@@ -124,6 +124,21 @@ class ReviewTask(ReviewModel):
             if self.reviewer is not None or self.decision is not None:
                 raise ValueError("pending review cannot contain a decision")
         elif self.status in {ReviewStatus.APPROVED, ReviewStatus.REJECTED}:
-            if self.reviewer is None or self.decision is None or self.decided_at is None:
+            if (
+                self.reviewer is None
+                or self.decision is None
+                or self.decided_at is None
+            ):
                 raise ValueError("decided review requires reviewer, decision, and time")
         return self
+
+
+class ReviewSnapshotUpdate(ReviewModel):
+    snapshot_id: UUID
+    expected_canonical_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    normalized_tariff: dict[str, JsonValue]
+    semantic_extraction: dict[str, JsonValue]
+    validation: dict[str, JsonValue]
+    canonical_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ready_for_activation: bool
+    changes: SnapshotChangeSet | None = None

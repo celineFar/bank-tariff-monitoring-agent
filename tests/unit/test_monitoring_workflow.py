@@ -7,6 +7,7 @@ import pytest
 from google.adk.artifacts import InMemoryArtifactService
 from google.adk.sessions import InMemorySessionService
 
+from app.app_utils.agent_loader import RuntimeAgentLoader
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import MonitoringRun, RunCommand, RunStatus, RunTrigger
 from app.domain.monitoring_workflow import (
@@ -25,6 +26,7 @@ from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
     build_monitoring_app,
     build_monitoring_workflow,
+    build_review_request,
     workflow_identity,
 )
 
@@ -103,6 +105,7 @@ class _Decisions:
     def __init__(self, reviews: _Reviews) -> None:
         self.reviews = reviews
         self.calls = 0
+        self.reviewers: list[str] = []
 
     async def apply(
         self,
@@ -112,6 +115,7 @@ class _Decisions:
         reviewer: str,
     ) -> ReviewTask:
         self.calls += 1
+        self.reviewers.append(reviewer)
         assert review_id == self.reviews.task.id
         self.reviews.task = self.reviews.task.model_copy(
             update={
@@ -197,9 +201,7 @@ async def test_native_request_input_resume_does_not_rerun_pipeline() -> None:
             decisions=(
                 ReviewResponseItem(
                     review_id=REVIEW_ID,
-                    decision=ReviewDecision(
-                        decision_type=ReviewDecisionType.APPROVE
-                    ),
+                    decision=ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
                 ),
             )
         ),
@@ -210,9 +212,90 @@ async def test_native_request_input_resume_does_not_rerun_pipeline() -> None:
     assert completed.paused is False
     assert pipeline.calls == 1
     assert decisions.calls == 1
+    assert decisions.reviewers == [user_id]
     assert runs.run.summary["reviews_approved"] == 1
     assert [event[1] for event in runs.audit] == [
         "review.paused",
         "review.resume_attempt",
         "review.approved",
     ]
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    [
+        (
+            ReviewReason.LARGE_RATE_CHANGE,
+            {
+                ReviewDecisionType.APPROVE,
+                ReviewDecisionType.REJECT_ALL,
+                ReviewDecisionType.OVERRIDE,
+            },
+        ),
+        (
+            ReviewReason.OFFICIAL_SOURCE_CONFLICT,
+            {
+                ReviewDecisionType.SELECT_CANDIDATE,
+                ReviewDecisionType.REJECT_ALL,
+                ReviewDecisionType.OVERRIDE,
+            },
+        ),
+        (
+            ReviewReason.SOURCE_APPLICABILITY,
+            {ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE},
+        ),
+        (
+            ReviewReason.MISSING_REQUIRED_FIELD,
+            {ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE},
+        ),
+    ],
+)
+def test_native_review_payload_is_bounded_and_reason_specific(reason, expected) -> None:
+    task = _review().model_copy(
+        update={
+            "reason": reason,
+            "evidence": {
+                "items": [
+                    {
+                        "evidence_id": "ev_1234567890abcdef12345678",
+                        "document_id": "document-1",
+                        "section": "Rates",
+                        "content": "x" * 2000,
+                        "locator": {
+                            "source_url": "https://ameriabank.am/rates.pdf",
+                            "source_type": "pdf",
+                            "pdf_page": 4,
+                        },
+                    }
+                ]
+            },
+        }
+    )
+
+    prompt = build_review_request(RUN_ID, (task,)).reviews[0]
+
+    assert set(prompt.allowed_decisions) == expected
+    assert prompt.product is ProductType.MORTGAGE
+    assert prompt.offering_id is OfferingId.MORTGAGE_PRIMARY
+    assert prompt.issue_scope == "interest_rate"
+    assert prompt.evidence[0].source_url == "https://ameriabank.am/rates.pdf"
+    assert prompt.evidence[0].page == 4
+    assert prompt.evidence[0].section == "Rates"
+    assert len(prompt.evidence[0].excerpt) == 1500
+
+
+def test_runtime_loader_exposes_injected_workflow_app_to_adk_web(tmp_path) -> None:
+    loader = RuntimeAgentLoader(str(tmp_path))
+    workflow_app = object()
+
+    loader.register("tariff_monitoring_workflow", workflow_app)
+
+    assert loader.load_agent("tariff_monitoring_workflow") is workflow_app
+    assert "tariff_monitoring_workflow" in loader.list_agents()
+    assert any(
+        item["name"] == "tariff_monitoring_workflow"
+        for item in loader.list_agents_detailed()
+    )
+
+    loader.unregister("tariff_monitoring_workflow")
+    assert "tariff_monitoring_workflow" not in loader.list_agents()
