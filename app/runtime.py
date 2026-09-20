@@ -50,6 +50,7 @@ from app.services.tariff_queries import (
     RunWaitService,
     TariffHistoryService,
 )
+from app.services.workflow_reconciliation import WorkflowReconciliationService
 
 
 @dataclass
@@ -61,6 +62,7 @@ class ApplicationContainer:
     run_service: RunService
     tariff_pipeline: TariffPipeline
     monitoring_workflow_runner: MonitoringWorkflowRunner
+    workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     request_resolver: RequestResolver
     current_tariff_service: CurrentTariffService
@@ -183,6 +185,13 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
     )
     from app.app_utils import services as adk_services
 
+    session_service = adk_services.get_session_service()
+    monitoring_workflow_runner = MonitoringWorkflowRunner(
+        app=build_monitoring_app(monitoring_workflow),
+        session_service=session_service,
+        artifact_service=adk_services.get_artifact_service(),
+    )
+
     return ApplicationContainer(
         engine=engine,
         http_client=http_client,
@@ -205,9 +214,11 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             settings.tariff_queries,
         ),
         tariff_pipeline=tariff_pipeline,
-        monitoring_workflow_runner=MonitoringWorkflowRunner(
-            app=build_monitoring_app(monitoring_workflow),
-            session_service=adk_services.get_session_service(),
-            artifact_service=adk_services.get_artifact_service(),
+        monitoring_workflow_runner=monitoring_workflow_runner,
+        workflow_reconciliation=WorkflowReconciliationService(
+            runs=runs,
+            reviews=reviews,
+            sessions=session_service,
+            workflow=monitoring_workflow_runner,
         ),
     )

@@ -9,6 +9,7 @@ from typing import Protocol
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.app_utils import services as adk_services
 from app.config import get_settings
 from app.domain.models import ProductType
 from app.domain.monitoring import (
@@ -29,6 +30,10 @@ PRODUCTS = (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
 
 class MonitoringWorkflowPort(Protocol):
     async def start(self, run: MonitoringRun) -> MonitoringWorkflowResult: ...
+
+
+class ReconciliationPort(Protocol):
+    async def reconcile(self): ...
 
 
 async def run_scheduled_monitoring(service: RunServicePort) -> None:
@@ -52,12 +57,14 @@ class MonitoringWorker:
         *,
         runs: RunRepository,
         workflow: MonitoringWorkflowPort,
+        reconciliation: ReconciliationPort | None = None,
         worker_id: str,
         abandoned_after: timedelta = timedelta(minutes=30),
         poll_interval_seconds: float = 2.0,
     ) -> None:
         self._runs = runs
         self._workflow = workflow
+        self._reconciliation = reconciliation
         self._worker_id = worker_id
         self._abandoned_after = abandoned_after
         self._poll_interval_seconds = poll_interval_seconds
@@ -90,6 +97,13 @@ class MonitoringWorker:
         return True
 
     async def run_forever(self, stop: asyncio.Event) -> None:
+        if self._reconciliation is not None:
+            report = await self._reconciliation.reconcile()
+            if report.items:
+                logger.warning(
+                    "reconciled %s monitoring workflow linkage issue(s)",
+                    len(report.items),
+                )
         await self.recover_abandoned()
         while not stop.is_set():
             if await self.process_next():
@@ -107,9 +121,11 @@ async def main() -> None:
     settings = get_settings()
     logging.basicConfig(level=settings.observability.log_level)
     container = build_application_container(settings)
+    await adk_services.ensure_session_service_ready()
     worker = MonitoringWorker(
         runs=container.runs,
         workflow=container.monitoring_workflow_runner,
+        reconciliation=container.workflow_reconciliation,
         worker_id=f"{socket.gethostname()}:{id(container)}",
     )
     scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)

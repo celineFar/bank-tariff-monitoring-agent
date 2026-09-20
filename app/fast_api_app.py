@@ -43,6 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.agent import root_agent
 
     container = build_application_container(settings)
+    await services.ensure_session_service_ready()
     configure_services(
         container.run_service,
         container.answer_service,

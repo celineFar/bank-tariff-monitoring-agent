@@ -34,6 +34,7 @@ NOW = datetime(2026, 9, 20, tzinfo=UTC)
 class _Runs:
     def __init__(self, run: MonitoringRun) -> None:
         self.run = run
+        self.audit = []
 
     async def get(self, run_id: UUID) -> MonitoringRun | None:
         return self.run if self.run.id == run_id else None
@@ -50,6 +51,9 @@ class _Runs:
             update={"status": status, "summary": summary, "completed_at": NOW}
         )
         return self.run
+
+    async def record_audit(self, run_id, event_type, **kwargs) -> None:
+        self.audit.append((run_id, event_type, kwargs))
 
 
 class _Pipeline:
@@ -207,3 +211,8 @@ async def test_native_request_input_resume_does_not_rerun_pipeline() -> None:
     assert pipeline.calls == 1
     assert decisions.calls == 1
     assert runs.run.summary["reviews_approved"] == 1
+    assert [event[1] for event in runs.audit] == [
+        "review.paused",
+        "review.resume_attempt",
+        "review.approved",
+    ]

@@ -621,13 +621,13 @@ separate correctness boundary.
 
 ### H. ADK session/event durability
 
-- [ ] Configure PostgreSQL `SESSION_SERVICE_URI` for FastAPI, ADK Web, A2A, and worker.
-- [ ] Document and automate the ADK 2.9.2 session schema migration/startup check.
-- [ ] Ensure every serving surface uses the existing `shared://session` registration.
-- [ ] Add a restart test: pause, dispose runner/process boundary, recreate services, resume,
+- [x] Configure PostgreSQL `SESSION_SERVICE_URI` for FastAPI, ADK Web, A2A, and worker.
+- [x] Document and automate the ADK 2.9.2 session schema migration/startup check.
+- [x] Ensure every serving surface uses the existing `shared://session` registration.
+- [x] Add a restart test: pause, dispose runner/process boundary, recreate services, resume,
       and verify exactly-once publication.
-- [ ] Add reconciliation for missing/mismatched review and workflow state.
-- [ ] Add audit events for pause, resume attempt, approved, rejected, superseded, failed
+- [x] Add reconciliation for missing/mismatched review and workflow state.
+- [x] Add audit events for pause, resume attempt, approved, rejected, superseded, failed
       resume, and reconciliation outcome.
 
 ### I. Native reviewer experience

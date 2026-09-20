@@ -8,6 +8,8 @@ from uuid import uuid4
 import asyncpg
 import pytest
 import pytest_asyncio
+from google.adk.artifacts import InMemoryArtifactService
+from google.adk.sessions import DatabaseSessionService
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
@@ -37,6 +39,10 @@ from app.domain.monitoring import (
     SnapshotStatus,
     SourceManifestItem,
 )
+from app.domain.monitoring_workflow import (
+    MonitoringReviewResponse,
+    ReviewResponseItem,
+)
 from app.domain.review import (
     ReviewCandidate,
     ReviewDecision,
@@ -51,6 +57,13 @@ from app.repositories.monitoring import (
     PostgresSnapshotRepository,
 )
 from app.repositories.reviews import PostgresReviewRepository, ReviewConflictError
+from app.services.monitoring_workflow import (
+    MonitoringWorkflowRunner,
+    build_monitoring_app,
+    build_monitoring_workflow,
+    workflow_identity,
+)
+from app.services.review_decisions import ReviewDecisionService
 
 pytestmark = pytest.mark.postgres
 
@@ -733,3 +746,95 @@ async def test_newer_same_scope_review_supersedes_pending_review(
     assert second.status is ReviewStatus.PENDING
     with pytest.raises(ReviewConflictError):
         await reviews.reject(first.id, reviewer="late-reviewer")
+
+
+@pytest.mark.asyncio
+async def test_postgres_session_restart_resumes_same_workflow_invocation(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    runs, running, execution = await _running_offering(monitoring_session_factory)
+    snapshots = PostgresSnapshotRepository(monitoring_session_factory)
+    snapshot = _snapshot(running.id, execution.id).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await snapshots.save_attempt(snapshot)
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    review = await reviews.create(
+        _review_task(
+            running.id,
+            execution.id,
+            snapshot.id,
+            idempotency_key=f"restart:{running.id}",
+            created_at=snapshot.created_at,
+        ).model_copy(
+            update={"reason": ReviewReason.LARGE_RATE_CHANGE, "candidates": ()}
+        )
+    )
+
+    class _Pipeline:
+        calls = 0
+
+        async def execute(self, run):
+            self.calls += 1
+            return await runs.pause_for_review(
+                run.id,
+                summary={
+                    "succeeded": 0,
+                    "failed": 0,
+                    "review_ids": [str(review.id)],
+                },
+            )
+
+    pipeline = _Pipeline()
+    workflow = build_monitoring_workflow(
+        runs=runs,
+        pipeline=pipeline,
+        reviews=reviews,
+        decisions=ReviewDecisionService(reviews),
+    )
+    first_sessions = DatabaseSessionService(db_url=_test_database_url())
+    await first_sessions.prepare_tables()
+    first_runner = MonitoringWorkflowRunner(
+        app=build_monitoring_app(workflow),
+        session_service=first_sessions,
+        artifact_service=InMemoryArtifactService(),
+    )
+
+    paused = await first_runner.start(running)
+    attached = await reviews.get(review.id)
+    assert paused.status is RunStatus.AWAITING_REVIEW
+    assert attached is not None and attached.correlation is not None
+    correlation = attached.correlation
+    await first_sessions.db_engine.dispose()
+
+    second_sessions = DatabaseSessionService(db_url=_test_database_url())
+    await second_sessions.prepare_tables()
+    second_runner = MonitoringWorkflowRunner(
+        app=build_monitoring_app(workflow),
+        session_service=second_sessions,
+        artifact_service=InMemoryArtifactService(),
+    )
+    user_id, session_id = workflow_identity(running)
+
+    completed = await second_runner.resume(
+        user_id=user_id,
+        session_id=session_id,
+        interrupt_id=correlation.interrupt_id,
+        response=MonitoringReviewResponse(
+            decisions=(
+                ReviewResponseItem(
+                    review_id=review.id,
+                    decision=ReviewDecision(
+                        decision_type=ReviewDecisionType.APPROVE
+                    ),
+                ),
+            )
+        ),
+        run_id=running.id,
+    )
+
+    assert completed.status is RunStatus.SUCCEEDED
+    assert pipeline.calls == 1
+    persisted = await runs.get(running.id)
+    assert persisted is not None and persisted.status is RunStatus.SUCCEEDED
+    await second_sessions.db_engine.dispose()

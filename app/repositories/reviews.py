@@ -100,7 +100,7 @@ class PostgresReviewRepository:
             ).first()
             if existing is not None:
                 return _review_from_row(existing)
-            superseded_run_ids = tuple(
+            superseded_rows = tuple(
                 (
                     await session.execute(
                         text(
@@ -111,7 +111,7 @@ class PostgresReviewRepository:
                               AND offering_id = :offering_id
                               AND issue_scope = :issue_scope
                               AND status = 'pending'
-                            RETURNING run_id
+                            RETURNING id, run_id, offering_execution_id
                             """
                         ),
                         {
@@ -121,14 +121,40 @@ class PostgresReviewRepository:
                             "created_at": review.created_at,
                         },
                     )
-                ).scalars()
+                ).all()
             )
-            if superseded_run_ids:
+            if superseded_rows:
                 await self._mark_documents(
                     session,
-                    superseded_run_ids,
+                    tuple(row.run_id for row in superseded_rows),
                     "superseded",
                 )
+                for superseded in superseded_rows:
+                    await session.execute(
+                        text(
+                            """
+                            INSERT INTO audit_events (
+                                run_id, offering_execution_id, event_type, payload
+                            )
+                            VALUES (
+                                :run_id, :offering_execution_id,
+                                'review.superseded', CAST(:payload AS jsonb)
+                            )
+                            """
+                        ),
+                        {
+                            "run_id": superseded.run_id,
+                            "offering_execution_id": (
+                                superseded.offering_execution_id
+                            ),
+                            "payload": _json(
+                                {
+                                    "review_id": str(superseded.id),
+                                    "replacement_review_id": str(review.id),
+                                }
+                            ),
+                        },
+                    )
             row = (
                 await session.execute(
                     text(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -44,3 +45,23 @@ class MonitoringWorkflowResult(WorkflowModel):
     review_ids: tuple[UUID, ...] = ()
     paused: bool = False
     summary: dict[str, object] = Field(default_factory=dict)
+
+
+class ReconciliationIssueCode(StrEnum):
+    PENDING_WITHOUT_INTERRUPT = "pending_without_interrupt"
+    INTERRUPT_WITHOUT_PENDING_REVIEW = "interrupt_without_pending_review"
+    TERMINAL_REVIEWS_WITH_PAUSED_RUN = "terminal_reviews_with_paused_run"
+    AWAITING_RUN_WITHOUT_REVIEW = "awaiting_run_without_review"
+
+
+class ReconciliationItem(WorkflowModel):
+    run_id: UUID
+    issue: ReconciliationIssueCode
+    repaired: bool
+    review_ids: tuple[UUID, ...] = ()
+    detail: str | None = Field(default=None, max_length=500)
+
+
+class ReconciliationReport(WorkflowModel):
+    scanned_runs: int = Field(ge=0)
+    items: tuple[ReconciliationItem, ...] = ()

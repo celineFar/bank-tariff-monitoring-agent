@@ -99,6 +99,16 @@ def build_monitoring_workflow(
                 for review in pending
             ]
         )
+        await runs.record_audit(
+            node_input.id,
+            "review.paused",
+            payload={
+                "review_ids": [str(item.id) for item in attached],
+                "session_id": correlation.session_id,
+                "invocation_id": correlation.invocation_id,
+                "interrupt_id": correlation.interrupt_id,
+            },
+        )
         yield RequestInput(
             interrupt_id=interrupt_id,
             message=(
@@ -127,6 +137,13 @@ def build_monitoring_workflow(
         if len(run_ids) != 1:
             raise ValueError("all review decisions must belong to one run")
         run_id = next(iter(run_ids))
+        await runs.record_audit(
+            run_id,
+            "review.resume_attempt",
+            payload={
+                "review_ids": [str(item.review_id) for item in node_input.decisions]
+            },
+        )
         pending = await reviews.list(
             status=ReviewStatus.PENDING,
             run_id=run_id,
@@ -135,17 +152,30 @@ def build_monitoring_workflow(
         if {item.id for item in pending} != {
             item.review_id for item in node_input.decisions
         }:
+            await runs.record_audit(
+                run_id,
+                "review.resume_failed",
+                reason_code="review_set_mismatch",
+            )
             raise ValueError("response must decide every current pending review exactly once")
-        decided = tuple(
-            [
-                await decisions.apply(
-                    item.review_id,
-                    item.decision,
-                    reviewer=reviewer,
-                )
-                for item in node_input.decisions
-            ]
-        )
+        try:
+            decided = tuple(
+                [
+                    await decisions.apply(
+                        item.review_id,
+                        item.decision,
+                        reviewer=reviewer,
+                    )
+                    for item in node_input.decisions
+                ]
+            )
+        except Exception as exc:
+            await runs.record_audit(
+                run_id,
+                "review.resume_failed",
+                reason_code=type(exc).__name__,
+            )
+            raise
         approved = sum(item.status is ReviewStatus.APPROVED for item in decided)
         rejected = sum(item.status is ReviewStatus.REJECTED for item in decided)
         run = await runs.get(run_id)
@@ -153,13 +183,13 @@ def build_monitoring_workflow(
             raise LookupError(str(run_id))
         prior_succeeded = int(run.summary.get("succeeded", 0))
         prior_failed = int(run.summary.get("failed", 0))
-        if rejected == 0 and prior_failed == 0:
-            status = RunStatus.SUCCEEDED
-        elif approved or prior_succeeded:
-            status = RunStatus.PARTIAL_SUCCESS
-        else:
-            status = RunStatus.FAILED
-        return await runs.finish_after_review(
+        status = terminal_review_status(
+            approved=approved,
+            rejected=rejected,
+            prior_succeeded=prior_succeeded,
+            prior_failed=prior_failed,
+        )
+        completed = await runs.finish_after_review(
             run_id,
             status,
             summary={
@@ -168,6 +198,12 @@ def build_monitoring_workflow(
                 "reviews_rejected": rejected,
             },
         )
+        await runs.record_audit(
+            run_id,
+            "review.approved" if rejected == 0 else "review.rejected",
+            payload={"approved": approved, "rejected": rejected},
+        )
+        return completed
 
     def build_final_result(node_input: MonitoringRun) -> MonitoringWorkflowResult:
         raw_review_ids = node_input.summary.get("review_ids", [])
@@ -316,3 +352,17 @@ def workflow_identity(run: MonitoringRun) -> tuple[str, str]:
     """Return stable origin-scoped identity without treating it as a person."""
     origin = run.command.trigger.value
     return f"monitoring-{origin}", f"monitoring-run-{run.id}"
+
+
+def terminal_review_status(
+    *,
+    approved: int,
+    rejected: int,
+    prior_succeeded: int,
+    prior_failed: int,
+) -> RunStatus:
+    if rejected == 0 and prior_failed == 0:
+        return RunStatus.SUCCEEDED
+    if approved or prior_succeeded:
+        return RunStatus.PARTIAL_SUCCESS
+    return RunStatus.FAILED

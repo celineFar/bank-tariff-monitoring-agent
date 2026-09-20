@@ -50,6 +50,10 @@ class RunRepository(Protocol):
 
     async def get(self, run_id: UUID) -> MonitoringRun | None: ...
 
+    async def list_by_status(
+        self, status: RunStatus, *, limit: int = 100
+    ) -> tuple[MonitoringRun, ...]: ...
+
     async def claim_next(self, worker_id: str) -> ClaimedRun | None: ...
 
     async def recover_abandoned(self, *, before: datetime) -> int: ...
@@ -78,6 +82,16 @@ class RunRepository(Protocol):
         *,
         summary: dict[str, object],
     ) -> MonitoringRun: ...
+
+    async def record_audit(
+        self,
+        run_id: UUID,
+        event_type: str,
+        *,
+        offering_execution_id: UUID | None = None,
+        reason_code: str | None = None,
+        payload: dict[str, object] | None = None,
+    ) -> None: ...
 
     async def create_offering_execution(
         self,

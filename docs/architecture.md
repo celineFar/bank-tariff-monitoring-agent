@@ -311,9 +311,23 @@ interrupt ID into that same session. ADK restores the paused invocation from its
 so completed pipeline work is replayed as node output rather than executed again. Only a
 narrow deterministic decision service may accept the bounded response, validate its
 candidate/evidence references, update the durable review, and transition the business
-run to a terminal state. PostgreSQL-backed ADK event/session configuration and restart
-reconciliation are the next durability layer; no module-level repository handle is used
-by workflow nodes.
+run to a terminal state. No module-level repository handle is used by workflow nodes.
+
+The shared service factory resolves the validated PostgreSQL `SESSION_SERVICE_URI` even
+in the headless worker, whose Pydantic `.env` loading does not mutate process environment
+variables. FastAPI and worker startup eagerly prepare and require ADK 2.9.2 JSON session
+schema version `1`; ADK Web, A2A, the conversational runner, and the monitoring runner all
+resolve the same cached `shared://session` instance within each process and the same
+PostgreSQL event store across processes.
+
+`WorkflowReconciliationService` runs before normal worker recovery. It bounds scans,
+recreates missing request-input events for live pending reviews, fails an orphaned
+`AWAITING_REVIEW` run safely, completes a paused run whose reviews are all terminal, and
+reports stale/orphaned interrupts without supplying or inventing a decision. Pause,
+resume attempt, approval/rejection, failed resume, supersession, and reconciliation
+outcomes are durable business audit events. PostgreSQL restart coverage disposes the
+first ADK service after pause and resumes through a new service instance while proving
+that deterministic pipeline work executes exactly once.
 
 ## Indexing coordinator boundary
 

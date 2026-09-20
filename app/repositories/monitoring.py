@@ -317,6 +317,31 @@ class PostgresRunRepository:
             ).first()
         return _run_from_row(row) if row is not None else None
 
+    async def list_by_status(
+        self,
+        status: RunStatus,
+        *,
+        limit: int = 100,
+    ) -> tuple[MonitoringRun, ...]:
+        if not 1 <= limit <= 500:
+            raise ValueError("run limit must be between 1 and 500")
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        f"""
+                        SELECT {_RUN_COLUMNS}
+                        FROM monitoring_runs
+                        WHERE status = :status
+                        ORDER BY queued_at, id
+                        LIMIT :limit
+                        """
+                    ),
+                    {"status": status.value, "limit": limit},
+                )
+            ).all()
+        return tuple(_run_from_row(row) for row in rows)
+
     async def claim_next(self, worker_id: str) -> ClaimedRun | None:
         normalized_worker = worker_id.strip()
         if not normalized_worker or len(normalized_worker) > 200:
@@ -526,6 +551,40 @@ class PostgresRunRepository:
                     f"run {run_id} cannot finish after review"
                 )
         return _run_from_row(row)
+
+    async def record_audit(
+        self,
+        run_id: UUID,
+        event_type: str,
+        *,
+        offering_execution_id: UUID | None = None,
+        reason_code: str | None = None,
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        normalized_type = event_type.strip()
+        if not normalized_type or len(normalized_type) > 200:
+            raise ValueError("audit event type must contain 1 to 200 characters")
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO audit_events (
+                        run_id, offering_execution_id, event_type, reason_code, payload
+                    )
+                    VALUES (
+                        :run_id, :offering_execution_id, :event_type, :reason_code,
+                        CAST(:payload AS jsonb)
+                    )
+                    """
+                ),
+                {
+                    "run_id": run_id,
+                    "offering_execution_id": offering_execution_id,
+                    "event_type": normalized_type,
+                    "reason_code": reason_code,
+                    "payload": _json(payload or {}),
+                },
+            )
 
     async def create_offering_execution(
         self,

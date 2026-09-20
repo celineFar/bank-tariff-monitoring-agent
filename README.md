@@ -36,9 +36,10 @@ See [the architecture](docs/architecture.md), [configuration reference](docs/con
 1. Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
 2. Install dependencies: `agents-cli install`.
 3. Install the local acquisition browser: `uv run playwright install chromium`.
-4. Run deterministic tests: `uv run pytest tests/unit`.
-5. Start the full stack: `docker compose up --build`.
-6. Open API documentation at `http://localhost:8080/docs`.
+4. Verify/create the ADK session schema: `uv run python scripts/check_adk_session_schema.py`.
+5. Run deterministic tests: `uv run pytest tests/unit`.
+6. Start the full stack: `docker compose up --build`.
+7. Open API documentation at `http://localhost:8080/docs`.
 
 The ADK playground can be started with `agents-cli playground` after dependencies are
 installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured

@@ -119,3 +119,32 @@ SCHEDULE_MINUTE=0
 
 The checked-in seed catalog is loaded from `app/config/seed_catalog.yaml`; it is not an
 environment variable and accepts only HTTPS URLs on the configured source hosts.
+
+## ADK session schema startup and migration
+
+`SESSION_SERVICE_URI` must be a PostgreSQL SQLAlchemy async URI in every local/docker
+runtime that can start or resume monitoring. `shared://session` remains an internal ADK
+registry URI used by ADK Web, A2A, FastAPI, and the worker; it is not the value to put in
+the deployment environment.
+
+FastAPI and the worker run an eager startup gate that calls ADK 2.9.2's idempotent
+`DatabaseSessionService.prepare_tables()` and requires JSON session schema version `1`.
+The same check can be run independently before starting either process:
+
+```powershell
+uv run python scripts/check_adk_session_schema.py
+```
+
+For a new database, the check creates ADK-owned session/event tables and records schema
+version `1`. Do not copy those SDK-owned tables into this project's numbered business
+migrations. If an existing database contains ADK's legacy pickle schema, migrate to a
+separate destination database with the SDK command, verify it, then change
+`SESSION_SERVICE_URI` during a coordinated cutover; ADK 2.9.2 does not support in-place
+migration:
+
+```powershell
+uv run adk migrate session --source_db_url <legacy-sync-uri> --dest_db_url <new-sync-uri>
+```
+
+Only use the migration command's unsafe-unpickling option for a fully trusted legacy
+database. The application never logs either URI.
