@@ -15,6 +15,12 @@ from google.adk.runners import Runner
 from google.adk.tools import LongRunningFunctionTool, ToolContext, request_input
 from google.genai import types
 from google.genai.errors import APIError
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
 
 from app.agent import root_agent
 from app.app_utils import services
@@ -34,6 +40,31 @@ from app.tools import (
     start_tariff_monitoring,
     submit_monitoring_review_input,
 )
+
+console = Console(highlight=False)
+
+
+def _notice(message: str, *, tone: str = "cyan", symbol: str = "•") -> None:
+    line = Text()
+    line.append(f"{symbol} ", style=f"bold {tone}")
+    line.append(message, style=tone)
+    console.print(line)
+
+
+def _input(prompt: str) -> str:
+    console.print(Text.from_markup(prompt), end="")
+    return input("")
+
+
+def _error(title: str, message: str) -> None:
+    console.print(
+        Panel(
+            Text(message),
+            title=Text(title, style="bold red"),
+            border_style="red",
+            expand=False,
+        )
+    )
 
 
 async def start_tariff_monitoring_cli(
@@ -117,9 +148,10 @@ def pending_input(events: list[object]) -> PendingInput | None:
                     pending.pop(response.id, None)
                 else:
                     initial = dict(response.response or {})
-                    if (
-                        pending[response.id].name == "start_tariff_monitoring_cli"
-                        and not initial.get("request_satisfied")
+                    if pending[
+                        response.id
+                    ].name == "start_tariff_monitoring_cli" and not initial.get(
+                        "request_satisfied"
                     ):
                         pending.pop(response.id, None)
                     else:
@@ -133,7 +165,14 @@ async def _run_and_print(runner: Runner, **kwargs: object) -> None:
     async for event in runner.run_async(**kwargs):
         for part in (event.content.parts if event.content else ()) or ():
             if part.text and not getattr(part, "thought", False):
-                print(f"Assistant  {part.text}")
+                console.print(
+                    Panel(
+                        Markdown(part.text),
+                        title=Text("Assistant", style="bold cyan"),
+                        border_style="cyan",
+                        padding=(0, 1),
+                    )
+                )
 
 
 async def _resume(
@@ -198,14 +237,20 @@ async def _wait_for_run(run_service: object, run_id: UUID, seconds: float):
         ):
             if active:
                 for offering_id, stage in active:
-                    label = _STAGE_LABELS.get(stage, stage.replace("_", " ").capitalize())
-                    print(f"  {offering_id}: {label}…", flush=True)
+                    label = _STAGE_LABELS.get(
+                        stage, stage.replace("_", " ").capitalize()
+                    )
+                    _notice(f"{label} · {offering_id}…")
             elif run.status is RunStatus.QUEUED:
-                print("  Waiting for the worker…", flush=True)
+                _notice("Waiting for the worker…")
             elif run.status is RunStatus.RUNNING:
-                print("  Monitoring is still running…", flush=True)
+                _notice("Monitoring is still running…")
             else:
-                print(f"  Monitoring {run.status.value.replace('_', ' ')}.", flush=True)
+                _notice(
+                    f"Monitoring {run.status.value.replace('_', ' ')}.",
+                    tone="green" if run.status is RunStatus.SUCCEEDED else "yellow",
+                    symbol="✓" if run.status is RunStatus.SUCCEEDED else "•",
+                )
             last_progress = progress
             last_message_at = now
         if run.status.is_terminal or run.status is RunStatus.AWAITING_REVIEW:
@@ -251,22 +296,44 @@ async def _continue_pending(
             )
             continue
         if pending.name == "adk_request_input":
-            print("\nReview needed")
-            print(pending.arguments.get("message", "Review input required"))
-            print(
-                'Answer as JSON, for example: '
-                '{"review_id":"<shown ID>","decision_type":"reject_all"}'
+            console.print(
+                Panel(
+                    Text(
+                        str(pending.arguments.get("message", "Review input required"))
+                    ),
+                    title=Text("Review needed", style="bold yellow"),
+                    border_style="yellow",
+                )
             )
-            print(
-                "Choices: approve, select_candidate, override, reject_all. "
-                "Type ? to see the full input schema."
+            _notice(
+                "Reply with JSON using the shown review ID. "
+                "Type ? for the full schema.",
+                tone="yellow",
+            )
+            console.print(
+                Syntax(
+                    '{"review_id":"<shown ID>","decision_type":"reject_all"}',
+                    "json",
+                    theme="ansi_dark",
+                    word_wrap=True,
+                )
             )
             while True:
-                raw = await asyncio.to_thread(input, "Review> ")
+                raw = await asyncio.to_thread(
+                    _input, "[bold yellow]Review[/] [yellow]>[/] "
+                )
                 if raw.strip() == "?":
-                    print(json.dumps(
-                        pending.arguments.get("response_schema", {}), indent=2
-                    ))
+                    console.print(
+                        Syntax(
+                            json.dumps(
+                                pending.arguments.get("response_schema", {}),
+                                indent=2,
+                            ),
+                            "json",
+                            theme="ansi_dark",
+                            word_wrap=True,
+                        )
+                    )
                     continue
                 try:
                     answer = json.loads(raw)
@@ -274,7 +341,7 @@ async def _continue_pending(
                         raise ValueError("response must be a JSON object")
                     break
                 except ValueError as exc:
-                    print(f"Invalid review response: {exc}")
+                    _error("Invalid review response", str(exc))
             await _resume(
                 runner,
                 user_id=user_id,
@@ -310,27 +377,45 @@ def _ordered_evidence(item: object) -> tuple[object, ...]:
 def _show_review(
     item: object, index: int, total: int, *, all_evidence: bool = False
 ) -> None:
-    print(
-        f"\nReview {index}/{total}: {item.offering_id.value} / "
+    heading = (
+        f"Review {index}/{total} · {item.offering_id.value} · "
         f"{item.issue_scope} ({item.reason.value})"
     )
-    print(item.guidance)
-    for candidate in item.candidates:
-        print(
-            f"  Candidate {candidate.candidate_id}: "
-            f"{json.dumps(candidate.value, ensure_ascii=False)}"
+    console.print(
+        Panel(
+            Text(item.guidance),
+            title=Text(heading, style="bold yellow"),
+            border_style="yellow",
         )
+    )
+    if item.candidates:
+        candidates = Table(title="Extracted candidates", show_lines=True)
+        candidates.add_column("Candidate ID", style="cyan")
+        candidates.add_column("Value")
+        for candidate in item.candidates:
+            candidates.add_row(
+                candidate.candidate_id,
+                Text(json.dumps(candidate.value, ensure_ascii=False)),
+            )
+        console.print(candidates)
     evidence_items = _ordered_evidence(item)
     visible = evidence_items if all_evidence else evidence_items[:5]
-    for evidence in visible:
-        location = f" page {evidence.page}" if evidence.page else ""
-        print(
-            f"  Evidence {evidence.evidence_id}: "
-            f"{evidence.source_url}{location}"
-        )
-        print(f"    {evidence.excerpt[:400].replace(chr(10), ' ')}")
+    if visible:
+        evidence_table = Table(title="Supporting evidence", show_lines=True)
+        evidence_table.add_column("Evidence ID", style="cyan")
+        evidence_table.add_column("Source and passage", overflow="fold")
+        for evidence in visible:
+            location = f" · page {evidence.page}" if evidence.page else ""
+            source = Text(f"{evidence.source_url}{location}\n", style="dim")
+            source.append(evidence.excerpt[:400].replace("\n", " "))
+            evidence_table.add_row(evidence.evidence_id, source)
+        console.print(evidence_table)
     if len(visible) < len(evidence_items):
-        print(f"  {len(evidence_items) - len(visible)} more evidence items; type ? to see all.")
+        _notice(
+            f"{len(evidence_items) - len(visible)} more evidence items; "
+            "type ? to see all.",
+            tone="yellow",
+        )
 
 
 async def _recover_review(
@@ -356,28 +441,38 @@ async def _recover_review(
     if run is None or run.status is not RunStatus.AWAITING_REVIEW:
         return False
 
-    print(
-        f"\nMonitoring for {run.command.offering_id.value if run.command.offering_id else run.command.product.value} "
-        f"is paused for review (run {run.id}). Continuing here; no new run is needed."
+    _notice(
+        f"Monitoring for {run.command.offering_id.value if run.command.offering_id else run.command.product.value} "
+        f"is paused for review (run {run.id}). Continuing here; no new run is needed.",
+        tone="yellow",
+        symbol="↳",
     )
     while True:
         try:
             request = await review_service.pending_request(run.id)
         except ReviewNotReadyError:
-            print("The review is no longer pending.")
+            _notice("The review is no longer pending.", tone="yellow")
             return True
         decisions = []
         reject_all = False
         for index, item in enumerate(request.reviews, start=1):
             _show_review(item, index, len(request.reviews))
             allowed = {choice.value for choice in item.allowed_decisions}
-            print("Enter a JSON decision, or type reject_all to discard this run.")
-            print(
+            _notice(
+                "Enter a JSON decision, or type reject_all to discard this run.",
+                tone="yellow",
+            )
+            _notice(
                 "For an override, include override_value, reason, and an "
-                "evidence_reference shown above."
+                "evidence_reference shown above.",
+                tone="yellow",
             )
             while True:
-                raw = (await asyncio.to_thread(input, "Review> ")).strip()
+                raw = (
+                    await asyncio.to_thread(
+                        _input, "[bold yellow]Review[/] [yellow]>[/] "
+                    )
+                ).strip()
                 if raw.lower() in {"quit", "exit"}:
                     raise EOFError
                 if raw == "?":
@@ -392,16 +487,22 @@ async def _recover_review(
                         payload = json.loads(raw)
                         if not isinstance(payload, dict):
                             raise ValueError("decision must be a JSON object")
-                        if "review_id" in payload and payload["review_id"] != str(item.review_id):
+                        if "review_id" in payload and payload["review_id"] != str(
+                            item.review_id
+                        ):
                             raise ValueError("review_id does not match this review")
                         decision = ReviewDecision.model_validate(
-                            {key: value for key, value in payload.items() if key != "review_id"}
+                            {
+                                key: value
+                                for key, value in payload.items()
+                                if key != "review_id"
+                            }
                         )
                     if decision.decision_type.value not in allowed:
                         raise ValueError("decision is not allowed for this review")
                     break
                 except ValueError as exc:
-                    print(f"Invalid decision: {exc}")
+                    _error("Invalid decision", str(exc))
             if decision.decision_type is ReviewDecisionType.REJECT_ALL:
                 reject_all = True
                 break
@@ -426,15 +527,19 @@ async def _recover_review(
                 actor_session_id=session_id,
             )
         except (ValueError, ReviewNotReadyError) as exc:
-            print(f"Review was not applied: {exc}. Please correct the decision.")
+            _error("Review was not applied", f"{exc}. Please correct the decision.")
             continue
         except Exception as exc:
-            print(
-                f"Review remains pending after {type(exc).__name__}. "
-                "Check the API logs and reopen this session to retry."
+            _error(
+                "Review remains pending",
+                f"{type(exc).__name__}. Check the API logs and reopen this session to retry.",
             )
             return True
-        print(f"Review completed. Monitoring status: {result.status.value}.")
+        _notice(
+            f"Review completed. Monitoring status: {result.status.value}.",
+            tone="green",
+            symbol="✓",
+        )
         if result.status in {RunStatus.SUCCEEDED, RunStatus.PARTIAL_SUCCESS}:
             original_question = session.state.get("monitoring_original_question")
             if isinstance(original_question, str) and original_question:
@@ -444,13 +549,15 @@ async def _recover_review(
                     session_id=session_id,
                     new_message=types.Content(
                         role="user",
-                        parts=[types.Part(
-                            text=(
-                                "The saved monitoring review is complete. Answer "
-                                "my original tariff question from accepted data: "
-                                f"{original_question}"
+                        parts=[
+                            types.Part(
+                                text=(
+                                    "The saved monitoring review is complete. Answer "
+                                    "my original tariff question from accepted data: "
+                                    f"{original_question}"
+                                )
                             )
-                        )],
+                        ],
                     ),
                 )
         return True
@@ -458,15 +565,17 @@ async def _recover_review(
 
 def _print_api_error(exc: APIError) -> None:
     if exc.code == 402 and exc.status == "RESOURCE_EXHAUSTED":
-        print(
+        _error(
+            "Gemini credits exhausted",
             "Gemini prepaid credits are depleted. Add credits to the configured "
             "Google AI project, then retry in this session. No chat answer "
-            "was produced."
+            "was produced.",
         )
     else:
-        print(
-            f"Gemini request failed ({exc.code} {exc.status}). "
-            "Check the API and worker logs, then retry in this session."
+        _error(
+            "Gemini request failed",
+            f"{exc.code} {exc.status}. Check the API and worker logs, "
+            "then retry in this session.",
         )
 
 
@@ -496,32 +605,50 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
             await session_service.create_session(
                 app_name=cli_app.name, user_id=user_id, session_id=session_id
             )
-        print("Ameria Tariff Chat")
-        print(f"Session: {session_id}")
-        print("Type quit to exit. Use this session ID to resume later.\n")
+        console.print(
+            Panel(
+                Text(
+                    f"Session: {session_id}\nType quit to exit. Use this session ID to resume later."
+                ),
+                title=Text("Ameria Tariff Chat", style="bold cyan"),
+                border_style="cyan",
+            )
+        )
         try:
             await _continue_pending(
-                runner, session_service, container.run_service,
-                user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
+                runner,
+                session_service,
+                container.run_service,
+                user_id=user_id,
+                session_id=session_id,
+                poll_seconds=poll_seconds,
             )
             await _recover_review(
-                runner, session_service, container.run_service,
+                runner,
+                session_service,
+                container.run_service,
                 container.chat_review_service,
-                user_id=user_id, session_id=session_id,
+                user_id=user_id,
+                session_id=session_id,
             )
         except APIError as exc:
             _print_api_error(exc)
         while True:
-            prompt = (await asyncio.to_thread(input, "You> ")).strip()
+            prompt = (
+                await asyncio.to_thread(_input, "[bold cyan]You[/] [cyan]>[/] ")
+            ).strip()
             if prompt.lower() in {"exit", "quit"}:
                 return
             if not prompt:
                 continue
             try:
                 recovered = await _recover_review(
-                    runner, session_service, container.run_service,
+                    runner,
+                    session_service,
+                    container.run_service,
                     container.chat_review_service,
-                    user_id=user_id, session_id=session_id,
+                    user_id=user_id,
+                    session_id=session_id,
                 )
                 if recovered:
                     continue
@@ -534,13 +661,20 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
                     ),
                 )
                 await _continue_pending(
-                    runner, session_service, container.run_service,
-                    user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
+                    runner,
+                    session_service,
+                    container.run_service,
+                    user_id=user_id,
+                    session_id=session_id,
+                    poll_seconds=poll_seconds,
                 )
                 await _recover_review(
-                    runner, session_service, container.run_service,
+                    runner,
+                    session_service,
+                    container.run_service,
                     container.chat_review_service,
-                    user_id=user_id, session_id=session_id,
+                    user_id=user_id,
+                    session_id=session_id,
                 )
             except APIError as exc:
                 _print_api_error(exc)
@@ -561,9 +695,11 @@ def main() -> None:
     try:
         asyncio.run(chat(args.user_id, session_id, args.poll_seconds))
     except (KeyboardInterrupt, EOFError):
-        print(
-            f"\nResume with: ./tariff-chat --user-id {args.user_id} "
-            f"--session-id {session_id}"
+        _notice(
+            f"Resume with: ./tariff-chat --user-id {args.user_id} "
+            f"--session-id {session_id}",
+            tone="cyan",
+            symbol="↳",
         )
 
 

@@ -37,7 +37,9 @@ class _LocalModel(BaseLlm):
 
 
 @pytest.mark.asyncio
-async def test_cli_long_running_monitoring_pauses_and_resumes_same_invocation(monkeypatch) -> None:
+async def test_cli_long_running_monitoring_pauses_and_resumes_same_invocation(
+    monkeypatch,
+) -> None:
     run_id = uuid4()
     app = App(
         name="cli_pause_test",
@@ -227,8 +229,12 @@ async def test_cli_reopens_pending_business_review_without_starting_new_run(
     reviews = _Reviews()
 
     handled = await _recover_review(
-        object(), _Sessions(), _Runs(), reviews,
-        user_id="cli-user", session_id="original-chat",
+        object(),
+        _Sessions(),
+        _Runs(),
+        reviews,
+        user_id="cli-user",
+        session_id="original-chat",
     )
 
     assert handled is True
@@ -269,3 +275,26 @@ def test_cli_bootstrap_hides_adk_experimental_notices() -> None:
 
     assert "Durable Ameria tariff ADK chat" in result.stdout
     assert "[EXPERIMENTAL]" not in result.stderr
+
+
+def test_cli_explains_gemini_402_without_traceback(capsys) -> None:
+    from google.genai.errors import ClientError
+
+    from app.cli import _print_api_error
+
+    error = ClientError(
+        402,
+        {
+            "error": {
+                "code": 402,
+                "status": "RESOURCE_EXHAUSTED",
+                "message": "Your prepaid credits are depleted.",
+            }
+        },
+    )
+    _print_api_error(error)
+
+    output = capsys.readouterr()
+    assert "Gemini prepaid credits are depleted" in output.out
+    assert "retry in this session" in output.out
+    assert "Traceback" not in output.err
