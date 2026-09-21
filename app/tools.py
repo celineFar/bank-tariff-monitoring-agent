@@ -382,6 +382,8 @@ async def get_next_monitoring_review(
         return {
             "status": run.status.value,
             "run_id": raw_run_id,
+            "failure_code": run.failure_code,
+            "failure_detail": run.failure_detail,
             "original_question": tool_context.state.get(_ORIGINAL_QUESTION_KEY),
         }
     try:

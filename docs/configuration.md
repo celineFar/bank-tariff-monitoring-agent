@@ -198,6 +198,21 @@ Production still requires authenticated ingress, reviewer authorization, a notif
 adapter, and an explicitly approved deployment. None is enabled merely by setting the
 HITL thresholds or session URI.
 
+## Durable CLI chat
+
+For monitoring runs that take several minutes, start the custom CLI inside the
+API container:
+
+```bash
+docker compose exec api uv run python -m app.cli
+```
+
+The CLI prints a session ID. After an interrupted terminal session, pass it with
+`--session-id` to recover any pending ADK long-running function or review input.
+The CLI uses the same PostgreSQL session service and run repository as the API
+and worker. Run the CLI within the container because the Compose `.env` database
+host is `db`.
+
 ## Review abort administration
 
 Set `REVIEW_ADMIN_TOKEN` to a long random secret before using

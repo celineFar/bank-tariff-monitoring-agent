@@ -30,6 +30,7 @@ shell, or SQL tool.
 ## Package boundaries
 
 - `app/agent.py`: resumable ADK root chat agent, native `request_input`, and stable instructions.
+- `app/cli.py`: interactive terminal entry point using a separate resumable ADK app. Its `LongRunningFunctionTool` starts the same PostgreSQL worker run, returns an intermediate run ID, and the CLI polls run status before supplying a final function response to the original invocation. The session ID allows recovery after the CLI exits.
 - `app/config/`: one environment adapter plus nested typed groups shared by API,
   agent, and worker; consumers depend only on the relevant group.
 - `app/tools.py`: narrow ADK adapters that call application services. Monitoring

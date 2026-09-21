@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import math
 from collections.abc import Sequence
 from typing import Protocol
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
@@ -19,6 +21,11 @@ from app.repositories.contracts import KnowledgeStoreRepository
 
 class EmbeddingError(RuntimeError):
     pass
+
+
+logger = logging.getLogger(__name__)
+_EMBED_BATCH_SIZE = 20
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 class EmbeddingProvider(Protocol):
@@ -60,19 +67,41 @@ class GeminiEmbeddingProvider:
     ) -> Sequence[Sequence[float]]:
         if not contents:
             return ()
-        response = await self._client.aio.models.embed_content(
-            model=self._model_name,
-            contents=list(contents),
-            config=types.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT",
-                output_dimensionality=self._dimensions,
-            ),
-        )
-        embeddings = response.embeddings or []
-        values = [embedding.values for embedding in embeddings]
-        if any(value is None for value in values):
-            raise EmbeddingError("Gemini returned an embedding without values")
-        return [value for value in values if value is not None]
+        values: list[Sequence[float]] = []
+        for offset in range(0, len(contents), _EMBED_BATCH_SIZE):
+            batch = list(contents[offset : offset + _EMBED_BATCH_SIZE])
+            for attempt in range(3):
+                try:
+                    response = await self._client.aio.models.embed_content(
+                        model=self._model_name,
+                        contents=batch,
+                        config=types.EmbedContentConfig(
+                            task_type="RETRIEVAL_DOCUMENT",
+                            output_dimensionality=self._dimensions,
+                        ),
+                    )
+                    break
+                except errors.APIError as exc:
+                    logger.warning(
+                        "embedding provider rejected batch code=%s status=%s "
+                        "batch_size=%s attempt=%s",
+                        exc.code,
+                        exc.status,
+                        len(batch),
+                        attempt + 1,
+                    )
+                    if exc.code not in _RETRYABLE_STATUS_CODES or attempt == 2:
+                        raise EmbeddingError(
+                            f"embedding provider error {exc.code} {exc.status}"
+                        ) from exc
+                    await asyncio.sleep(10 * (attempt + 1))
+            embeddings = response.embeddings or []
+            if len(embeddings) != len(batch) or any(
+                embedding.values is None for embedding in embeddings
+            ):
+                raise EmbeddingError("Gemini returned incomplete embeddings")
+            values.extend(embedding.values for embedding in embeddings)
+        return values
 
 
 class GeminiQueryEmbeddingProvider:

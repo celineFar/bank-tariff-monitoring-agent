@@ -19,6 +19,23 @@ because those triggers have no originating user conversation.
   remain on screen until the user returns; a later reply is told the run was
   aborted and cannot publish the candidate.
 
+## Interactive CLI for long monitoring runs
+
+Use `docker compose exec api uv run python -m app.cli` on the EC2 host. The CLI
+prints its ADK session ID. If the terminal closes, restart with
+`docker compose exec api uv run python -m app.cli --session-id <saved-session-id>`.
+The API and worker containers must be running, since the worker owns the actual
+monitoring pipeline.
+
+The CLI uses a dedicated `app_cli` ADK session and a long-running start tool. Its
+initial tool response contains the durable monitoring run ID. The CLI polls the
+PostgreSQL run until it is terminal or awaiting review, then supplies a final
+function response with the same ADK invocation and tool-call IDs. No HTTP chat
+request stays open for the pipeline's duration, and the 120-second web chat wait
+is not used. If ADK asks for review input, the CLI displays the prompt and
+accepts a JSON decision in the same terminal session. The CLI can recover the
+pending tool call from saved ADK events after a restart.
+
 ## Chat review flow
 
 1. A product question first resolves intent and checks accepted snapshot availability.
