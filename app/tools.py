@@ -110,7 +110,7 @@ async def resolve_request(
             ),
         }
     else:
-        tool_context.state.pop(_MONITOR_AUTHORIZATION_KEY, None)
+        tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     result = turn.resolution.model_dump(mode="json")
     if not state.introduction_shown:
         result["catalog_intro"] = _request_resolver.catalog_payload(
@@ -164,7 +164,7 @@ async def start_tariff_monitoring(
             "offering_id": offering_id,
             "reason_code": "run.intent_not_authorized",
         }
-    tool_context.state.pop(_MONITOR_AUTHORIZATION_KEY, None)
+    tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     result = await _run_service.submit(
         command
     )

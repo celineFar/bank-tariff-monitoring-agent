@@ -5,14 +5,16 @@
       "prompt": {
         "role": "user",
         "parts": [{"text": "Find Ameria's current consumer loan tariffs and cite the official evidence."}]
-      }
+      },
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve get_current_tariffs for consumer_loan, call resolve_request then get_current_tariffs, use only accepted snapshot evidence, and if no accepted data exists state that values are missing without starting monitoring automatically."}]}}
     },
     {
-      "eval_case_id": "ambiguous_product_abstention",
+      "eval_case_id": "ambiguous_product_armenian",
       "prompt": {
         "role": "user",
-        "parts": [{"text": "What are Ameria's current loan terms? Do not guess which product I mean."}]
-      }
+        "parts": [{"text": "Ամերիաբանկի վարկի տոկոսադրույքը ո՞րն է։ Մի գուշակիր վարկատեսակը։"}]
+      },
+      "reference": {"response": {"role": "model", "parts": [{"text": "Respond in Armenian, call only resolve_request, and ask a bounded clarification between concrete consumer-loan or mortgage choices. Do not call current, history, RAG, status, wait, or monitoring tools."}]}}
     }
   ]
 }

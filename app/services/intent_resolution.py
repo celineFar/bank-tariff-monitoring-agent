@@ -52,6 +52,7 @@ _LIST_PATTERNS = (
 )
 _STATUS_PATTERNS = (
     "run status",
+    "status of run",
     "monitoring status",
     "refresh status",
     "progress",
@@ -97,6 +98,7 @@ _CURRENT_PATTERNS = (
     "վերջին սակագին",
     "ներկայիս տոկոս",
     "վերջին տոկոս",
+    "գործող",
 )
 _QUESTION_PATTERNS = (
     "tariff",
@@ -114,6 +116,8 @@ _QUESTION_PATTERNS = (
     "ժամկետ",
     "գումար",
     "գրավ",
+    "fees",
+    "terms",
 )
 _SINGLE_VALUE_PATTERNS = (
     "rate",
@@ -147,6 +151,7 @@ _TARIFF_SIGNAL_PATTERNS = (
     "հիփոթեք",
 )
 _CANCEL_PATTERNS = ("cancel", "never mind", "nevermind", "stop", "չեղարկել")
+_ARMENIAN_SUFFIXES = ("ը", "ն", "ի", "ին", "ից", "ով", "ում", "երը", "ների")
 
 
 class GeminiResolutionDecision(BaseModel):
@@ -264,7 +269,9 @@ class AdkIntentClassifier:
                 ),
             ):
                 if event.is_final_response() and event.content and event.content.parts:
-                    text_parts = [part.text for part in event.content.parts if part.text]
+                    text_parts = [
+                        part.text for part in event.content.parts if part.text
+                    ]
                     if text_parts:
                         final_text = "".join(text_parts)
         if final_text is None:
@@ -317,10 +324,9 @@ class RequestResolver:
                 current_state.pending_clarification,
             )
             replacement_intent = _classify_intent(normalized_query)
-            if (
-                not clarification.needs_clarification
-                or (replacement_intent is RequestIntent.UNSUPPORTED_OR_GENERAL
-                and not _contains_any(normalized_query, _CANCEL_PATTERNS))
+            if not clarification.needs_clarification or (
+                replacement_intent is RequestIntent.UNSUPPORTED_OR_GENERAL
+                and not _contains_any(normalized_query, _CANCEL_PATTERNS)
             ):
                 return ResolutionTurn(
                     resolution=clarification,
@@ -402,17 +408,18 @@ class RequestResolver:
                 candidate=deterministic_candidate,
                 candidates=ranked,
                 expects_single=expects_single,
-                method=(
-                    ResolutionMethod.EXACT if exact else ResolutionMethod.FUZZY
-                ),
+                method=(ResolutionMethod.EXACT if exact else ResolutionMethod.FUZZY),
             )
 
-        if intent is not None and _scope_is_optional(
-            intent,
-            expects_single=expects_single,
-            normalized_query=normalized_query,
-        ) and not exact and (
-            not ranked or ranked[0].score < self._settings.fuzzy_min_score
+        if (
+            intent is not None
+            and _scope_is_optional(
+                intent,
+                expects_single=expects_single,
+                normalized_query=normalized_query,
+            )
+            and not exact
+            and (not ranked or ranked[0].score < self._settings.fuzzy_min_score)
         ):
             return IntentResolution(
                 intent=intent,
@@ -498,7 +505,7 @@ class RequestResolver:
             matching_terms = [
                 term
                 for term in target.terms
-                if f" {term} " in padded_query
+                if _contains_normalized_term(padded_query, term)
             ]
             if not matching_terms:
                 continue
@@ -814,9 +821,13 @@ def _classify_intent(normalized_query: str) -> RequestIntent | None:
                 "ընթացիկ",
                 "վերջին",
                 "այսօրվա",
+                "գործող",
             ),
         )
-        and _contains_any(normalized_query, _QUESTION_PATTERNS)
+        and (
+            _contains_any(normalized_query, _QUESTION_PATTERNS)
+            or _contains_any(normalized_query, _BROAD_PATTERNS)
+        )
     ):
         return RequestIntent.GET_CURRENT_TARIFFS
     if _contains_any(normalized_query, _QUESTION_PATTERNS):
@@ -827,9 +838,9 @@ def _classify_intent(normalized_query: str) -> RequestIntent | None:
 
 
 def _expects_single_value(normalized_query: str) -> bool:
-    return _contains_any(normalized_query, _SINGLE_VALUE_PATTERNS) and not _contains_any(
-        normalized_query, _BROAD_PATTERNS
-    )
+    return _contains_any(
+        normalized_query, _SINGLE_VALUE_PATTERNS
+    ) and not _contains_any(normalized_query, _BROAD_PATTERNS)
 
 
 def _scope_is_optional(
@@ -849,15 +860,24 @@ def _scope_is_optional(
         RequestIntent.GET_CURRENT_TARIFFS,
         RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
     }:
-        return not expects_single and _contains_any(
-            normalized_query, _BROAD_PATTERNS
-        )
+        return not expects_single and _contains_any(normalized_query, _BROAD_PATTERNS)
     return False
 
 
 def _contains_any(value: str, patterns: tuple[str, ...]) -> bool:
     padded = f" {value} "
-    return any(f" {normalize_catalog_term(pattern)} " in padded for pattern in patterns)
+    return any(
+        _contains_normalized_term(padded, normalize_catalog_term(pattern))
+        for pattern in patterns
+    )
+
+
+def _contains_normalized_term(padded_value: str, term: str) -> bool:
+    if f" {term} " in padded_value:
+        return True
+    if not term or not _ARMENIAN_LETTER.search(term[-1]):
+        return False
+    return any(f" {term}{suffix} " in padded_value for suffix in _ARMENIAN_SUFFIXES)
 
 
 def _build_targets(catalog: SeedCatalog) -> tuple[_Target, ...]:
@@ -1041,10 +1061,7 @@ def _validate_classifier_decision(
     if decision.intent not in allowed_intents:
         raise ValueError("classifier returned an intent outside the allowed set")
     candidate_ids = {candidate.candidate_id for candidate in candidates}
-    if (
-        decision.candidate_id is not None
-        and decision.candidate_id not in candidate_ids
-    ):
+    if decision.candidate_id is not None and decision.candidate_id not in candidate_ids:
         raise ValueError("classifier returned a candidate outside the allowed set")
 
 

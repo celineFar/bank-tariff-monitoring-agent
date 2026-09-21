@@ -685,16 +685,19 @@ deterministic regression.
 
 ### M. Agent evaluation loop
 
-- [ ] Load the agents-cli evaluation guidance immediately before evaluation.
-- [ ] Start with one bilingual resolution/clarification case and one grounded current-data
+- [x] Load the agents-cli evaluation guidance immediately before evaluation.
+- [x] Start with one bilingual resolution/clarification case and one grounded current-data
       case.
-- [ ] Run `agents-cli eval run`, inspect traces/scores, and fix the first failure class.
-- [ ] Repeat the eval/fix loop until the core cases meet the agreed bar.
-- [ ] Expand to all eight intents, all thirteen offerings, fuzzy aliases, ambiguity,
+- [x] Run `agents-cli eval run`, inspect traces/scores, and fix the first failure class.
+- [x] Repeat the eval/fix loop until the core cases meet the agreed bar.
+- [x] Expand to all eight intents, all thirteen offerings, fuzzy aliases, ambiguity,
       stale-data behavior, unsupported requests, and tool-routing safety.
-- [ ] Add native HITL behavioral coverage using deterministic workflow integration tests;
+- [x] Add native HITL behavioral coverage using deterministic workflow integration tests;
       do not assert variable LLM prose in pytest.
-- [ ] Use `agents-cli eval compare` before merging later resolver/prompt changes.
+- [x] Use `agents-cli eval compare` before merging later resolver/prompt changes.
+
+
+Phase M verification (2026-09-21): core 2/2 mean 5.00; expanded 22/22 mean 5.00 after a 3.64 baseline. `agents-cli eval compare` confirmed improvement without a case regression. All eight intents are covered across live eval and deterministic session-continuation tests; ADK 2.9.2 rejects state-bearing initialization events, so `CLARIFICATION_RESPONSE` remains in the real two-turn deterministic suite. Native pause/resume and PostgreSQL restart coverage passed (18 tests).
 
 ### N. Documentation and demonstration
 

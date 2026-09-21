@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from google.adk.sessions.state import State
 
 from app.config.models import IntentResolutionSettings
 from app.config.seed_catalog import load_seed_catalog
@@ -118,9 +119,7 @@ async def test_gemini_fallback_can_only_select_a_supplied_candidate() -> None:
 
     assert classifier.calls == 1
     assert "mortgage_secondary_market" in classifier.candidate_ids
-    assert classifier.allowed_intents == (
-        RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-    )
+    assert classifier.allowed_intents == (RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,)
     assert turn.resolution.offering_id is OfferingId.MORTGAGE_SECONDARY_MARKET
     assert turn.resolution.method is ResolutionMethod.GEMINI
 
@@ -145,7 +144,9 @@ async def test_invalid_or_failed_gemini_result_asks_instead_of_guessing() -> Non
 
 
 @pytest.mark.asyncio
-async def test_family_behavior_distinguishes_monitoring_overview_and_single_value() -> None:
+async def test_family_behavior_distinguishes_monitoring_overview_and_single_value() -> (
+    None
+):
     resolver = _resolver()
 
     monitoring = await resolver.resolve_turn("refresh all mortgage loans")
@@ -159,9 +160,9 @@ async def test_family_behavior_distinguishes_monitoring_overview_and_single_valu
     assert overview.resolution.product is ProductType.MORTGAGE
     assert overview.resolution.needs_clarification is False
     assert single.resolution.needs_clarification is True
-    assert {
-        candidate.offering_id for candidate in single.resolution.candidates
-    } == set(OfferingId) - {
+    assert {candidate.offering_id for candidate in single.resolution.candidates} == set(
+        OfferingId
+    ) - {
         OfferingId.CONSUMER_STANDARD,
         OfferingId.OVERDRAFT,
         OfferingId.CREDIT_LINE,
@@ -179,17 +180,16 @@ async def test_broad_overview_without_scope_remains_catalog_wide() -> None:
 
 
 @pytest.mark.asyncio
-async def test_clarification_state_resolves_natural_follow_up_and_clears_pending() -> None:
+async def test_clarification_state_resolves_natural_follow_up_and_clears_pending() -> (
+    None
+):
     first = await _resolver().resolve_turn("current mortgage rate")
 
     second = await _resolver().resolve_turn("the express one", first.state)
 
     assert first.state.pending_clarification is not None
     assert second.resolution.intent is RequestIntent.CLARIFICATION_RESPONSE
-    assert (
-        second.resolution.continuation_intent
-        is RequestIntent.GET_CURRENT_TARIFFS
-    )
+    assert second.resolution.continuation_intent is RequestIntent.GET_CURRENT_TARIFFS
     assert second.resolution.offering_id is OfferingId.MORTGAGE_EXPRESS
     assert second.state.pending_clarification is None
     assert second.state.latest_offering_id is OfferingId.MORTGAGE_EXPRESS
@@ -200,15 +200,29 @@ async def test_clarification_state_resolves_natural_follow_up_and_clears_pending
     ("query", "expected"),
     [
         ("What products are supported?", RequestIntent.LIST_SUPPORTED_PRODUCTS),
-        ("What is the Express Mortgage fee?", RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION),
+        (
+            "What is the Express Mortgage fee?",
+            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+        ),
+        (
+            "What fees apply to the card credit line?",
+            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+        ),
         ("Current tariffs overview", RequestIntent.GET_CURRENT_TARIFFS),
+        (
+            "Give me a current overview of all mortgage offerings",
+            RequestIntent.GET_CURRENT_TARIFFS,
+        ),
         ("Refresh consumer loans", RequestIntent.START_MONITORING_RUN),
         ("What is the run status?", RequestIntent.GET_RUN_STATUS),
+        ("What is the status of run 99999999?", RequestIntent.GET_RUN_STATUS),
         ("What changed for mortgages?", RequestIntent.GET_CHANGE_HISTORY),
         ("Write me a poem", RequestIntent.UNSUPPORTED_OR_GENERAL),
     ],
 )
-async def test_deterministic_intent_taxonomy(query: str, expected: RequestIntent) -> None:
+async def test_deterministic_intent_taxonomy(
+    query: str, expected: RequestIntent
+) -> None:
     turn = await _resolver().resolve_turn(query)
     assert turn.resolution.intent is expected
 
@@ -253,11 +267,14 @@ async def test_resolve_request_tool_persists_only_session_clarification_state() 
     assert second["intent"] == RequestIntent.CLARIFICATION_RESPONSE.value
     assert second["offering_id"] == OfferingId.MORTGAGE_EXPRESS.value
     assert "catalog_intro" not in second
-    assert set(context.state) == {"intent_resolution"}
+    assert context.state["intent_resolution"]
+    assert context.state["temp:monitoring_authorization"] is None
 
 
 @pytest.mark.asyncio
-async def test_resolve_request_grants_and_revokes_scope_bound_monitoring_authorization() -> None:
+async def test_resolve_request_grants_and_revokes_scope_bound_monitoring_authorization() -> (
+    None
+):
     context = _ToolContext(state={})
     configure_services(None, None, _resolver())
     try:
@@ -273,7 +290,20 @@ async def test_resolve_request_grants_and_revokes_scope_bound_monitoring_authori
         "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
     }
     assert question["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
-    assert "temp:monitoring_authorization" not in context.state
+    assert context.state["temp:monitoring_authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_request_supports_native_adk_state_contract() -> None:
+    context = _ToolContext(state=State({}, {}))
+    configure_services(None, None, _resolver())
+    try:
+        resolution = await resolve_request("What is the Express Mortgage fee?", context)
+    finally:
+        configure_services(None, None, None)
+
+    assert resolution["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
+    assert context.state.get("temp:monitoring_authorization") is None
 
 
 @pytest.mark.asyncio
@@ -298,7 +328,9 @@ async def test_explicit_new_request_replaces_pending_clarification() -> None:
     resolver = _resolver()
     first = await resolver.resolve_turn("current mortgage rate")
 
-    second = await resolver.resolve_turn("What changed for consumer loans?", first.state)
+    second = await resolver.resolve_turn(
+        "What changed for consumer loans?", first.state
+    )
 
     assert second.resolution.intent is RequestIntent.GET_CHANGE_HISTORY
     assert second.resolution.product is ProductType.CONSUMER_LOAN
