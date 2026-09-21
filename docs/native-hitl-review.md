@@ -71,3 +71,30 @@ Reviewer identity is taken from the persisted ADK session boundary, never from a
 self-asserted reviewer field in the response. Production authentication and reviewer
 authorization remain a deployment gap; do not expose ADK Web publicly without an
 authenticated ingress.
+
+## Deterministic reviewer demonstration
+
+Render the same bounded request model used by the workflow without starting Gemini,
+writing to PostgreSQL, or making a decision:
+
+```bash
+uv run python scripts/demonstrate_native_hitl.py --scenario large-change
+uv run python scripts/demonstrate_native_hitl.py --scenario source-conflict
+```
+
+The first scenario shows an evidence-backed 3.6 percentage-point nominal-rate change and
+the `approve`, `reject_all`, and evidence-linked `override` choices. The second keeps the
+official PDF and webpage fee candidates distinct and permits `select_candidate`,
+`reject_all`, or evidence-linked `override`. `--scenario all` renders both reviews in one
+native request. These are reviewer-training fixtures, not an alternate decision path; use
+the ADK Web flow above to exercise a real persisted pause and resume.
+
+## Production gaps
+
+- ADK Web currently needs authenticated ingress and a role-to-review-scope authorization
+  policy before it can be exposed beyond local development.
+- Review creation has durable audit events but no email, chat, or paging notification
+  adapter. Reviewers must currently discover pending work through run/review reads or ADK
+  Web.
+- No production deployment has been performed. Deployment, secret wiring, ingress, and
+  reviewer identity integration require a separate approved deployment phase.

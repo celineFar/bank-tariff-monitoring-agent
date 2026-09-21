@@ -4,10 +4,11 @@ This list contains the components that need to be implemented. The order should 
 
 Each item defines its responsibility, implementation contract, important boundaries, and completion criteria. Ameria Bank, consumer loans, mortgages, Gemini Developer API, PostgreSQL/pgvector, FastAPI, and the daily `06:00 Asia/Yerevan` schedule are the initial scope.
 
-Reconciled on 2026-09-19 against implementation and tests. Checked items reflect the
-implemented responsibility where the final design uses the typed seed catalog, bounded
-Gemini PDF transcription, or dual source/summary projections instead of an earlier draft
-mechanism. Claim extraction/verification, OCR, and HITL completion remain deferred.
+Reconciled on 2026-09-21 against implementation, deterministic tests, and the agent eval
+baseline. Checked items reflect the implemented responsibility where the final design uses
+the typed seed catalog, bounded Gemini PDF transcription, dual source/summary projections,
+and native ADK pause/resume. OCR, document quality, production reviewer authorization, and
+other still-unchecked components remain deferred.
 
 - [x]  1. Configuration Component
 
@@ -72,7 +73,7 @@ mechanism. Claim extraction/verification, OCR, and HITL completion remain deferr
   - **HITL boundary:** Close scores, contradictory dates/values, or no result above threshold create a review case rather than a silent choice.
   - **Done when:** Ranking is reproducible, official summaries outrank generic pages, stale/irrelevant sources are penalized, and ambiguity routes to HITL.
 
-- [ ]  10. Evaluation Harness
+- [x]  10. Evaluation Harness
 
   - **Responsibility:** Measure nondeterministic agent, intent, retrieval, extraction, evidence, and response behavior separately from unit tests.
   - **Implement:** Use the Agents CLI/ADK evaluation format with versioned cases for both products, Armenian/English and imprecise requests, expected resolution, source/chunk evidence, tariff values, `NOT_FOUND`, ambiguity, and failures. Add rubric-based quality and task-specific programmatic metrics where supported.
@@ -163,7 +164,7 @@ mechanism. Claim extraction/verification, OCR, and HITL completion remain deferr
   - **Boundaries:** Do not silently coerce implausible data. Only `ACCEPT` may be stored as accepted; critical missing/evidence failures route according to explicit policy.
   - **Done when:** Parameterized boundary/invalid tests pass and storage cannot bypass the validation decision.
 
-- [ ]  23. User Intent + Product Resolution
+- [x]  23. User Intent + Product Resolution
 
   - **Responsibility:** Convert natural language into a constrained Ameria consumer-loan or mortgage intent.
   - **Implement:** Define structured output for bank, canonical product enum, original query, language, requested fields/action, confidence, and ambiguity reason. Give Gemini Armenian/English synonyms/examples, then verify against supported enums and deterministic alias/fuzzy signals.
@@ -198,12 +199,12 @@ mechanism. Claim extraction/verification, OCR, and HITL completion remain deferr
   - **Boundaries:** All events pass through sanitization. Keep OpenTelemetry vendor-neutral/configurable so AWS/local startup does not require Google ADC. Persist key audit events separately in PostgreSQL.
   - **Done when:** Normal and controlled-failure runs can be reconstructed by correlation ID, metrics are documented, and telemetry can be disabled safely.
 
-- [ ]  28. HITL / Human Review Component
+- [x]  28. HITL / Human Review Component
 
   - **Responsibility:** Prevent acceptance of ambiguous/risky results until an authorized reviewer decides.
-  - **Implement:** Persist review cases for close-ranked/conflicting documents, low OCR/quality, missing critical evidence, invalid extraction after bounded repair, and large changes. Store reasons, candidate/prior/current values, source evidence, quality/validation details, and proposed action. Expose FastAPI list/detail/approve/reject endpoints with identity, comments, time, and optimistic concurrency.
-  - **Boundaries:** Pending results cannot become accepted. Approval resumes from stored validated artifacts rather than re-running nondeterministic work; rejection is terminal. Development identity must be clearly marked and replaced before public exposure.
-  - **Done when:** Tests cover creation, evidence display, authorization, decisions, double-decision conflict, restart persistence, snapshot gating, and the demonstration scenario.
+  - **Implement:** Persist review cases for close-ranked/conflicting documents, missing critical evidence, invalid extraction after bounded repair, and large changes. Store reasons, candidate/prior/current values, source evidence, validation details, and proposed action. Expose read-only FastAPI list/detail diagnostics and use native ADK `RequestInput` plus durable session events for decisions.
+  - **Boundaries:** Pending results cannot become accepted. Approval resumes from stored validated artifacts rather than re-running nondeterministic work; rejection is terminal. Reviewer identity comes from the persisted ADK session boundary. Production authorization remains a documented deployment prerequisite.
+  - **Done when:** Tests cover creation, bounded evidence display, session identity checks, decisions, double-decision conflict, restart persistence, snapshot gating, and both large-change and PDF/web-conflict demonstrations.
 
 - [ ]  29. Automated Test Suite
 
@@ -212,7 +213,7 @@ mechanism. Claim extraction/verification, OCR, and HITL completion remain deferr
   - **Boundaries:** Offline and reproducible by default; mark live model/network tests. Never assert natural-language model content in pytest. Include small generated/licensed digital and scanned Armenian/numeric fixtures.
   - **Done when:** `uv run pytest tests/unit tests/integration` passes cleanly, critical failures are covered, gaps are documented, and live tests require explicit opt-in.
 
-- [ ]  30. Error Handling & Retry Component
+- [x]  30. Error Handling & Retry Component
 
   - **Responsibility:** Produce stable outcomes, retry only transient work, and prevent partial/fabricated results.
   - **Implement:** Define typed errors/reason codes for configuration, product/source failures, unsafe URLs, HTTP status/timeouts, invalid/large files, parse/OCR/quality, embedding/retrieval, irrelevant evidence, Gemini/schema, validation, database, missing prior snapshot, and HITL conflicts. Centralize capped exponential backoff/jitter for transient HTTP, Gemini, embedding, and database disconnects.

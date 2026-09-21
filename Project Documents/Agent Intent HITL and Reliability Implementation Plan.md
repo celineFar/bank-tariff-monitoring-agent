@@ -701,16 +701,18 @@ Phase M verification (2026-09-21): core 2/2 mean 5.00; expanded 22/22 mean 5.00 
 
 ### N. Documentation and demonstration
 
-- [ ] Update `docs/architecture.md` for the ADK workflow, persistence ownership, routes,
+- [x] Update `docs/architecture.md` for the ADK workflow, persistence ownership, routes,
       run statuses, review lifecycle, and worker behavior.
-- [ ] Add focused docs for intent resolution, native HITL, failure behavior, and reviewer
+- [x] Add focused docs for intent resolution, native HITL, failure behavior, and reviewer
       demonstration.
-- [ ] Update `docs/run-lifecycle.md`, `docs/snapshot-lifecycle.md`,
+- [x] Update `docs/run-lifecycle.md`, `docs/snapshot-lifecycle.md`,
       `docs/rag-answering.md`, `docs/configuration.md`, and the architecture checklist.
-- [ ] Document the typed API as the non-chat monitoring entry point.
-- [ ] Document ADK Web as the local native review interface.
-- [ ] Provide one large-change and one PDF/web-conflict demonstration script/fixture.
-- [ ] Record known production gaps: reviewer authorization, notifications, and deployment.
+- [x] Document the typed API as the non-chat monitoring entry point.
+- [x] Document ADK Web as the local native review interface.
+- [x] Provide one large-change and one PDF/web-conflict demonstration script/fixture.
+- [x] Record known production gaps: reviewer authorization, notifications, and deployment.
+
+Phase N verification (2026-09-21): architecture and lifecycle docs now define typed HTTP entry points, run/review state ownership, worker pause/resume, quarantine, and accepted-only RAG behavior. `scripts/demonstrate_native_hitl.py` renders validated large-change and official PDF/web-conflict request payloads; focused workflow/demo tests pass (8 passed). ADK Web is documented as the local decision interface, with production authorization, notification, and deployment gaps explicit.
 
 ### O. Final quality gates
 

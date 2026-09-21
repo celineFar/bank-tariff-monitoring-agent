@@ -283,6 +283,31 @@ Both services have typed HTTP and ADK adapters. `RunWaitService` is chat-side on
 polls persisted state for at most two minutes; `POST /api/v1/runs` remains asynchronous.
 See `docs/tariff-query-services.md`.
 
+## HTTP and lifecycle contract
+
+FastAPI is the typed, non-chat surface. It does not classify free-form intent and it does
+not expose a review-decision endpoint:
+
+| Route | Contract |
+|---|---|
+| `POST /api/v1/runs` | Validate a canonical family/offering, enqueue through `RunService`, and return `202` plus the durable run. |
+| `GET /api/v1/runs/{run_id}` | Read the persisted run state and summary. |
+| `POST /api/v1/questions` | Answer from the active evidence corpus; never acquire sources. |
+| `GET /api/v1/tariffs/current` | Read accepted snapshots only, with freshness and pending-newer-review indicators. |
+| `GET /api/v1/tariffs/history` | Read bounded accepted snapshot/change history. |
+| `GET /api/v1/reviews[/{review_id}]` | Inspect durable review records; decisions enter through native ADK resume only. |
+
+The business lifecycle is `queued -> running -> awaiting_review -> terminal`, where the
+terminal states are `succeeded`, `partial_success`, and `failed`. A run may go directly
+from `running` to a terminal state. `awaiting_review` remains an active state for family
+deduplication and owns no worker claim while waiting for a person.
+
+State ownership is deliberately split. PostgreSQL business tables own runs, offering
+executions, candidates, evidence, reviews, snapshots, changes, and publication state.
+ADK session/event tables own workflow node progress, invocation/interrupt identity, and
+the native function response. Correlation IDs link the stores; neither store silently
+infers a decision belonging to the other.
+
 ## Review and quarantine boundary
 
 Typed review tasks are durable business records correlated to candidate snapshots and,

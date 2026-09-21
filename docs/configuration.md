@@ -79,7 +79,9 @@ downloader receives `settings.http` and the PDF extraction service receives
   The demonstration command uses the source-discovery retry, fallback-model, and
   price-ceiling settings for live calls.
 - **HITL:** `HITL_DOCUMENT_RANK_GAP` and
-  `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`.
+  `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`. The latter defaults to three percentage
+  points. These settings create deterministic review reasons; they do not authorize or
+  apply a decision.
 - **Scheduling:** `SCHEDULE_TIMEZONE`, `SCHEDULE_HOUR`, and
   `SCHEDULE_MINUTE`.
 - **Serving/telemetry:** `LOG_LEVEL`, `OTEL_TO_CLOUD`, and `ALLOW_ORIGINS`.
@@ -148,3 +150,13 @@ uv run adk migrate session --source_db_url <legacy-sync-uri> --dest_db_url <new-
 
 Only use the migration command's unsafe-unpickling option for a fully trusted legacy
 database. The application never logs either URI.
+
+For local native review, run the normal application services and open ADK Web at
+`/dev-ui/`, select `tariff_monitoring_workflow`, and use the persisted run-scoped user
+and session IDs. `shared://session` ensures all local ADK surfaces resolve the injected
+session service; PostgreSQL remains the cross-process store. See
+`docs/native-hitl-review.md` for the decision flow.
+
+Production still requires authenticated ingress, reviewer authorization, a notification
+adapter, and an explicitly approved deployment. None is enabled merely by setting the
+HITL thresholds or session URI.

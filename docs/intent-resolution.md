@@ -7,7 +7,8 @@ IDs and do not invoke it.
 ## Resolution order
 
 1. Normalize Unicode with NFKC, case folding, punctuation/separator collapse, trimming,
-   and whitespace collapse.
+   and whitespace collapse. Reviewed Armenian grammatical suffixes are stripped only for
+   catalog token matching; the original request and detected language remain unchanged.
 2. Detect English, Armenian, or mixed-script input. Mixed input uses English labels by
    default while retaining its `mixed` language classification.
 3. Classify the request into the approved eight-value intent taxonomy using deterministic
@@ -97,3 +98,8 @@ detected language, allowed enum values, and supplied catalog candidates. The Pyd
 response is validated again by Python. A nonexistent candidate, disallowed intent,
 missing final response, malformed JSON, or exhausted API call becomes clarification or a
 safe unresolved result; it never becomes a business action.
+
+The versioned behavioral suite in `tests/eval/` covers all eight intents, all thirteen
+offerings, Armenian/English requests, fuzzy aliases, ambiguity, stale wording, and routing
+safety. Multi-turn clarification continuation remains a deterministic session test because
+ADK 2.9.2 does not permit state-bearing initialization events in an eval case.
