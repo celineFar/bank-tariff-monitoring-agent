@@ -86,7 +86,9 @@ async def resolve_request(
         tool_context.state[_MONITOR_AUTHORIZATION_KEY] = authorization
         return {
             "intent": RequestIntent.START_MONITORING_RUN.value,
-            "language": "hy" if any("\u0531" <= char <= "\u0586" for char in query) else "en",
+            "language": "hy"
+            if any("\u0531" <= char <= "\u0586" for char in query)
+            else "en",
             "method": "exact",
             **authorization,
             "needs_clarification": False,
@@ -165,9 +167,7 @@ async def start_tariff_monitoring(
             "reason_code": "run.intent_not_authorized",
         }
     tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
-    result = await _run_service.submit(
-        command
-    )
+    result = await _run_service.submit(command)
     return {
         "status": result.run.status.value,
         "run_id": str(result.run.id),

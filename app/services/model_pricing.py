@@ -125,8 +125,7 @@ def enforce_model_price_cap(
         price = get_model_price(model, on_date=on_date)
         if (
             price.input_per_million_tokens_usd > max_price_per_million_tokens_usd
-            or price.output_per_million_tokens_usd
-            > max_price_per_million_tokens_usd
+            or price.output_per_million_tokens_usd > max_price_per_million_tokens_usd
         ):
             raise ValueError(
                 f"Model {model!r} exceeds the configured ${max_price_per_million_tokens_usd:.2f} "

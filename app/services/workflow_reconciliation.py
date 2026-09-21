@@ -150,9 +150,7 @@ class WorkflowReconciliationService:
             )
             await self._audit(item)
             items.append(item)
-        items.extend(
-            await self._find_unlinked_interrupts(reviewed_interrupt_ids)
-        )
+        items.extend(await self._find_unlinked_interrupts(reviewed_interrupt_ids))
         return ReconciliationReport(scanned_runs=len(runs), items=tuple(items))
 
     async def _has_open_interrupt(self, task: ReviewTask) -> bool:
@@ -175,7 +173,9 @@ class WorkflowReconciliationService:
             user_id=user_id,
             session_id=session_id,
         )
-        return self._open_interrupt_ids(session.events) if session is not None else set()
+        return (
+            self._open_interrupt_ids(session.events) if session is not None else set()
+        )
 
     async def _find_unlinked_interrupts(
         self,

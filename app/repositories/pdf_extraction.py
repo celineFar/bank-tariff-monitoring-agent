@@ -24,8 +24,12 @@ class PdfExtractionRecord(PdfExtractionBase):
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     response: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint(

@@ -96,7 +96,7 @@ def _families() -> tuple[ProductFamilyCatalogEntry, ...]:
                 ),
             },
         )
-        for product in ProductType
+        for product in (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
     )
 
 
@@ -477,7 +477,7 @@ async def test_tariff_pipeline_isolates_offerings_and_reports_partial_success() 
         offerings=(
             _offering(OfferingId.CONSUMER_STANDARD),
             _offering(OfferingId.OVERDRAFT),
-        )
+        ),
     )
     runs = _Runs()
     pipeline = TariffPipeline(

@@ -219,7 +219,7 @@ def _catalog(*offerings: OfferingId) -> SeedCatalog:
                     ),
                 },
             )
-            for product in ProductType
+            for product in (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
         ),
         offerings=tuple(
             SeedCatalogEntry(
@@ -228,16 +228,14 @@ def _catalog(*offerings: OfferingId) -> SeedCatalog:
                 display_name=offering.value,
                 seed_url=f"https://ameriabank.am/{offering.value}",
                 localized_names={
-                    CatalogLanguage.ENGLISH: LocalizedCatalogTerms(
-                        name=offering.value
-                    ),
+                    CatalogLanguage.ENGLISH: LocalizedCatalogTerms(name=offering.value),
                     CatalogLanguage.ARMENIAN: LocalizedCatalogTerms(
                         name=f"hy-{offering.value}"
                     ),
                 },
             )
             for offering in offerings
-        )
+        ),
     )
 
 
@@ -250,6 +248,7 @@ async def test_consumer_standard_api_to_worker_publication_vertical_slice() -> N
         indexing=indexing,
         runs=runs,
     )
+
     class _Workflow:
         async def start(self, run):
             return await pipeline.execute(run)

@@ -44,7 +44,9 @@ class CurrentTariffItem(QueryModel):
             if any(value is not None for value in accepted_fields) or self.evidence:
                 raise ValueError("missing current tariff cannot expose snapshot values")
         elif any(value is None for value in accepted_fields):
-            raise ValueError("fresh or stale current tariff requires accepted snapshot data")
+            raise ValueError(
+                "fresh or stale current tariff requires accepted snapshot data"
+            )
         return self
 
 

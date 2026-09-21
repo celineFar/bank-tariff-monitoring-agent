@@ -201,6 +201,10 @@ async def test_clarification_state_resolves_natural_follow_up_and_clears_pending
     [
         ("What products are supported?", RequestIntent.LIST_SUPPORTED_PRODUCTS),
         (
+            "Which Ameria loan and mortgage products do you support?",
+            RequestIntent.LIST_SUPPORTED_PRODUCTS,
+        ),
+        (
             "What is the Express Mortgage fee?",
             RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
         ),

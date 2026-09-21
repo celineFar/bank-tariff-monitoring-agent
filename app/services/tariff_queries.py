@@ -258,9 +258,7 @@ class RunWaitService:
                     run=run,
                     waited_seconds=elapsed,
                 )
-            await self._sleep(
-                min(self._settings.run_poll_seconds, timeout - elapsed)
-            )
+            await self._sleep(min(self._settings.run_poll_seconds, timeout - elapsed))
 
 
 def _require_aware(value: datetime, label: str) -> None:

@@ -89,7 +89,9 @@ def normalize_table(table: TableArtifact) -> NormalizedTable:
         )
 
     if not headers:
-        acquired_headers = tuple(normalize_text(value) for value in table.headers[:width])
+        acquired_headers = tuple(
+            normalize_text(value) for value in table.headers[:width]
+        )
         if len(acquired_headers) == width and any(acquired_headers):
             headers = acquired_headers
             headers_inferred = table.headers_inferred
@@ -112,7 +114,9 @@ def normalize_table(table: TableArtifact) -> NormalizedTable:
         if not text:
             continue
         marker, body = _split_note(text)
-        if any(existing.text == body and existing.marker == marker for existing in notes):
+        if any(
+            existing.text == body and existing.marker == marker for existing in notes
+        ):
             continue
         notes.append(
             NormalizedNote(
@@ -142,7 +146,10 @@ def _meaningful_width(table: TableArtifact) -> int:
     ]
     if occupied:
         return max(occupied)
-    populated_rows = [len(tuple(value for value in row if normalize_text(value))) for row in table.rows]
+    populated_rows = [
+        len(tuple(value for value in row if normalize_text(value)))
+        for row in table.rows
+    ]
     return max(populated_rows, default=0)
 
 
@@ -167,7 +174,9 @@ def _reconstruct_grid(
             else:
                 active[column] = (cell, remaining - 1)
 
-        for cell in sorted(origins.get(row_index, ()), key=lambda value: value.column_index):
+        for cell in sorted(
+            origins.get(row_index, ()), key=lambda value: value.column_index
+        ):
             for offset in range(cell.colspan):
                 column = cell.column_index + offset
                 if column >= width:
@@ -183,7 +192,9 @@ def _reconstruct_grid(
     return result
 
 
-def _direct_meaningful_cells(slots: tuple[_Slot | None, ...]) -> list[TableCellArtifact]:
+def _direct_meaningful_cells(
+    slots: tuple[_Slot | None, ...],
+) -> list[TableCellArtifact]:
     found: list[TableCellArtifact] = []
     seen: set[str] = set()
     for slot in slots:
@@ -192,7 +203,9 @@ def _direct_meaningful_cells(slots: tuple[_Slot | None, ...]) -> list[TableCellA
             or slot.carried
             or slot.colspan_continuation
             or slot.cell.id in seen
-            or not (normalize_text(slot.cell.text) or normalize_text(slot.cell.markdown))
+            or not (
+                normalize_text(slot.cell.text) or normalize_text(slot.cell.markdown)
+            )
         ):
             continue
         found.append(slot.cell)
@@ -224,14 +237,10 @@ def _normalized_cell(
     slot: _Slot | None, table_ref: SourceReference
 ) -> NormalizedTableCell:
     if slot is None:
-        return NormalizedTableCell(
-            raw_text="", text="", source_refs=(table_ref,)
-        )
+        return NormalizedTableCell(raw_text="", text="", source_refs=(table_ref,))
     source_ref = SourceReference(source_item_id=slot.cell.id, locator=slot.cell.locator)
     if slot.colspan_continuation:
-        return NormalizedTableCell(
-            raw_text="", text="", source_refs=(source_ref,)
-        )
+        return NormalizedTableCell(raw_text="", text="", source_refs=(source_ref,))
     text = normalize_multiline_text(slot.cell.text)
     markdown = normalize_multiline_text(slot.cell.markdown)
     return NormalizedTableCell(

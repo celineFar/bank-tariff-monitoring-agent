@@ -31,9 +31,9 @@ def selected_assessments_by_source_item(
             continue
         for reference in assessment.source_refs:
             current = values.get(reference.source_item_id)
-            if current is None or assessment_precedence(assessment) < assessment_precedence(
-                current
-            ):
+            if current is None or assessment_precedence(
+                assessment
+            ) < assessment_precedence(current):
                 values[reference.source_item_id] = assessment
     return values
 
@@ -65,12 +65,8 @@ def build_selected_source_bundle(
         )
         if not blocks and not tables and document.id not in direct_documents:
             continue
-        selected_link_ids = {
-            link_id for block in blocks for link_id in block.link_ids
-        }
-        links = tuple(
-            link for link in document.links if link.id in selected_link_ids
-        )
+        selected_link_ids = {link_id for block in blocks for link_id in block.link_ids}
+        links = tuple(link for link in document.links if link.id in selected_link_ids)
         documents.append(
             document.model_copy(
                 update={"blocks": blocks, "tables": tables, "links": links}

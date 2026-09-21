@@ -112,9 +112,7 @@ class _ReviewRepository:
             }
         )
 
-    async def approve_with_snapshot(
-        self, review_id, decision, update, *, reviewer
-    ):
+    async def approve_with_snapshot(self, review_id, decision, update, *, reviewer):
         self.snapshot_update = update
         return await self.approve(review_id, decision, reviewer=reviewer)
 

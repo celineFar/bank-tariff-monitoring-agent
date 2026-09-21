@@ -77,9 +77,7 @@ def _block(identifier: str, text: str, locator: SourceLocator) -> NormalizedBloc
     )
 
 
-def _assessment(
-    block: NormalizedBlock, relevance: Relevance
-) -> SourceAssessment:
+def _assessment(block: NormalizedBlock, relevance: Relevance) -> SourceAssessment:
     return SourceAssessment(
         source_id=block.id,
         document_id="page",

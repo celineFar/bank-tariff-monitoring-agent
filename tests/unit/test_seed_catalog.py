@@ -28,15 +28,11 @@ def _valid_payload() -> dict[str, object]:
         "families": [
             {
                 "product": "consumer_loan",
-                "localized_names": _localized(
-                    "Consumer family", "Սպառողական ընտանիք"
-                ),
+                "localized_names": _localized("Consumer family", "Սպառողական ընտանիք"),
             },
             {
                 "product": "mortgage",
-                "localized_names": _localized(
-                    "Mortgage family", "Հիփոթեքային ընտանիք"
-                ),
+                "localized_names": _localized("Mortgage family", "Հիփոթեքային ընտանիք"),
             },
         ],
         "offerings": [
@@ -47,9 +43,7 @@ def _valid_payload() -> dict[str, object]:
                 "seed_url": "https://ameriabank.am/consumer",
                 "enabled": True,
                 "language": "en",
-                "localized_names": _localized(
-                    "Consumer Loans", "Սպառողական վարկ"
-                ),
+                "localized_names": _localized("Consumer Loans", "Սպառողական վարկ"),
             },
             {
                 "product": "mortgage",
@@ -58,9 +52,7 @@ def _valid_payload() -> dict[str, object]:
                 "seed_url": "https://ameriabank.am/mortgage",
                 "enabled": True,
                 "language": "en",
-                "localized_names": _localized(
-                    "Online Mortgage", "Օնլայն հիփոթեք"
-                ),
+                "localized_names": _localized("Online Mortgage", "Օնլայն հիփոթեք"),
             },
         ],
     }
@@ -109,14 +101,11 @@ def test_default_catalog_has_bilingual_resolution_terms_for_every_scope() -> Non
         OfferingId.CREDIT_LINE: "Վարկային գիծ",
         OfferingId.ONLINE_CONSUMER_FINANCE: "Օնլայն ապառիկ",
         OfferingId.MORTGAGE_ONLINE: (
-            "Առաջնային և երկրորդային շուկաներից բնակարանի ձեռքբերման "
-            "օնլայն վարկ"
+            "Առաջնային և երկրորդային շուկաներից բնակարանի ձեռքբերման օնլայն վարկ"
         ),
         OfferingId.MORTGAGE_PRIMARY: "Հիփոթեքային վարկ առաջնային շուկայից",
         OfferingId.MORTGAGE_DIASPORA: "Հիփոթեքային վարկ Սփյուռքի համար",
-        OfferingId.MORTGAGE_SECONDARY_MARKET: (
-            "Հիփոթեքային վարկ երկրորդային շուկայից"
-        ),
+        OfferingId.MORTGAGE_SECONDARY_MARKET: ("Հիփոթեքային վարկ երկրորդային շուկայից"),
         OfferingId.MORTGAGE_COMMERCIAL: "Առևտրային գույքի ձեռքբերման վարկ",
         OfferingId.MORTGAGE_EXPRESS: "Արագ հիփոթեք",
         OfferingId.MORTGAGE_NO_INCOME_VERIFICATION: (

@@ -80,7 +80,9 @@ def test_source_failures_have_stable_bounded_codes(error, expected) -> None:
 
 def test_stage_fallbacks_do_not_expose_exception_text() -> None:
     assert (
-        source_failure_code(RuntimeError("provider secret"), stage="semantic_extraction")
+        source_failure_code(
+            RuntimeError("provider secret"), stage="semantic_extraction"
+        )
         is SourceFailureCode.MODEL_FAILED
     )
 

@@ -8,7 +8,10 @@ from app.services.artifact_store import ArtifactStoreError, FileSystemArtifactSt
 async def test_artifact_store_reads_and_verifies_saved_content(tmp_path) -> None:
     store = FileSystemArtifactStore(tmp_path)
     artifact = await store.save(
-        b"source bytes", role="linked_document", media_type="application/pdf", extension="pdf"
+        b"source bytes",
+        role="linked_document",
+        media_type="application/pdf",
+        extension="pdf",
     )
 
     assert await store.read(artifact) == b"source bytes"

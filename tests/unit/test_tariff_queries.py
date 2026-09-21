@@ -277,9 +277,7 @@ async def test_run_wait_returns_incomplete_envelope_at_timeout() -> None:
 @pytest.mark.asyncio
 async def test_current_and_history_http_endpoints_have_typed_parity() -> None:
     repository = _Snapshots()
-    repository.latest = (
-        _snapshot(OfferingId.MORTGAGE_EXPRESS, accepted_at=NOW),
-    )
+    repository.latest = (_snapshot(OfferingId.MORTGAGE_EXPRESS, accepted_at=NOW),)
     app = FastAPI()
     app.state.current_tariff_service = CurrentTariffService(
         load_seed_catalog(),

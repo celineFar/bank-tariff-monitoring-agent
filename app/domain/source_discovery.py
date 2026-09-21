@@ -121,7 +121,9 @@ class DiscoveryCandidate(DiscoveryModel):
         if not _SHA256.fullmatch(self.content_fingerprint):
             raise ValueError("content_fingerprint must be a lowercase SHA-256 digest")
         if not _SHA256.fullmatch(self.structural_fingerprint):
-            raise ValueError("structural_fingerprint must be a lowercase SHA-256 digest")
+            raise ValueError(
+                "structural_fingerprint must be a lowercase SHA-256 digest"
+            )
         return self
 
 

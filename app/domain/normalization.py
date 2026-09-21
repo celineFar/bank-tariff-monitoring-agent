@@ -35,9 +35,7 @@ def _normalize_unicode(value: str) -> str:
     )
     normalized = unicodedata.normalize("NFKC", protected)
     return normalized.translate(
-        str.maketrans(
-            dict(zip(_SUPERSCRIPT_PLACEHOLDERS, _SUPERSCRIPTS, strict=True))
-        )
+        str.maketrans(dict(zip(_SUPERSCRIPT_PLACEHOLDERS, _SUPERSCRIPTS, strict=True)))
     )
 
 

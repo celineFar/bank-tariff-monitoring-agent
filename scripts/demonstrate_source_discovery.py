@@ -307,7 +307,9 @@ def _render_classification_results(
     direct = [item for item in result.assessments if item.inherited_from is None]
     model_decisions = [item for item in direct if item.source_id in candidates]
     other_decisions = [item for item in direct if item.source_id not in candidates]
-    inherited_count = sum(item.inherited_from is not None for item in result.assessments)
+    inherited_count = sum(
+        item.inherited_from is not None for item in result.assessments
+    )
 
     parts = [
         "# Source discovery classification results",
@@ -343,7 +345,9 @@ def _render_classification_results(
                 )
             )
 
-    parts.extend((f"## Deterministic and reused decisions ({len(other_decisions)})", ""))
+    parts.extend(
+        (f"## Deterministic and reused decisions ({len(other_decisions)})", "")
+    )
     if not other_decisions:
         parts.extend(("No items.", ""))
     else:
@@ -399,7 +403,9 @@ def _resolve_case(path: Path) -> tuple[Path, Path]:
         resolved / "normalized_bundle.json",
         resolved / "normalization" / "normalized_bundle.json",
     )
-    bundle_path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    bundle_path = next(
+        (candidate for candidate in candidates if candidate.is_file()), None
+    )
     if bundle_path is None:
         raise FileNotFoundError(
             f"No normalized_bundle.json found at or below {resolved}"
@@ -471,12 +477,8 @@ def _cost_estimate(
     )
     item_count = sum(len(batch.items) for batch in plan.batches)
     output_tokens = item_count * settings.estimated_output_tokens_per_item
-    input_cost = (
-        input_tokens * price.input_per_million_tokens_usd / 1_000_000
-    )
-    output_cost = (
-        output_tokens * price.output_per_million_tokens_usd / 1_000_000
-    )
+    input_cost = input_tokens * price.input_per_million_tokens_usd / 1_000_000
+    output_cost = output_tokens * price.output_per_million_tokens_usd / 1_000_000
     return {
         "currency": "USD",
         "model": plan.model_name,
@@ -489,13 +491,9 @@ def _cost_estimate(
         "input_price_per_million_tokens": price.input_per_million_tokens_usd,
         "output_price_per_million_tokens": price.output_per_million_tokens_usd,
         "estimated_prompt_characters": prompt_characters,
-        "estimated_chars_per_input_token": (
-            settings.estimated_chars_per_input_token
-        ),
+        "estimated_chars_per_input_token": (settings.estimated_chars_per_input_token),
         "estimated_input_tokens": input_tokens,
-        "assumed_output_tokens_per_item": (
-            settings.estimated_output_tokens_per_item
-        ),
+        "assumed_output_tokens_per_item": (settings.estimated_output_tokens_per_item),
         "candidate_item_count": item_count,
         "estimated_output_tokens": output_tokens,
         "estimated_input_cost_usd": round(input_cost, 8),
@@ -514,12 +512,8 @@ def _cost_estimate(
 
 def _actual_cost(usage: ClassifierUsage, price: ModelPrice) -> dict[str, Any]:
     billed_output_tokens = usage.output_tokens + usage.thinking_tokens
-    input_cost = (
-        usage.input_tokens * price.input_per_million_tokens_usd / 1_000_000
-    )
-    output_cost = (
-        billed_output_tokens * price.output_per_million_tokens_usd / 1_000_000
-    )
+    input_cost = usage.input_tokens * price.input_per_million_tokens_usd / 1_000_000
+    output_cost = billed_output_tokens * price.output_per_million_tokens_usd / 1_000_000
     return {
         "currency": "USD",
         "model": price.model,
@@ -550,25 +544,15 @@ def _combined_actual_cost(
         "input_tokens": sum(item["input_tokens"] for item in attempts),
         "output_tokens": sum(item["output_tokens"] for item in attempts),
         "thinking_tokens": sum(item["thinking_tokens"] for item in attempts),
-        "billed_output_tokens": sum(
-            item["billed_output_tokens"] for item in attempts
-        ),
+        "billed_output_tokens": sum(item["billed_output_tokens"] for item in attempts),
         "total_tokens_reported": sum(
             item["total_tokens_reported"] for item in attempts
         ),
         "request_attempts": sum(item["request_attempts"] for item in attempts),
-        "application_retries": sum(
-            item["application_retries"] for item in attempts
-        ),
-        "input_cost_usd": round(
-            sum(item["input_cost_usd"] for item in attempts), 8
-        ),
-        "output_cost_usd": round(
-            sum(item["output_cost_usd"] for item in attempts), 8
-        ),
-        "total_cost_usd": round(
-            sum(item["total_cost_usd"] for item in attempts), 8
-        ),
+        "application_retries": sum(item["application_retries"] for item in attempts),
+        "input_cost_usd": round(sum(item["input_cost_usd"] for item in attempts), 8),
+        "output_cost_usd": round(sum(item["output_cost_usd"] for item in attempts), 8),
+        "total_cost_usd": round(sum(item["total_cost_usd"] for item in attempts), 8),
         "attempts": attempts,
         "note": "Includes all reported usage from failed and successful model attempts; provider billing remains authoritative.",
     }

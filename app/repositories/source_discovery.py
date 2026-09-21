@@ -35,8 +35,12 @@ class SourceAssessmentRecord(SourceDiscoveryBase):
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     structural_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     assessment: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         UniqueConstraint(

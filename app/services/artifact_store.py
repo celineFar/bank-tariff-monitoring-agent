@@ -49,11 +49,17 @@ class FileSystemArtifactStore:
         try:
             content = target.read_bytes()
         except OSError as exc:
-            raise ArtifactStoreError(f"artifact could not be read: {target.name}") from exc
+            raise ArtifactStoreError(
+                f"artifact could not be read: {target.name}"
+            ) from exc
         if len(content) != artifact.size_bytes:
-            raise ArtifactStoreError("artifact size does not match acquisition metadata")
+            raise ArtifactStoreError(
+                "artifact size does not match acquisition metadata"
+            )
         if hashlib.sha256(content).hexdigest() != artifact.sha256:
-            raise ArtifactStoreError("artifact checksum does not match acquisition metadata")
+            raise ArtifactStoreError(
+                "artifact checksum does not match acquisition metadata"
+            )
         return content
 
     def _save_sync(

@@ -199,8 +199,10 @@ def test_review_result_remains_candidate_and_is_not_compared() -> None:
 def test_conflicting_pdf_and_web_values_are_preserved_as_review_candidates() -> None:
     base = _result()
     pdf_id = "ev_abcdef0123456789abcdef01"
-    web_citation = base.validated_fields[0].evidence[0].model_copy(
-        update={"quote": "Interest rate 12.5%"}
+    web_citation = (
+        base.validated_fields[0]
+        .evidence[0]
+        .model_copy(update={"quote": "Interest rate 12.5%"})
     )
     pdf_locator = SourceLocator(
         source_url="https://ameriabank.am/tariffs.pdf",
@@ -333,11 +335,15 @@ def test_model_execution_failure_fails_without_human_review() -> None:
 def test_agreeing_official_sources_do_not_create_review_signal() -> None:
     base = _result()
     assert base.loan_product is not None
-    duplicate = base.validated_fields[0].evidence[0].model_copy(
-        update={
-            "evidence_id": "ev_abcdef0123456789abcdef01",
-            "source_item_id": "second-source",
-        }
+    duplicate = (
+        base.validated_fields[0]
+        .evidence[0]
+        .model_copy(
+            update={
+                "evidence_id": "ev_abcdef0123456789abcdef01",
+                "source_item_id": "second-source",
+            }
+        )
     )
     agreed = base.validated_fields[0].model_copy(
         update={"evidence": (*base.validated_fields[0].evidence, duplicate)}

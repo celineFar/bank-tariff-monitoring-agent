@@ -31,7 +31,9 @@ def test_json_payload_is_flattened_with_json_path_evidence() -> None:
         "$['rates'][0]['value']",
     ]
     assert document.blocks[1].type is NormalizedBlockType.KEY_VALUE
-    assert document.blocks[1].source_refs[0].locator.json_path == "$['rates'][0]['value']"
+    assert (
+        document.blocks[1].source_refs[0].locator.json_path == "$['rates'][0]['value']"
+    )
     assert document.blocks[1].scalar_candidates[0].unit == "percent"
 
 

@@ -22,8 +22,9 @@ from app.tools import configure_run_service, start_tariff_monitoring
 from app.worker import MonitoringWorker, run_scheduled_monitoring
 
 
-def _run(command: RunCommand, *, status: RunStatus = RunStatus.QUEUED) -> MonitoringRun:
+def _run(command: RunCommand, *, status: RunStatus | None = None) -> MonitoringRun:
     now = datetime.now(UTC)
+    status = status or RunStatus.QUEUED
     return MonitoringRun(
         id=uuid4(),
         command=command,

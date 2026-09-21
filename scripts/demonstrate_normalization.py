@@ -62,15 +62,15 @@ def write_normalization_bundle(
     (output_directory / "normalized.md").write_text(
         render_normalized_markdown(bundle), encoding="utf-8"
     )
-    (output_directory / "summary.txt").write_text(
-        _summary(bundle), encoding="utf-8"
-    )
+    (output_directory / "summary.txt").write_text(_summary(bundle), encoding="utf-8")
     return output_directory
 
 
 async def demonstrate(case_path: Path) -> Path:
     artifact_path, case_directory = _resolve_case(case_path)
-    artifact = PageArtifact.model_validate_json(artifact_path.read_text(encoding="utf-8"))
+    artifact = PageArtifact.model_validate_json(
+        artifact_path.read_text(encoding="utf-8")
+    )
     artifact_root = artifact_path.parent / "artifacts"
     service = StructuralNormalizationService(
         artifact_reader=FileSystemArtifactStore(artifact_root),
@@ -88,11 +88,11 @@ def _resolve_case(path: Path) -> tuple[Path, Path]:
         resolved / "page_artifact.json",
         resolved / "output" / "page_artifact.json",
     )
-    artifact_path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    artifact_path = next(
+        (candidate for candidate in candidates if candidate.is_file()), None
+    )
     if artifact_path is None:
-        raise FileNotFoundError(
-            f"No page_artifact.json found at or below {resolved}"
-        )
+        raise FileNotFoundError(f"No page_artifact.json found at or below {resolved}")
     case_directory = (
         artifact_path.parent.parent
         if artifact_path.parent.name == "output"
@@ -136,7 +136,10 @@ def _summary(bundle: NormalizedSourceBundle) -> str:
         f"Table rows: {rows}",
         f"Scalar candidates: {scalars}",
         f"Warnings: {len(bundle.warnings)}",
-        *(f"- [{warning.code}] {warning.source_id}: {warning.message}" for warning in bundle.warnings),
+        *(
+            f"- [{warning.code}] {warning.source_id}: {warning.message}"
+            for warning in bundle.warnings
+        ),
     )
     return "\n".join(lines) + "\n"
 

@@ -246,9 +246,7 @@ async def demonstrate(
         if isinstance(exc, ModelSequenceError):
             semantic_plan = exc.plan
             _write_json(semantic_directory / "model_attempts.json", exc.attempts)
-            _write_json(
-                semantic_directory / "pre_validation.json", exc.raw_responses
-            )
+            _write_json(semantic_directory / "pre_validation.json", exc.raw_responses)
             (semantic_directory / "pre_validation.md").write_text(
                 render_unparsed_pre_validation(exc.raw_responses, failure),
                 encoding="utf-8",
@@ -285,9 +283,7 @@ async def demonstrate(
     (semantic_directory / "pre_validation.md").write_text(
         render_pre_validation(semantic_result), encoding="utf-8"
     )
-    _write_json(
-        semantic_directory / "review_queue.json", semantic_result.review_items
-    )
+    _write_json(semantic_directory / "review_queue.json", semantic_result.review_items)
     (semantic_directory / "review.md").write_text(
         render_review_queue(semantic_result.review_items), encoding="utf-8"
     )
@@ -951,7 +947,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("source_url", help="Official HTTPS loan or mortgage page URL")
     parser.add_argument(
         "--product",
-        choices=[item.value for item in ProductType],
+        choices=[
+            ProductType.CONSUMER_LOAN.value,
+            ProductType.MORTGAGE.value,
+        ],
         help="Override product inference (mortgage when URL contains 'mortgage'; otherwise consumer_loan)",
     )
     parser.add_argument(

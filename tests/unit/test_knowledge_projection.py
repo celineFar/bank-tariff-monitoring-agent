@@ -34,10 +34,11 @@ URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
 def _ref(
     item_id: str,
     *,
-    source_type: SourceType = SourceType.PAGE,
+    source_type: SourceType | None = None,
     page: int | None = None,
     json_path: str | None = None,
 ) -> SourceReference:
+    source_type = source_type or SourceType.PAGE
     return SourceReference(
         source_item_id=item_id,
         locator=SourceLocator(
@@ -234,7 +235,9 @@ def test_snapshot_summary_is_deterministic_and_non_authoritative() -> None:
     assert first.content_sha256 == second.content_sha256
     assert first.chunks == second.chunks
     assert "## Interest Rate" in first.chunks[0].content
-    assert "ev_0123456789abcdef01234567" in first.metadata["evidence_ids"]
+    evidence_ids = first.metadata["evidence_ids"]
+    assert isinstance(evidence_ids, list)
+    assert "ev_0123456789abcdef01234567" in evidence_ids
 
 
 def test_loan_product_summary_retains_evidence_ids() -> None:

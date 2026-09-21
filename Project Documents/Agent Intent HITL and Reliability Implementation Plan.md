@@ -716,15 +716,17 @@ Phase N verification (2026-09-21): architecture and lifecycle docs now define ty
 
 ### O. Final quality gates
 
-- [ ] Run project formatting, lint, type, and codespell checks.
-- [ ] Run the complete deterministic test suite.
-- [ ] Run `agents-cli run` smoke tests for catalog, resolution, current tariffs,
+- [x] Run project formatting, lint, type, and codespell checks.
+- [x] Run the complete deterministic test suite.
+- [x] Run `agents-cli run` smoke tests for catalog, resolution, current tariffs,
       monitoring, status, history, and unsupported requests.
-- [ ] Run the approved initial eval suite and record results.
-- [ ] Verify migrations against a fresh database and an existing migrated database.
-- [ ] Verify no pending/rejected/superseded document is returned by normal RAG.
-- [ ] Verify restart-safe native HITL end to end.
-- [ ] Do not deploy; deployment requires separate explicit approval.
+- [x] Run the approved initial eval suite and record results.
+- [x] Verify migrations against a fresh database and an existing migrated database.
+- [x] Verify no pending/rejected/superseded document is returned by normal RAG.
+- [x] Verify restart-safe native HITL end to end.
+- [x] Do not deploy; deployment requires separate explicit approval.
+
+Phase O verification (2026-09-21): `agents-cli lint` passed Ruff formatting/lint, ty, and codespell; 334 source-controlled deterministic tests passed with PostgreSQL (the ignored local legacy bundle test and two opt-in live tests were excluded); all seven `agents-cli run` scenarios routed safely; and the approved core eval rerun scored 2/2 at 5.00. Migration 001-007 -> 008 and fresh 001-008 paths passed, ADK session schema version 1 passed, normal RAG excluded pending/rejected/superseded documents, and PostgreSQL pause/dispose/resume completed without rerunning the pipeline. No deployment command was run.
 
 ## 12. Testing Strategy
 

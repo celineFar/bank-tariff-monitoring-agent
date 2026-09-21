@@ -271,7 +271,9 @@ class SourceDiscoverySettings(SettingsGroup):
     def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         normalized = tuple(item.strip() for item in value if item.strip())
         if len(normalized) > 5:
-            raise ValueError("at most five source discovery fallback models are allowed")
+            raise ValueError(
+                "at most five source discovery fallback models are allowed"
+            )
         if len(set(normalized)) != len(normalized):
             raise ValueError("source discovery fallback models must be unique")
         return normalized

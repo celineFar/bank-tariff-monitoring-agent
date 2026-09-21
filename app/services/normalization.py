@@ -46,9 +46,7 @@ class StructuralNormalizationService:
         blocks = []
         for block in artifact.blocks:
             table_id = (
-                next(table_ids, None)
-                if block.type is ContentBlockType.TABLE
-                else None
+                next(table_ids, None) if block.type is ContentBlockType.TABLE else None
             )
             blocks.append(
                 normalize_block(
@@ -96,9 +94,7 @@ class StructuralNormalizationService:
         for index, source_document in enumerate(artifact.downloadable_documents):
             document_id = f"document:{index}:{source_document.sha256[:12]}"
             if self._artifact_reader is None:
-                documents.append(
-                    self._empty_pdf_document(source_document, document_id)
-                )
+                documents.append(self._empty_pdf_document(source_document, document_id))
                 warnings.append(
                     NormalizationWarning(
                         code=NormalizationWarningCode.ARTIFACT_UNAVAILABLE,
@@ -110,9 +106,7 @@ class StructuralNormalizationService:
             try:
                 content = await self._artifact_reader.read(source_document.artifact)
             except Exception as exc:
-                documents.append(
-                    self._empty_pdf_document(source_document, document_id)
-                )
+                documents.append(self._empty_pdf_document(source_document, document_id))
                 warnings.append(
                     NormalizationWarning(
                         code=NormalizationWarningCode.ARTIFACT_UNAVAILABLE,

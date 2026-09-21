@@ -377,12 +377,16 @@ def render_semantic_extraction(
     if field_rows:
         parts.extend(("## Field outcomes", ""))
         for field, status, value, explanation, needs_review in field_rows:
-            marker = "NEEDS HUMAN REVIEW" if needs_review else {
-                ExtractionStatus.FOUND.value: "EXTRACTED",
-                ExtractionStatus.NOT_STATED.value: "NOT STATED",
-                ExtractionStatus.AMBIGUOUS.value: "AMBIGUOUS",
-                ExtractionStatus.CONFLICTING.value: "CONFLICTING",
-            }[status]
+            marker = (
+                "NEEDS HUMAN REVIEW"
+                if needs_review
+                else {
+                    ExtractionStatus.FOUND.value: "EXTRACTED",
+                    ExtractionStatus.NOT_STATED.value: "NOT STATED",
+                    ExtractionStatus.AMBIGUOUS.value: "AMBIGUOUS",
+                    ExtractionStatus.CONFLICTING.value: "CONFLICTING",
+                }[status]
+            )
             label = field_labels.get(field)
             anchor = f'<a id="{label.lower()}"></a>' if label else ""
             color = "#fee4e2" if needs_review else "#ecfdf3"
@@ -762,16 +766,14 @@ def _render_source_diff_table(
         )
     width = len(table.headers) or (len(table.rows[0].cells) if table.rows else 0)
     if width:
-        headers = table.headers or tuple(f"Column {index + 1}" for index in range(width))
+        headers = table.headers or tuple(
+            f"Column {index + 1}" for index in range(width)
+        )
         parts.extend(
             (
                 "| "
                 + " | ".join(
-                    _cell(
-                        _source_diff_highlight(
-                            value, color=color, removed=removed
-                        )
-                    )
+                    _cell(_source_diff_highlight(value, color=color, removed=removed))
                     for value in headers
                 )
                 + " |",
@@ -783,9 +785,7 @@ def _render_source_diff_table(
                 "| "
                 + " | ".join(
                     _cell(
-                        _source_diff_highlight(
-                            cell.text, color=color, removed=removed
-                        )
+                        _source_diff_highlight(cell.text, color=color, removed=removed)
                     )
                     for cell in row.cells
                 )
@@ -795,8 +795,7 @@ def _render_source_diff_table(
     for note in table.notes:
         parts.extend(
             (
-                "> "
-                + _source_diff_highlight(note.text, color=color, removed=removed),
+                "> " + _source_diff_highlight(note.text, color=color, removed=removed),
                 "",
             )
         )

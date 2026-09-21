@@ -39,6 +39,7 @@ def test_parser_preserves_unicode_tables_links_and_locators() -> None:
     assert parsed.links[1].same_allowlisted_source is False
     assert parsed.blocks[0].locator.css_selector
     assert parsed.blocks[0].locator.xpath
+    assert parsed.markdown is not None
     assert "| Ժամկետ | Տոկոս |" in parsed.markdown
 
 
@@ -91,6 +92,7 @@ def test_rowspan_tables_expand_without_shifting_and_preserve_cell_structure() ->
     )
     assert table.notes == ("Footnote text",)
     assert any(cell.rowspan == 3 for cell in table.cells)
+    assert parsed.markdown is not None
     assert "| Loan terms | Term | 60 months |" in parsed.markdown
     assert "• ID<br>• Application" in parsed.markdown
 
@@ -117,6 +119,7 @@ def test_accordion_questions_answers_and_inline_links_remain_associated() -> Non
     assert answer.parent_id == question.id
     assert answer.link_ids == (parsed.links[0].id,)
     assert str(parsed.links[0].url) == "https://ameriabank.am/application"
+    assert parsed.markdown is not None
     assert "[this link](<https://ameriabank.am/application>)" in parsed.markdown
 
 
@@ -185,6 +188,7 @@ def test_superscript_reference_keeps_its_text_boundary() -> None:
     )
 
     assert parsed.blocks[0].text == "Apply in the store ¹ just in a few minutes."
+    assert parsed.markdown is not None
     assert "store ¹ just" in parsed.markdown
 
 
@@ -218,6 +222,7 @@ def test_partner_cards_and_tab_table_context_are_preserved() -> None:
     assert parsed.interactive_controls[0].aria_controls == "products"
     assert parsed.links[0].raw_href == "#products"
     assert parsed.links[0].fragment == "products"
+    assert parsed.markdown is not None
     assert (
         "[Purchasing products](<https://ameriabank.am/loan#products>)"
         in parsed.markdown

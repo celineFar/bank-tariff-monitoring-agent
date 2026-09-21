@@ -16,6 +16,8 @@ case at 1/5.
 | Expanded baseline before resolver fixes | 22 | 22 | 3.64 | 1.00 | fail |
 | Expanded candidate after resolver fixes | 22 | 22 | 5.00 | 5.00 | pass |
 
+Phase O reran the approved core suite after all implementation and formatting changes: trace `traces_20260921_043140.json` and result `results_20260921_043152.json` again produced 2/2 valid cases, mean 5.00, minimum 5.00, and no errors. Generated artifacts remain ignored.
+
 The expanded suite covers seven directly seedable intents, all thirteen
 offerings, English/Armenian/mixed/transliterated/typo inputs, ambiguity,
 stale accepted data, a newer quarantined review candidate, accepted history,

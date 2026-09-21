@@ -52,9 +52,7 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         _env_file=None,
         allowed_source_hosts="AMERIABANK.AM., www.ameriabank.am, ameriabank.am",
         allowed_download_mime_types="application/pdf, text/html,application/pdf",
-        pdf_extraction_fallback_model_names=(
-            "gemini-3.5-flash-lite,gemini-3.6-flash"
-        ),
+        pdf_extraction_fallback_model_names=("gemini-3.5-flash-lite,gemini-3.6-flash"),
         allow_origins="http://localhost:3000, https://review.example",
         source_discovery_fallback_model_names="gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     )

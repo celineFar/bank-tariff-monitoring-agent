@@ -39,8 +39,12 @@ _PREFIX_VALUE_RE = re.compile(
     rf"(?P<raw>(?P<unit>{_CURRENCY})\s*(?P<value>{_NUMBER}))",
     re.IGNORECASE,
 )
-_ISO_DATE_RE = re.compile(r"\b(?P<year>(?:19|20)\d{2})[-/.](?P<month>\d{1,2})[-/.](?P<day>\d{1,2})\b")
-_DMY_DATE_RE = re.compile(r"\b(?P<day>\d{1,2})[./](?P<month>\d{1,2})[./](?P<year>(?:19|20)\d{2})\b")
+_ISO_DATE_RE = re.compile(
+    r"\b(?P<year>(?:19|20)\d{2})[-/.](?P<month>\d{1,2})[-/.](?P<day>\d{1,2})\b"
+)
+_DMY_DATE_RE = re.compile(
+    r"\b(?P<day>\d{1,2})[./](?P<month>\d{1,2})[./](?P<year>(?:19|20)\d{2})\b"
+)
 _MONTH_DATE_RE = re.compile(
     r"\b(?P<month_name>January|February|March|April|May|June|July|August|"
     r"September|October|November|December)\s+(?P<day>\d{1,2}),?\s+"
@@ -199,7 +203,9 @@ def _decimal(value: str) -> Decimal | None:
     compact = value.replace(" ", "")
     if compact.count(",") == 1 and "." not in compact:
         right = compact.rsplit(",", 1)[1]
-        compact = compact.replace(",", ".") if len(right) != 3 else compact.replace(",", "")
+        compact = (
+            compact.replace(",", ".") if len(right) != 3 else compact.replace(",", "")
+        )
     else:
         compact = compact.replace(",", "")
     try:

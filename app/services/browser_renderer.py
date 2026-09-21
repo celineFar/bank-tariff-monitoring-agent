@@ -379,9 +379,7 @@ class PlaywrightBrowserRenderer:
                 ]
                 interactions = 0
                 while interactions < self._settings.max_interactions:
-                    before_signature = await page.evaluate(
-                        _ACQUISITION_DOM_SIGNATURE
-                    )
+                    before_signature = await page.evaluate(_ACQUISITION_DOM_SIGNATURE)
                     interaction = await page.evaluate(
                         _PERFORM_ONE_INTERACTION,
                         {"labels": interaction_labels},
@@ -393,9 +391,7 @@ class PlaywrightBrowserRenderer:
                         await page.wait_for_timeout(
                             self._settings.browser_settle_milliseconds
                         )
-                    after_signature = await page.evaluate(
-                        _ACQUISITION_DOM_SIGNATURE
-                    )
+                    after_signature = await page.evaluate(_ACQUISITION_DOM_SIGNATURE)
                     if interaction["repeatable"] and (
                         before_signature == after_signature
                     ):

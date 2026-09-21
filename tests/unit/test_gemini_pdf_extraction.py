@@ -191,9 +191,7 @@ def test_shallow_model_response_repairs_ragged_rows_without_losing_cells() -> No
 @pytest.mark.asyncio
 async def test_file_pdf_cache_reuses_an_exact_response(tmp_path) -> None:
     repository = FileSystemPdfExtractionRepository(tmp_path)
-    response = PdfExtractionResponse(
-        pages=(PdfExtractedPage(page_number=1),)
-    )
+    response = PdfExtractionResponse(pages=(PdfExtractedPage(page_number=1),))
     keys = {
         "document_sha256": "a" * 64,
         "schema_version": "2",
@@ -208,7 +206,9 @@ async def test_file_pdf_cache_reuses_an_exact_response(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_cached_gemini_response_becomes_page_addressable_normalized_data() -> None:
+async def test_cached_gemini_response_becomes_page_addressable_normalized_data() -> (
+    None
+):
     content = _blank_pdf()
     document = _document(content)
     repository = InMemoryPdfExtractionRepository()
@@ -253,9 +253,7 @@ async def test_cached_gemini_response_becomes_page_addressable_normalized_data()
         response=response,
     )
 
-    outcome = await service.extract(
-        document, content, document_id="document:0"
-    )
+    outcome = await service.extract(document, content, document_id="document:0")
 
     assert outcome.reused is True
     assert outcome.normalized_document.extraction_method.startswith("gemini_pdf:")
@@ -272,7 +270,9 @@ async def test_cached_gemini_response_becomes_page_addressable_normalized_data()
 
 
 @pytest.mark.asyncio
-async def test_relevant_historical_pdf_skips_discovery_llm_but_not_temporal_rules() -> None:
+async def test_relevant_historical_pdf_skips_discovery_llm_but_not_temporal_rules() -> (
+    None
+):
     content = _blank_pdf()
     document = _document(
         content,
@@ -306,9 +306,7 @@ async def test_relevant_historical_pdf_skips_discovery_llm_but_not_temporal_rule
             )
         ),
     )
-    outcome = await pdf_service.extract(
-        document, content, document_id="document:0"
-    )
+    outcome = await pdf_service.extract(document, content, document_id="document:0")
     bundle = NormalizedSourceBundle(
         canonical_url="https://ameriabank.am/loan",
         acquisition_content_hash="a" * 64,

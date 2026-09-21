@@ -251,10 +251,7 @@ class OtherAmountFormula(BaseModel):
 
 
 LoanAmount = (
-    AbsoluteMoneyRange
-    | SalaryMultiple
-    | PropertyValuePercentage
-    | OtherAmountFormula
+    AbsoluteMoneyRange | SalaryMultiple | PropertyValuePercentage | OtherAmountFormula
 )
 ```
 
@@ -306,17 +303,11 @@ class LoanProduct(BaseModel):
 
     loan_amount: ExtractedValue[list[ConditionalValue[LoanAmount]]]
 
-    interest_rate: ExtractedValue[
-        list[ConditionalValue[Rate]]
-    ]
+    interest_rate: ExtractedValue[list[ConditionalValue[Rate]]]
 
-    effective_rate: ExtractedValue[
-        list[ConditionalValue[Rate]]
-    ]
+    effective_rate: ExtractedValue[list[ConditionalValue[Rate]]]
 
-    term: ExtractedValue[
-        list[ConditionalValue[TermRange]]
-    ]
+    term: ExtractedValue[list[ConditionalValue[TermRange]]]
 
     fees: ExtractedValue[list[str]]
     repayment: ExtractedValue[list[str]]
@@ -395,13 +386,9 @@ class MortgageDetails(BaseModel):
         ]
     ]
 
-    down_payment_pct: ExtractedValue[
-        list[ConditionalValue[Decimal]]
-    ]
+    down_payment_pct: ExtractedValue[list[ConditionalValue[Decimal]]]
 
-    ltv_pct: ExtractedValue[
-        list[ConditionalValue[Decimal]]
-    ]
+    ltv_pct: ExtractedValue[list[ConditionalValue[Decimal]]]
 
     collateral: ExtractedValue[list[str]]
 
@@ -955,23 +942,27 @@ Example:
 
 ```python
 if product.category == "overdraft":
-    inspect_for([
-        "credit_limit",
-        "revolving",
-        "interest_rate",
-    ])
+    inspect_for(
+        [
+            "credit_limit",
+            "revolving",
+            "interest_rate",
+        ]
+    )
 ```
 
 ```python
 if product.category == "mortgage":
-    inspect_for([
-        "collateral",
-        "down_payment_pct",
-        "ltv_pct",
-        "property_market",
-        "term",
-        "interest_rate",
-    ])
+    inspect_for(
+        [
+            "collateral",
+            "down_payment_pct",
+            "ltv_pct",
+            "property_market",
+            "term",
+            "interest_rate",
+        ]
+    )
 ```
 
 A missing expected concept produces a completeness warning.

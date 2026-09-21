@@ -107,11 +107,11 @@ async def monitoring_session_factory(
 
 
 def _command(
-    product: ProductType = ProductType.CONSUMER_LOAN,
+    product: ProductType | None = None,
     offering_id: OfferingId | None = None,
 ) -> RunCommand:
     return RunCommand(
-        product=product,
+        product=product or ProductType.CONSUMER_LOAN,
         offering_id=offering_id,
         trigger=RunTrigger.API,
     )
@@ -824,9 +824,7 @@ async def test_postgres_session_restart_resumes_same_workflow_invocation(
             decisions=(
                 ReviewResponseItem(
                     review_id=review.id,
-                    decision=ReviewDecision(
-                        decision_type=ReviewDecisionType.APPROVE
-                    ),
+                    decision=ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
                 ),
             )
         ),

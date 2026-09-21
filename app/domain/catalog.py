@@ -139,10 +139,7 @@ class SeedCatalog(CatalogModel):
         if len(active_urls) != len(set(active_urls)):
             raise ValueError("enabled catalog seed_url values must be unique")
         self._validate_term_collisions(
-            (
-                (entry.product.value, entry.localized_names)
-                for entry in self.families
-            ),
+            ((entry.product.value, entry.localized_names) for entry in self.families),
             kind="family",
         )
         self._validate_term_collisions(

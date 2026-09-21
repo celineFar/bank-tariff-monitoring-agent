@@ -52,7 +52,9 @@ def normalize_network_payload(
                         fields={"path": path, "value": text},
                         scalar_candidates=extract_scalar_candidates(text),
                         source_refs=(
-                            SourceReference(source_item_id=document_id, locator=locator),
+                            SourceReference(
+                                source_item_id=document_id, locator=locator
+                            ),
                         ),
                         extraction_method="json",
                     )
@@ -67,7 +69,9 @@ def normalize_network_payload(
                 text=text,
                 scalar_candidates=extract_scalar_candidates(text),
                 source_refs=(
-                    SourceReference(source_item_id=document_id, locator=payload.locator),
+                    SourceReference(
+                        source_item_id=document_id, locator=payload.locator
+                    ),
                 ),
                 extraction_method="text",
             )

@@ -250,14 +250,9 @@ def _rectangular_table(item: PdfModelItem) -> PdfExtractedTable:
         0,
     )
     headers = list(item.headers)
-    headers.extend(
-        f"Column {index}"
-        for index in range(len(headers) + 1, width + 1)
-    )
+    headers.extend(f"Column {index}" for index in range(len(headers) + 1, width + 1))
     rows = tuple(
-        PdfExtractedTableRow(
-            cells=tuple(row) + ("",) * (width - len(row))
-        )
+        PdfExtractedTableRow(cells=tuple(row) + ("",) * (width - len(row)))
         for row in item.rows
     )
     return PdfExtractedTable(

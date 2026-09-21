@@ -78,7 +78,12 @@ def _escape_plain_cell(value: str) -> str:
 
 
 def _escape_markdown_cell(value: str) -> str:
-    return value.replace("\r\n", "\n").replace("\r", "\n").replace("|", "\\|").replace("\n", "<br>")
+    return (
+        value.replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .replace("|", "\\|")
+        .replace("\n", "<br>")
+    )
 
 
 def _escape_plain(value: str) -> str:

@@ -107,9 +107,7 @@ class AdkSourceDiscoveryClassifier:
                 await asyncio.sleep(delay)
         raise AssertionError("source discovery retry loop exhausted unexpectedly")
 
-    async def _classify_once(
-        self, batch: DiscoveryBatch
-    ) -> DiscoveryBatchResponse:
+    async def _classify_once(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
         session_id = uuid4().hex
         user_id = "tariff-pipeline"
         session = await self._runner.session_service.create_session(
@@ -135,7 +133,9 @@ class AdkSourceDiscoveryClassifier:
                     self.usage.thinking_tokens += thinking
                     self.usage.total_tokens += metadata.total_token_count or 0
                 if event.is_final_response() and event.content and event.content.parts:
-                    text_parts = [part.text for part in event.content.parts if part.text]
+                    text_parts = [
+                        part.text for part in event.content.parts if part.text
+                    ]
                     if text_parts:
                         final_text = "".join(text_parts)
         if final_text is None:

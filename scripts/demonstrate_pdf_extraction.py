@@ -23,7 +23,9 @@ from scripts.demonstrate_normalization import write_normalization_bundle
 
 async def demonstrate(case_path: Path, *, execute_llm: bool = False) -> Path:
     artifact_path, case_directory = _resolve_case(case_path)
-    artifact = PageArtifact.model_validate_json(artifact_path.read_text(encoding="utf-8"))
+    artifact = PageArtifact.model_validate_json(
+        artifact_path.read_text(encoding="utf-8")
+    )
     settings = load_settings()
     store = FileSystemArtifactStore(artifact_path.parent / "artifacts")
     repository = FileSystemPdfExtractionRepository(
@@ -92,9 +94,7 @@ async def demonstrate(case_path: Path, *, execute_llm: bool = False) -> Path:
         output / "usage_and_cost.json",
         [_usage_and_cost(outcome) for outcome in outcomes],
     )
-    (output / "summary.txt").write_text(
-        _result_summary(outcomes), encoding="utf-8"
-    )
+    (output / "summary.txt").write_text(_result_summary(outcomes), encoding="utf-8")
 
     normalizer = StructuralNormalizationService(
         artifact_reader=store,
@@ -115,7 +115,9 @@ def _write_preflight(output: Path, plans: list) -> None:
     (output / "summary.txt").write_text(
         "\n".join(
             (
-                "MODE: PREFLIGHT" if output.name == "preflight" else "MODE: LLM EXECUTION",
+                "MODE: PREFLIGHT"
+                if output.name == "preflight"
+                else "MODE: LLM EXECUTION",
                 f"PDF documents: {len(plans)}",
                 f"Pages: {sum(plan.input_probe.page_count for plan in plans)}",
                 "Machine-readable PDFs: "
@@ -205,7 +207,9 @@ def _resolve_case(path: Path) -> tuple[Path, Path]:
     artifact = next((item for item in candidates if item.is_file()), None)
     if artifact is None:
         raise FileNotFoundError(f"No page_artifact.json found at {resolved}")
-    case = artifact.parent.parent if artifact.parent.name == "output" else artifact.parent
+    case = (
+        artifact.parent.parent if artifact.parent.name == "output" else artifact.parent
+    )
     return artifact, case
 
 

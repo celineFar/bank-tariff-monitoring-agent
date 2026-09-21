@@ -77,14 +77,14 @@ def _candidate(
 def _request(
     *,
     query: str = "interest rate",
-    product: ProductType = ProductType.CONSUMER_LOAN,
-    fields: tuple[TariffField, ...] = (TariffField.NOMINAL_RATE,),
+    product: ProductType | None = None,
+    fields: tuple[TariffField, ...] | None = None,
 ) -> RetrievalRequest:
     return RetrievalRequest(
         query=query,
         bank="Ameria",
-        product=product,
-        fields=fields,
+        product=product or ProductType.CONSUMER_LOAN,
+        fields=fields if fields is not None else (TariffField.NOMINAL_RATE,),
     )
 
 

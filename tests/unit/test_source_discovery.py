@@ -60,9 +60,7 @@ def test_cli_prints_concise_handled_api_failure_without_traceback(
     async def fail(*args, **kwargs):
         raise SourceDiscoveryRunFailed(tmp_path, error)
 
-    monkeypatch.setattr(
-        "scripts.demonstrate_source_discovery.demonstrate", fail
-    )
+    monkeypatch.setattr("scripts.demonstrate_source_discovery.demonstrate", fail)
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -81,10 +79,12 @@ def test_cli_prints_concise_handled_api_failure_without_traceback(
     assert "Traceback" not in captured.err
 
 
-def _ref(identifier: str, source_type: SourceType = SourceType.PAGE) -> SourceReference:
+def _ref(identifier: str, source_type: SourceType | None = None) -> SourceReference:
     return SourceReference(
         source_item_id=identifier,
-        locator=SourceLocator(source_url=URL, source_type=source_type),
+        locator=SourceLocator(
+            source_url=URL, source_type=source_type or SourceType.PAGE
+        ),
     )
 
 
@@ -106,7 +106,9 @@ def _block(
     )
 
 
-def _bundle(*, changed_text: str = "Nominal interest rate is 13%") -> NormalizedSourceBundle:
+def _bundle(
+    *, changed_text: str = "Nominal interest rate is 13%"
+) -> NormalizedSourceBundle:
     table_ref = _ref("t1")
     table = NormalizedTable(
         id="t1",
@@ -138,7 +140,9 @@ def _bundle(*, changed_text: str = "Nominal interest rate is 13%") -> Normalized
         blocks=(
             _block("nav-1", NormalizedBlockType.LIST, "Personal"),
             _block("nav-2", NormalizedBlockType.LIST, "Business"),
-            _block("nav-3", NormalizedBlockType.LIST, "Investment Loans Cards Accounts"),
+            _block(
+                "nav-3", NormalizedBlockType.LIST, "Investment Loans Cards Accounts"
+            ),
             _block(
                 "terms",
                 NormalizedBlockType.PARAGRAPH,
@@ -148,9 +152,7 @@ def _bundle(*, changed_text: str = "Nominal interest rate is 13%") -> Normalized
         ),
         tables=(table,),
         links=(
-            NormalizedLink(
-                id="l1", url=URL, text="Terms", source_refs=(_ref("l1"),)
-            ),
+            NormalizedLink(id="l1", url=URL, text="Terms", source_refs=(_ref("l1"),)),
         ),
     )
     api = NormalizedDocument(
@@ -261,9 +263,7 @@ async def test_discovery_prefilters_inherits_and_reuses_exact_assessments() -> N
     assert len(classifier.batches) == first_call_count
     assert second.llm_batch_count == 0
     assert second.reused_assessment_count > 0
-    assert any(
-        item.inherited_from == "document::api:1" for item in first.assessments
-    )
+    assert any(item.inherited_from == "document::api:1" for item in first.assessments)
     assert all(
         item.role is not InformationRole.NAVIGATION
         for item in first.extraction_context.items
@@ -287,10 +287,7 @@ async def test_changed_content_gets_prior_hint_but_is_reassessed() -> None:
     )
 
     changed = next(
-        item
-        for batch in plan.batches
-        for item in batch.items
-        if item.title == "Terms"
+        item for batch in plan.batches for item in batch.items if item.title == "Terms"
     )
     assert changed.prior_assessment is not None
 

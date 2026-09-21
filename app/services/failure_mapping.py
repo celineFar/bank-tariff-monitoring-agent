@@ -66,7 +66,10 @@ def source_failure_code(exc: Exception, *, stage: str) -> SourceFailureCode:
                     if current.status_code == 404
                     else SourceFailureCode.HTTP_STATUS
                 )
-        if isinstance(current, BrowserRenderingError) or type(current).__name__ == "AcquisitionError":
+        if (
+            isinstance(current, BrowserRenderingError)
+            or type(current).__name__ == "AcquisitionError"
+        ):
             return SourceFailureCode.PARSING_FAILED
         if isinstance(current, ValidationError):
             return SourceFailureCode.MALFORMED_STRUCTURED_OUTPUT

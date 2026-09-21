@@ -62,7 +62,13 @@ class InMemorySourceDiscoveryRepository:
             for fingerprint in content_fingerprints
             if (
                 assessment := self._exact.get(
-                    (product.value, policy_version, prompt_version, model_name, fingerprint)
+                    (
+                        product.value,
+                        policy_version,
+                        prompt_version,
+                        model_name,
+                        fingerprint,
+                    )
                 )
             )
             is not None
@@ -82,7 +88,13 @@ class InMemorySourceDiscoveryRepository:
             for fingerprint in structural_fingerprints
             if (
                 assessment := self._structural.get(
-                    (product.value, policy_version, prompt_version, model_name, fingerprint)
+                    (
+                        product.value,
+                        policy_version,
+                        prompt_version,
+                        model_name,
+                        fingerprint,
+                    )
                 )
             )
             is not None
@@ -209,7 +221,9 @@ class SourceDiscoveryService:
             expected = {item.source_id for item in batch.items}
             received = {item.source_id for item in response.items}
             if received != expected or len(response.items) != len(expected):
-                raise ValueError("classifier response IDs do not exactly match batch IDs")
+                raise ValueError(
+                    "classifier response IDs do not exactly match batch IDs"
+                )
             for item in response.items:
                 candidate = candidate_by_id[item.source_id]
                 llm_assessments.append(
@@ -239,7 +253,9 @@ class SourceDiscoveryService:
             *llm_assessments,
         )
         all_candidates = build_discovery_candidates(bundle)
-        candidates_by_id = {candidate.source_id: candidate for candidate in all_candidates}
+        candidates_by_id = {
+            candidate.source_id: candidate for candidate in all_candidates
+        }
         inherited = _inherited_assessments(direct, candidates_by_id, bundle)
         context = _build_extraction_context(product, direct, candidates_by_id)
         return SourceDiscoveryResult(
@@ -256,14 +272,17 @@ class SourceDiscoveryService:
 
 
 def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
-    values: tuple[
-        ProductAssociation,
-        InformationRole,
-        Relevance,
-        Authority,
-        TemporalStatus,
-        str,
-    ] | None = None
+    values: (
+        tuple[
+            ProductAssociation,
+            InformationRole,
+            Relevance,
+            Authority,
+            TemporalStatus,
+            str,
+        ]
+        | None
+    ) = None
     if (
         candidate.scope is DiscoveryScope.DOCUMENT
         and candidate.source_type is SourceType.PDF
@@ -307,7 +326,10 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
             structural_fingerprint=candidate.structural_fingerprint,
             source_refs=candidate.source_refs,
         )
-    if candidate.scope is DiscoveryScope.DOCUMENT and candidate.source_type is SourceType.PAGE:
+    if (
+        candidate.scope is DiscoveryScope.DOCUMENT
+        and candidate.source_type is SourceType.PAGE
+    ):
         values = (
             ProductAssociation.CURRENT_PRODUCT,
             InformationRole.PRODUCT_DESCRIPTION,
@@ -325,7 +347,9 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
             TemporalStatus.UNKNOWN,
             "All members were marked hidden by browser acquisition.",
         )
-    elif candidate.scope is DiscoveryScope.API_PAYLOAD and _is_template_payload(candidate):
+    elif candidate.scope is DiscoveryScope.API_PAYLOAD and _is_template_payload(
+        candidate
+    ):
         values = (
             ProductAssociation.GENERIC_BANK_INFORMATION,
             InformationRole.OTHER,
@@ -417,7 +441,9 @@ def _build_batches(
         ):
             batches.append(
                 DiscoveryBatch(
-                    id=f"batch_{len(batches):03d}", product=product, items=tuple(current)
+                    id=f"batch_{len(batches):03d}",
+                    product=product,
+                    items=tuple(current),
                 )
             )
             current = []
@@ -504,10 +530,14 @@ def _build_extraction_context(
 ) -> ExtractionContext:
     items: list[ExtractionContextItem] = []
     for assessment in direct:
-        if assessment.relevance is Relevance.IRRELEVANT or assessment.temporal_status in {
-            TemporalStatus.POSSIBLY_STALE,
-            TemporalStatus.FUTURE,
-        }:
+        if (
+            assessment.relevance is Relevance.IRRELEVANT
+            or assessment.temporal_status
+            in {
+                TemporalStatus.POSSIBLY_STALE,
+                TemporalStatus.FUTURE,
+            }
+        ):
             continue
         candidate = candidates[assessment.source_id]
         items.append(

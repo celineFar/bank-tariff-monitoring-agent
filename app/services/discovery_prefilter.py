@@ -47,7 +47,9 @@ def build_discovery_candidates(
         if document.source_type is SourceType.PAGE:
             candidates.append(_page_document_candidate(document))
             candidates.extend(_page_section_candidates(document))
-            candidates.extend(_table_candidate(document, table) for table in document.tables)
+            candidates.extend(
+                _table_candidate(document, table) for table in document.tables
+            )
         else:
             candidates.append(_document_candidate(document))
     return tuple(candidates)
@@ -205,8 +207,7 @@ def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
     member_ids = tuple(
         member_source_id(document.id, "block", block.id) for block in blocks
     ) + tuple(
-        member_source_id(document.id, "table", table.id)
-        for table in document.tables
+        member_source_id(document.id, "table", table.id) for table in document.tables
     )
     return _candidate(
         source_id=f"document::{document.id}",
@@ -317,7 +318,9 @@ def _representative_blocks(blocks: list[NormalizedBlock]) -> str:
 
 def _block_score(block: NormalizedBlock) -> int:
     text = block.text.casefold()
-    return len(block.scalar_candidates) * 10 + sum(term in text for term in _TARIFF_TERMS)
+    return len(block.scalar_candidates) * 10 + sum(
+        term in text for term in _TARIFF_TERMS
+    )
 
 
 def _block_refs(blocks: list[NormalizedBlock]) -> tuple[SourceReference, ...]:

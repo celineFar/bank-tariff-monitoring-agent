@@ -46,6 +46,7 @@ _LIST_PATTERNS = (
     "product list",
     "what products",
     "which products",
+    "products do you support",
     "ինչ վարկեր",
     "վարկերի տեսակներ",
     "աջակցվող պրոդուկտներ",

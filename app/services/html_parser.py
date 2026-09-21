@@ -226,9 +226,7 @@ class HtmlArtifactParser:
             raw_href = str(element["href"])
             resolved = urljoin(source_url, raw_href)
             fragment = urldefrag(resolved).fragment or None
-            absolute = self._normalized_http_url(
-                resolved
-            )
+            absolute = self._normalized_http_url(resolved)
             if not absolute:
                 continue
             declared_type = self._clean(str(element.get("type") or "")) or None
@@ -577,7 +575,9 @@ class HtmlArtifactParser:
             content = "".join(render(child, list_depth) for child in node.children)
             if node.name == "sup":
                 cleaned = cls._clean(content)
-                if cleaned and all(character in "0123456789+-=()" for character in cleaned):
+                if cleaned and all(
+                    character in "0123456789+-=()" for character in cleaned
+                ):
                     cleaned = cleaned.translate(_SUPERSCRIPT_DIGITS)
                 elif markdown and cleaned:
                     cleaned = f"<sup>{cleaned}</sup>"
@@ -715,9 +715,7 @@ class HtmlArtifactParser:
         for current in (element, *element.parents):
             if not isinstance(current, Tag):
                 continue
-            value = cls._clean(
-                str(current.get("data-acquisition-context-title") or "")
-            )
+            value = cls._clean(str(current.get("data-acquisition-context-title") or ""))
             if value:
                 return value
         return None

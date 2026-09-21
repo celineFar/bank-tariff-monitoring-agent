@@ -213,9 +213,7 @@ def test_source_discovery_writes_each_pdf_to_independent_reports(tmp_path) -> No
         structural_fingerprint="8" * 64,
         source_refs=(reference,),
     )
-    bundle = bundle.model_copy(
-        update={"documents": (*bundle.documents, document)}
-    )
+    bundle = bundle.model_copy(update={"documents": (*bundle.documents, document)})
     discovery = discovery.model_copy(
         update={"assessments": (*discovery.assessments, assessment)}
     )
@@ -223,7 +221,9 @@ def test_source_discovery_writes_each_pdf_to_independent_reports(tmp_path) -> No
     _write_source_discovery_reports(tmp_path, bundle, discovery)
 
     root_decisions = (tmp_path / "selection_decisions.md").read_text(encoding="utf-8")
-    pdf_decisions = next((tmp_path / "documents" / "pdfs").glob("*.selection_decisions.md"))
+    pdf_decisions = next(
+        (tmp_path / "documents" / "pdfs").glob("*.selection_decisions.md")
+    )
     pdf_report = pdf_decisions.read_text(encoding="utf-8")
     index = (tmp_path / "documents" / "index.md").read_text(encoding="utf-8")
     selected_pdf = next((tmp_path / "documents" / "pdfs").glob("selected_*.md"))

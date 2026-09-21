@@ -81,8 +81,9 @@ async def session_factory(
 
 async def _create_run(
     session_factory: async_sessionmaker[AsyncSession],
-    product: ProductType = ProductType.CONSUMER_LOAN,
+    product: ProductType | None = None,
 ) -> UUID:
+    product = product or ProductType.CONSUMER_LOAN
     run_id = uuid4()
     async with session_factory() as session, session.begin():
         await session.execute(
@@ -393,3 +394,59 @@ async def test_hybrid_retrieval_isolates_products_and_preserves_provenance(
     assert len(mortgage.hits) == 1
     assert mortgage.hits[0].document_checksum == "d" * 64
     assert mortgage.hits[0].language == "hy"
+
+
+@pytest.mark.asyncio
+async def test_normal_rag_excludes_every_quarantined_publication_state(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    run_id = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
+    store = PostgresKnowledgeStore(session_factory)
+    states = ("active", "pending_review", "rejected", "superseded")
+    for index, publication_state in enumerate(states):
+        checksum = str(index + 1) * 64
+        await store.upsert_document(
+            _retrieval_document(
+                run_id,
+                product=ProductType.CONSUMER_LOAN,
+                checksum=checksum,
+                document_key=f"{publication_state}-tariff",
+                content=f"Consumer loan amount {publication_state} evidence",
+                language="en",
+            )
+        )
+        if publication_state != "active":
+            async with session_factory() as session, session.begin():
+                await session.execute(
+                    text(
+                        "UPDATE knowledge_documents "
+                        "SET is_active = false, publication_state = :state "
+                        "WHERE content_sha256 = :checksum"
+                    ),
+                    {"state": publication_state, "checksum": checksum},
+                )
+                await session.execute(
+                    text(
+                        "UPDATE knowledge_chunks SET is_active = false "
+                        "WHERE document_id = ("
+                        "SELECT id FROM knowledge_documents "
+                        "WHERE content_sha256 = :checksum)"
+                    ),
+                    {"checksum": checksum},
+                )
+
+    result = await RagRetriever(
+        _QueryEmbeddingProvider(),
+        PostgresRagRetrievalRepository(session_factory),
+        RagSettings(retrieval_top_k=10, retrieval_min_score=0.0),
+    ).retrieve(
+        RetrievalRequest(
+            query="consumer loan amount evidence",
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            fields=(TariffField.AMOUNT,),
+        )
+    )
+
+    assert result.status is RetrievalStatus.FOUND
+    assert {hit.document_checksum for hit in result.hits} == {"1" * 64}

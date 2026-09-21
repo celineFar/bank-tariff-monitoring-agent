@@ -84,10 +84,7 @@ async def ensure_session_service_ready(
     await selected.prepare_tables()
     async with selected.db_engine.connect() as connection:
         version = await connection.scalar(
-            text(
-                "SELECT value FROM adk_internal_metadata "
-                "WHERE key = 'schema_version'"
-            )
+            text("SELECT value FROM adk_internal_metadata WHERE key = 'schema_version'")
         )
     if version != "1":
         raise RuntimeError(

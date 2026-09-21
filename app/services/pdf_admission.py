@@ -45,9 +45,7 @@ _RANGE_RE = re.compile(
 )
 
 
-def assess_pdf_metadata(
-    document: DocumentArtifact, *, as_of: date
-) -> PdfAdmission:
+def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmission:
     metadata = " ".join(
         (
             document.document_name,
@@ -72,9 +70,7 @@ def assess_pdf_metadata(
     if periods:
         basis.append("explicit effective period in link context")
     if document.origin_heading_path:
-        basis.append(
-            "origin heading: " + " > ".join(document.origin_heading_path)
-        )
+        basis.append("origin heading: " + " > ".join(document.origin_heading_path))
 
     relevance = (
         PdfAdmissionRelevance.RELEVANT
@@ -111,9 +107,7 @@ def _effective_periods(value: str) -> tuple[PdfEffectivePeriod, ...]:
         end = _parse_date(match.group("end"))
         if start is None or end is None or end < start:
             continue
-        periods.append(
-            PdfEffectivePeriod(raw=match.group(0), start=start, end=end)
-        )
+        periods.append(PdfEffectivePeriod(raw=match.group(0), start=start, end=end))
     return tuple(periods)
 
 
