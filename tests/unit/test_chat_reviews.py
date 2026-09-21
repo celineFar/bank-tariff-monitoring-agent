@@ -636,3 +636,68 @@ async def test_invalid_term_candidate_is_rejected_before_workflow_resume() -> No
 
     assert workflow.calls == []
     assert runs.audits == []
+
+
+@pytest.mark.asyncio
+async def test_stale_review_choice_is_reprompted_after_failed_resume() -> None:
+    run = _run()
+    task = _review(run, "term")
+    runs = _Runs(run)
+    service = ChatReviewService(
+        runs=runs, reviews=_Reviews((task,)), workflow=_Workflow()
+    )
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_review_choices": {
+            str(task.id): {"decision_type": "override", "override_value": "bad"}
+        },
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        prompt = await get_next_monitoring_review(_Context(state))
+    finally:
+        configure_services(None, None)
+
+    assert prompt["status"] == "needs_input"
+    assert prompt["review"]["review_id"] == str(task.id)
+    assert state["monitoring_review_choices"] == {}
+
+
+@pytest.mark.asyncio
+async def test_on_demand_text_override_can_resume_review() -> None:
+    run = _run()
+    task = _review(run, "term").model_copy(
+        update={
+            "reason": ReviewReason.MISSING_REQUIRED_FIELD,
+            "candidates": (),
+        }
+    )
+    runs = _Runs(run)
+    workflow = _Workflow(status=RunStatus.SUCCEEDED)
+    service = ChatReviewService(
+        runs=runs, reviews=_Reviews((task,)), workflow=workflow
+    )
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_review_choices": {},
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        prompt = await get_next_monitoring_review(_Context(state))
+        result = await submit_monitoring_review_input(
+            _Context(
+                state,
+                {
+                    "review_id": prompt["review"]["review_id"],
+                    "decision_type": "override",
+                    "override_value": "Indefinite term (until requested back)",
+                    "reason": "The official source says the term ends on demand.",
+                    "evidence_reference": "evidence-1",
+                },
+            )
+        )
+    finally:
+        configure_services(None, None)
+
+    assert result["status"] == "succeeded"
+    assert len(workflow.calls) == 1

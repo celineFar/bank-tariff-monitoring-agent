@@ -206,7 +206,7 @@ def _validate_review_values(
                 raise ValueError("candidate conditions require a structured override")
             value = coerce_review_candidate_value(field, candidate.value)
         else:
-            value = decision.override_value
+            value = coerce_review_candidate_value(field, decision.override_value)
         try:
             validate_review_field_value(field, value)
         except ValueError as exc:

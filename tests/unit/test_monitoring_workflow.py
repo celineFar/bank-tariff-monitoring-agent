@@ -299,3 +299,57 @@ def test_runtime_loader_exposes_injected_workflow_app_to_adk_web(tmp_path) -> No
 
     loader.unregister("tariff_monitoring_workflow")
     assert "tariff_monitoring_workflow" not in loader.list_agents()
+
+
+@pytest.mark.asyncio
+async def test_native_review_can_retry_after_failed_decision_without_rerunning_pipeline() -> None:
+    runs = _Runs(_running_run())
+    pipeline = _Pipeline(runs)
+    reviews = _Reviews(_review())
+
+    class _FlakyDecisions(_Decisions):
+        async def apply(self, review_id, decision, *, reviewer):
+            if self.calls == 0:
+                self.calls += 1
+                raise ValueError("invalid review value")
+            return await super().apply(review_id, decision, reviewer=reviewer)
+
+    decisions = _FlakyDecisions(reviews)
+    workflow = build_monitoring_workflow(
+        runs=runs, pipeline=pipeline, reviews=reviews, decisions=decisions
+    )
+    runner = MonitoringWorkflowRunner(
+        app=build_monitoring_app(workflow),
+        session_service=InMemorySessionService(),
+        artifact_service=InMemoryArtifactService(),
+    )
+    await runner.start(runs.run)
+    correlation = reviews.task.correlation
+    response = MonitoringReviewResponse(
+        decisions=(
+            ReviewResponseItem(
+                review_id=REVIEW_ID,
+                decision=ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="invalid review value"):
+        await runner.resume(
+            user_id=correlation.user_id,
+            session_id=correlation.session_id,
+            interrupt_id=correlation.interrupt_id,
+            response=response,
+            run_id=RUN_ID,
+        )
+    assert runs.run.status is RunStatus.AWAITING_REVIEW
+    completed = await runner.resume(
+        user_id=correlation.user_id,
+        session_id=correlation.session_id,
+        interrupt_id=correlation.interrupt_id,
+        response=response,
+        run_id=RUN_ID,
+    )
+
+    assert completed.status is RunStatus.SUCCEEDED
+    assert pipeline.calls == 1

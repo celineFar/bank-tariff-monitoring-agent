@@ -144,13 +144,13 @@ class ReviewDecisionService:
                 raise ValueError(
                     "candidate conditions require an explicit structured override"
                 )
-            raw_value = coerce_review_candidate_value(field, raw_value)
             explanation = "Reviewer selected a captured official-source candidate."
         else:
             raw_value = decision.override_value
             evidence_id = decision.evidence_reference
             explanation = decision.reason
         assert evidence_id is not None
+        raw_value = coerce_review_candidate_value(field, raw_value)
         try:
             validated_value = validate_review_field_value(field, raw_value)
         except ValueError as exc:

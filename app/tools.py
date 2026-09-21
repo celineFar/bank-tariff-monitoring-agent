@@ -401,7 +401,11 @@ async def get_next_monitoring_review(
         None,
     )
     if next_item is None:
-        return {"status": "ready_to_resume", "run_id": raw_run_id}
+        # A complete choice set with a still-pending run means the prior resume
+        # did not commit. Ask again so an interrupted/failed decision can be retried.
+        tool_context.state[_REVIEW_CHOICES_KEY] = {}
+        choices = {}
+        next_item = request.reviews[0]
     tool_context.state[_REVIEW_CURRENT_KEY] = str(next_item.review_id)
     response_schema = {
         **_REVIEW_INPUT_SCHEMA,
@@ -527,8 +531,10 @@ async def submit_monitoring_review_input(
                 }
         if decision.decision_type is ReviewDecisionType.OVERRIDE:
             try:
+                field = ExtractionField(item.issue_scope)
                 validate_review_field_value(
-                    ExtractionField(item.issue_scope), decision.override_value
+                    field,
+                    coerce_review_candidate_value(field, decision.override_value),
                 )
             except ValueError:
                 return {
@@ -584,6 +590,8 @@ async def submit_monitoring_review_input(
             actor_session_id=str(getattr(getattr(tool_context, "session", None), "id", "unknown")),
         )
     except (ValueError, ReviewNotReadyError):
+        tool_context.state[_REVIEW_CHOICES_KEY] = {}
+        tool_context.state[_REVIEW_CURRENT_KEY] = None
         return {"status": "rejected", "reason_code": "review.resume_conflict"}
     tool_context.state[_REVIEW_CHOICES_KEY] = {}
     original_question = tool_context.state.get(_ORIGINAL_QUESTION_KEY)

@@ -21,9 +21,8 @@ because those triggers have no originating user conversation.
 
 ## Interactive CLI for long monitoring runs
 
-Use `docker compose exec api uv run python -m app.cli` on the EC2 host. The CLI
-prints its ADK session ID. If the terminal closes, restart with
-`docker compose exec api uv run python -m app.cli --session-id <saved-session-id>`.
+Use `./tariff-chat` on the EC2 host. The CLI prints its ADK session ID.
+If the terminal closes, restart with `./tariff-chat --session-id <saved-session-id>`.
 The API and worker containers must be running, since the worker owns the actual
 monitoring pipeline.
 
@@ -35,6 +34,12 @@ request stays open for the pipeline's duration, and the 120-second web chat wait
 is not used. If ADK asks for review input, the CLI displays the prompt and
 accepts a JSON decision in the same terminal session. The CLI can recover the
 pending tool call from saved ADK events after a restart.
+
+If a review decision fails validation, the PostgreSQL review and worker
+interruption remain pending. The next request for a review in the same CLI
+session discards the uncommitted chat choice and prompts again; the worker
+pipeline is not rerun. Do not delete `human_reviews` rows to recover a
+paused workflow, because the run, evidence, and ADK correlation must agree.
 
 ## Chat review flow
 
