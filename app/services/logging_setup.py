@@ -21,14 +21,15 @@ class ZonedFormatter(logging.Formatter):
 
 
 def configure_application_logging(
-    settings: ObservabilitySettings, *, include_uvicorn: bool = False
+    settings: ObservabilitySettings, *, include_uvicorn: bool = False,
+    console_output: bool = True,
 ) -> None:
     """Keep console logs and archive bounded, timezone-aware files when configured."""
     root = logging.getLogger()
     root.setLevel(settings.log_level)
     logging.captureWarnings(True)
     formatter = ZonedFormatter(settings.log_timezone)
-    if not root.handlers:
+    if not root.handlers and console_output:
         console = logging.StreamHandler(sys.stdout)
         console.setFormatter(formatter)
         root.addHandler(console)

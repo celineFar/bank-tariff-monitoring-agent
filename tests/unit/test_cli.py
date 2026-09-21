@@ -439,3 +439,15 @@ async def test_cli_native_pause_accepts_plain_term_review(monkeypatch) -> None:
     assert result["override_value"] == [
         {"value": {"indefinite": True, "end_condition": "on_demand"}, "conditions": []}
     ]
+
+
+def test_cli_agent_disables_sdk_afc_but_retains_adk_tools() -> None:
+    from app.cli import cli_agent
+
+    assert cli_agent.generate_content_config.automatic_function_calling.disable is True
+    assert any(
+        getattr(tool, "name", None) == "start_tariff_monitoring_cli"
+        or getattr(getattr(tool, "func", None), "__name__", None)
+        == "start_tariff_monitoring_cli"
+        for tool in cli_agent.tools
+    )

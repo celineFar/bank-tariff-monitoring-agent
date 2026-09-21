@@ -86,7 +86,8 @@ downloader receives `settings.http` and the PDF extraction service receives
   `SCHEDULE_MINUTE`.
 - **Serving/telemetry:** `LOG_LEVEL`, `LOG_FILE`, `LOG_TIMEZONE`,
   `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, `OTEL_TO_CLOUD`, and `ALLOW_ORIGINS`.
-  Compose sets a separate `LOG_FILE` for API and worker; the other values can be set in
+  Compose sets a separate `LOG_FILE` for API and worker; `./tariff-chat` writes
+  its own `logs/cli.log` through the shared log volume. The other values can be set in
   `.env`. File timestamps use the configured IANA timezone with an explicit UTC offset.
   The default is `Asia/Yerevan`, independently of the EC2 host timezone. Each service
   keeps ten 10 MiB backup files by default under the host `logs/` directory.

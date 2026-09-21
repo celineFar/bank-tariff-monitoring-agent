@@ -64,3 +64,25 @@ def test_file_archive_rotates_and_includes_uvicorn_logs(tmp_path) -> None:
                     handler.close()
         root.setLevel(previous_root_level)
         access.setLevel(previous_access_level)
+
+
+def test_cli_logging_writes_file_without_console_noise(tmp_path, capsys) -> None:
+    root = logging.getLogger()
+    previous_handlers = root.handlers[:]
+    previous_level = root.level
+    try:
+        root.handlers.clear()
+        log_file = tmp_path / "cli.log"
+        configure_application_logging(
+            ObservabilitySettings(log_file=log_file), console_output=False
+        )
+        root.warning("answer.invalid_citation question_hash=123456789abc")
+        assert "answer.invalid_citation" in log_file.read_text()
+        assert capsys.readouterr().out == ""
+    finally:
+        for handler in root.handlers[:]:
+            if handler not in previous_handlers:
+                root.removeHandler(handler)
+                handler.close()
+        root.handlers = previous_handlers
+        root.setLevel(previous_level)

@@ -248,7 +248,11 @@ class AdkSemanticExtractor:
             ),
             instruction=SEMANTIC_EXTRACTION_INSTRUCTION,
             output_schema=ExtractionBatchResponse,
-            generate_content_config=types.GenerateContentConfig(),
+            generate_content_config=types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                )
+            ),
         )
         self._runner = InMemoryRunner(agent=agent, app_name="semantic_loan_extractor")
         self._max_attempts = max_attempts
@@ -903,9 +907,7 @@ def _normalize_term(value: Any) -> Any:
         return value
     if value.get("indefinite") is True:
         return {
-            key: value[key]
-            for key in ("indefinite", "end_condition")
-            if key in value
+            key: value[key] for key in ("indefinite", "end_condition") if key in value
         }
     if "min_months" in value or "max_months" in value:
         return {

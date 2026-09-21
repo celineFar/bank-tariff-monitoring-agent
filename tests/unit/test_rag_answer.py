@@ -81,6 +81,16 @@ class _Generator:
         return self.draft
 
 
+class _SequenceGenerator:
+    def __init__(self, drafts: tuple[AnswerDraft, ...]) -> None:
+        self.drafts = iter(drafts)
+        self.prompts: list[str] = []
+
+    async def generate(self, prompt: str) -> AnswerDraft:
+        self.prompts.append(prompt)
+        return next(self.drafts)
+
+
 class _FailingGenerator:
     async def generate(self, prompt: str) -> AnswerDraft:
         raise RuntimeError("credential or provider detail must not escape")
@@ -161,7 +171,9 @@ async def test_answer_abstains_for_ambiguous_or_invalid_evidence() -> None:
     assert ambiguous.status is AnswerStatus.AMBIGUOUS_PRODUCT
     assert invalid.status is AnswerStatus.INSUFFICIENT_EVIDENCE
     assert invalid.failure_code is AnswerFailureCode.INVALID_CITATION
-    assert len(generator.prompts) == 1
+    assert len(generator.prompts) == 2
+    assert "CITATION REPAIR" in generator.prompts[1]
+    assert invalid.audit_metadata["citation_error"] == "excerpt_not_in_chunk"
 
 
 @pytest.mark.asyncio
@@ -231,3 +243,48 @@ async def test_http_and_adk_question_adapters_share_answer_service() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "answered"
     assert tool_result["status"] == "answered"
+
+
+@pytest.mark.asyncio
+async def test_answer_repairs_invalid_citation_once(caplog) -> None:
+    source = _hit(KnowledgeDocumentKind.SOURCE, "Rate is 13.5%.", "source")
+    generator = _SequenceGenerator(
+        (
+            AnswerDraft(
+                answer="The rate is 13.5%.",
+                citations=(
+                    AnswerDraftCitation(
+                        chunk_id=source.chunk_id, excerpt="Rate is 13.5 percent"
+                    ),
+                ),
+            ),
+            AnswerDraft(
+                answer="The rate is 13.5%.",
+                citations=(
+                    AnswerDraftCitation(
+                        chunk_id=source.chunk_id, excerpt="Rate is 13.5%."
+                    ),
+                ),
+            ),
+        )
+    )
+    service = RagAnswerService(
+        _Retriever(
+            RetrievalResult(
+                status=RetrievalStatus.FOUND,
+                hits=(source,),
+                candidates_considered=1,
+            )
+        ),
+        generator,
+    )
+
+    result = await service.answer(
+        QuestionCommand(query="Rate?", product=ProductType.CONSUMER_LOAN)
+    )
+
+    assert result.status is AnswerStatus.ANSWERED
+    assert len(generator.prompts) == 2
+    assert "CITATION REPAIR" in generator.prompts[1]
+    assert "reason=excerpt_not_in_chunk" in caplog.text
+    assert "Rate is 13.5 percent" not in caplog.text

@@ -29,8 +29,11 @@ bodies, source bodies, credentials, database addresses, and raw provider errors 
 copied into user-visible failure messages.
 
 RAG generation and malformed-output exceptions return an `AnswerResult` with no answer
-and no citations using `answer.generation_failed`. Invalid model citations return no
-answer using `answer.invalid_citation`. Retrieval without sufficient official evidence
+and no citations using `answer.generation_failed`. Invalid model citations get one
+bounded, source-only repair attempt. If citations still fail validation, the answer
+remains hidden with `answer.invalid_citation`; the CLI log records whether the chunk
+ID was unknown or the quoted excerpt was absent from that source chunk, without
+logging the raw answer or source text. Retrieval without sufficient official evidence
 continues to return `answer.insufficient_evidence`.
 
 Typed HTTP adapters use bounded `{code, message}` error details for invalid scope,

@@ -70,9 +70,18 @@ class AdkSourceDiscoveryClassifier:
             instruction=SOURCE_DISCOVERY_INSTRUCTION,
             output_schema=DiscoveryBatchResponse,
             generate_content_config=(
-                types.GenerateContentConfig()
+                types.GenerateContentConfig(
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    )
+                )
                 if model_name in {"gemini-3.8-flash", "gemini-3.5-flash-lite"}
-                else types.GenerateContentConfig(temperature=0)
+                else types.GenerateContentConfig(
+                    temperature=0,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    ),
+                )
             ),
         )
         self._runner = InMemoryRunner(

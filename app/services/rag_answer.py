@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 from typing import Protocol
 
 from google import genai
@@ -24,6 +26,7 @@ from app.domain.retrieval import (
 
 _MAX_PROMPT_CHARS = 18_000
 _MAX_HIT_CHARS = 3_000
+logger = logging.getLogger(__name__)
 
 
 class AnswerDraftCitation(BaseModel):
@@ -59,6 +62,9 @@ class GeminiAnswerGenerator:
                 temperature=0,
                 response_mime_type="application/json",
                 response_schema=AnswerDraft,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                ),
             ),
         )
         if response.parsed is not None:
@@ -98,25 +104,64 @@ class RagAnswerService:
         if retrieval.status is not RetrievalStatus.FOUND or not source_hits:
             return self._insufficient(command, retrieval, "no_official_source_hit")
 
-        try:
-            draft = await self._generator.generate(
-                _build_prompt(command.query, retrieval.hits)
+        prompt = _build_prompt(command.query, retrieval.hits)
+        question_hash = hashlib.sha256(command.query.encode("utf-8")).hexdigest()[:12]
+        for attempt in (1, 2):
+            try:
+                draft = await self._generator.generate(prompt)
+            except Exception as exc:
+                logger.warning(
+                    "answer.generation_failed product=%s offering=%s question_hash=%s "
+                    "attempt=%s error_type=%s",
+                    command.product.value,
+                    command.offering_id.value if command.offering_id else None,
+                    question_hash,
+                    attempt,
+                    type(exc).__name__,
+                )
+                return self._failed(
+                    command,
+                    retrieval,
+                    AnswerFailureCode.GENERATION_FAILED,
+                    type(exc).__name__,
+                )
+            citations, citation_error, rejected_chunk = _validate_citations(
+                draft, source_hits
             )
-        except Exception as exc:
-            return self._failed(
-                command,
-                retrieval,
-                AnswerFailureCode.GENERATION_FAILED,
-                type(exc).__name__,
+            if citations is not None:
+                break
+            logger.warning(
+                "answer.invalid_citation product=%s offering=%s question_hash=%s "
+                "attempt=%s reason=%s chunk_id=%s retrieved_sources=%s",
+                command.product.value,
+                command.offering_id.value if command.offering_id else None,
+                question_hash,
+                attempt,
+                citation_error,
+                rejected_chunk,
+                len(source_hits),
             )
-        citations = _validate_citations(draft, source_hits)
-        if citations is None:
-            return self._failed(
-                command,
-                retrieval,
-                AnswerFailureCode.INVALID_CITATION,
-                "invalid_citation",
+            if attempt == 2:
+                return AnswerResult(
+                    status=AnswerStatus.INSUFFICIENT_EVIDENCE,
+                    product=command.product,
+                    offering_id=command.offering_id,
+                    failure_code=AnswerFailureCode.INVALID_CITATION,
+                    audit_metadata={
+                        "reason": "invalid_citation",
+                        "citation_error": citation_error,
+                        "rejected_chunk_id": rejected_chunk,
+                        "candidates_considered": retrieval.candidates_considered,
+                    },
+                )
+            prompt = _build_prompt(
+                command.query + "\nCITATION REPAIR: Your previous citation was "
+                "invalid. Use only SOURCE chunk IDs shown below and copy each "
+                "citation excerpt verbatim from that chunk. Do not cite an "
+                "offering_summary chunk or paraphrase an excerpt.",
+                source_hits,
             )
+        assert citations is not None
         return AnswerResult(
             status=AnswerStatus.ANSWERED,
             answer=draft.answer,
@@ -192,14 +237,16 @@ def _build_prompt(query: str, hits: tuple[RetrievalHit, ...]) -> str:
 def _validate_citations(
     draft: AnswerDraft,
     source_hits: tuple[RetrievalHit, ...],
-) -> tuple[AnswerCitation, ...] | None:
+) -> tuple[tuple[AnswerCitation, ...] | None, str | None, str | None]:
     by_id = {hit.chunk_id: hit for hit in source_hits}
     citations: list[AnswerCitation] = []
     for item in draft.citations:
         hit = by_id.get(item.chunk_id)
+        if hit is None:
+            return None, "unknown_or_non_source_chunk", item.chunk_id
         excerpt = item.excerpt.strip()
-        if hit is None or excerpt not in hit.content:
-            return None
+        if excerpt not in hit.content:
+            return None, "excerpt_not_in_chunk", item.chunk_id
         citations.append(
             AnswerCitation(
                 chunk_id=hit.chunk_id,
@@ -210,4 +257,4 @@ def _validate_citations(
                 section=hit.section,
             )
         )
-    return tuple(citations)
+    return tuple(citations), None, None

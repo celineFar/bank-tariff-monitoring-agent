@@ -5,4 +5,4 @@ if ! docker compose exec -T api test -f app/cli_entry.py; then
   printf "%s\n" "The API container does not have this CLI version yet. Rebuild and recreate the api service, then retry this command." >&2
   exit 1
 fi
-exec docker compose exec api uv run python app/cli_entry.py "$@"
+exec docker compose exec api env LOG_FILE=/var/log/tariff-monitor/cli.log uv run python app/cli_entry.py "$@"

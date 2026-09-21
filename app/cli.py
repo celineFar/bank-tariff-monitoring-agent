@@ -82,6 +82,9 @@ async def start_tariff_monitoring_cli(
 cli_agent = Agent(
     name="ameria_tariff_monitor_cli",
     model=root_agent.model,
+    generate_content_config=types.GenerateContentConfig(
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+    ),
     instruction=(
         "You are the Ameria Bank tariff-monitoring assistant. If this "
         "conversation has an active run awaiting review, any request to continue "
