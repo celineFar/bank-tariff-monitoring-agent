@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Sequence
 from decimal import Decimal
+from enum import StrEnum
 from time import perf_counter
 from typing import Protocol, TypeVar
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -86,6 +87,8 @@ class OfferingPipelineError(RuntimeError):
         self.stage = stage
         self.failure_code = failure_code
         self.cause_type = type(cause).__name__
+        reason = getattr(cause, "reason", None)
+        self.cause_reason = reason.value if isinstance(reason, StrEnum) else None
 
 
 class IndexingPipeline:
@@ -333,6 +336,7 @@ class TariffPipeline:
         review_required = 0
         review_ids: list[UUID] = []
         failed = 0
+        failure_codes: list[str] = []
         for offering in offerings:
             execution = await self._runs.create_offering_execution(
                 run.id,
@@ -351,19 +355,26 @@ class TariffPipeline:
                 )
             except OfferingPipelineError as exc:
                 failed += 1
+                failure_codes.append(exc.failure_code)
                 await self._runs.fail_offering_execution(
                     execution.id,
                     stage=exc.stage,
                     failure_code=exc.failure_code,
-                    failure_detail=exc.cause_type,
+                    failure_detail=(
+                        f"{exc.cause_type}:{exc.cause_reason}"
+                        if exc.cause_reason
+                        else exc.cause_type
+                    ),
                     audit_payload={
                         "stage": exc.stage,
                         "exception_type": exc.cause_type,
+                        **({"reason": exc.cause_reason} if exc.cause_reason else {}),
                     },
                 )
                 continue
             except Exception as exc:
                 failed += 1
+                failure_codes.append(RunFailureCode.INTERNAL_ERROR.value)
                 await self._runs.fail_offering_execution(
                     execution.id,
                     stage="internal",
@@ -407,7 +418,11 @@ class TariffPipeline:
             run.id,
             status,
             failure_code=(
-                OfferingFailureCode.VALIDATION_FAILED.value
+                (
+                    failure_codes[0]
+                    if len(set(failure_codes)) == 1
+                    else OfferingFailureCode.VALIDATION_FAILED.value
+                )
                 if status is RunStatus.FAILED
                 else None
             ),

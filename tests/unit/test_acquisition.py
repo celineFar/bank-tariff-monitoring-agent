@@ -157,6 +157,33 @@ async def test_interactive_page_uses_rendered_dom_and_network_payload(tmp_path) 
 
 
 @pytest.mark.asyncio
+async def test_empty_browser_render_uses_useful_static_page(tmp_path) -> None:
+    raw = """<html><body><button aria-expanded="false">Terms</button>
+    <h1>Overdraft</h1><p>Official overdraft terms and rates are listed here.</p>
+    </body></html>"""
+    browser = FakeBrowserRenderer(
+        RenderedPage(
+            final_url="https://ameriabank.am/overdraft",
+            html="<html><body></body></html>",
+            title=None,
+            visible_text="",
+            interactions=0,
+            network_payloads=(),
+        )
+    )
+
+    artifact = await _service(tmp_path, raw, browser=browser).acquire(
+        "https://ameriabank.am/overdraft"
+    )
+
+    assert artifact.acquisition_mode is AcquisitionMode.STATIC
+    assert artifact.rendered_html is None
+    assert "Official overdraft terms" in artifact.markdown
+    assert "using static HTML" in artifact.warnings[0]
+    assert browser.calls == ["https://ameriabank.am/overdraft"]
+
+
+@pytest.mark.asyncio
 async def test_insufficient_static_content_requires_browser(tmp_path) -> None:
     settings = AcquisitionSettings(
         browser_enabled=False,

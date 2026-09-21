@@ -177,6 +177,23 @@ _MARK_CURRENT_INTERACTION_EXHAUSTED = """
 }
 """
 
+_PRIMARY_CONTENT_REVEALED = """
+() => {
+  const heading = document.querySelector('h1');
+  if (!heading) return true;
+  for (let element = heading; element && element !== document.body; element = element.parentElement) {
+    const style = window.getComputedStyle(element);
+    if (
+      style.display === 'none'
+      || style.visibility === 'hidden'
+      || style.visibility === 'collapse'
+      || Number(style.opacity) < 0.99
+    ) return false;
+  }
+  return true;
+}
+"""
+
 _FINALIZE_ACQUISITION_DOM = """
 () => {
   const isVisible = (element) => {
@@ -367,6 +384,16 @@ class PlaywrightBrowserRenderer:
                     await page.wait_for_timeout(
                         self._settings.browser_settle_milliseconds
                     )
+                try:
+                    await page.wait_for_function(
+                        _PRIMARY_CONTENT_REVEALED,
+                        timeout=min(
+                            5_000,
+                            self._settings.browser_navigation_timeout_seconds * 1_000,
+                        ),
+                    )
+                except PlaywrightTimeoutError:
+                    pass
                 await page.evaluate(_PREPARE_ACQUISITION_DOM)
                 interaction_labels = [
                     "terms and conditions",

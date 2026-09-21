@@ -122,13 +122,19 @@ class AcquisitionService:
                         ) from exc
                     warnings.append(f"Browser rendering failed: {exc.reason.value}")
                 else:
-                    rendered_html = rendered.html
-                    final_url = rendered.final_url
-                    parsed = self._html_parser.parse(
+                    rendered_parsed = self._html_parser.parse(
                         rendered.html, source_url=rendered.final_url
                     )
-                    network_payloads = rendered.network_payloads
-                    mode = AcquisitionMode.BROWSER
+                    if self._is_useful(rendered_parsed):
+                        rendered_html = rendered.html
+                        final_url = rendered.final_url
+                        parsed = rendered_parsed
+                        network_payloads = rendered.network_payloads
+                        mode = AcquisitionMode.BROWSER
+                    elif self._is_useful(raw_parsed):
+                        warnings.append(
+                            "Browser rendering returned insufficient content; using static HTML"
+                        )
 
         if not self._is_useful(parsed):
             raise AcquisitionError(

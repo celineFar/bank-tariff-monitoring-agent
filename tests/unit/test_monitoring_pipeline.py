@@ -543,3 +543,47 @@ async def test_candidate_snapshot_creates_review_and_pauses_run() -> None:
     assert paused.summary["review_required"] == 1
     assert paused.summary["review_ids"] == [str(reviews.values[0].id)]
     assert reviews.values[0].run_id == running.id
+
+
+@pytest.mark.asyncio
+async def test_single_offering_failure_reports_source_code_and_reason() -> None:
+    from app.services.acquisition import AcquisitionError, AcquisitionFailure
+    from app.services.monitoring_pipeline import OfferingPipelineError
+
+    class FailingIndexing:
+        async def refresh(self, offering, run_id, offering_execution_id):
+            raise OfferingPipelineError(
+                "acquisition",
+                "source.parsing_failed",
+                AcquisitionError(
+                    AcquisitionFailure.INSUFFICIENT_CONTENT,
+                    "source content is insufficient",
+                ),
+            )
+
+    catalog = SeedCatalog(
+        families=_families(),
+        offerings=(_offering(OfferingId.OVERDRAFT),),
+    )
+    runs = _Runs()
+    pipeline = TariffPipeline(catalog=catalog, indexing=FailingIndexing(), runs=runs)
+    running = MonitoringRun(
+        id=uuid4(),
+        command=RunCommand(
+            product=ProductType.CONSUMER_LOAN,
+            offering_id=OfferingId.OVERDRAFT,
+            trigger=RunTrigger.API,
+        ),
+        status=RunStatus.RUNNING,
+        queued_at=NOW,
+        started_at=NOW,
+    )
+
+    completed = await pipeline.execute(running)
+
+    assert completed.status is RunStatus.FAILED
+    assert completed.failure_code == "source.parsing_failed"
+    assert runs.failures[0][1]["failure_detail"] == (
+        "AcquisitionError:INSUFFICIENT_CONTENT"
+    )
+    assert runs.failures[0][1]["audit_payload"]["reason"] == ("INSUFFICIENT_CONTENT")
