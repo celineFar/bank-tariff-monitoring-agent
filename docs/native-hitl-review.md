@@ -34,7 +34,9 @@ request stays open for the pipeline's duration, and the 120-second web chat wait
 is not used. If ADK asks for review input, the CLI displays the field and
 its matching source passages and accepts a plain field value or a numbered
 candidate selection. For example, a term review accepts
-`Indefinite term (until requested back)` or `12-24 months`; JSON remains
+`Indefinite term`, `Indefinite term (until requested back)`, `12 months`,
+or `12-24 months`. The short indefinite form is accepted only when a captured
+passage explicitly states the "until requested back" end condition. JSON remains
 available for advanced structured overrides. The CLI builds the typed decision and evidence reference
 before resuming the saved ADK invocation. It can recover the pending tool call
 from saved ADK events after a restart. If no root input call remains but the

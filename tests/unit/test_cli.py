@@ -218,9 +218,7 @@ async def test_cli_reopens_pending_business_review_without_starting_new_run(
             self.submitted = response
             return SimpleNamespace(status=RunStatus.SUCCEEDED)
 
-    monkeypatch.setattr(
-        "builtins.input", lambda prompt: "Indefinite term (until requested back)"
-    )
+    monkeypatch.setattr("builtins.input", lambda prompt: "Indefinite term")
     reviews = _Reviews()
 
     handled = await _recover_review(
@@ -241,6 +239,7 @@ async def test_cli_reopens_pending_business_review_without_starting_new_run(
     output = capsys.readouterr().out
     assert "Continuing here; no new run is needed" in output
     assert "Review completed" in output
+    assert "Accepted term formats" in output
 
 
 def test_cli_evidence_ranks_review_field_passage_first() -> None:
@@ -333,6 +332,26 @@ def test_cli_review_shows_field_passages_before_other_context(capsys) -> None:
     assert "Nominal interest rate" not in output
     assert "revision of another loan term" not in output
     assert "2 other captured passages" in output
+
+
+def test_cli_accepts_bare_indefinite_only_with_matching_end_condition() -> None:
+    from app.cli import _review_value
+    from app.domain.semantic_extraction import ExtractionField
+
+    passage = SimpleNamespace(
+        excerpt="Term (months): Indefinite term (until requested back)"
+    )
+    assert _review_value(
+        ExtractionField.TERM, "Indefinite term", evidence=(passage,)
+    ) == [
+        {"value": {"indefinite": True, "end_condition": "on_demand"}, "conditions": []}
+    ]
+    with pytest.raises(ValueError, match="source must state the end condition"):
+        _review_value(
+            ExtractionField.TERM,
+            "Indefinite term",
+            evidence=(SimpleNamespace(excerpt="An indefinite term applies"),),
+        )
 
 
 def test_cli_accepts_plain_bounded_term() -> None:

@@ -440,12 +440,37 @@ def _show_review(
         )
 
 
-def _review_value(field: ExtractionField, raw: str) -> object:
+def _term_supported_by_passage(raw: str, excerpt: str) -> bool:
+    if re.fullmatch(r"indefinite\s+term", raw, re.I):
+        return bool(
+            re.search(
+                r"indefinite\s+term\s*\(\s*until\s+requested\s+back\s*\)",
+                excerpt,
+                re.I,
+            )
+        )
+    return raw.casefold() in excerpt.casefold()
+
+
+def _review_value(
+    field: ExtractionField, raw: str, *, evidence: tuple[object, ...] = ()
+) -> object:
     text = raw.strip()
     if not text:
         raise ValueError("Enter a value.")
     if field is ExtractionField.TERM:
-        if match := re.fullmatch(r"(\d+)\s*(?:-\s*(\d+)\s*)?months?", text, re.I):
+        if re.fullmatch(r"indefinite\s+term", text, re.I):
+            if not any(
+                _term_supported_by_passage(text, item.excerpt) for item in evidence
+            ):
+                raise ValueError(
+                    "The source must state the end condition. Enter the full term "
+                    "as shown, such as Indefinite term (until requested back)."
+                )
+            value = coerce_review_candidate_value(
+                field, "Indefinite term (until requested back)"
+            )
+        elif match := re.fullmatch(r"(\d+)\s*(?:-\s*(\d+)\s*)?months?", text, re.I):
             lower = int(match.group(1))
             upper = int(match.group(2)) if match.group(2) else lower
             value = [
@@ -462,6 +487,11 @@ def _review_value(field: ExtractionField, raw: str) -> object:
     try:
         validate_review_field_value(field, value)
     except ValueError as exc:
+        if field is ExtractionField.TERM:
+            raise ValueError(
+                "Enter Indefinite term, Indefinite term (until requested back), "
+                "12 months, or 12-24 months."
+            ) from exc
         raise ValueError(
             f"The {field.value} value is not valid. Check the field format or choose a candidate."
         ) from exc
@@ -484,6 +514,13 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
         "You can " + ", ".join(options) + ". Type ? to inspect every passage.",
         tone="yellow",
     )
+    if item.issue_scope == "term" and ReviewDecisionType.OVERRIDE in allowed:
+        _notice(
+            "Accepted term formats: Indefinite term; Indefinite term "
+            "(until requested back); 12 months; 12-24 months. "
+            "An indefinite term needs a matching end condition in the source.",
+            tone="cyan",
+        )
     while True:
         raw = (
             await asyncio.to_thread(
@@ -530,7 +567,7 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
             continue
         try:
             field = ExtractionField(item.issue_scope)
-            value = _review_value(field, raw)
+            value = _review_value(field, raw, evidence=_relevant_evidence(item))
         except ValueError as exc:
             _error("Invalid value", str(exc))
             continue
@@ -549,9 +586,10 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
                 "This field cannot be overridden without captured evidence.",
             )
             continue
-        if (
-            len(evidence_items) == 1
-            and raw.casefold() in evidence_items[0].excerpt.casefold()
+        if len(evidence_items) == 1 and (
+            _term_supported_by_passage(raw, evidence_items[0].excerpt)
+            if field is ExtractionField.TERM
+            else raw.casefold() in evidence_items[0].excerpt.casefold()
         ):
             selected = evidence_items[0]
             _notice("Using the displayed official passage as support.", tone="yellow")
@@ -572,9 +610,8 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
                     evidence_items
                 ):
                     selected = evidence_items[int(number_text) - 1]
-                    if (
-                        field is ExtractionField.TERM
-                        and raw.casefold() not in selected.excerpt.casefold()
+                    if field is ExtractionField.TERM and not _term_supported_by_passage(
+                        raw, selected.excerpt
                     ):
                         _error(
                             "Unsupported term",
