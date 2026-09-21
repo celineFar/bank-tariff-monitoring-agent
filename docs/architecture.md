@@ -269,6 +269,8 @@ cited. Citation IDs and exact excerpts must match retrieved source chunks; URL,
 document, page, and section are restored server-side. Missing scope returns
 `ambiguous_product`; missing or invalid evidence returns `insufficient_evidence`.
 Question answering never invokes acquisition. See `docs/rag-answering.md`.
+`scripts/trace_rag_answer.py` runs this same answer path for one scoped question
+and prints retrieval, generation, and citation-validation stages for inspection.
 
 ## Intent and offering resolution boundary
 

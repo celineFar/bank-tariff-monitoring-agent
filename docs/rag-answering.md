@@ -26,3 +26,25 @@ curl -X POST http://localhost:8080/api/v1/questions \
 `AnswerResult` contains status, resolved scope, answer text when answered, verified
 citations, and the newest cited source time as `as_of`. Retrieval diagnostics remain in
 audit metadata rather than the prose answer.
+
+## Inspect one question end to end
+
+With PostgreSQL and Gemini credentials configured in `.env`, run:
+
+```bash
+uv run python -m scripts.trace_rag_answer \
+  "What is the nominal interest rate?" \
+  --product consumer_loan --offering-id consumer_standard
+```
+
+The script uses the production retriever and answer service. It prints the query
+embedding input, scoped hybrid SQL search and candidates, selected chunks with
+scores and full text, the evidence prompt and structured model draft, then the
+final answer or failure code after citation validation. The product scope is
+required; the offering filter is optional. It reads active published chunks and
+does not write to the knowledge store.
+
+Chunks are stored in PostgreSQL table `knowledge_chunks`, linked by `document_id`
+to `knowledge_documents`. `knowledge_chunks.content` holds the text,
+`search_vector` supports lexical search, and `embedding` stores the 768-dimensional
+pgvector. Both the document and chunk must have `is_active = true` to be retrieved.
