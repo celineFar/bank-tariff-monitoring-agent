@@ -318,6 +318,12 @@ def test_cli_review_shows_field_passages_before_other_context(capsys) -> None:
                 page=3,
                 excerpt="Nominal interest rate 15%",
             ),
+            SimpleNamespace(
+                evidence_id="fee-source",
+                source_url="https://example.com/fees.pdf",
+                page=4,
+                excerpt="Fee for revision of another loan term: 0.1%",
+            ),
         ),
     )
     _show_review(item, 1, 1)
@@ -325,7 +331,8 @@ def test_cli_review_shows_field_passages_before_other_context(capsys) -> None:
     assert "term-source" not in output  # Reviewers choose the displayed passage number.
     assert "Indefinite term" in output
     assert "Nominal interest rate" not in output
-    assert "1 other captured passages" in output
+    assert "revision of another loan term" not in output
+    assert "2 other captured passages" in output
 
 
 def test_cli_accepts_plain_bounded_term() -> None:

@@ -431,8 +431,7 @@ def _review_prompt(task: ReviewTask) -> ReviewPromptView:
         content = str(raw.get("content", "")).casefold()
         field = task.issue_scope.replace("_", " ").casefold()
         if field == "term" and re.search(
-            r"\bterm\s*\(months?\)|\bindefinite term\b|"
-            r"\bloan term\b|\bmaturity\b|\bduration\b",
+            r"\bterm\s*\(months?\)|\bindefinite term\b",
             content,
         ):
             return 1

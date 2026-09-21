@@ -371,8 +371,7 @@ def _relevant_evidence(item: object) -> tuple[object, ...]:
         if field == "term":
             return bool(
                 re.search(
-                    r"\bterm\s*\(months?\)|\bindefinite term\b|"
-                    r"\bloan term\b|\bmaturity\b|\bduration\b",
+                    r"\bterm\s*\(months?\)|\bindefinite term\b",
                     text,
                 )
             )
