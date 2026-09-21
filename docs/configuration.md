@@ -197,3 +197,16 @@ session service; PostgreSQL remains the cross-process store. See
 Production still requires authenticated ingress, reviewer authorization, a notification
 adapter, and an explicitly approved deployment. None is enabled merely by setting the
 HITL thresholds or session URI.
+
+## Review abort administration
+
+Set `REVIEW_ADMIN_TOKEN` to a long random secret before using
+`POST /api/v1/reviews/abort-pending`. Pass it as `X-Review-Admin-Token`. If unset,
+the route returns `503`; an incorrect token returns `403`. The route resumes each
+paused workflow with `reject_all`, preserving review and audit history. It does not
+delete PostgreSQL rows. Example after configuring the secret:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/reviews/abort-pending \
+  -H "X-Review-Admin-Token: $REVIEW_ADMIN_TOKEN"
+```

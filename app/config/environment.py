@@ -103,6 +103,7 @@ class EnvironmentSettings(BaseSettings):
     semantic_extraction_max_items_per_batch: int = 20
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
+    review_admin_token: SecretStr | None = None
     schedule_timezone: str = "Asia/Yerevan"
     schedule_hour: int = 6
     schedule_minute: int = 0

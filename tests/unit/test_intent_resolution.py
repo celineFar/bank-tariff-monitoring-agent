@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 from google.adk.sessions.state import State
@@ -9,17 +10,19 @@ from app.config.models import IntentResolutionSettings
 from app.config.seed_catalog import load_seed_catalog
 from app.domain.intent import (
     ConversationResolutionState,
+    FreshnessStatus,
     RequestIntent,
     RequestLanguage,
     ResolutionMethod,
 )
 from app.domain.models import OfferingId, ProductType
+from app.domain.tariff_queries import CurrentTariffItem, CurrentTariffResult
 from app.services.intent_resolution import (
     GeminiResolutionDecision,
     RequestResolver,
     detect_request_language,
 )
-from app.tools import configure_services, resolve_request
+from app.tools import configure_services, get_current_tariffs, resolve_request
 
 
 @dataclass
@@ -342,11 +345,15 @@ async def test_explicit_new_request_replaces_pending_clarification() -> None:
 
 
 @pytest.mark.asyncio
-async def test_affirmative_refresh_uses_last_resolved_scope() -> None:
+async def test_affirmative_refresh_uses_only_offered_missing_scope() -> None:
     context = _ToolContext(state={})
     configure_services(None, None, _resolver())
     try:
         await resolve_request("current Express Mortgage rate", context)
+        context.state["monitoring_confirmation_offer"] = {
+            "product": "mortgage",
+            "offering_id": "mortgage_express",
+        }
         confirmation = await resolve_request("yes", context)
     finally:
         configure_services(None, None, None)
@@ -357,3 +364,48 @@ async def test_affirmative_refresh_uses_last_resolved_scope() -> None:
         "product": ProductType.MORTGAGE.value,
         "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
     }
+
+
+@pytest.mark.asyncio
+async def test_bare_yes_does_not_authorize_monitoring_without_missing_offer() -> None:
+    context = _ToolContext(state={})
+    configure_services(None, None, _resolver())
+    try:
+        await resolve_request("current Express Mortgage rate", context)
+        confirmation = await resolve_request("yes", context)
+    finally:
+        configure_services(None, None, None)
+    assert confirmation["intent"] != RequestIntent.START_MONITORING_RUN.value
+    assert context.state["temp:monitoring_authorization"] is None
+
+
+@pytest.mark.asyncio
+async def test_missing_snapshot_offer_authorizes_confirmed_monitoring() -> None:
+    class _MissingCurrent:
+        async def get_current(self, **kwargs):
+            return CurrentTariffResult(
+                as_of=datetime(2026, 9, 21, tzinfo=UTC),
+                items=(
+                    CurrentTariffItem(
+                        product=ProductType.MORTGAGE,
+                        offering_id=OfferingId.MORTGAGE_EXPRESS,
+                        freshness=FreshnessStatus.MISSING,
+                    ),
+                ),
+            )
+
+    context = _ToolContext(state={})
+    configure_services(
+        None, None, _resolver(), current_tariff_service=_MissingCurrent()
+    )
+    try:
+        await resolve_request("What is the Express Mortgage rate?", context)
+        await get_current_tariffs("mortgage", "mortgage_express", context)
+        confirmation = await resolve_request("yes", context)
+    finally:
+        configure_services(None, None)
+    assert confirmation["intent"] == RequestIntent.START_MONITORING_RUN.value
+    assert confirmation["refresh_confirmation"] is True
+    assert context.state["monitoring_original_question"] == (
+        "What is the Express Mortgage rate?"
+    )

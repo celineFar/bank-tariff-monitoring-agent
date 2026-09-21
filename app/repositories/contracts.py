@@ -194,6 +194,7 @@ class ReviewRepository(Protocol):
         offering_id: OfferingId | None = None,
         run_id: UUID | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[ReviewTask, ...]: ...
     async def attach_workflow(
         self, review_id: UUID, correlation: ReviewCorrelation

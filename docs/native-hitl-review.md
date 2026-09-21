@@ -1,15 +1,46 @@
 # Native ADK tariff review
 
-Tariff review uses Google ADK's native `RequestInput` pause/resume contract. ADK Web is
-the only decision interface in this prototype. The project HTTP routes are diagnostic:
+Tariff review uses Google ADK's native durable `request_input` pause/resume contract.
+For runs created in a user chat, the root `app` session pauses for each review item in
+that same conversation. The worker's `tariff_monitoring_workflow` stays durable in its
+run-scoped ADK session; the root chat submits the human's native input to resume it.
+PostgreSQL owns the review, snapshot, run, and audit state. The model cannot directly
+write any of those records.
 
-- `GET /api/v1/reviews` lists durable business review records;
-- `GET /api/v1/reviews/{review_id}` reads one record;
-- `GET /api/v1/runs/{run_id}/review-handoff` exposes the ready review scopes and
-  saved ADK Web session link after an asynchronous run pauses; and
-- no project `POST /reviews/{review_id}/decision` route exists.
+For API and scheduled runs, the run-scoped ADK Web session remains the decision UI
+because those triggers have no originating user conversation.
 
-## Reviewer flow
+- `GET /api/v1/reviews` lists durable review records.
+- `GET /api/v1/runs/{run_id}/review-handoff` provides the saved workflow session link.
+- `POST /api/v1/reviews/abort-pending` rejects pending reviews through their saved
+  ADK workflows. It requires `X-Review-Admin-Token` matching `REVIEW_ADMIN_TOKEN`.
+  It reports completed and failed runs separately and leaves failures pending.
+  If an original chat is already displaying a native input prompt, that prompt can
+  remain on screen until the user returns; a later reply is told the run was
+  aborted and cannot publish the candidate.
+
+## Chat review flow
+
+1. A product question first resolves intent and checks accepted snapshot availability.
+   If the snapshot is missing, the agent explains that monitoring is needed and asks
+   for confirmation. Only an offered scope or an explicit monitoring request can
+   authorize submission.
+2. On confirmation, the chat tool queues the run and stores its ID in that ADK
+   session. The worker acquires and extracts asynchronously. If it is still running
+   after the bounded wait, the user returns to the same chat to check again. There
+   is no push message after a chat turn ends.
+3. When review is ready, the chat shows one field, captured candidate values, official
+   URL, page/section, and a bounded evidence excerpt. The root ADK app calls native
+   `request_input` and durably pauses the original conversation.
+4. The user responds to that input in the same conversation. The tool reads the actual
+   ADK function response, checks the review ID and allowed decision against saved
+   evidence, then asks for the next field. A rejection ends the review set. After
+   all approvals or selections, the tool resumes the saved worker workflow, whose
+   deterministic review service revalidates the complete snapshot before publication.
+5. The agent answers the original question from the accepted index. If the user
+   rejects the candidate or validation still fails, it says no new tariff was activated.
+
+## API and scheduled reviewer flow
 
 1. Submit a typed monitoring run from Swagger with `POST /api/v1/runs`, or let the daily
    scheduler submit it. The HTTP call remains asynchronous and returns `status_url`

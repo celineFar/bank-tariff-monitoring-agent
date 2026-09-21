@@ -310,6 +310,7 @@ class SemanticExtractionSettings(SettingsGroup):
 class HitlSettings(SettingsGroup):
     document_rank_gap: float = Field(default=0.05, ge=0, le=1)
     large_rate_change_percentage_points: float = Field(default=3, gt=0)
+    review_admin_token: SecretStr | None = None
 
 
 class SchedulerSettings(SettingsGroup):

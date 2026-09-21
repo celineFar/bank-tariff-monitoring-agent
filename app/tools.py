@@ -1,3 +1,4 @@
+import json
 from typing import Literal
 from urllib.parse import urlencode
 from uuid import UUID
@@ -7,12 +8,16 @@ from google.adk.tools import ToolContext
 from app.domain.catalog import normalize_catalog_term
 from app.domain.intent import (
     ConversationResolutionState,
+    FreshnessStatus,
     HistoryQuery,
     HistoryRequestKind,
     RequestIntent,
 )
 from app.domain.models import OfferingId, ProductType
-from app.domain.monitoring import QuestionCommand, RunCommand, RunTrigger
+from app.domain.monitoring import QuestionCommand, RunCommand, RunStatus, RunTrigger
+from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
+from app.domain.review import ReviewDecision, ReviewDecisionType
+from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
 from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
     MONITORING_WORKFLOW_APP_NAME,
@@ -32,8 +37,30 @@ _request_resolver: RequestResolver | None = None
 _current_tariff_service: CurrentTariffService | None = None
 _tariff_history_service: TariffHistoryService | None = None
 _run_wait_service: RunWaitService | None = None
+_chat_review_service: ChatReviewService | None = None
 _RESOLUTION_STATE_KEY = "intent_resolution"
 _MONITOR_AUTHORIZATION_KEY = "temp:monitoring_authorization"
+_ACTIVE_RUN_KEY = "monitoring_active_run_id"
+_CHAT_RUN_IDS_KEY = "monitoring_chat_run_ids"
+_REVIEW_PROGRESS_KEY = "monitoring_review_progress"
+_REVIEW_CURRENT_KEY = "monitoring_review_current_id"
+_REVIEW_CHOICES_KEY = "monitoring_review_choices"
+_ORIGINAL_QUESTION_KEY = "monitoring_original_question"
+_MONITOR_OFFER_KEY = "monitoring_confirmation_offer"
+_REVIEW_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "review_id": {"type": "string"},
+        "decision_type": {"type": "string", "enum": [
+            "approve", "select_candidate", "reject_all", "override"
+        ]},
+        "candidate_id": {"type": "string"},
+        "override_value": {},
+        "reason": {"type": "string"},
+        "evidence_reference": {"type": "string"},
+    },
+    "required": ["review_id", "decision_type"],
+}
 _AFFIRMATIVE_REPLIES = frozenset({"yes", "yes please", "refresh", "այո", "թարմացրու"})
 
 
@@ -50,15 +77,18 @@ def configure_services(
     current_tariff_service: CurrentTariffService | None = None,
     tariff_history_service: TariffHistoryService | None = None,
     run_wait_service: RunWaitService | None = None,
+    chat_review_service: ChatReviewService | None = None,
 ) -> None:
     global _answer_service, _request_resolver
     global _current_tariff_service, _tariff_history_service, _run_wait_service
+    global _chat_review_service
     configure_run_service(run_service)
     _answer_service = answer_service
     _request_resolver = request_resolver
     _current_tariff_service = current_tariff_service
     _tariff_history_service = tariff_history_service
     _run_wait_service = run_wait_service
+    _chat_review_service = chat_review_service
 
 
 async def resolve_request(
@@ -78,16 +108,10 @@ async def resolve_request(
         state = ConversationResolutionState()
     if (
         normalize_catalog_term(query) in _AFFIRMATIVE_REPLIES
-        and state.latest_product is not None
+        and isinstance(tool_context.state.get(_MONITOR_OFFER_KEY), dict)
     ):
-        authorization = {
-            "product": state.latest_product.value,
-            "offering_id": (
-                state.latest_offering_id.value
-                if state.latest_offering_id is not None
-                else None
-            ),
-        }
+        authorization = dict(tool_context.state[_MONITOR_OFFER_KEY])
+        tool_context.state[_MONITOR_OFFER_KEY] = None
         tool_context.state[_MONITOR_AUTHORIZATION_KEY] = authorization
         return {
             "intent": RequestIntent.START_MONITORING_RUN.value,
@@ -100,9 +124,17 @@ async def resolve_request(
             "expects_single_value": False,
             "refresh_confirmation": True,
         }
+    tool_context.state[_MONITOR_OFFER_KEY] = None
     turn = await _request_resolver.resolve_turn(query, state)
     tool_context.state[_RESOLUTION_STATE_KEY] = turn.state.model_dump(mode="json")
     resolved_intent = turn.resolution.continuation_intent or turn.resolution.intent
+    if resolved_intent in {
+        RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+        RequestIntent.GET_CURRENT_TARIFFS,
+    }:
+        tool_context.state[_ORIGINAL_QUESTION_KEY] = query
+    elif resolved_intent is RequestIntent.START_MONITORING_RUN:
+        tool_context.state[_ORIGINAL_QUESTION_KEY] = None
     if (
         resolved_intent is RequestIntent.START_MONITORING_RUN
         and not turn.resolution.needs_clarification
@@ -119,6 +151,12 @@ async def resolve_request(
     else:
         tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     result = turn.resolution.model_dump(mode="json")
+    active_run_id = tool_context.state.get(_ACTIVE_RUN_KEY)
+    if isinstance(active_run_id, str):
+        result["active_monitoring_run_id"] = active_run_id
+    chat_run_ids = tool_context.state.get(_CHAT_RUN_IDS_KEY)
+    if isinstance(chat_run_ids, list):
+        result["chat_monitoring_run_ids"] = chat_run_ids
     if not state.introduction_shown:
         result["catalog_intro"] = _request_resolver.catalog_payload(
             turn.resolution.language,
@@ -172,8 +210,18 @@ async def start_tariff_monitoring(
             "reason_code": "run.intent_not_authorized",
         }
     tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
+    tool_context.state[_MONITOR_OFFER_KEY] = None
     result = await _run_service.submit(command)
     request_satisfied = run_covers_command(result.run, command)
+    known_run_ids = list(tool_context.state.get(_CHAT_RUN_IDS_KEY) or [])
+    chat_review_available = request_satisfied and (
+        result.created or str(result.run.id) in known_run_ids
+    )
+    if chat_review_available:
+        if str(result.run.id) not in known_run_ids:
+            known_run_ids.append(str(result.run.id))
+            tool_context.state[_CHAT_RUN_IDS_KEY] = known_run_ids
+        _switch_chat_run(tool_context, str(result.run.id))
     review_user_id, review_session_id = workflow_identity(result.run)
     review_query = urlencode(
         {
@@ -186,6 +234,7 @@ async def start_tariff_monitoring(
         "status": result.run.status.value if request_satisfied else "blocked",
         "run_status": result.run.status.value,
         "request_satisfied": request_satisfied,
+        "chat_review_available": chat_review_available,
         "requested_product": command.product.value,
         "requested_offering_id": (
             command.offering_id.value if command.offering_id is not None else None
@@ -227,6 +276,7 @@ async def answer_tariff_question(
 async def get_current_tariffs(
     product: Literal["consumer_loan", "mortgage"] | None = None,
     offering_id: str | None = None,
+    tool_context: ToolContext | None = None,
 ) -> dict[str, object]:
     """Read latest accepted tariffs and freshness without exposing review candidates."""
     if _current_tariff_service is None:
@@ -238,6 +288,13 @@ async def get_current_tariffs(
         )
     except ValueError:
         return {"status": "rejected", "reason_code": "current.invalid_scope"}
+    if tool_context is not None and product is not None and any(
+        item.freshness is FreshnessStatus.MISSING for item in result.items
+    ):
+        tool_context.state[_MONITOR_OFFER_KEY] = {
+            "product": product,
+            "offering_id": offering_id,
+        }
     return result.model_dump(mode="json")
 
 
@@ -284,3 +341,229 @@ async def wait_for_monitoring_run(
     except ValueError:
         return {"status": "rejected", "reason_code": "run_wait.invalid_request"}
     return result.model_dump(mode="json")
+
+
+def _switch_chat_run(tool_context: ToolContext, run_id: str) -> None:
+    current = tool_context.state.get(_ACTIVE_RUN_KEY)
+    if current == run_id:
+        return
+    progress = dict(tool_context.state.get(_REVIEW_PROGRESS_KEY) or {})
+    if isinstance(current, str) and current != run_id:
+        progress[current] = {
+            "choices": tool_context.state.get(_REVIEW_CHOICES_KEY) or {},
+            "current_review_id": tool_context.state.get(_REVIEW_CURRENT_KEY),
+        }
+    saved = progress.get(run_id, {})
+    tool_context.state[_REVIEW_PROGRESS_KEY] = progress
+    tool_context.state[_ACTIVE_RUN_KEY] = run_id
+    tool_context.state[_REVIEW_CHOICES_KEY] = saved.get("choices", {})
+    tool_context.state[_REVIEW_CURRENT_KEY] = saved.get("current_review_id")
+
+
+async def get_next_monitoring_review(
+    tool_context: ToolContext, run_id: str | None = None
+) -> dict[str, object]:
+    """Get the next evidence-bound review item for this conversation's run."""
+    if _chat_review_service is None or _run_service is None:
+        return {"status": "unavailable", "reason_code": "review.service_unavailable"}
+    known_run_ids = tool_context.state.get(_CHAT_RUN_IDS_KEY) or []
+    if run_id is not None:
+        if run_id not in known_run_ids:
+            return {"status": "rejected", "reason_code": "review.run_not_owned_by_chat"}
+        _switch_chat_run(tool_context, run_id)
+    raw_run_id = tool_context.state.get(_ACTIVE_RUN_KEY)
+    if not isinstance(raw_run_id, str):
+        return {"status": "rejected", "reason_code": "review.no_chat_run"}
+    run_id = UUID(raw_run_id)
+    run = await _run_service.get(run_id)
+    if run is None:
+        return {"status": "rejected", "reason_code": "review.run_missing"}
+    if run.status is not RunStatus.AWAITING_REVIEW:
+        return {
+            "status": run.status.value,
+            "run_id": raw_run_id,
+            "original_question": tool_context.state.get(_ORIGINAL_QUESTION_KEY),
+        }
+    try:
+        request = await _chat_review_service.pending_request(run_id)
+    except ReviewNotReadyError:
+        return {"status": "preparing", "run_id": raw_run_id}
+    choices = tool_context.state.get(_REVIEW_CHOICES_KEY) or {}
+    if not isinstance(choices, dict):
+        choices = {}
+    next_item = next(
+        (item for item in request.reviews if str(item.review_id) not in choices),
+        None,
+    )
+    if next_item is None:
+        return {"status": "ready_to_resume", "run_id": raw_run_id}
+    tool_context.state[_REVIEW_CURRENT_KEY] = str(next_item.review_id)
+    response_schema = {
+        **_REVIEW_INPUT_SCHEMA,
+        "properties": {
+            **_REVIEW_INPUT_SCHEMA["properties"],
+            "decision_type": {
+                "type": "string",
+                "enum": [choice.value for choice in next_item.allowed_decisions],
+            },
+        },
+    }
+    return {
+        "status": "needs_input",
+        "run_id": raw_run_id,
+        "completed_reviews": len(choices),
+        "total_reviews": len(request.reviews),
+        "review": next_item.model_dump(mode="json"),
+        "response_schema": response_schema,
+    }
+
+
+def _native_input(tool_context: ToolContext) -> dict[str, object] | None:
+    events = list(getattr(tool_context.session, "events", ()) or ())
+    for index in range(len(events) - 1, -1, -1):
+        event = events[index]
+        if event.author != "user":
+            continue
+        if (
+            getattr(tool_context, "invocation_id", None) is not None
+            and event.invocation_id != tool_context.invocation_id
+        ):
+            return None
+        for part in getattr(event.content, "parts", None) or ():
+            response = getattr(part, "function_response", None)
+            if response is None or response.name != "adk_request_input":
+                continue
+            if not any(
+                call.id == response.id and call.name == "adk_request_input"
+                for previous in events[:index]
+                for earlier_part in getattr(previous.content, "parts", None) or ()
+                if (call := getattr(earlier_part, "function_call", None)) is not None
+            ):
+                return None
+            raw = dict(response.response or {})
+            if "review_id" in raw:
+                return raw
+            result = raw.get("result")
+            if isinstance(result, dict):
+                return result
+            if isinstance(result, str):
+                try:
+                    parsed = json.loads(result)
+                except ValueError:
+                    return None
+                return parsed if isinstance(parsed, dict) else None
+            return None
+        return None
+    return None
+
+
+async def submit_monitoring_review_input(
+    tool_context: ToolContext,
+) -> dict[str, object]:
+    """Apply only the human's native ADK input for the current review item."""
+    if _chat_review_service is None:
+        return {"status": "unavailable", "reason_code": "review.service_unavailable"}
+    raw_run_id = tool_context.state.get(_ACTIVE_RUN_KEY)
+    expected_review_id = tool_context.state.get(_REVIEW_CURRENT_KEY)
+    if not isinstance(raw_run_id, str) or not isinstance(expected_review_id, str):
+        return {"status": "rejected", "reason_code": "review.no_pending_chat_input"}
+    raw = _native_input(tool_context)
+    if raw is None:
+        return {"status": "rejected", "reason_code": "review.native_input_required"}
+    if raw.get("review_id") != expected_review_id:
+        return {"status": "rejected", "reason_code": "review.input_scope_mismatch"}
+    try:
+        run_id = UUID(raw_run_id)
+        request = await _chat_review_service.pending_request(run_id)
+        item = next(
+            view for view in request.reviews
+            if str(view.review_id) == expected_review_id
+        )
+        decision = ReviewDecision.model_validate(
+            {key: value for key, value in raw.items() if key != "review_id"}
+        )
+        if decision.decision_type not in item.allowed_decisions:
+            raise ValueError("decision is not allowed for this review")
+        if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE and not any(
+            candidate.candidate_id == decision.candidate_id
+            for candidate in item.candidates
+        ):
+            raise ValueError("candidate is outside this review")
+        if decision.decision_type is ReviewDecisionType.OVERRIDE and not any(
+            evidence.evidence_id == decision.evidence_reference
+            for evidence in item.evidence
+        ):
+            raise ValueError("evidence is outside this review")
+    except ReviewNotReadyError:
+        run = await _run_service.get(run_id) if _run_service is not None else None
+        tool_context.state[_REVIEW_CURRENT_KEY] = None
+        return {
+            "status": run.status.value if run is not None else "unavailable",
+            "reason_code": "review.no_longer_pending",
+            "run_id": raw_run_id,
+        }
+    except (ValueError, StopIteration):
+        return {"status": "rejected", "reason_code": "review.invalid_input"}
+    choices = dict(tool_context.state.get(_REVIEW_CHOICES_KEY) or {})
+    choices[expected_review_id] = decision.model_dump(mode="json")
+    tool_context.state[_REVIEW_CHOICES_KEY] = choices
+    tool_context.state[_REVIEW_CURRENT_KEY] = None
+    if decision.decision_type is ReviewDecisionType.REJECT_ALL:
+        response = MonitoringReviewResponse(
+            decisions=tuple(
+                ReviewResponseItem(
+                    review_id=view.review_id,
+                    decision=ReviewDecision(
+                        decision_type=ReviewDecisionType.REJECT_ALL
+                    ),
+                )
+                for view in request.reviews
+            )
+        )
+    elif len(choices) == len(request.reviews):
+        response = MonitoringReviewResponse(
+            decisions=tuple(
+                ReviewResponseItem(
+                    review_id=view.review_id,
+                    decision=ReviewDecision.model_validate(choices[str(view.review_id)]),
+                )
+                for view in request.reviews
+            )
+        )
+    else:
+        return await get_next_monitoring_review(tool_context)
+    try:
+        result = await _chat_review_service.resume(
+            run_id, response,
+            actor_user_id=str(getattr(tool_context, "user_id", "unknown")),
+            actor_session_id=str(getattr(getattr(tool_context, "session", None), "id", "unknown")),
+        )
+    except (ValueError, ReviewNotReadyError):
+        return {"status": "rejected", "reason_code": "review.resume_conflict"}
+    tool_context.state[_REVIEW_CHOICES_KEY] = {}
+    original_question = tool_context.state.get(_ORIGINAL_QUESTION_KEY)
+    output: dict[str, object] = {
+        "status": result.status.value,
+        "run_id": raw_run_id,
+        "original_question": original_question,
+    }
+    if (
+        result.status in {RunStatus.SUCCEEDED, RunStatus.PARTIAL_SUCCESS}
+        and isinstance(original_question, str)
+        and _answer_service is not None
+        and _run_service is not None
+    ):
+        run = await _run_service.get(run_id)
+        if run is not None:
+            try:
+                answer = await _answer_service.answer(
+                    QuestionCommand(
+                        query=original_question,
+                        product=run.command.product,
+                        offering_id=run.command.offering_id,
+                    )
+                )
+                output["answer"] = answer.model_dump(mode="json")
+            except Exception:
+                output["answer_status"] = "temporarily_unavailable"
+    return output

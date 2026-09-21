@@ -18,6 +18,7 @@ from app.domain.monitoring import (
     RunSubmissionResult,
     RunTrigger,
 )
+from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.domain.review import ReviewReason, ReviewStatus, ReviewTask
 from app.tools import configure_run_service, start_tariff_monitoring
 from app.worker import MonitoringWorker, run_scheduled_monitoring
@@ -338,11 +339,9 @@ class _Workflow:
 
     async def start(self, run: MonitoringRun):
         self.runs.append(run)
-        return {
-            "run_id": str(run.id),
-            "status": run.status.value,
-            "paused": False,
-        }
+        return MonitoringWorkflowResult(
+            run_id=run.id, status=run.status, paused=False
+        )
 
 
 @pytest.mark.asyncio

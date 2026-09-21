@@ -21,6 +21,7 @@ from app.repositories.semantic_extraction import PostgresSemanticExtractionRepos
 from app.repositories.source_discovery import PostgresSourceDiscoveryRepository
 from app.services.acquisition import build_acquisition_service
 from app.services.artifact_store import FileSystemArtifactStore
+from app.services.chat_reviews import ChatReviewService
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
 from app.services.intent_resolution import AdkIntentClassifier, RequestResolver
 from app.services.knowledge_index import (
@@ -64,6 +65,7 @@ class ApplicationContainer:
     tariff_pipeline: TariffPipeline
     monitoring_workflow_runner: MonitoringWorkflowRunner
     monitoring_workflow_app: App
+    chat_review_service: ChatReviewService
     workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     request_resolver: RequestResolver
@@ -211,6 +213,9 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         tariff_history_service=TariffHistoryService(
             snapshots,
             settings.tariff_queries,
+        ),
+        chat_review_service=ChatReviewService(
+            runs=runs, reviews=reviews, workflow=monitoring_workflow_runner
         ),
         run_wait_service=RunWaitService(
             run_service,

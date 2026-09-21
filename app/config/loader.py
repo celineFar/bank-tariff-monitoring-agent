@@ -141,6 +141,7 @@ def load_settings(
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,
             large_rate_change_percentage_points=raw.hitl_large_rate_change_percentage_points,
+            review_admin_token=raw.review_admin_token,
         ),
         scheduler=SchedulerSettings(
             timezone=raw.schedule_timezone,

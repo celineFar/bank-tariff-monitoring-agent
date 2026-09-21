@@ -29,13 +29,16 @@ shell, or SQL tool.
 
 ## Package boundaries
 
-- `app/agent.py`: ADK root agent and stable instructions.
+- `app/agent.py`: resumable ADK root chat agent, native `request_input`, and stable instructions.
 - `app/config/`: one environment adapter plus nested typed groups shared by API,
   agent, and worker; consumers depend only on the relevant group.
 - `app/tools.py`: narrow ADK adapters that call application services. Monitoring
   submission requires a one-use, scope-bound authorization produced by the resolver.
-- `app/api/`: user-trigger, run-status, and read-only HITL review diagnostics. Native
-  review decisions enter only through the resumed ADK invocation.
+  Native root-chat review replies are read from ADK function responses and validated
+  against the pending review and saved evidence.
+- `app/api/`: user-trigger, run-status, and HITL diagnostics plus a token-protected
+  `POST /api/v1/reviews/abort-pending` operation. Review decisions enter only
+  through resumed ADK invocations.
 - `app/domain/`: validated tariff/evidence models and pure business rules.
 - `app/services/`: pipeline orchestration interfaces and deterministic application
   services. `AcquisitionService` combines restricted static HTML retrieval, faithful
@@ -54,7 +57,8 @@ shell, or SQL tool.
 - `app/runtime.py`: shared composition root for HTTP/worker run, review, and snapshot
   repositories, ingestion,
   `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services
-  (including the pending-review handoff returned to chat),
+  (including the pending-review handoff), and `ChatReviewService` for original-chat
+  review prompts, workflow resumption, and audited bulk abort,
   retrieval, and `RagAnswerService`.
 - `app/services/logging_setup.py`: shared console and rotating file logging for API and
   worker; Compose mounts host `logs/` for archives that survive container recreation.
@@ -302,6 +306,7 @@ not expose a review-decision endpoint:
 | `GET /api/v1/tariffs/current` | Read accepted snapshots only, with freshness and pending-newer-review indicators. |
 | `GET /api/v1/tariffs/history` | Read bounded accepted snapshot/change history. |
 | `GET /api/v1/reviews[/{review_id}]` | Inspect durable review records; decisions enter through native ADK resume only. |
+| `POST /api/v1/reviews/abort-pending` | Token-protected admin rejection of pending reviews through their saved ADK workflow invocations. |
 | `GET /api/v1/runs/{run_id}/review-handoff` | Read pending review scopes and the saved ADK Web session link for a paused run. |
 
 The business lifecycle is `queued -> running -> awaiting_review -> terminal`, where the

@@ -29,6 +29,7 @@ from app.domain.monitoring import (
     SnapshotAttempt,
     SnapshotStatus,
 )
+from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.domain.pipeline import IndexingRefreshResult, SourceManifest
 from app.services.monitoring_pipeline import OfferingPipelineError, TariffPipeline
 from app.services.run_service import RunService
@@ -251,7 +252,13 @@ async def test_consumer_standard_api_to_worker_publication_vertical_slice() -> N
 
     class _Workflow:
         async def start(self, run):
-            return await pipeline.execute(run)
+            completed = await pipeline.execute(run)
+            return MonitoringWorkflowResult(
+                run_id=completed.id,
+                status=completed.status,
+                review_ids=(),
+                summary=completed.summary,
+            )
 
     worker = MonitoringWorker(
         runs=runs,

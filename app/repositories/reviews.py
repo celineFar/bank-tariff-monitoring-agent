@@ -213,13 +213,16 @@ class PostgresReviewRepository:
         offering_id: OfferingId | None = None,
         run_id: UUID | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[ReviewTask, ...]:
         if not 1 <= limit <= 500:
             raise ValueError("review limit must be between 1 and 500")
+        if offset < 0:
+            raise ValueError("review offset must be nonnegative")
         if offering_id is not None and offering_id.product is not product:
             raise ValueError("offering requires its product")
         clauses: list[str] = []
-        parameters: dict[str, object] = {"limit": limit}
+        parameters: dict[str, object] = {"limit": limit, "offset": offset}
         for column, value in (
             ("status", status.value if status else None),
             ("product", product.value if product else None),
@@ -238,7 +241,7 @@ class PostgresReviewRepository:
                         WHERE idempotency_key IS NOT NULL
                         {" ".join(clauses)}
                         ORDER BY created_at DESC, id DESC
-                        LIMIT :limit
+                        LIMIT :limit OFFSET :offset
                         """
                     ),
                     parameters,

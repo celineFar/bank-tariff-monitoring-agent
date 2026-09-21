@@ -1,4 +1,5 @@
 from datetime import datetime
+from hmac import compare_digest
 from typing import Annotated
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from app.domain.tariff_queries import (
     TariffHistoryResult,
 )
 from app.repositories.contracts import ReviewRepository
+from app.services.chat_reviews import ChatReviewService
 from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.tariff_queries import (
@@ -275,6 +277,25 @@ async def list_reviews(
             "Review records are temporarily unavailable.",
         ) from exc
     return list(reviews)
+
+
+@router.post("/reviews/abort-pending", tags=["reviews"])
+async def abort_pending_reviews(
+    request: Request,
+    admin_token: Annotated[str | None, Header(alias="X-Review-Admin-Token")] = None,
+) -> dict[str, object]:
+    configured = request.app.state.settings.hitl.review_admin_token
+    if configured is None or not configured.get_secret_value():
+        raise _failure(503, "review.abort_not_configured", "Review abort is not configured")
+    if admin_token is None or not compare_digest(
+        admin_token, configured.get_secret_value()
+    ):
+        raise _failure(403, "review.admin_required", "Admin token is required")
+    service: ChatReviewService = request.app.state.chat_review_service
+    try:
+        return await service.abort_all()
+    except Exception as exc:
+        raise _failure(503, "review.abort_failed", "Review abort could not complete") from exc
 
 
 @router.get("/reviews/{review_id}", response_model=ReviewTask, tags=["reviews"])

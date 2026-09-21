@@ -56,5 +56,8 @@ Read-only companion routes are `GET /api/v1/tariffs/current`,
 `GET /api/v1/tariffs/history`, `GET /api/v1/reviews`,
 `GET /api/v1/reviews/{review_id}`, and
 `GET /api/v1/runs/{run_id}/review-handoff`. `POST /api/v1/questions` answers only from active
-indexed evidence. Review decisions are intentionally absent from FastAPI and enter through
-the native ADK Web resume flow documented in `docs/native-hitl-review.md`.
+indexed evidence. Individual review decisions enter through native ADK pause/resume. Chat-originated
+runs prompt in their original resumable chat session; API and scheduled runs use the
+run-scoped ADK Web session. `POST /api/v1/reviews/abort-pending` is a
+token-protected admin operation that sends `reject_all` through each pending
+workflow and reports any run it could not abort. See `docs/native-hitl-review.md`.
