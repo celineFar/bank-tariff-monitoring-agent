@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -292,6 +293,58 @@ def test_cli_explains_gemini_402_without_traceback(capsys) -> None:
     assert "Gemini prepaid credits are depleted" in output.out
     assert "retry in this session" in output.out
     assert "Traceback" not in output.err
+
+
+@pytest.mark.asyncio
+async def test_cli_hides_adk_429_traceback_and_shows_retry_delay(
+    capsys, caplog
+) -> None:
+    from google.genai.errors import ClientError
+
+    from app.cli import _print_api_error, _run_and_print
+
+    error = ClientError(
+        429,
+        {
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "message": "Input token quota exceeded",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                        "retryDelay": "51s",
+                    }
+                ],
+            }
+        },
+    )
+
+    class FailingRunner:
+        async def run_async(self, **kwargs):
+            try:
+                raise error
+            except ClientError:
+                logging.getLogger("google.adk.workflow._node_runner").exception(
+                    "Node execution failed with exception"
+                )
+                logging.getLogger("google.adk.runners").error(
+                    "Root node %s failed.", "cli_agent", exc_info=True
+                )
+                raise
+            yield  # pragma: no cover
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ClientError) as raised:
+            await _run_and_print(FailingRunner())
+    _print_api_error(raised.value)
+
+    output = capsys.readouterr()
+    assert "Gemini rate limit reached" in output.out
+    assert "about 51s" in output.out
+    assert "Traceback" not in output.out + output.err + caplog.text
+    assert "Node execution failed" not in caplog.text
+    assert "Root node" not in caplog.text
 
 
 def test_cli_review_shows_field_passages_before_other_context(capsys) -> None:

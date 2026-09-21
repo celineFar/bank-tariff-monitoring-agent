@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import re
 from dataclasses import dataclass, replace
 from time import monotonic
@@ -30,6 +31,7 @@ from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewRespo
 from app.domain.review import ReviewDecision, ReviewDecisionType
 from app.domain.semantic_extraction import ExtractionField
 from app.runtime import build_application_container
+from app.services.adk_logging import suppress_resource_exhaustion_adk_logs
 from app.services.chat_reviews import ReviewNotReadyError
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.semantic_extraction import validate_review_field_value
@@ -45,6 +47,7 @@ from app.tools import (
 )
 
 console = Console(highlight=False)
+logger = logging.getLogger(__name__)
 
 
 def _notice(message: str, *, tone: str = "cyan", symbol: str = "•") -> None:
@@ -168,17 +171,18 @@ def pending_input(events: list[object]) -> PendingInput | None:
 
 
 async def _run_and_print(runner: Runner, **kwargs: object) -> None:
-    async for event in runner.run_async(**kwargs):
-        for part in (event.content.parts if event.content else ()) or ():
-            if part.text and not getattr(part, "thought", False):
-                console.print(
-                    Panel(
-                        Markdown(part.text),
-                        title=Text("Assistant", style="bold cyan"),
-                        border_style="cyan",
-                        padding=(0, 1),
+    with suppress_resource_exhaustion_adk_logs():
+        async for event in runner.run_async(**kwargs):
+            for part in (event.content.parts if event.content else ()) or ():
+                if part.text and not getattr(part, "thought", False):
+                    console.print(
+                        Panel(
+                            Markdown(part.text),
+                            title=Text("Assistant", style="bold cyan"),
+                            border_style="cyan",
+                            padding=(0, 1),
+                        )
                     )
-                )
 
 
 async def _resume(
@@ -731,7 +735,27 @@ async def _recover_review(
 
 
 def _print_api_error(exc: APIError) -> None:
-    if exc.code == 402 and exc.status == "RESOURCE_EXHAUSTED":
+    logger.warning("Gemini CLI request failed: code=%s status=%s", exc.code, exc.status)
+    if exc.code == 429 and exc.status == "RESOURCE_EXHAUSTED":
+        retry_delay = None
+        details = exc.details.get("error", {}).get("details", [])
+        if isinstance(details, list):
+            retry_delay = next(
+                (
+                    item.get("retryDelay")
+                    for item in details
+                    if isinstance(item, dict)
+                    and item.get("@type", "").endswith("RetryInfo")
+                ),
+                None,
+            )
+        wait = f" in about {retry_delay}" if retry_delay else " after the quota resets"
+        _error(
+            "Gemini rate limit reached",
+            "Gemini's request quota was reached. Retry this session"
+            f"{wait}. No chat answer was produced.",
+        )
+    elif exc.code == 402 and exc.status == "RESOURCE_EXHAUSTED":
         _error(
             "Gemini credits exhausted",
             "Gemini prepaid credits are depleted. Add credits to the configured "
