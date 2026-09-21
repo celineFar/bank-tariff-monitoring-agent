@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 from uuid import UUID
 
@@ -143,14 +144,19 @@ class ReviewDecisionService:
                 raise ValueError(
                     "candidate conditions require an explicit structured override"
                 )
-            raw_value = _coerce_scalar_rate(field, raw_value)
+            raw_value = coerce_review_candidate_value(field, raw_value)
             explanation = "Reviewer selected a captured official-source candidate."
         else:
             raw_value = decision.override_value
             evidence_id = decision.evidence_reference
             explanation = decision.reason
         assert evidence_id is not None
-        validated_value = validate_review_field_value(field, raw_value)
+        try:
+            validated_value = validate_review_field_value(field, raw_value)
+        except ValueError as exc:
+            raise ValueError(
+                f"review value for {field.value} does not match the required structured field"
+            ) from exc
 
         extraction = SemanticExtractionResult.model_validate(
             snapshot.semantic_extraction
@@ -268,9 +274,26 @@ def _without_review_signal(validation: dict, issue_scope: str) -> dict:
     return updated
 
 
-def _coerce_scalar_rate(field: ExtractionField, value: Any) -> Any:
+def coerce_review_candidate_value(field: ExtractionField, value: Any) -> Any:
+    if field is ExtractionField.TERM and isinstance(value, str):
+        if re.fullmatch(
+            r"\s*indefinite\s+term\s*\(\s*until\s+requested\s+back\s*\)\s*",
+            value,
+            flags=re.IGNORECASE,
+        ):
+            return [
+                {
+                    "value": {"indefinite": True, "end_condition": "on_demand"},
+                    "conditions": [],
+                }
+            ]
     if field not in {ExtractionField.INTEREST_RATE, ExtractionField.EFFECTIVE_RATE}:
         return value
+    if isinstance(value, str):
+        match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*%?\s*", value)
+        if match is None:
+            return value
+        value = match.group(1)
     if isinstance(value, (str, int, float)) and not isinstance(value, bool):
         return [
             {

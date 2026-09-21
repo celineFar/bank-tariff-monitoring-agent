@@ -17,11 +17,14 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
+from app.domain.semantic_extraction import ExtractionField
 from app.repositories.contracts import ReviewRepository, RunRepository
 from app.services.monitoring_workflow import (
     MONITORING_WORKFLOW_APP_NAME,
     build_review_request,
 )
+from app.services.review_decisions import coerce_review_candidate_value
+from app.services.semantic_extraction import validate_review_field_value
 
 
 class ReviewResumePort(Protocol):
@@ -78,6 +81,7 @@ class ChatReviewService:
         }:
             raise ValueError("every pending review needs exactly one decision")
         tasks = await self._pending(run_id)
+        _validate_review_values(tasks, response)
         correlation = self._correlation(tasks)
         await self._runs.record_audit(
             run_id,
@@ -173,3 +177,39 @@ class ChatReviewService:
         if any(task.correlation != correlation for task in tasks):
             raise ReviewNotReadyError("review interrupts do not match")
         return correlation
+
+
+def _validate_review_values(
+    tasks: tuple[ReviewTask, ...], response: MonitoringReviewResponse
+) -> None:
+    by_id = {task.id: task for task in tasks}
+    for item in response.decisions:
+        task = by_id[item.review_id]
+        decision = item.decision
+        if decision.decision_type not in {
+            ReviewDecisionType.SELECT_CANDIDATE,
+            ReviewDecisionType.OVERRIDE,
+        }:
+            continue
+        field = ExtractionField(task.issue_scope)
+        if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
+            candidate = next(
+                (
+                    value for value in task.candidates
+                    if value.candidate_id == decision.candidate_id
+                ),
+                None,
+            )
+            if candidate is None:
+                raise ValueError("selected candidate is outside the review scope")
+            if candidate.conditions.get("conditions"):
+                raise ValueError("candidate conditions require a structured override")
+            value = coerce_review_candidate_value(field, candidate.value)
+        else:
+            value = decision.override_value
+        try:
+            validate_review_field_value(field, value)
+        except ValueError as exc:
+            raise ValueError(
+                f"review value for {field.value} does not match the field schema"
+            ) from exc

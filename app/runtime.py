@@ -159,6 +159,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         embedder=indexer,
         snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
+        runs=runs,
         large_rate_change_percentage_points=(
             settings.hitl.large_rate_change_percentage_points
         ),

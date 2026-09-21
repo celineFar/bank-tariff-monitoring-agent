@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 from dataclasses import dataclass, replace
+from time import monotonic
 from uuid import UUID, uuid4
 
 from google.adk.agents import Agent
@@ -13,6 +14,7 @@ from google.adk.apps import App, ResumabilityConfig
 from google.adk.runners import Runner
 from google.adk.tools import LongRunningFunctionTool, ToolContext, request_input
 from google.genai import types
+from google.genai.errors import APIError
 
 from app.agent import root_agent
 from app.app_utils import services
@@ -124,7 +126,7 @@ async def _run_and_print(runner: Runner, **kwargs: object) -> None:
     async for event in runner.run_async(**kwargs):
         for part in (event.content.parts if event.content else ()) or ():
             if part.text and not getattr(part, "thought", False):
-                print(part.text)
+                print(f"Assistant  {part.text}")
 
 
 async def _resume(
@@ -155,15 +157,50 @@ async def _resume(
     )
 
 
+_STAGE_LABELS = {
+    "acquisition": "Acquiring web content",
+    "normalization": "Reading source documents",
+    "source_discovery": "Finding tariff evidence",
+    "semantic_extraction": "Extracting tariff fields",
+    "previous_snapshot": "Checking previous snapshot",
+    "embedding": "Indexing evidence",
+    "publication": "Saving candidate tariffs",
+    "review_approved": "Review approved",
+    "review_rejected": "Review rejected",
+    "published": "Snapshot published",
+}
+
+
 async def _wait_for_run(run_service: object, run_id: UUID, seconds: float):
-    last_status = None
+    last_progress = None
+    last_message_at = 0.0
     while True:
         run = await run_service.get(run_id)
         if run is None:
             raise RuntimeError(f"monitoring run {run_id} was not found")
-        if run.status != last_status:
-            print(f"Monitoring {run_id}: {run.status.value}")
-            last_status = run.status
+        offerings = await run_service.list_offering_executions(run_id)
+        active = tuple(
+            (item.offering_id.value, item.current_stage or item.status.value)
+            for item in offerings
+            if item.status.value in {"running", "pending"}
+        )
+        progress = (run.status.value, active)
+        now = monotonic()
+        if progress != last_progress or (
+            run.status is RunStatus.RUNNING and now - last_message_at >= 30
+        ):
+            if active:
+                for offering_id, stage in active:
+                    label = _STAGE_LABELS.get(stage, stage.replace("_", " ").capitalize())
+                    print(f"  {offering_id}: {label}…", flush=True)
+            elif run.status is RunStatus.QUEUED:
+                print("  Waiting for the worker…", flush=True)
+            elif run.status is RunStatus.RUNNING:
+                print("  Monitoring is still running…", flush=True)
+            else:
+                print(f"  Monitoring {run.status.value.replace('_', ' ')}.", flush=True)
+            last_progress = progress
+            last_message_at = now
         if run.status.is_terminal or run.status is RunStatus.AWAITING_REVIEW:
             return run
         await asyncio.sleep(seconds)
@@ -207,10 +244,23 @@ async def _continue_pending(
             )
             continue
         if pending.name == "adk_request_input":
+            print("\nReview needed")
             print(pending.arguments.get("message", "Review input required"))
-            print(json.dumps(pending.arguments.get("response_schema", {}), indent=2))
+            print(
+                'Answer as JSON, for example: '
+                '{"review_id":"<shown ID>","decision_type":"reject_all"}'
+            )
+            print(
+                "Choices: approve, select_candidate, override, reject_all. "
+                "Type ? to see the full input schema."
+            )
             while True:
-                raw = await asyncio.to_thread(input, "Review response (JSON)> ")
+                raw = await asyncio.to_thread(input, "Review> ")
+                if raw.strip() == "?":
+                    print(json.dumps(
+                        pending.arguments.get("response_schema", {}), indent=2
+                    ))
+                    continue
                 try:
                     answer = json.loads(raw)
                     if not isinstance(answer, dict):
@@ -227,6 +277,20 @@ async def _continue_pending(
             )
             continue
         raise RuntimeError(f"unsupported pending ADK input: {pending.name}")
+
+
+def _print_api_error(exc: APIError) -> None:
+    if exc.code == 402 and exc.status == "RESOURCE_EXHAUSTED":
+        print(
+            "Gemini prepaid credits are depleted. Add credits to the configured "
+            "Google AI project, then retry in this session. No tariff result "
+            "was produced."
+        )
+    else:
+        print(
+            f"Gemini request failed ({exc.code} {exc.status}). "
+            "Check the API and worker logs, then retry in this session."
+        )
 
 
 async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
@@ -255,29 +319,37 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
             await session_service.create_session(
                 app_name=cli_app.name, user_id=user_id, session_id=session_id
             )
-        print(f"ADK session: {session_id}")
-        await _continue_pending(
-            runner, session_service, container.run_service,
-            user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
-        )
+        print("Ameria Tariff Chat")
+        print(f"Session: {session_id}")
+        print("Type quit to exit. Use this session ID to resume later.\n")
+        try:
+            await _continue_pending(
+                runner, session_service, container.run_service,
+                user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
+            )
+        except APIError as exc:
+            _print_api_error(exc)
         while True:
             prompt = (await asyncio.to_thread(input, "You> ")).strip()
             if prompt.lower() in {"exit", "quit"}:
                 return
             if not prompt:
                 continue
-            await _run_and_print(
-                runner,
-                user_id=user_id,
-                session_id=session_id,
-                new_message=types.Content(
-                    role="user", parts=[types.Part(text=prompt)]
-                ),
-            )
-            await _continue_pending(
-                runner, session_service, container.run_service,
-                user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
-            )
+            try:
+                await _run_and_print(
+                    runner,
+                    user_id=user_id,
+                    session_id=session_id,
+                    new_message=types.Content(
+                        role="user", parts=[types.Part(text=prompt)]
+                    ),
+                )
+                await _continue_pending(
+                    runner, session_service, container.run_service,
+                    user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
+                )
+            except APIError as exc:
+                _print_api_error(exc)
     finally:
         configure_services(None, None, None, None, None, None, None)
         await container.close()
@@ -295,7 +367,10 @@ def main() -> None:
     try:
         asyncio.run(chat(args.user_id, session_id, args.poll_seconds))
     except (KeyboardInterrupt, EOFError):
-        print(f"\nResume with: uv run python -m app.cli --user-id {args.user_id} --session-id {session_id}")
+        print(
+            f"\nResume with: ./tariff-chat --user-id {args.user_id} "
+            f"--session-id {session_id}"
+        )
 
 
 if __name__ == "__main__":

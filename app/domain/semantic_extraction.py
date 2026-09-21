@@ -188,9 +188,19 @@ class RequirementPolicy(ExtractionModel):
 class TermRange(ExtractionModel):
     min_months: int | None = Field(default=None, gt=0)
     max_months: int | None = Field(default=None, gt=0)
+    indefinite: bool = False
+    end_condition: Literal["on_demand"] | None = None
 
     @model_validator(mode="after")
     def validate_range(self) -> TermRange:
+        if self.indefinite:
+            if self.min_months is not None or self.max_months is not None:
+                raise ValueError("indefinite term cannot have month bounds")
+            if self.end_condition is None:
+                raise ValueError("indefinite term requires an end condition")
+            return self
+        if self.end_condition is not None:
+            raise ValueError("bounded term cannot have an open-ended condition")
         if self.min_months is None and self.max_months is None:
             raise ValueError("term requires a minimum or maximum")
         if (

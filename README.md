@@ -42,6 +42,10 @@ See [the architecture](docs/architecture.md), [configuration reference](docs/con
 6. Start the full stack: `docker compose up --build`.
 7. Open API documentation at `http://localhost:8080/docs`.
 
+For a durable terminal conversation, run `./tariff-chat` after the Compose
+stack is up. It shows monitoring stages while the worker runs and prints a
+session ID. Reconnect with `./tariff-chat --session-id <id>`.
+
 The ADK playground can be started with `agents-cli playground` after dependencies are
 installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured
 model credentials and an indexed local corpus.

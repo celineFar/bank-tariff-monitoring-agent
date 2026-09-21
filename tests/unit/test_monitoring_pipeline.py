@@ -587,3 +587,30 @@ async def test_single_offering_failure_reports_source_code_and_reason() -> None:
         "AcquisitionError:INSUFFICIENT_CONTENT"
     )
     assert runs.failures[0][1]["audit_payload"]["reason"] == ("INSUFFICIENT_CONTENT")
+
+
+@pytest.mark.asyncio
+async def test_indexing_refresh_persists_progress_before_each_stage() -> None:
+    service, _, _ = _indexing()
+
+    class _StageRuns:
+        def __init__(self) -> None:
+            self.stages = []
+
+        async def start_offering_execution(self, execution_id, *, stage):
+            self.stages.append(stage)
+
+    runs = _StageRuns()
+    service._runs = runs
+
+    await service.refresh(_offering(), uuid4(), uuid4())
+
+    assert runs.stages == [
+        "acquisition",
+        "normalization",
+        "source_discovery",
+        "semantic_extraction",
+        "previous_snapshot",
+        "embedding",
+        "publication",
+    ]

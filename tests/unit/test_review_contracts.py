@@ -216,3 +216,18 @@ async def test_large_change_approval_builds_atomic_snapshot_update() -> None:
     assert repository.snapshot_update.ready_for_activation is True
     assert repository.snapshot_update.validation["review_signals"] == []
     assert repository.snapshot_update.changes is not None
+
+
+def test_indefinite_term_candidate_maps_to_typed_on_demand_term() -> None:
+    from app.domain.semantic_extraction import ExtractionField
+    from app.services.review_decisions import coerce_review_candidate_value
+    from app.services.semantic_extraction import validate_review_field_value
+
+    value = coerce_review_candidate_value(
+        ExtractionField.TERM, "Indefinite term (until requested back)"
+    )
+    validated = validate_review_field_value(ExtractionField.TERM, value)
+
+    assert validated[0].value.indefinite is True
+    assert validated[0].value.end_condition == "on_demand"
+    assert validated[0].value.max_months is None

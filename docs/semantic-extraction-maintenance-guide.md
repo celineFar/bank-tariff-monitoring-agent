@@ -81,7 +81,7 @@ Important financial fields use structured types rather than display strings:
   percentage, or other documented formula;
 - nominal and effective/APR rates preserve bounds, basis, rate type, formulas, and
   conditions;
-- terms use minimum and maximum months;
+- bounded terms use minimum and maximum months; indefinite terms use `indefinite=true` and an explicit `end_condition` such as `on_demand`;
 - fees retain amount/rate, currency, conditions, and product-versus-general-service
   scope;
 - income verification and creditworthiness assessment are separate requirement

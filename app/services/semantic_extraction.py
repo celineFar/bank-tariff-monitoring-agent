@@ -156,7 +156,10 @@ Expected value shapes:
 - loan_amount/credit_limit: list of conditional values whose value is a discriminated
   amount object (absolute, salary_multiple, property_value_percentage, other_formula)
 - interest_rate/effective_rate: list of conditional Rate objects
-- term: list of conditional TermRange objects
+- term: list of conditional TermRange objects. For a bounded term give
+  min_months and/or max_months. For a term with no fixed maturity that is
+  repayable when requested, give indefinite=true and end_condition="on_demand";
+  do not invent a month limit.
 - down_payment_pct/ltv_pct: list of conditional decimal values
 - formal_terms_names, purpose, eligibility, residency_requirements,
   special_conditions, property_requirements: JSON lists of strings
@@ -898,8 +901,18 @@ def _normalize_rate(value: Any) -> Any:
 def _normalize_term(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
+    if value.get("indefinite") is True:
+        return {
+            key: value[key]
+            for key in ("indefinite", "end_condition")
+            if key in value
+        }
     if "min_months" in value or "max_months" in value:
-        return {key: value[key] for key in ("min_months", "max_months") if key in value}
+        return {
+            key: value[key]
+            for key in ("min_months", "max_months", "indefinite")
+            if key in value
+        }
     normalized: dict[str, Any] = {}
     for side in ("min", "max"):
         raw = value.get(f"{side}_value")

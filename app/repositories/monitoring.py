@@ -653,6 +653,24 @@ class PostgresRunRepository:
             )
         return _offering_from_row(row)
 
+    async def list_offering_executions(
+        self, run_id: UUID
+    ) -> tuple[OfferingExecution, ...]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT * FROM offering_executions
+                        WHERE run_id = :run_id
+                        ORDER BY started_at NULLS LAST, offering_id
+                        """
+                    ),
+                    {"run_id": run_id},
+                )
+            ).all()
+        return tuple(_offering_from_row(row) for row in rows)
+
     async def fail_offering_execution(
         self,
         offering_execution_id: UUID,

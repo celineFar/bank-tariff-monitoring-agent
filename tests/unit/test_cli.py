@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -11,7 +12,9 @@ from google.adk.tools import LongRunningFunctionTool
 from google.genai import types
 from pydantic import PrivateAttr
 
-from app.cli import pending_input, start_tariff_monitoring_cli
+from app.cli import _wait_for_run, pending_input, start_tariff_monitoring_cli
+from app.domain.models import OfferingId
+from app.domain.monitoring import OfferingRunStatus, RunStatus
 
 
 class _LocalModel(BaseLlm):
@@ -110,3 +113,37 @@ async def test_cli_long_running_monitoring_pauses_and_resumes_same_invocation(mo
         app_name=app.name, user_id="user", session_id="original-chat"
     )
     assert pending_input(session.events) is None
+
+
+@pytest.mark.asyncio
+async def test_cli_reports_persisted_pipeline_stages(capsys) -> None:
+    run_id = uuid4()
+
+    class _Runs:
+        def __init__(self) -> None:
+            self.poll = 0
+
+        async def get(self, run_id):
+            self.poll += 1
+            status = RunStatus.SUCCEEDED if self.poll == 3 else RunStatus.RUNNING
+            return SimpleNamespace(status=status)
+
+        async def list_offering_executions(self, run_id):
+            if self.poll == 3:
+                return ()
+            stage = "acquisition" if self.poll == 1 else "semantic_extraction"
+            return (
+                SimpleNamespace(
+                    offering_id=OfferingId.OVERDRAFT,
+                    current_stage=stage,
+                    status=OfferingRunStatus.RUNNING,
+                ),
+            )
+
+    result = await _wait_for_run(_Runs(), run_id, 0.001)
+
+    assert result.status is RunStatus.SUCCEEDED
+    output = capsys.readouterr().out
+    assert "Acquiring web content" in output
+    assert "Extracting tariff fields" in output
+    assert "Monitoring succeeded" in output

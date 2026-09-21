@@ -204,11 +204,14 @@ For monitoring runs that take several minutes, start the custom CLI inside the
 API container:
 
 ```bash
-docker compose exec api uv run python -m app.cli
+./tariff-chat
 ```
 
-The CLI prints a session ID. After an interrupted terminal session, pass it with
-`--session-id` to recover any pending ADK long-running function or review input.
+The CLI prints a session ID. After an interrupted terminal session, run
+`./tariff-chat --session-id <id>` to recover any pending ADK long-running function
+or review input. It reports each persisted offering stage and a heartbeat while
+the worker runs. A Gemini 402 means the configured Google AI project has no
+prepaid credits; add credits and retry in the same session.
 The CLI uses the same PostgreSQL session service and run repository as the API
 and worker. Run the CLI within the container because the Compose `.env` database
 host is `db`.

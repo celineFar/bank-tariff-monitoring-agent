@@ -105,6 +105,7 @@ class IndexingPipeline:
         embedder: KnowledgeEmbeddingPort,
         snapshots: MonitoringSnapshotRepository,
         publications: OfferingPublicationRepository,
+        runs: RunRepository | None = None,
         large_rate_change_percentage_points: float = 3.0,
     ) -> None:
         self._acquisition = acquisition
@@ -115,6 +116,7 @@ class IndexingPipeline:
         self._embedder = embedder
         self._snapshots = snapshots
         self._publications = publications
+        self._runs = runs
         self._large_rate_change_percentage_points = Decimal(
             str(large_rate_change_percentage_points)
         )
@@ -126,25 +128,30 @@ class IndexingPipeline:
         offering_execution_id: UUID,
     ) -> IndexingRefreshResult:
         timings: list[StageTiming] = []
-        artifact = await self._stage(
+
+        async def stage(name: str, failure_code, operation: Awaitable[T]) -> T:
+            if self._runs is not None:
+                await self._runs.start_offering_execution(
+                    offering_execution_id, stage=name
+                )
+            return await self._stage(name, failure_code, operation, timings)
+
+        artifact = await stage(
             "acquisition",
             OfferingFailureCode.ACQUISITION_FAILED,
             self._acquisition.acquire(str(offering.seed_url)),
-            timings,
         )
-        bundle = await self._stage(
+        bundle = await stage(
             "normalization",
             OfferingFailureCode.NORMALIZATION_FAILED,
             self._normalization.normalize(artifact),
-            timings,
         )
-        discovery = await self._stage(
+        discovery = await stage(
             "source_discovery",
             OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
             self._discovery.discover(bundle, offering.product),
-            timings,
         )
-        extraction = await self._stage(
+        extraction = await stage(
             "semantic_extraction",
             OfferingFailureCode.SEMANTIC_EXTRACTION_FAILED,
             self._extraction.extract(
@@ -152,7 +159,6 @@ class IndexingPipeline:
                 discovery,
                 retrieved_at=artifact.retrieved_at,
             ),
-            timings,
         )
         extraction_failure = non_reviewable_extraction_failure(extraction)
         if extraction_failure is not None:
@@ -161,7 +167,7 @@ class IndexingPipeline:
                 OfferingFailureCode.SEMANTIC_EXTRACTION_FAILED.value,
                 ValueError(extraction_failure),
             )
-        previous = await self._stage(
+        previous = await stage(
             "previous_snapshot",
             RunFailureCode.PERSISTENCE_FAILED,
             self._snapshots.get_latest_accepted(
@@ -170,7 +176,6 @@ class IndexingPipeline:
                 offering_id=offering.offering_id,
                 before_run_id=run_id,
             ),
-            timings,
         )
         snapshot = build_snapshot_attempt(
             run_id=run_id,
@@ -216,11 +221,10 @@ class IndexingPipeline:
                     language=offering.language or artifact.language or "en",
                 ),
             )
-        embedded = await self._stage(
+        embedded = await stage(
             "embedding",
             "indexing.embedding_failed",
             self._embed_all(documents),
-            timings,
         )
         selected = {document.document_key: document for document in embedded}
         manifest_items = tuple(
@@ -244,7 +248,7 @@ class IndexingPipeline:
             timings=tuple(timings),
         )
         provenance_changed = evidence_changed(previous, snapshot)
-        publication = await self._stage(
+        publication = await stage(
             "publication",
             "indexing.publication_failed",
             self._publications.publish(
@@ -263,7 +267,6 @@ class IndexingPipeline:
                     },
                 )
             ),
-            timings,
         )
         return IndexingRefreshResult(
             manifest=manifest.model_copy(update={"timings": tuple(timings)}),

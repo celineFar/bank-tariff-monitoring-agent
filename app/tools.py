@@ -17,6 +17,7 @@ from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import QuestionCommand, RunCommand, RunStatus, RunTrigger
 from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
 from app.domain.review import ReviewDecision, ReviewDecisionType
+from app.domain.semantic_extraction import ExtractionField
 from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
 from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
@@ -24,7 +25,9 @@ from app.services.monitoring_workflow import (
     workflow_identity,
 )
 from app.services.rag_answer import RagAnswerService
+from app.services.review_decisions import coerce_review_candidate_value
 from app.services.run_service import RunServicePort, run_covers_command
+from app.services.semantic_extraction import validate_review_field_value
 from app.services.tariff_queries import (
     CurrentTariffService,
     RunWaitService,
@@ -496,6 +499,46 @@ async def submit_monitoring_review_input(
             for evidence in item.evidence
         ):
             raise ValueError("evidence is outside this review")
+        if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
+            selected = next(
+                candidate for candidate in item.candidates
+                if candidate.candidate_id == decision.candidate_id
+            )
+            if selected.conditions.get("conditions"):
+                return {
+                    "status": "rejected",
+                    "reason_code": "review.candidate_requires_override",
+                    "message": "This candidate has conditions; provide a structured override with evidence or reject the review.",
+                }
+            value = coerce_review_candidate_value(
+                ExtractionField(item.issue_scope), selected.value
+            )
+            try:
+                validate_review_field_value(ExtractionField(item.issue_scope), value)
+            except ValueError:
+                return {
+                    "status": "rejected",
+                    "reason_code": "review.candidate_value_invalid",
+                    "message": (
+                        "The captured candidate is text that cannot be stored as "
+                        f"a valid {item.issue_scope} value. Provide a structured "
+                        "override with evidence or reject the review."
+                    ),
+                }
+        if decision.decision_type is ReviewDecisionType.OVERRIDE:
+            try:
+                validate_review_field_value(
+                    ExtractionField(item.issue_scope), decision.override_value
+                )
+            except ValueError:
+                return {
+                    "status": "rejected",
+                    "reason_code": "review.override_value_invalid",
+                    "message": (
+                        f"The override does not match the {item.issue_scope} field "
+                        "schema. Correct the structured value and try again."
+                    ),
+                }
     except ReviewNotReadyError:
         run = await _run_service.get(run_id) if _run_service is not None else None
         tool_context.state[_REVIEW_CURRENT_KEY] = None

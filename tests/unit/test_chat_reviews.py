@@ -542,3 +542,97 @@ async def test_adk_native_input_resumes_original_session_and_is_visible_to_tool(
         for event in resumed
         for part in (event.content.parts if event.content else ())
     )
+
+
+@pytest.mark.asyncio
+async def test_indefinite_term_candidate_resumes_review_workflow() -> None:
+    run = _run()
+    task = _review(run, "term")
+    task = task.model_copy(
+        update={
+            "candidates": (
+                ReviewCandidate(
+                    candidate_id="term-text",
+                    field="term",
+                    value="Indefinite term (until requested back)",
+                    evidence_references=("evidence-1",),
+                ),
+            )
+        }
+    )
+    runs = _Runs(run)
+    workflow = _Workflow(status=RunStatus.SUCCEEDED)
+    service = ChatReviewService(
+        runs=runs, reviews=_Reviews((task,)), workflow=workflow
+    )
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_review_choices": {},
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        prompt = await get_next_monitoring_review(_Context(state))
+        result = await submit_monitoring_review_input(
+            _Context(
+                state,
+                {
+                    "review_id": prompt["review"]["review_id"],
+                    "decision_type": "select_candidate",
+                    "candidate_id": "term-text",
+                },
+            )
+        )
+    finally:
+        configure_services(None, None)
+    assert result["status"] == "succeeded"
+    assert state["monitoring_review_choices"] == {}
+
+
+@pytest.mark.asyncio
+async def test_invalid_term_candidate_is_rejected_before_workflow_resume() -> None:
+    from app.domain.monitoring_workflow import (
+        MonitoringReviewResponse,
+        ReviewResponseItem,
+    )
+    from app.domain.review import ReviewDecision, ReviewDecisionType
+
+    run = _run()
+    task = _review(run, "term")
+    task = task.model_copy(
+        update={
+            "candidates": (
+                ReviewCandidate(
+                    candidate_id="unknown-term",
+                    field="term",
+                    value="Some indefinite term",
+                    evidence_references=("evidence-1",),
+                ),
+            )
+        }
+    )
+    runs = _Runs(run)
+    workflow = _Workflow()
+    service = ChatReviewService(
+        runs=runs, reviews=_Reviews((task,)), workflow=workflow
+    )
+    response = MonitoringReviewResponse(
+        decisions=(
+            ReviewResponseItem(
+                review_id=task.id,
+                decision=ReviewDecision(
+                    decision_type=ReviewDecisionType.SELECT_CANDIDATE,
+                    candidate_id="unknown-term",
+                ),
+            ),
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not match the field schema"):
+        await service.resume(
+            run.id, response,
+            actor_user_id="reviewer-1",
+            actor_session_id="original-chat-1",
+        )
+
+    assert workflow.calls == []
+    assert runs.audits == []

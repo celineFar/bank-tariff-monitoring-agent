@@ -638,3 +638,24 @@ async def test_every_failed_batch_remains_a_systemic_failure() -> None:
         await service.extract(
             bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
         )
+
+
+def test_term_range_represents_bounded_and_indefinite_on_demand_terms() -> None:
+    bounded = TermRange(min_months=6, max_months=60)
+    open_ended = TermRange(indefinite=True, end_condition="on_demand")
+
+    assert bounded.max_months == 60
+    assert open_ended.min_months is None
+    assert open_ended.max_months is None
+    assert open_ended.model_dump(mode="json")["end_condition"] == "on_demand"
+
+
+def test_term_range_rejects_mixed_or_unspecified_duration() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="indefinite term cannot have month bounds"):
+        TermRange(indefinite=True, end_condition="on_demand", max_months=60)
+    with pytest.raises(ValidationError, match="indefinite term requires an end condition"):
+        TermRange(indefinite=True)
+    with pytest.raises(ValidationError, match="term requires a minimum or maximum"):
+        TermRange()
