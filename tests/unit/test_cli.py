@@ -219,12 +219,7 @@ async def test_cli_reopens_pending_business_review_without_starting_new_run(
             return SimpleNamespace(status=RunStatus.SUCCEEDED)
 
     monkeypatch.setattr(
-        "builtins.input",
-        lambda prompt: (
-            '{"decision_type":"override","override_value":'
-            '"Indefinite term (until requested back)","reason":"Official term",'
-            '"evidence_reference":"evidence-term"}'
-        ),
+        "builtins.input", lambda prompt: "Indefinite term (until requested back)"
     )
     reviews = _Reviews()
 
@@ -239,10 +234,10 @@ async def test_cli_reopens_pending_business_review_without_starting_new_run(
 
     assert handled is True
     assert reviews.submitted.decisions[0].review_id == review_id
-    assert (
-        reviews.submitted.decisions[0].decision.override_value
-        == "Indefinite term (until requested back)"
-    )
+    assert reviews.submitted.decisions[0].decision.override_value == [
+        {"value": {"indefinite": True, "end_condition": "on_demand"}, "conditions": []}
+    ]
+    assert reviews.submitted.decisions[0].decision.evidence_reference == "evidence-term"
     output = capsys.readouterr().out
     assert "Continuing here; no new run is needed" in output
     assert "Review completed" in output
@@ -298,3 +293,123 @@ def test_cli_explains_gemini_402_without_traceback(capsys) -> None:
     assert "Gemini prepaid credits are depleted" in output.out
     assert "retry in this session" in output.out
     assert "Traceback" not in output.err
+
+
+def test_cli_review_shows_field_passages_before_other_context(capsys) -> None:
+    from app.cli import _show_review
+    from app.domain.review import ReviewReason
+
+    item = SimpleNamespace(
+        offering_id=OfferingId.OVERDRAFT,
+        issue_scope="term",
+        reason=ReviewReason.MISSING_REQUIRED_FIELD,
+        guidance="Provide a structured override.",
+        candidates=(),
+        evidence=(
+            SimpleNamespace(
+                evidence_id="term-source",
+                source_url="https://example.com/term.pdf",
+                page=2,
+                excerpt="Row: Term (months) | Indefinite term",
+            ),
+            SimpleNamespace(
+                evidence_id="rate-source",
+                source_url="https://example.com/rate.pdf",
+                page=3,
+                excerpt="Nominal interest rate 15%",
+            ),
+        ),
+    )
+    _show_review(item, 1, 1)
+    output = capsys.readouterr().out
+    assert "term-source" not in output  # Reviewers choose the displayed passage number.
+    assert "Indefinite term" in output
+    assert "Nominal interest rate" not in output
+    assert "1 other captured passages" in output
+
+
+def test_cli_accepts_plain_bounded_term() -> None:
+    from app.cli import _review_value
+    from app.domain.semantic_extraction import ExtractionField
+
+    assert _review_value(ExtractionField.TERM, "12-24 months") == [
+        {"value": {"min_months": 12, "max_months": 24}, "conditions": []}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cli_native_pause_accepts_plain_term_review(monkeypatch) -> None:
+    from app.cli import PendingInput, _continue_pending
+    from app.domain.review import ReviewDecisionType, ReviewReason
+
+    review_id = uuid4()
+    run_id = uuid4()
+    item = SimpleNamespace(
+        review_id=review_id,
+        offering_id=OfferingId.OVERDRAFT,
+        issue_scope="term",
+        reason=ReviewReason.MISSING_REQUIRED_FIELD,
+        guidance="Review the term.",
+        allowed_decisions=(ReviewDecisionType.OVERRIDE, ReviewDecisionType.REJECT_ALL),
+        candidates=(),
+        evidence=(
+            SimpleNamespace(
+                evidence_id="term-evidence",
+                source_url="https://example.com/term.pdf",
+                page=2,
+                excerpt="Term (months): Indefinite term (until requested back)",
+            ),
+        ),
+    )
+    session = SimpleNamespace(
+        events=[],
+        state={
+            "monitoring_active_run_id": str(run_id),
+            "monitoring_review_current_id": str(review_id),
+        },
+    )
+
+    class _Sessions:
+        async def get_session(self, **kwargs):
+            return session
+
+    class _Reviews:
+        async def pending_request(self, saved_id):
+            assert saved_id == run_id
+            return SimpleNamespace(reviews=(item,))
+
+    pending = PendingInput(
+        invocation_id="invocation",
+        function_call_id="call",
+        name="adk_request_input",
+        arguments={},
+    )
+    calls = iter((pending, None))
+    captured = {}
+
+    async def fake_resume(runner, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr("app.cli.pending_input", lambda events: next(calls))
+    monkeypatch.setattr("app.cli._resume", fake_resume)
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt: "Indefinite term (until requested back)"
+    )
+
+    await _continue_pending(
+        object(),
+        _Sessions(),
+        object(),
+        _Reviews(),
+        user_id="cli-user",
+        session_id="session",
+        poll_seconds=1,
+    )
+
+    result = captured["response"]["result"]
+    assert result["review_id"] == str(review_id)
+    assert result["decision_type"] == "override"
+    assert result["evidence_reference"] == "term-evidence"
+    assert result["override_value"] == [
+        {"value": {"indefinite": True, "end_condition": "on_demand"}, "conditions": []}
+    ]

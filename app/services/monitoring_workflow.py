@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from typing import Protocol
 from uuid import UUID
@@ -416,9 +417,32 @@ def _review_prompt(task: ReviewTask) -> ReviewPromptView:
     allowed, guidance = _review_policy(task.reason)
     raw_items = task.evidence.get("items", [])
     raw_items = raw_items if isinstance(raw_items, list) else []
+    candidate_references = {
+        reference
+        for candidate in task.candidates
+        for reference in candidate.evidence_references
+    }
+
+    def rank(raw: object) -> int:
+        if not isinstance(raw, dict):
+            return 4
+        if raw.get("evidence_id") in candidate_references:
+            return 0
+        content = str(raw.get("content", "")).casefold()
+        field = task.issue_scope.replace("_", " ").casefold()
+        if field == "term" and re.search(
+            r"\bterm\s*\(months?\)|\bindefinite term\b|"
+            r"\bloan term\b|\bmaturity\b|\bduration\b",
+            content,
+        ):
+            return 1
+        if field in content:
+            return 2
+        return 3
+
     evidence = tuple(
         view
-        for raw in raw_items
+        for raw in sorted(raw_items, key=rank)
         if isinstance(raw, dict)
         if (view := _evidence_view(raw)) is not None
     )

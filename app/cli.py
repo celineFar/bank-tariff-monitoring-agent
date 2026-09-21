@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 from dataclasses import dataclass, replace
 from time import monotonic
 from uuid import UUID, uuid4
@@ -18,7 +19,6 @@ from google.genai.errors import APIError
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
@@ -28,8 +28,11 @@ from app.config import get_settings
 from app.domain.monitoring import RunStatus
 from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
 from app.domain.review import ReviewDecision, ReviewDecisionType
+from app.domain.semantic_extraction import ExtractionField
 from app.runtime import build_application_container
 from app.services.chat_reviews import ReviewNotReadyError
+from app.services.review_decisions import coerce_review_candidate_value
+from app.services.semantic_extraction import validate_review_field_value
 from app.tools import (
     answer_tariff_question,
     configure_services,
@@ -262,6 +265,7 @@ async def _continue_pending(
     runner: Runner,
     session_service: object,
     run_service: object,
+    review_service: object,
     *,
     user_id: str,
     session_id: str,
@@ -296,52 +300,32 @@ async def _continue_pending(
             )
             continue
         if pending.name == "adk_request_input":
-            console.print(
-                Panel(
-                    Text(
-                        str(pending.arguments.get("message", "Review input required"))
+            raw_run_id = session.state.get("monitoring_active_run_id")
+            if not isinstance(raw_run_id, str):
+                raise RuntimeError("review input has no active monitoring run")
+            request = await review_service.pending_request(UUID(raw_run_id))
+            current_id = session.state.get("monitoring_review_current_id")
+            choices = session.state.get("monitoring_review_choices") or {}
+            item = next(
+                (view for view in request.reviews if str(view.review_id) == current_id),
+                None,
+            )
+            if item is None:
+                item = next(
+                    (
+                        view
+                        for view in request.reviews
+                        if str(view.review_id) not in choices
                     ),
-                    title=Text("Review needed", style="bold yellow"),
-                    border_style="yellow",
+                    request.reviews[0],
                 )
+            decision = await _ask_review_decision(
+                item, request.reviews.index(item) + 1, len(request.reviews)
             )
-            _notice(
-                "Reply with JSON using the shown review ID. "
-                "Type ? for the full schema.",
-                tone="yellow",
-            )
-            console.print(
-                Syntax(
-                    '{"review_id":"<shown ID>","decision_type":"reject_all"}',
-                    "json",
-                    theme="ansi_dark",
-                    word_wrap=True,
-                )
-            )
-            while True:
-                raw = await asyncio.to_thread(
-                    _input, "[bold yellow]Review[/] [yellow]>[/] "
-                )
-                if raw.strip() == "?":
-                    console.print(
-                        Syntax(
-                            json.dumps(
-                                pending.arguments.get("response_schema", {}),
-                                indent=2,
-                            ),
-                            "json",
-                            theme="ansi_dark",
-                            word_wrap=True,
-                        )
-                    )
-                    continue
-                try:
-                    answer = json.loads(raw)
-                    if not isinstance(answer, dict):
-                        raise ValueError("response must be a JSON object")
-                    break
-                except ValueError as exc:
-                    _error("Invalid review response", str(exc))
+            answer = {
+                "review_id": str(item.review_id),
+                **decision.model_dump(mode="json", exclude_none=True),
+            }
             await _resume(
                 runner,
                 user_id=user_id,
@@ -374,6 +358,33 @@ def _ordered_evidence(item: object) -> tuple[object, ...]:
     return tuple(sorted(item.evidence, key=rank))
 
 
+def _relevant_evidence(item: object) -> tuple[object, ...]:
+    field = item.issue_scope.replace("_", " ").casefold()
+    references = {
+        reference
+        for candidate in item.candidates
+        for reference in candidate.evidence_references
+    }
+
+    def mentions_field(excerpt: str) -> bool:
+        text = excerpt.casefold()
+        if field == "term":
+            return bool(
+                re.search(
+                    r"\bterm\s*\(months?\)|\bindefinite term\b|"
+                    r"\bloan term\b|\bmaturity\b|\bduration\b",
+                    text,
+                )
+            )
+        return field in text
+
+    return tuple(
+        evidence
+        for evidence in _ordered_evidence(item)
+        if evidence.evidence_id in references or mentions_field(evidence.excerpt)
+    )
+
+
 def _show_review(
     item: object, index: int, total: int, *, all_evidence: bool = False
 ) -> None:
@@ -381,40 +392,203 @@ def _show_review(
         f"Review {index}/{total} · {item.offering_id.value} · "
         f"{item.issue_scope} ({item.reason.value})"
     )
+    guidance = (
+        f"No valid {item.issue_scope.replace('_', ' ')} was extracted. "
+        "Check the passage and enter the correct value, or reject this snapshot."
+        if item.reason.value == "missing_required_field"
+        else item.guidance
+    )
     console.print(
         Panel(
-            Text(item.guidance),
+            Text(guidance),
             title=Text(heading, style="bold yellow"),
             border_style="yellow",
         )
     )
     if item.candidates:
         candidates = Table(title="Extracted candidates", show_lines=True)
-        candidates.add_column("Candidate ID", style="cyan")
+        candidates.add_column("#", style="cyan")
         candidates.add_column("Value")
-        for candidate in item.candidates:
+        for number, candidate in enumerate(item.candidates, start=1):
             candidates.add_row(
-                candidate.candidate_id,
-                Text(json.dumps(candidate.value, ensure_ascii=False)),
+                str(number), Text(json.dumps(candidate.value, ensure_ascii=False))
             )
         console.print(candidates)
-    evidence_items = _ordered_evidence(item)
-    visible = evidence_items if all_evidence else evidence_items[:5]
-    if visible:
-        evidence_table = Table(title="Supporting evidence", show_lines=True)
-        evidence_table.add_column("Evidence ID", style="cyan")
+    relevant = _relevant_evidence(item)
+    evidence_items = _ordered_evidence(item) if all_evidence else relevant
+    if evidence_items:
+        evidence_table = Table(
+            title="All captured passages"
+            if all_evidence
+            else "Passages matching this field",
+            show_lines=True,
+        )
+        evidence_table.add_column("#", style="cyan")
         evidence_table.add_column("Source and passage", overflow="fold")
-        for evidence in visible:
+        for number, evidence in enumerate(evidence_items, start=1):
             location = f" · page {evidence.page}" if evidence.page else ""
             source = Text(f"{evidence.source_url}{location}\n", style="dim")
             source.append(evidence.excerpt[:400].replace("\n", " "))
-            evidence_table.add_row(evidence.evidence_id, source)
+            evidence_table.add_row(str(number), source)
         console.print(evidence_table)
-    if len(visible) < len(evidence_items):
+    else:
+        _notice("No captured passage directly mentions this field.", tone="yellow")
+    if not all_evidence and len(relevant) < len(item.evidence):
         _notice(
-            f"{len(evidence_items) - len(visible)} more evidence items; "
-            "type ? to see all.",
+            f"{len(item.evidence) - len(relevant)} other captured passages; "
+            "type ? to inspect all.",
             tone="yellow",
+        )
+
+
+def _review_value(field: ExtractionField, raw: str) -> object:
+    text = raw.strip()
+    if not text:
+        raise ValueError("Enter a value.")
+    if field is ExtractionField.TERM:
+        if match := re.fullmatch(r"(\d+)\s*(?:-\s*(\d+)\s*)?months?", text, re.I):
+            lower = int(match.group(1))
+            upper = int(match.group(2)) if match.group(2) else lower
+            value = [
+                {"value": {"min_months": lower, "max_months": upper}, "conditions": []}
+            ]
+        else:
+            value = coerce_review_candidate_value(field, text)
+    else:
+        try:
+            value = json.loads(text) if text.startswith(("{", "[")) else text
+        except ValueError as exc:
+            raise ValueError("That structured value is not valid JSON.") from exc
+        value = coerce_review_candidate_value(field, value)
+    try:
+        validate_review_field_value(field, value)
+    except ValueError as exc:
+        raise ValueError(
+            f"The {field.value} value is not valid. Check the field format or choose a candidate."
+        ) from exc
+    return value
+
+
+async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDecision:
+    _show_review(item, index, total)
+    allowed = set(item.allowed_decisions)
+    options = []
+    if ReviewDecisionType.APPROVE in allowed:
+        options.append("approve the extracted value")
+    if ReviewDecisionType.SELECT_CANDIDATE in allowed and item.candidates:
+        options.append("enter a candidate number")
+    if ReviewDecisionType.OVERRIDE in allowed:
+        options.append(f"enter the correct {item.issue_scope.replace('_', ' ')}")
+    if ReviewDecisionType.REJECT_ALL in allowed:
+        options.append("type reject_all to discard this run")
+    _notice(
+        "You can " + ", ".join(options) + ". Type ? to inspect every passage.",
+        tone="yellow",
+    )
+    while True:
+        raw = (
+            await asyncio.to_thread(
+                _input,
+                f"[bold yellow]{item.issue_scope.replace('_', ' ').title()}[/] [yellow]>[/] ",
+            )
+        ).strip()
+        if raw.lower() in {"quit", "exit"}:
+            raise EOFError
+        if raw == "?":
+            _show_review(item, index, total, all_evidence=True)
+            continue
+        if raw.lower() == "reject_all" and ReviewDecisionType.REJECT_ALL in allowed:
+            return ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL)
+        if raw.lower() == "approve" and ReviewDecisionType.APPROVE in allowed:
+            return ReviewDecision(decision_type=ReviewDecisionType.APPROVE)
+        if raw.isdigit() and ReviewDecisionType.SELECT_CANDIDATE in allowed:
+            number = int(raw)
+            if 1 <= number <= len(item.candidates):
+                return ReviewDecision(
+                    decision_type=ReviewDecisionType.SELECT_CANDIDATE,
+                    candidate_id=item.candidates[number - 1].candidate_id,
+                )
+        if raw.startswith("{"):
+            try:
+                payload = json.loads(raw)
+                if not isinstance(payload, dict):
+                    raise ValueError("decision must be an object")
+                if "review_id" in payload and payload["review_id"] != str(
+                    item.review_id
+                ):
+                    raise ValueError("review_id does not match this review")
+                decision = ReviewDecision.model_validate(
+                    {key: value for key, value in payload.items() if key != "review_id"}
+                )
+                if decision.decision_type not in allowed:
+                    raise ValueError("decision is not allowed for this review")
+                return decision
+            except ValueError as exc:
+                _error("Invalid decision", str(exc))
+                continue
+        if ReviewDecisionType.OVERRIDE not in allowed:
+            _error("Invalid choice", "Choose one of the displayed options.")
+            continue
+        try:
+            field = ExtractionField(item.issue_scope)
+            value = _review_value(field, raw)
+        except ValueError as exc:
+            _error("Invalid value", str(exc))
+            continue
+        relevant = _relevant_evidence(item)
+        if not relevant:
+            _notice(
+                "Inspect all passages (?) and choose a supporting source.",
+                tone="yellow",
+            )
+            evidence_items = _ordered_evidence(item)
+        else:
+            evidence_items = relevant
+        if not evidence_items:
+            _error(
+                "No evidence",
+                "This field cannot be overridden without captured evidence.",
+            )
+            continue
+        if (
+            len(evidence_items) == 1
+            and raw.casefold() in evidence_items[0].excerpt.casefold()
+        ):
+            selected = evidence_items[0]
+            _notice("Using the displayed official passage as support.", tone="yellow")
+        else:
+            while True:
+                number_text = (
+                    await asyncio.to_thread(
+                        _input,
+                        f"[bold yellow]Supporting passage (1-{len(evidence_items)})[/] [yellow]>[/] ",
+                    )
+                ).strip()
+                if number_text.lower() in {"quit", "exit"}:
+                    raise EOFError
+                if number_text == "?":
+                    _show_review(item, index, total, all_evidence=True)
+                    continue
+                if number_text.isdigit() and 1 <= int(number_text) <= len(
+                    evidence_items
+                ):
+                    selected = evidence_items[int(number_text) - 1]
+                    if (
+                        field is ExtractionField.TERM
+                        and raw.casefold() not in selected.excerpt.casefold()
+                    ):
+                        _error(
+                            "Unsupported term",
+                            "The entered term is not in that passage. Enter the term as shown in the source.",
+                        )
+                        continue
+                    break
+                _error("Invalid passage", "Enter a passage number shown above.")
+        return ReviewDecision(
+            decision_type=ReviewDecisionType.OVERRIDE,
+            override_value=value,
+            reason="Reviewer confirmed the value against the selected official passage.",
+            evidence_reference=selected.evidence_id,
         )
 
 
@@ -456,53 +630,7 @@ async def _recover_review(
         decisions = []
         reject_all = False
         for index, item in enumerate(request.reviews, start=1):
-            _show_review(item, index, len(request.reviews))
-            allowed = {choice.value for choice in item.allowed_decisions}
-            _notice(
-                "Enter a JSON decision, or type reject_all to discard this run.",
-                tone="yellow",
-            )
-            _notice(
-                "For an override, include override_value, reason, and an "
-                "evidence_reference shown above.",
-                tone="yellow",
-            )
-            while True:
-                raw = (
-                    await asyncio.to_thread(
-                        _input, "[bold yellow]Review[/] [yellow]>[/] "
-                    )
-                ).strip()
-                if raw.lower() in {"quit", "exit"}:
-                    raise EOFError
-                if raw == "?":
-                    _show_review(item, index, len(request.reviews), all_evidence=True)
-                    continue
-                try:
-                    if raw == "reject_all":
-                        decision = ReviewDecision(
-                            decision_type=ReviewDecisionType.REJECT_ALL
-                        )
-                    else:
-                        payload = json.loads(raw)
-                        if not isinstance(payload, dict):
-                            raise ValueError("decision must be a JSON object")
-                        if "review_id" in payload and payload["review_id"] != str(
-                            item.review_id
-                        ):
-                            raise ValueError("review_id does not match this review")
-                        decision = ReviewDecision.model_validate(
-                            {
-                                key: value
-                                for key, value in payload.items()
-                                if key != "review_id"
-                            }
-                        )
-                    if decision.decision_type.value not in allowed:
-                        raise ValueError("decision is not allowed for this review")
-                    break
-                except ValueError as exc:
-                    _error("Invalid decision", str(exc))
+            decision = await _ask_review_decision(item, index, len(request.reviews))
             if decision.decision_type is ReviewDecisionType.REJECT_ALL:
                 reject_all = True
                 break
@@ -619,6 +747,7 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
                 runner,
                 session_service,
                 container.run_service,
+                container.chat_review_service,
                 user_id=user_id,
                 session_id=session_id,
                 poll_seconds=poll_seconds,
@@ -664,6 +793,7 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
                     runner,
                     session_service,
                     container.run_service,
+                    container.chat_review_service,
                     user_id=user_id,
                     session_id=session_id,
                     poll_seconds=poll_seconds,

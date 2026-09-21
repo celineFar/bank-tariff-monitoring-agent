@@ -302,7 +302,9 @@ def test_runtime_loader_exposes_injected_workflow_app_to_adk_web(tmp_path) -> No
 
 
 @pytest.mark.asyncio
-async def test_native_review_can_retry_after_failed_decision_without_rerunning_pipeline() -> None:
+async def test_native_review_can_retry_after_failed_decision_without_rerunning_pipeline() -> (
+    None
+):
     runs = _Runs(_running_run())
     pipeline = _Pipeline(runs)
     reviews = _Reviews(_review())
@@ -353,3 +355,34 @@ async def test_native_review_can_retry_after_failed_decision_without_rerunning_p
 
     assert completed.status is RunStatus.SUCCEEDED
     assert pipeline.calls == 1
+
+
+def test_review_prompt_prioritizes_field_passages_before_twenty_item_limit() -> None:
+    context = [
+        {
+            "evidence_id": f"context-{index}",
+            "content": "Nominal interest rate 15%",
+            "locator": {
+                "source_url": "https://example.com/rates.pdf",
+                "source_type": "pdf",
+            },
+        }
+        for index in range(25)
+    ]
+    term = {
+        "evidence_id": "term-after-context",
+        "content": "Row: Term (months) | Indefinite term (until requested back)",
+        "locator": {"source_url": "https://example.com/term.pdf", "source_type": "pdf"},
+    }
+    task = _review().model_copy(
+        update={
+            "reason": ReviewReason.MISSING_REQUIRED_FIELD,
+            "issue_scope": "term",
+            "evidence": {"items": [*context, term]},
+        }
+    )
+
+    prompt = build_review_request(RUN_ID, (task,)).reviews[0]
+
+    assert len(prompt.evidence) == 20
+    assert prompt.evidence[0].evidence_id == "term-after-context"
