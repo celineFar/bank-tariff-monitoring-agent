@@ -7,6 +7,16 @@ from app.domain.monitoring import MonitoringRun, RunCommand, RunSubmissionResult
 from app.repositories.contracts import RunRepository
 
 
+def run_covers_command(run: MonitoringRun, requested: RunCommand) -> bool:
+    return (
+        run.command.product is requested.product
+        and (
+            run.command.offering_id is None
+            or run.command.offering_id is requested.offering_id
+        )
+    )
+
+
 class RunServicePort(Protocol):
     async def submit(
         self, command: RunCommand, *, idempotency_key: str | None = None

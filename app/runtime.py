@@ -215,6 +215,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         run_wait_service=RunWaitService(
             run_service,
             settings.tariff_queries,
+            reviews=reviews,
         ),
         tariff_pipeline=tariff_pipeline,
         monitoring_workflow_runner=monitoring_workflow_runner,

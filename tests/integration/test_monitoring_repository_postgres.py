@@ -287,6 +287,51 @@ async def test_submission_is_idempotent_and_reuses_active_family_run(
 
 
 @pytest.mark.asyncio
+async def test_different_offering_can_start_while_another_awaits_review(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    overdraft = await repository.submit(
+        _command(offering_id=OfferingId.OVERDRAFT)
+    )
+    claimed = await repository.claim_next("review-worker")
+    assert claimed is not None
+    assert claimed.run.id == overdraft.run.id
+    await repository.pause_for_review(overdraft.run.id, summary={"review_ids": []})
+
+    credit_line = await repository.submit(
+        _command(offering_id=OfferingId.CREDIT_LINE)
+    )
+    repeated = await repository.submit(
+        _command(offering_id=OfferingId.OVERDRAFT)
+    )
+    family_wide = await repository.submit(_command())
+
+    assert credit_line.created is True
+    assert credit_line.run.id != overdraft.run.id
+    assert credit_line.run.command.offering_id is OfferingId.CREDIT_LINE
+    assert repeated.created is False
+    assert repeated.run.id == overdraft.run.id
+    assert family_wide.created is False
+    assert family_wide.run.command.offering_id is OfferingId.OVERDRAFT
+
+
+@pytest.mark.asyncio
+async def test_family_wide_active_run_covers_targeted_requests(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    family_wide = await repository.submit(_command())
+    targeted = await repository.submit(
+        _command(offering_id=OfferingId.CREDIT_LINE)
+    )
+
+    assert targeted.created is False
+    assert targeted.run.id == family_wide.run.id
+    assert targeted.run.command.offering_id is None
+
+
+@pytest.mark.asyncio
 async def test_queue_claim_is_skip_locked_and_restart_safe(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

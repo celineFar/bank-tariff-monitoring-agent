@@ -75,6 +75,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.current_tariff_service = container.current_tariff_service
     app.state.tariff_history_service = container.tariff_history_service
     app.state.review_repository = container.reviews
+    app.state.run_wait_service = container.run_wait_service
     await attach_a2a_routes(
         app,
         agent=root_agent,

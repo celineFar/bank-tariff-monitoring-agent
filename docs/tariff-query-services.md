@@ -34,5 +34,12 @@ The same typed result is available through the `get_tariff_history` ADK tool and
 
 `RunWaitService` polls persisted run state outside database transactions. It waits for at
 most 120 seconds by default and stops immediately for a terminal status or
-`awaiting_review`. A timeout returns the durable run and its current status; it is not
-reported as fresh data. `POST /api/v1/runs` remains asynchronous and does not wait.
+`awaiting_review`. For a paused run it waits for the durable review records to be
+attached to the ADK interruption, then returns a compact list of required review scopes
+and exact relative links to the saved ADK Web session and review records. If review
+attachment is still incomplete at the wait deadline, the result marks the handoff as
+not ready so the caller can check again. A timeout while monitoring is still running
+returns the durable run and its current status; it is not reported as fresh data.
+`POST /api/v1/runs` remains asynchronous and does not wait. A chat turn cannot
+spontaneously send a later notification after its wait ends; the run ID remains the
+lookup key for later status and review checks.

@@ -22,6 +22,7 @@ from app.domain.monitoring import (
     SnapshotChangeSet,
     SnapshotStatus,
 )
+from app.domain.review import ReviewCorrelation, ReviewReason, ReviewStatus, ReviewTask
 from app.domain.tariff_queries import HistoryResultStatus, RunWaitState
 from app.services.tariff_queries import (
     CurrentTariffService,
@@ -254,6 +255,69 @@ async def test_run_wait_stops_on_terminal_or_review(
 
     assert result.state is expected
     assert result.waited_seconds == 1
+
+
+@pytest.mark.asyncio
+async def test_run_wait_delivers_attached_review_session_and_scopes() -> None:
+    run = _run(RunStatus.AWAITING_REVIEW)
+    review = ReviewTask(
+        id=uuid4(),
+        idempotency_key="review:test:1",
+        run_id=run.id,
+        offering_execution_id=uuid4(),
+        snapshot_id=uuid4(),
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.OVERDRAFT,
+        reason=ReviewReason.MISSING_REQUIRED_FIELD,
+        issue_scope="interest_rate",
+        candidates=(),
+        status=ReviewStatus.PENDING,
+        correlation=ReviewCorrelation(
+            app_name="tariff_monitoring_workflow",
+            user_id="monitoring-adk",
+            session_id=f"monitoring-run-{run.id}",
+            invocation_id="invocation-1",
+            interrupt_id=f"monitoring-review:{run.id}",
+        ),
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    run = run.model_copy(update={"summary": {"review_ids": [str(review.id)]}})
+
+    class _Reviews:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def list(self, **kwargs):
+            assert kwargs["run_id"] == run.id
+            self.calls += 1
+            if self.calls == 1:
+                return (review.model_copy(update={"correlation": None}),)
+            return (review,)
+
+    timer = _Timer()
+    reviews = _Reviews()
+    result = await RunWaitService(
+        _Runs([run]),
+        TariffQuerySettings(run_poll_seconds=1),
+        reviews=reviews,
+        monotonic_clock=timer.now,
+        sleep=timer.sleep,
+    ).wait(run.id)
+
+    assert reviews.calls == 2
+    assert result.waited_seconds == 1
+    assert result.state is RunWaitState.AWAITING_REVIEW
+    assert result.review_handoff is not None
+    assert result.review_handoff.ready is True
+    assert result.review_handoff.pending[0].issue_scope == "interest_rate"
+    assert result.review_handoff.review_url == (
+        "/dev-ui/?app=tariff_monitoring_workflow&userId=monitoring-adk&"
+        f"session=monitoring-run-{run.id}"
+    )
+    assert result.review_handoff.reviews_url == (
+        f"/api/v1/reviews?run_id={run.id}"
+    )
 
 
 @pytest.mark.asyncio

@@ -53,7 +53,8 @@ shell, or SQL tool.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/runtime.py`: shared composition root for HTTP/worker run, review, and snapshot
   repositories, ingestion,
-  `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
+  `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services
+  (including the pending-review handoff returned to chat),
   retrieval, and `RagAnswerService`.
 - `app/services/logging_setup.py`: shared console and rotating file logging for API and
   worker; Compose mounts host `logs/` for archives that survive container recreation.
@@ -295,12 +296,13 @@ not expose a review-decision endpoint:
 
 | Route | Contract |
 |---|---|
-| `POST /api/v1/runs` | Validate a canonical family/offering, enqueue through `RunService`, and return `202` plus the durable run. |
+| `POST /api/v1/runs` | Validate a canonical family/offering, enqueue through `RunService`, and return `202` plus the durable run, status link, and review-handoff link. |
 | `GET /api/v1/runs/{run_id}` | Read the persisted run state and summary. |
 | `POST /api/v1/questions` | Answer from the active evidence corpus; never acquire sources. |
 | `GET /api/v1/tariffs/current` | Read accepted snapshots only, with freshness and pending-newer-review indicators. |
 | `GET /api/v1/tariffs/history` | Read bounded accepted snapshot/change history. |
 | `GET /api/v1/reviews[/{review_id}]` | Inspect durable review records; decisions enter through native ADK resume only. |
+| `GET /api/v1/runs/{run_id}/review-handoff` | Read pending review scopes and the saved ADK Web session link for a paused run. |
 
 The business lifecycle is `queued -> running -> awaiting_review -> terminal`, where the
 terminal states are `succeeded`, `partial_success`, and `failed`. A run may go directly
@@ -342,9 +344,10 @@ to nonterminal `AWAITING_REVIEW`; the request-input node then stores its app, us
 session, invocation, and interrupt identifiers on every pending task. The worker returns
 as soon as the interrupt event is emitted.
 
-Migration `008_monitoring_workflow.sql` extends the active-family uniqueness boundary to
-include `AWAITING_REVIEW`, so a paused run cannot be bypassed by a second API, scheduled,
-or ADK-triggered run for that family.
+Migration `008_monitoring_workflow.sql` includes `AWAITING_REVIEW` in active-run
+uniqueness. Migration `010_offering_scoped_active_runs.sql` makes that boundary
+specific to an offering, while keeping family-wide work exclusive across the family.
+A paused run cannot be bypassed by another request for the same offering.
 
 Resumption sends a native `adk_request_input` function response with the persisted
 interrupt ID into that same session. ADK restores the paused invocation from its events,
@@ -412,7 +415,8 @@ Migration `006_monitoring_pipeline_foundation.sql` adds the durable queue and pu
 foundation:
 
 - `monitoring_runs` owns trigger, scope, idempotency, claim, timing, summary, and failure
-  state. One active API/schedule/ADK run is allowed per product family.
+  state. Targeted offerings have independent active runs; a family-wide run
+  conflicts with every targeted run in its product family.
 - `offering_executions` isolates per-offering lifecycle and counters inside a family run.
 - `source_manifests` links observed sources to their offering execution and optional
   knowledge-document version.
@@ -423,8 +427,9 @@ foundation:
   retrieval and supersession.
 
 `PostgresRunRepository.submit` serializes family submission with a PostgreSQL advisory
-transaction lock, applies idempotency keys, and returns an existing active run when
-appropriate. Workers claim queued rows with `FOR UPDATE SKIP LOCKED`; claim state is
+transaction lock, applies idempotency keys, and returns an existing run only when its
+scope overlaps the request. Migration `010` replaces the single active-family index
+with indexes for targeted offerings and family-wide runs. Workers claim queued rows with `FOR UPDATE SKIP LOCKED`; claim state is
 stored in PostgreSQL. On startup, the worker marks expired running claims failed before
 claiming new work, which releases the family constraint without replaying partially
 published work.

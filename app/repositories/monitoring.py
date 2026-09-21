@@ -243,7 +243,7 @@ class PostgresRunRepository:
                     )
 
             await self._lock(session, f"run-family:{command.product.value}")
-            active = await self._find_active(session, command.product)
+            active = await self._find_active(session, command)
             if active is not None:
                 return RunSubmissionResult(
                     run=active,
@@ -754,8 +754,13 @@ class PostgresRunRepository:
 
     @staticmethod
     async def _find_active(
-        session: AsyncSession, product: ProductType
+        session: AsyncSession, command: RunCommand
     ) -> MonitoringRun | None:
+        parameters: dict[str, object] = {"product": command.product.value}
+        scope_clause = ""
+        if command.offering_id is not None:
+            scope_clause = "AND (offering_id IS NULL OR offering_id = :offering_id)"
+            parameters["offering_id"] = command.offering_id.value
         row = (
             await session.execute(
                 text(
@@ -764,11 +769,12 @@ class PostgresRunRepository:
                     FROM monitoring_runs
                     WHERE product = :product
                       AND status IN ('queued', 'running', 'awaiting_review')
+                      {scope_clause}
                     ORDER BY queued_at, id
                     LIMIT 1
                     """
                 ),
-                {"product": product.value},
+                parameters,
             )
         ).first()
         return _run_from_row(row) if row is not None else None

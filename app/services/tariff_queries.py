@@ -4,22 +4,30 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from time import monotonic
+from urllib.parse import urlencode
 from uuid import UUID
 
 from app.config.models import TariffQuerySettings
 from app.domain.catalog import SeedCatalog
 from app.domain.intent import FreshnessStatus, HistoryQuery, HistoryRequestKind
 from app.domain.models import OfferingId, ProductType
-from app.domain.monitoring import RunStatus
+from app.domain.monitoring import MonitoringRun, RunStatus
+from app.domain.review import ReviewStatus
 from app.domain.tariff_queries import (
     CurrentTariffItem,
     CurrentTariffResult,
     HistoryResultStatus,
+    PendingReviewSummary,
+    ReviewHandoff,
     RunWaitResult,
     RunWaitState,
     TariffHistoryResult,
 )
-from app.repositories.contracts import MonitoringSnapshotRepository
+from app.repositories.contracts import MonitoringSnapshotRepository, ReviewRepository
+from app.services.monitoring_workflow import (
+    MONITORING_WORKFLOW_APP_NAME,
+    workflow_identity,
+)
 from app.services.run_service import RunServicePort
 
 Clock = Callable[[], datetime]
@@ -206,10 +214,12 @@ class RunWaitService:
         runs: RunServicePort,
         settings: TariffQuerySettings,
         *,
+        reviews: ReviewRepository | None = None,
         monotonic_clock: MonotonicClock = monotonic,
         sleep: Sleep = asyncio.sleep,
     ) -> None:
         self._runs = runs
+        self._reviews = reviews
         self._settings = settings
         self._monotonic = monotonic_clock
         self._sleep = sleep
@@ -247,11 +257,18 @@ class RunWaitService:
                     waited_seconds=elapsed,
                 )
             if run.status is RunStatus.AWAITING_REVIEW:
-                return RunWaitResult(
-                    state=RunWaitState.AWAITING_REVIEW,
-                    run=run,
-                    waited_seconds=elapsed,
+                handoff = await self._review_handoff(run)
+                if handoff.ready or self._reviews is None or elapsed >= timeout:
+                    return RunWaitResult(
+                        state=RunWaitState.AWAITING_REVIEW,
+                        run=run,
+                        waited_seconds=elapsed,
+                        review_handoff=handoff,
+                    )
+                await self._sleep(
+                    min(self._settings.run_poll_seconds, timeout - elapsed)
                 )
+                continue
             if elapsed >= timeout:
                 return RunWaitResult(
                     state=RunWaitState.TIMED_OUT,
@@ -259,6 +276,64 @@ class RunWaitService:
                     waited_seconds=elapsed,
                 )
             await self._sleep(min(self._settings.run_poll_seconds, timeout - elapsed))
+
+    async def review_handoff(self, run_id: UUID) -> ReviewHandoff | None:
+        run = await self._runs.get(run_id)
+        if run is None:
+            raise LookupError(str(run_id))
+        if run.status is not RunStatus.AWAITING_REVIEW:
+            return None
+        return await self._review_handoff(run)
+
+    async def _review_handoff(self, run: MonitoringRun) -> ReviewHandoff:
+        review_ids = run.summary.get("review_ids", [])
+        expected_ids = {str(review_id) for review_id in review_ids}
+        tasks = (
+            await self._reviews.list(
+                status=ReviewStatus.PENDING, run_id=run.id, limit=20
+            )
+            if self._reviews is not None
+            else ()
+        )
+        correlations = [task.correlation for task in tasks]
+        ready = bool(
+            tasks
+            and {str(task.id) for task in tasks} == expected_ids
+            and all(correlation is not None for correlation in correlations)
+        )
+        correlation = correlations[0] if ready else None
+        if correlation is not None:
+            query = urlencode(
+                {
+                    "app": correlation.app_name,
+                    "userId": correlation.user_id,
+                    "session": correlation.session_id,
+                }
+            )
+        else:
+            user_id, session_id = workflow_identity(run)
+            query = urlencode(
+                {
+                    "app": MONITORING_WORKFLOW_APP_NAME,
+                    "userId": user_id,
+                    "session": session_id,
+                }
+            )
+        return ReviewHandoff(
+            review_url=f"/dev-ui/?{query}",
+            reviews_url=f"/api/v1/reviews?{urlencode({'run_id': str(run.id)})}",
+            ready=ready,
+            pending=tuple(
+                PendingReviewSummary(
+                    review_id=task.id,
+                    offering_id=task.offering_id,
+                    reason=task.reason,
+                    issue_scope=task.issue_scope,
+                    candidate_count=len(task.candidates),
+                )
+                for task in tasks
+            ),
+        )
 
 
 def _require_aware(value: datetime, label: str) -> None:

@@ -24,10 +24,17 @@ the same durable session and invocation; completed pipeline nodes are replayed f
 events instead of rerun. Reconciliation repairs a missing interrupt when it can do so
 without inventing a decision and otherwise fails inconsistent state safely.
 
-An idempotency key returns its original run. The active-family constraint includes
-`queued`, `running`, and `awaiting_review`, so a paused run cannot be bypassed by another
-API, schedule, or chat submission. Startup recovery marks expired running claims failed;
-it does not re-execute partially completed nondeterministic work.
+An idempotency key returns its original run. Active-run constraints cover `queued`,
+`running`, and `awaiting_review`. Targeted runs for different offerings in the same
+family may proceed independently; a request for the same offering reuses its active
+run. A family-wide run overlaps every offering in its family, so it cannot start
+while any targeted run is active, and targeted requests reuse an active family-wide
+run. PostgreSQL advisory locking serializes these cross-scope submission checks.
+If an older service returns a run that does not cover the requested offering, the API
+returns `409 run.active_scope_conflict` and the ADK tool reports `request_satisfied=false`
+instead of claiming the requested offering started.
+Startup recovery marks expired running claims failed; it does not re-execute
+partially completed nondeterministic work.
 
 Each family run owns per-offering executions. Successful offerings publish independently;
 a failed sibling leaves its previous current index/snapshot untouched and produces family
@@ -46,7 +53,8 @@ curl http://localhost:8080/api/v1/runs/00000000-0000-0000-0000-000000000000
 ```
 
 Read-only companion routes are `GET /api/v1/tariffs/current`,
-`GET /api/v1/tariffs/history`, `GET /api/v1/reviews`, and
-`GET /api/v1/reviews/{review_id}`. `POST /api/v1/questions` answers only from active
+`GET /api/v1/tariffs/history`, `GET /api/v1/reviews`,
+`GET /api/v1/reviews/{review_id}`, and
+`GET /api/v1/runs/{run_id}/review-handoff`. `POST /api/v1/questions` answers only from active
 indexed evidence. Review decisions are intentionally absent from FastAPI and enter through
 the native ADK Web resume flow documented in `docs/native-hitl-review.md`.

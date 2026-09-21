@@ -4,15 +4,24 @@ Tariff review uses Google ADK's native `RequestInput` pause/resume contract. ADK
 the only decision interface in this prototype. The project HTTP routes are diagnostic:
 
 - `GET /api/v1/reviews` lists durable business review records;
-- `GET /api/v1/reviews/{review_id}` reads one record; and
+- `GET /api/v1/reviews/{review_id}` reads one record;
+- `GET /api/v1/runs/{run_id}/review-handoff` exposes the ready review scopes and
+  saved ADK Web session link after an asynchronous run pauses; and
 - no project `POST /reviews/{review_id}/decision` route exists.
 
 ## Reviewer flow
 
 1. Submit a typed monitoring run from Swagger with `POST /api/v1/runs`, or let the daily
-   scheduler submit it. The HTTP call remains asynchronous.
+   scheduler submit it. The HTTP call remains asynchronous and returns `status_url`
+   and `review_handoff_url` with the run ID.
 2. Read `GET /api/v1/runs/{run_id}`. A reviewable result has status
-   `awaiting_review`; its summary contains the durable review IDs.
+   `awaiting_review`; its summary contains the durable review IDs. Chat-initiated
+   runs include status and saved review-session links immediately. When the bounded
+   chat wait observes a pause, its result includes the pending review scopes, a
+   direct link to the persisted ADK Web session, and a link to the review records.
+   If the wait ends
+   while work is still running, use the status link to check later; the chat
+   cannot send a later push notification after that turn has ended.
 3. Open ADK Web at `/dev-ui/` and select `tariff_monitoring_workflow`. Use the user and
    session identifiers stored on the review record. API-originated runs use
    `monitoring-api` and `monitoring-run-{run_id}`; scheduled runs use

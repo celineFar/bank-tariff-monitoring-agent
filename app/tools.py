@@ -1,4 +1,5 @@
 from typing import Literal
+from urllib.parse import urlencode
 from uuid import UUID
 
 from google.adk.tools import ToolContext
@@ -13,8 +14,12 @@ from app.domain.intent import (
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import QuestionCommand, RunCommand, RunTrigger
 from app.services.intent_resolution import RequestResolver
+from app.services.monitoring_workflow import (
+    MONITORING_WORKFLOW_APP_NAME,
+    workflow_identity,
+)
 from app.services.rag_answer import RagAnswerService
-from app.services.run_service import RunServicePort
+from app.services.run_service import RunServicePort, run_covers_command
 from app.services.tariff_queries import (
     CurrentTariffService,
     RunWaitService,
@@ -168,9 +173,28 @@ async def start_tariff_monitoring(
         }
     tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     result = await _run_service.submit(command)
+    request_satisfied = run_covers_command(result.run, command)
+    review_user_id, review_session_id = workflow_identity(result.run)
+    review_query = urlencode(
+        {
+            "app": MONITORING_WORKFLOW_APP_NAME,
+            "userId": review_user_id,
+            "session": review_session_id,
+        }
+    )
     return {
-        "status": result.run.status.value,
+        "status": result.run.status.value if request_satisfied else "blocked",
+        "run_status": result.run.status.value,
+        "request_satisfied": request_satisfied,
+        "requested_product": command.product.value,
+        "requested_offering_id": (
+            command.offering_id.value if command.offering_id is not None else None
+        ),
         "run_id": str(result.run.id),
+        "status_url": f"/api/v1/runs/{result.run.id}",
+        "review_handoff_url": f"/api/v1/runs/{result.run.id}/review-handoff",
+        "reviews_url": f"/api/v1/reviews?run_id={result.run.id}",
+        "review_url": f"/dev-ui/?{review_query}",
         "product": result.run.command.product.value,
         "offering_id": (
             result.run.command.offering_id.value

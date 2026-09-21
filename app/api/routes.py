@@ -16,11 +16,19 @@ from app.domain.monitoring import (
     RunTrigger,
 )
 from app.domain.review import ReviewStatus, ReviewTask
-from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
+from app.domain.tariff_queries import (
+    CurrentTariffResult,
+    ReviewHandoff,
+    TariffHistoryResult,
+)
 from app.repositories.contracts import ReviewRepository
 from app.services.rag_answer import RagAnswerService
-from app.services.run_service import RunServicePort
-from app.services.tariff_queries import CurrentTariffService, TariffHistoryService
+from app.services.run_service import RunServicePort, run_covers_command
+from app.services.tariff_queries import (
+    CurrentTariffService,
+    RunWaitService,
+    TariffHistoryService,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -35,6 +43,12 @@ def _failure(status_code: int, code: str, message: str) -> HTTPException:
 class RunRequest(BaseModel):
     product: ProductType
     offering_id: OfferingId | None = None
+
+
+class RunSubmissionResponse(RunSubmissionResult):
+    status_url: str
+    review_handoff_url: str
+    request_satisfied: bool
 
 
 @router.get("/healthz", tags=["operations"])
@@ -62,10 +76,14 @@ def get_review_repository(request: Request) -> ReviewRepository:
     return request.app.state.review_repository
 
 
+def get_run_wait_service(request: Request) -> RunWaitService:
+    return request.app.state.run_wait_service
+
+
 @router.post(
     "/runs",
     status_code=status.HTTP_202_ACCEPTED,
-    response_model=RunSubmissionResult,
+    response_model=RunSubmissionResponse,
     tags=["runs"],
 )
 async def create_run(
@@ -76,7 +94,7 @@ async def create_run(
         alias="Idempotency-Key",
         max_length=200,
     ),
-) -> RunSubmissionResult:
+) -> RunSubmissionResponse:
     try:
         command = RunCommand(
             product=request.product,
@@ -86,7 +104,7 @@ async def create_run(
     except ValueError as exc:
         raise _failure(422, "request.invalid_scope", str(exc)) from exc
     try:
-        return await service.submit(command, idempotency_key=idempotency_key)
+        result = await service.submit(command, idempotency_key=idempotency_key)
     except ValueError as exc:
         raise _failure(422, "request.invalid", str(exc)) from exc
     except Exception as exc:
@@ -95,6 +113,28 @@ async def create_run(
             "run.persistence_failed",
             "The monitoring run could not be persisted.",
         ) from exc
+    if not run_covers_command(result.run, command):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "run.active_scope_conflict",
+                "message": "An active run for a different offering blocks this request.",
+                "blocking_run_id": str(result.run.id),
+                "blocking_offering_id": (
+                    result.run.command.offering_id.value
+                    if result.run.command.offering_id is not None
+                    else None
+                ),
+            },
+        )
+    return RunSubmissionResponse(
+        run=result.run,
+        created=result.created,
+        reused_reason=result.reused_reason,
+        status_url=f"/api/v1/runs/{result.run.id}",
+        review_handoff_url=f"/api/v1/runs/{result.run.id}/review-handoff",
+        request_satisfied=True,
+    )
 
 
 @router.get("/runs/{run_id}", response_model=MonitoringRun, tags=["runs"])
@@ -111,6 +151,30 @@ async def get_run(
     if run is None:
         raise _failure(404, "run.not_found", "Run not found")
     return run
+
+
+@router.get(
+    "/runs/{run_id}/review-handoff",
+    response_model=ReviewHandoff,
+    tags=["reviews"],
+)
+async def get_run_review_handoff(
+    run_id: UUID,
+    service: Annotated[RunWaitService, Depends(get_run_wait_service)],
+) -> ReviewHandoff:
+    try:
+        handoff = await service.review_handoff(run_id)
+    except LookupError as exc:
+        raise _failure(404, "run.not_found", "Run not found") from exc
+    except Exception as exc:
+        raise _failure(
+            503,
+            "review.persistence_failed",
+            "Review handoff is temporarily unavailable.",
+        ) from exc
+    if handoff is None:
+        raise _failure(409, "review.not_pending", "Run is not awaiting review")
+    return handoff
 
 
 @router.post("/questions", response_model=AnswerResult, tags=["questions"])

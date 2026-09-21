@@ -13,6 +13,7 @@ from app.domain.monitoring import (
     ClaimedRun,
     MonitoringRun,
     RunCommand,
+    RunFailureCode,
     RunStatus,
     RunSubmissionResult,
     RunTrigger,
@@ -30,7 +31,9 @@ def _run(command: RunCommand, *, status: RunStatus | None = None) -> MonitoringR
         command=command,
         status=status,
         queued_at=now,
-        started_at=now if status is RunStatus.RUNNING else None,
+        started_at=(
+            now if status in {RunStatus.RUNNING, RunStatus.AWAITING_REVIEW} else None
+        ),
     )
 
 
@@ -49,6 +52,25 @@ class _RunService:
 
     async def get(self, run_id):
         return self.runs.get(run_id)
+
+
+class _ConflictingRunService:
+    def __init__(self) -> None:
+        self.run = _run(
+            RunCommand(
+                product=ProductType.CONSUMER_LOAN,
+                offering_id=OfferingId.OVERDRAFT,
+                trigger=RunTrigger.API,
+            ),
+            status=RunStatus.AWAITING_REVIEW,
+        )
+
+    async def submit(self, command, *, idempotency_key=None):
+        return RunSubmissionResult(
+            run=self.run,
+            created=False,
+            reused_reason=RunFailureCode.ACTIVE_RUN_EXISTS,
+        )
 
 
 class _FailingRunService:
@@ -94,6 +116,12 @@ async def test_http_submit_and_status_use_shared_run_service() -> None:
         fetched = await client.get(f"/api/v1/runs/{response.json()['run']['id']}")
 
     assert response.status_code == 202
+    assert response.json()["status_url"] == (
+        f"/api/v1/runs/{response.json()['run']['id']}"
+    )
+    assert response.json()["review_handoff_url"] == (
+        f"/api/v1/runs/{response.json()['run']['id']}/review-handoff"
+    )
     assert fetched.status_code == 200
     command, key = service.commands[0]
     assert command.trigger is RunTrigger.API
@@ -138,6 +166,45 @@ async def test_review_routes_are_diagnostic_and_read_only() -> None:
     assert fetched.status_code == 200
     assert fetched.json()["id"] == str(review.id)
     assert decision.status_code in {404, 405}
+
+
+@pytest.mark.asyncio
+async def test_different_offering_run_is_reported_as_blocked_not_started() -> None:
+    service = _ConflictingRunService()
+    app = FastAPI()
+    app.state.run_service = service
+    app.include_router(router)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/api/v1/runs",
+            json={"product": "consumer_loan", "offering_id": "credit_line"},
+        )
+    assert response.status_code == 409
+    assert response.json()["detail"]["blocking_run_id"] == str(service.run.id)
+    assert response.json()["detail"]["blocking_offering_id"] == "overdraft"
+
+    configure_run_service(service)
+    try:
+        tool_result = await start_tariff_monitoring(
+            "consumer_loan",
+            "credit_line",
+            _ToolContext(
+                state={
+                    "temp:monitoring_authorization": {
+                        "product": "consumer_loan",
+                        "offering_id": "credit_line",
+                    }
+                }
+            ),
+        )
+    finally:
+        configure_run_service(None)
+    assert tool_result["status"] == "blocked"
+    assert tool_result["request_satisfied"] is False
+    assert tool_result["offering_id"] == "overdraft"
+    assert tool_result["requested_offering_id"] == "credit_line"
 
 
 @pytest.mark.asyncio
@@ -192,6 +259,14 @@ async def test_scheduler_and_adk_tool_submit_through_same_service() -> None:
         RunTrigger.ADK,
     ]
     assert result["status"] == "queued"
+    assert result["status_url"] == f"/api/v1/runs/{result['run_id']}"
+    assert result["review_handoff_url"] == (
+        f"/api/v1/runs/{result['run_id']}/review-handoff"
+    )
+    assert result["review_url"] == (
+        "/dev-ui/?app=tariff_monitoring_workflow&userId=monitoring-adk&"
+        f"session=monitoring-run-{result['run_id']}"
+    )
 
 
 @pytest.mark.asyncio
