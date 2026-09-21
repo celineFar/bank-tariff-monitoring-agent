@@ -28,10 +28,12 @@ from app.app_utils.a2a import attach_a2a_routes
 from app.app_utils.agent_loader import RuntimeAgentLoader
 from app.config import get_settings
 from app.runtime import build_application_container
+from app.services.logging_setup import configure_application_logging
 from app.tools import configure_services
 
 load_dotenv()
 settings = get_settings()
+configure_application_logging(settings.observability, include_uvicorn=True)
 allow_origins = list(settings.http.allow_origins) or None
 otel_to_cloud = settings.observability.otel_to_cloud
 

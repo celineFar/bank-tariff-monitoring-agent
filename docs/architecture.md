@@ -55,6 +55,8 @@ shell, or SQL tool.
   repositories, ingestion,
   `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
   retrieval, and `RagAnswerService`.
+- `app/services/logging_setup.py`: shared console and rotating file logging for API and
+  worker; Compose mounts host `logs/` for archives that survive container recreation.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`. Claimed work
   enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`

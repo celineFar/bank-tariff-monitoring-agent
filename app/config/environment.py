@@ -107,6 +107,10 @@ class EnvironmentSettings(BaseSettings):
     schedule_hour: int = 6
     schedule_minute: int = 0
     log_level: str = "INFO"
+    log_file: Path | None = None
+    log_timezone: str = "Asia/Yerevan"
+    log_max_bytes: int = 10 * 1024 * 1024
+    log_backup_count: int = 10
     otel_to_cloud: bool = False
     allow_origins: Annotated[tuple[str, ...], NoDecode] = ("http://localhost:3000",)
 

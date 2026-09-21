@@ -149,6 +149,10 @@ def load_settings(
         ),
         observability=ObservabilitySettings(
             log_level=raw.log_level,
+            log_file=raw.log_file,
+            log_timezone=raw.log_timezone,
+            log_max_bytes=raw.log_max_bytes,
+            log_backup_count=raw.log_backup_count,
             otel_to_cloud=raw.otel_to_cloud,
         ),
     )

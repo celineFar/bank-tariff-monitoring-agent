@@ -15,6 +15,7 @@ def test_defaults_match_the_approved_architecture() -> None:
         "www.ameriabank.am",
     )
     assert settings.scheduler.timezone == "Asia/Yerevan"
+    assert settings.observability.log_timezone == "Asia/Yerevan"
     assert (settings.scheduler.hour, settings.scheduler.minute) == (6, 0)
     assert settings.http.retry_jitter_ratio == 0.25
     assert settings.http.max_retry_delay_seconds == 120
@@ -45,6 +46,11 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.tariff_queries.default_history_days == 30
     assert settings.tariff_queries.run_wait_seconds == 120
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
+
+
+def test_log_timezone_requires_valid_iana_name() -> None:
+    with pytest.raises(ValidationError, match="unknown IANA timezone"):
+        load_settings(_env_file=None, log_timezone="Mars/Olympus")
 
 
 def test_csv_configuration_is_normalized_and_deduplicated() -> None:

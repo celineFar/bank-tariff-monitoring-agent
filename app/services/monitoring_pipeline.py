@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Sequence
 from decimal import Decimal
 from enum import StrEnum
@@ -50,6 +51,7 @@ from app.services.snapshot_lifecycle import (
     non_reviewable_extraction_failure,
 )
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
@@ -356,6 +358,14 @@ class TariffPipeline:
             except OfferingPipelineError as exc:
                 failed += 1
                 failure_codes.append(exc.failure_code)
+                logger.warning(
+                    "offering failed run_id=%s offering_id=%s stage=%s code=%s reason=%s",
+                    run.id,
+                    offering.offering_id.value,
+                    exc.stage,
+                    exc.failure_code,
+                    exc.cause_reason or exc.cause_type,
+                )
                 await self._runs.fail_offering_execution(
                     execution.id,
                     stage=exc.stage,

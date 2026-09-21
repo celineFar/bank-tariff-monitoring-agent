@@ -84,7 +84,12 @@ downloader receives `settings.http` and the PDF extraction service receives
   apply a decision.
 - **Scheduling:** `SCHEDULE_TIMEZONE`, `SCHEDULE_HOUR`, and
   `SCHEDULE_MINUTE`.
-- **Serving/telemetry:** `LOG_LEVEL`, `OTEL_TO_CLOUD`, and `ALLOW_ORIGINS`.
+- **Serving/telemetry:** `LOG_LEVEL`, `LOG_FILE`, `LOG_TIMEZONE`,
+  `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, `OTEL_TO_CLOUD`, and `ALLOW_ORIGINS`.
+  Compose sets a separate `LOG_FILE` for API and worker; the other values can be set in
+  `.env`. File timestamps use the configured IANA timezone with an explicit UTC offset.
+  The default is `Asia/Yerevan`, independently of the EC2 host timezone. Each service
+  keeps ten 10 MiB backup files by default under the host `logs/` directory.
 
 Comma-separated values are used for hosts, MIME types, fallback models, and CORS
 origins. Allowlisted sources must be exact DNS hostnames; schemes, paths,

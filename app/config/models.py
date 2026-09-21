@@ -329,7 +329,20 @@ class SchedulerSettings(SettingsGroup):
 
 class ObservabilitySettings(SettingsGroup):
     log_level: str = "INFO"
+    log_file: Path | None = None
+    log_timezone: str = "Asia/Yerevan"
+    log_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    log_backup_count: int = Field(default=10, ge=1)
     otel_to_cloud: bool = False
+
+    @field_validator("log_timezone")
+    @classmethod
+    def validate_log_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"unknown IANA timezone: {value}") from exc
+        return value
 
     @field_validator("log_level")
     @classmethod

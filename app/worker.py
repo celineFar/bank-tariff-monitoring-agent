@@ -22,6 +22,7 @@ from app.domain.monitoring import (
 from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.repositories.contracts import RunRepository
 from app.runtime import build_application_container
+from app.services.logging_setup import configure_application_logging
 from app.services.run_service import RunServicePort
 
 logger = logging.getLogger(__name__)
@@ -81,12 +82,23 @@ class MonitoringWorker:
         claimed = await self._runs.claim_next(self._worker_id)
         if claimed is None:
             return False
+        logger.info(
+            "monitoring run started run_id=%s product=%s offering_id=%s",
+            claimed.run.id,
+            claimed.run.command.product.value,
+            claimed.run.command.offering_id,
+        )
         try:
-            await self._workflow.start(claimed.run)
+            result = await self._workflow.start(claimed.run)
+            logger.info(
+                "monitoring run completed run_id=%s status=%s review_count=%s",
+                claimed.run.id,
+                result.status.value,
+                len(result.review_ids),
+            )
         except Exception as exc:
             logger.exception(
-                "monitoring run failed unexpectedly",
-                extra={"run_id": str(claimed.run.id)},
+                "monitoring run failed unexpectedly run_id=%s", claimed.run.id
             )
             await self._runs.finish(
                 claimed.run.id,
@@ -119,7 +131,7 @@ class MonitoringWorker:
 
 async def main() -> None:
     settings = get_settings()
-    logging.basicConfig(level=settings.observability.log_level)
+    configure_application_logging(settings.observability)
     container = build_application_container(settings)
     await adk_services.ensure_session_service_ready()
     worker = MonitoringWorker(

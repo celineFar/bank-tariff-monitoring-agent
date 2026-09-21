@@ -46,6 +46,16 @@ The ADK playground can be started with `agents-cli playground` after dependencie
 installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured
 model credentials and an indexed local corpus.
 
+## Local logs
+
+`docker compose logs -f --tail=200 worker api` shows live console output. Compose also
+writes rotating, persistent host files under `logs/api.log` and `logs/worker.log`;
+numbered files such as `worker.log.1` hold older entries across container recreation.
+Use `rg '<run-id>' logs/` to inspect a past run. Each file entry has an ISO 8601 timestamp
+with an explicit offset, defaulting to `Asia/Yerevan`. `LOG_TIMEZONE`, `LOG_LEVEL`,
+`LOG_MAX_BYTES`, and `LOG_BACKUP_COUNT` are configurable in `.env`. Logs stay on the EC2
+host disk and must be copied or shipped separately to survive host replacement.
+
 ## Main layout
 
 ```text

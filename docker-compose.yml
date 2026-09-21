@@ -3,6 +3,10 @@ services:
     build: .
     command: ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
     env_file: .env
+    environment:
+      LOG_FILE: /var/log/tariff-monitor/api.log
+    volumes:
+      - ./logs:/var/log/tariff-monitor
     ports: ["8080:8080"]
     depends_on:
       db:
@@ -13,6 +17,10 @@ services:
     build: .
     command: ["uv", "run", "python", "-m", "app.worker"]
     env_file: .env
+    environment:
+      LOG_FILE: /var/log/tariff-monitor/worker.log
+    volumes:
+      - ./logs:/var/log/tariff-monitor
     depends_on:
       db:
         condition: service_healthy
