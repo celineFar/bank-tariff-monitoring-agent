@@ -20,7 +20,10 @@ from app.agent import root_agent
 from app.app_utils import services
 from app.config import get_settings
 from app.domain.monitoring import RunStatus
+from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
+from app.domain.review import ReviewDecision, ReviewDecisionType
 from app.runtime import build_application_container
+from app.services.chat_reviews import ReviewNotReadyError
 from app.tools import (
     answer_tariff_question,
     configure_services,
@@ -46,8 +49,12 @@ cli_agent = Agent(
     name="ameria_tariff_monitor_cli",
     model=root_agent.model,
     instruction=(
-        "You are the Ameria Bank tariff-monitoring assistant. On ordinary text "
-        "turns call resolve_request first and follow its canonical scope, language, "
+        "You are the Ameria Bank tariff-monitoring assistant. If this "
+        "conversation has an active run awaiting review, any request to continue "
+        "must call get_next_monitoring_review and present its saved review. "
+        "Never offer to restart monitoring while a review is pending. "
+        "On ordinary text turns without a pending review, call resolve_request "
+        "first and follow its canonical scope, language, "
         "clarification, and catalog guidance. For tariff questions check accepted "
         "snapshots with get_current_tariffs. When a required snapshot is missing, "
         "explain that monitoring is needed and ask for confirmation. Only after "
@@ -279,11 +286,181 @@ async def _continue_pending(
         raise RuntimeError(f"unsupported pending ADK input: {pending.name}")
 
 
+def _ordered_evidence(item: object) -> tuple[object, ...]:
+    field = item.issue_scope.replace("_", " ").casefold()
+    candidate_references = {
+        reference
+        for candidate in item.candidates
+        for reference in candidate.evidence_references
+    }
+
+    def rank(evidence: object) -> int:
+        excerpt = evidence.excerpt.casefold()
+        if evidence.evidence_id in candidate_references:
+            return 0
+        if f"row: {field}" in excerpt:
+            return 1
+        if field in excerpt:
+            return 2
+        return 3
+
+    return tuple(sorted(item.evidence, key=rank))
+
+
+def _show_review(
+    item: object, index: int, total: int, *, all_evidence: bool = False
+) -> None:
+    print(
+        f"\nReview {index}/{total}: {item.offering_id.value} / "
+        f"{item.issue_scope} ({item.reason.value})"
+    )
+    print(item.guidance)
+    for candidate in item.candidates:
+        print(
+            f"  Candidate {candidate.candidate_id}: "
+            f"{json.dumps(candidate.value, ensure_ascii=False)}"
+        )
+    evidence_items = _ordered_evidence(item)
+    visible = evidence_items if all_evidence else evidence_items[:5]
+    for evidence in visible:
+        location = f" page {evidence.page}" if evidence.page else ""
+        print(
+            f"  Evidence {evidence.evidence_id}: "
+            f"{evidence.source_url}{location}"
+        )
+        print(f"    {evidence.excerpt[:400].replace(chr(10), ' ')}")
+    if len(visible) < len(evidence_items):
+        print(f"  {len(evidence_items) - len(visible)} more evidence items; type ? to see all.")
+
+
+async def _recover_review(
+    runner: Runner,
+    session_service: object,
+    run_service: object,
+    review_service: object,
+    *,
+    user_id: str,
+    session_id: str,
+) -> bool:
+    """Resume a business review directly when no root ADK input is outstanding."""
+    session = await session_service.get_session(
+        app_name=cli_app.name, user_id=user_id, session_id=session_id
+    )
+    if session is None or pending_input(session.events) is not None:
+        return False
+    raw_run_id = session.state.get("monitoring_active_run_id")
+    known = session.state.get("monitoring_chat_run_ids") or []
+    if not isinstance(raw_run_id, str) or raw_run_id not in known:
+        return False
+    run = await run_service.get(UUID(raw_run_id))
+    if run is None or run.status is not RunStatus.AWAITING_REVIEW:
+        return False
+
+    print(
+        f"\nMonitoring for {run.command.offering_id.value if run.command.offering_id else run.command.product.value} "
+        f"is paused for review (run {run.id}). Continuing here; no new run is needed."
+    )
+    while True:
+        try:
+            request = await review_service.pending_request(run.id)
+        except ReviewNotReadyError:
+            print("The review is no longer pending.")
+            return True
+        decisions = []
+        reject_all = False
+        for index, item in enumerate(request.reviews, start=1):
+            _show_review(item, index, len(request.reviews))
+            allowed = {choice.value for choice in item.allowed_decisions}
+            print("Enter a JSON decision, or type reject_all to discard this run.")
+            print(
+                "For an override, include override_value, reason, and an "
+                "evidence_reference shown above."
+            )
+            while True:
+                raw = (await asyncio.to_thread(input, "Review> ")).strip()
+                if raw.lower() in {"quit", "exit"}:
+                    raise EOFError
+                if raw == "?":
+                    _show_review(item, index, len(request.reviews), all_evidence=True)
+                    continue
+                try:
+                    if raw == "reject_all":
+                        decision = ReviewDecision(
+                            decision_type=ReviewDecisionType.REJECT_ALL
+                        )
+                    else:
+                        payload = json.loads(raw)
+                        if not isinstance(payload, dict):
+                            raise ValueError("decision must be a JSON object")
+                        if "review_id" in payload and payload["review_id"] != str(item.review_id):
+                            raise ValueError("review_id does not match this review")
+                        decision = ReviewDecision.model_validate(
+                            {key: value for key, value in payload.items() if key != "review_id"}
+                        )
+                    if decision.decision_type.value not in allowed:
+                        raise ValueError("decision is not allowed for this review")
+                    break
+                except ValueError as exc:
+                    print(f"Invalid decision: {exc}")
+            if decision.decision_type is ReviewDecisionType.REJECT_ALL:
+                reject_all = True
+                break
+            decisions.append(
+                ReviewResponseItem(review_id=item.review_id, decision=decision)
+            )
+        if reject_all:
+            decisions = [
+                ReviewResponseItem(
+                    review_id=item.review_id,
+                    decision=ReviewDecision(
+                        decision_type=ReviewDecisionType.REJECT_ALL
+                    ),
+                )
+                for item in request.reviews
+            ]
+        try:
+            result = await review_service.resume(
+                run.id,
+                MonitoringReviewResponse(decisions=tuple(decisions)),
+                actor_user_id=user_id,
+                actor_session_id=session_id,
+            )
+        except (ValueError, ReviewNotReadyError) as exc:
+            print(f"Review was not applied: {exc}. Please correct the decision.")
+            continue
+        except Exception as exc:
+            print(
+                f"Review remains pending after {type(exc).__name__}. "
+                "Check the API logs and reopen this session to retry."
+            )
+            return True
+        print(f"Review completed. Monitoring status: {result.status.value}.")
+        if result.status in {RunStatus.SUCCEEDED, RunStatus.PARTIAL_SUCCESS}:
+            original_question = session.state.get("monitoring_original_question")
+            if isinstance(original_question, str) and original_question:
+                await _run_and_print(
+                    runner,
+                    user_id=user_id,
+                    session_id=session_id,
+                    new_message=types.Content(
+                        role="user",
+                        parts=[types.Part(
+                            text=(
+                                "The saved monitoring review is complete. Answer "
+                                "my original tariff question from accepted data: "
+                                f"{original_question}"
+                            )
+                        )],
+                    ),
+                )
+        return True
+
+
 def _print_api_error(exc: APIError) -> None:
     if exc.code == 402 and exc.status == "RESOURCE_EXHAUSTED":
         print(
             "Gemini prepaid credits are depleted. Add credits to the configured "
-            "Google AI project, then retry in this session. No tariff result "
+            "Google AI project, then retry in this session. No chat answer "
             "was produced."
         )
     else:
@@ -327,6 +504,11 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
                 runner, session_service, container.run_service,
                 user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
             )
+            await _recover_review(
+                runner, session_service, container.run_service,
+                container.chat_review_service,
+                user_id=user_id, session_id=session_id,
+            )
         except APIError as exc:
             _print_api_error(exc)
         while True:
@@ -336,6 +518,13 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
             if not prompt:
                 continue
             try:
+                recovered = await _recover_review(
+                    runner, session_service, container.run_service,
+                    container.chat_review_service,
+                    user_id=user_id, session_id=session_id,
+                )
+                if recovered:
+                    continue
                 await _run_and_print(
                     runner,
                     user_id=user_id,
@@ -347,6 +536,11 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
                 await _continue_pending(
                     runner, session_service, container.run_service,
                     user_id=user_id, session_id=session_id, poll_seconds=poll_seconds,
+                )
+                await _recover_review(
+                    runner, session_service, container.run_service,
+                    container.chat_review_service,
+                    user_id=user_id, session_id=session_id,
                 )
             except APIError as exc:
                 _print_api_error(exc)

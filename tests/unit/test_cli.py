@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -147,3 +149,123 @@ async def test_cli_reports_persisted_pipeline_stages(capsys) -> None:
     assert "Acquiring web content" in output
     assert "Extracting tariff fields" in output
     assert "Monitoring succeeded" in output
+
+
+@pytest.mark.asyncio
+async def test_cli_reopens_pending_business_review_without_starting_new_run(
+    monkeypatch, capsys
+) -> None:
+    from app.cli import _recover_review
+    from app.domain.review import ReviewDecisionType, ReviewReason
+
+    run_id = uuid4()
+    review_id = uuid4()
+    session = SimpleNamespace(
+        events=[],
+        state={
+            "monitoring_active_run_id": str(run_id),
+            "monitoring_chat_run_ids": [str(run_id)],
+        },
+    )
+    item = SimpleNamespace(
+        review_id=review_id,
+        offering_id=OfferingId.OVERDRAFT,
+        issue_scope="term",
+        reason=ReviewReason.MISSING_REQUIRED_FIELD,
+        guidance="Supply the evidenced term.",
+        allowed_decisions=(
+            ReviewDecisionType.OVERRIDE,
+            ReviewDecisionType.REJECT_ALL,
+        ),
+        candidates=(),
+        evidence=(
+            SimpleNamespace(
+                evidence_id="evidence-term",
+                source_url="https://ameriabank.am/overdraft.pdf",
+                page=2,
+                excerpt="Row: Term (months) | Indefinite term (until requested back)",
+            ),
+        ),
+    )
+
+    class _Sessions:
+        async def get_session(self, **kwargs):
+            return session
+
+    class _Runs:
+        async def get(self, saved_id):
+            assert saved_id == run_id
+            return SimpleNamespace(
+                id=run_id,
+                status=RunStatus.AWAITING_REVIEW,
+                command=SimpleNamespace(
+                    offering_id=OfferingId.OVERDRAFT,
+                    product=OfferingId.OVERDRAFT.product,
+                ),
+            )
+
+    class _Reviews:
+        def __init__(self):
+            self.submitted = None
+
+        async def pending_request(self, saved_id):
+            assert saved_id == run_id
+            return SimpleNamespace(reviews=(item,))
+
+        async def resume(self, saved_id, response, **kwargs):
+            self.submitted = response
+            return SimpleNamespace(status=RunStatus.SUCCEEDED)
+
+    monkeypatch.setattr(
+        "builtins.input",
+        lambda prompt: (
+            '{"decision_type":"override","override_value":'
+            '"Indefinite term (until requested back)","reason":"Official term",'
+            '"evidence_reference":"evidence-term"}'
+        ),
+    )
+    reviews = _Reviews()
+
+    handled = await _recover_review(
+        object(), _Sessions(), _Runs(), reviews,
+        user_id="cli-user", session_id="original-chat",
+    )
+
+    assert handled is True
+    assert reviews.submitted.decisions[0].review_id == review_id
+    assert (
+        reviews.submitted.decisions[0].decision.override_value
+        == "Indefinite term (until requested back)"
+    )
+    output = capsys.readouterr().out
+    assert "Continuing here; no new run is needed" in output
+    assert "Review completed" in output
+
+
+def test_cli_evidence_ranks_review_field_passage_first() -> None:
+    from app.cli import _ordered_evidence
+
+    item = SimpleNamespace(
+        issue_scope="term",
+        candidates=(),
+        evidence=(
+            SimpleNamespace(evidence_id="generic", excerpt="General conditions"),
+            SimpleNamespace(
+                evidence_id="term",
+                excerpt="Row: Term (months) | Indefinite term",
+            ),
+        ),
+    )
+    assert _ordered_evidence(item)[0].evidence_id == "term"
+
+
+def test_cli_bootstrap_hides_adk_experimental_notices() -> None:
+    result = subprocess.run(
+        [sys.executable, "app/cli_entry.py", "--help"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert "Durable Ameria tariff ADK chat" in result.stdout
+    assert "[EXPERIMENTAL]" not in result.stderr

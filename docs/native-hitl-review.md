@@ -34,6 +34,13 @@ request stays open for the pipeline's duration, and the 120-second web chat wait
 is not used. If ADK asks for review input, the CLI displays the prompt and
 accepts a JSON decision in the same terminal session. The CLI can recover the
 pending tool call from saved ADK events after a restart.
+ If no root
+input call remains but the business run is still awaiting review, the CLI
+loads the saved review from PostgreSQL, presents its evidence, and submits
+the human decision through the saved ADK monitoring workflow. This recovery
+path does not start another monitoring run or require Gemini to display the
+review. After approval, the CLI asks the chat agent to answer the original
+question from accepted data.
 
 If a review decision fails validation, the PostgreSQL review and worker
 interruption remain pending. The next request for a review in the same CLI
