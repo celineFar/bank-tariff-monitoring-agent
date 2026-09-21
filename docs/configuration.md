@@ -101,6 +101,38 @@ types so their values are masked in object representations. Services should
 receive the narrow nested group they need rather than reading environment
 variables directly.
 
+## Stored database timestamps
+
+Migration `009_yerevan_wall_times.sql` adds stored `<timestamp>_yerevan` columns to
+project-owned tables. These hold the `Asia/Yerevan` wall-clock value, including for
+existing rows. The original `timestamptz` columns remain the authoritative,
+timezone-aware instants for ordering and comparisons. Generated columns update with
+each insert or timestamp change; application code does not set them separately.
+
+For example, inspect both representations in PostgreSQL:
+
+```sql
+SELECT id, queued_at, queued_at_yerevan
+FROM monitoring_runs
+ORDER BY queued_at DESC
+LIMIT 20;
+```
+
+The `_yerevan` suffix identifies the local timezone because PostgreSQL's `timestamp
+without time zone` type does not carry an offset. To inspect another timezone, use the
+original instant, for example `queued_at AT TIME ZONE 'Europe/London'`. `LOG_TIMEZONE`
+and `SCHEDULE_TIMEZONE` configure logs and scheduling independently; they do not
+change stored timestamp instants or the fixed Yerevan companion columns. ADK-owned
+session/event timestamps are managed by the SDK and have no companion columns.
+
+On an existing Compose database, apply the new migration explicitly; SQL files in
+`docker-entrypoint-initdb.d` only run when PostgreSQL initializes a new volume:
+
+```bash
+docker compose exec -T db psql -U tariff -d tariff_monitor -v ON_ERROR_STOP=1 \
+  -f /docker-entrypoint-initdb.d/009_yerevan_wall_times.sql
+```
+
 ## AWS deployment
 
 Inject `GEMINI_API_KEY` and database credentials from AWS Secrets Manager into

@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import pytest
@@ -207,6 +208,55 @@ def _manifest(run_id, execution_id) -> SourceManifestItem:
         status=ManifestItemStatus.INDEXED,
         selected=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_project_timestamps_store_yerevan_wall_time_and_aware_instant(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    submitted = await repository.submit(_command())
+    async with monitoring_session_factory() as session:
+        row = (
+            await session.execute(
+                text("""
+                    SELECT queued_at, queued_at_yerevan, created_at, created_at_yerevan
+                    FROM monitoring_runs WHERE id = :run_id
+                """),
+                {"run_id": submitted.run.id},
+            )
+        ).one()
+        for instant, wall_time in (
+            (row.queued_at, row.queued_at_yerevan),
+            (row.created_at, row.created_at_yerevan),
+        ):
+            assert instant.tzinfo is not None
+            assert wall_time.tzinfo is None
+            assert wall_time == instant.astimezone(ZoneInfo("Asia/Yerevan")).replace(
+                tzinfo=None
+            )
+
+        missing = (
+            await session.execute(text("""
+                SELECT base.table_name, base.column_name
+                FROM information_schema.columns AS base
+                LEFT JOIN information_schema.columns AS companion
+                  ON companion.table_schema = base.table_schema
+                 AND companion.table_name = base.table_name
+                 AND companion.column_name = base.column_name || '_yerevan'
+                WHERE base.table_schema = 'public'
+                  AND base.table_name IN (
+                    'audit_events', 'human_reviews', 'knowledge_chunks',
+                    'knowledge_documents', 'monitoring_runs', 'offering_executions',
+                    'pdf_extraction_cache', 'semantic_extraction_batches',
+                    'source_discovery_assessments', 'source_documents',
+                    'source_manifests', 'tariff_changes', 'tariff_snapshots'
+                  )
+                  AND base.data_type = 'timestamp with time zone'
+                  AND companion.column_name IS NULL
+            """))
+        ).all()
+        assert missing == []
 
 
 @pytest.mark.asyncio

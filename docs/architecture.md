@@ -62,6 +62,9 @@ shell, or SQL tool.
   enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`
   once and returns immediately when native human input is requested.
 - `migrations/`: PostgreSQL/pgvector schema.
+  Project-owned event timestamps retain their `timestamptz` instants and have
+  stored `timestamp` columns suffixed `_yerevan` for direct local-time inspection.
+  Migration `009` generates and backfills those columns; ADK-owned tables are unchanged.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
 
