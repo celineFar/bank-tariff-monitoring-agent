@@ -110,10 +110,6 @@ ALTER TABLE source_discovery_assessments
     ADD COLUMN IF NOT EXISTS updated_at_yerevan timestamp without time zone
     GENERATED ALWAYS AS (updated_at AT TIME ZONE 'Asia/Yerevan') STORED;
 
-ALTER TABLE source_documents
-    ADD COLUMN IF NOT EXISTS retrieved_at_yerevan timestamp without time zone
-    GENERATED ALWAYS AS (retrieved_at AT TIME ZONE 'Asia/Yerevan') STORED;
-
 ALTER TABLE source_manifests
     ADD COLUMN IF NOT EXISTS created_at_yerevan timestamp without time zone
     GENERATED ALWAYS AS (created_at AT TIME ZONE 'Asia/Yerevan') STORED;

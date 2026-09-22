@@ -257,8 +257,8 @@ async def test_project_timestamps_store_yerevan_wall_time_and_aware_instant(
                     'audit_events', 'human_reviews', 'knowledge_chunks',
                     'knowledge_documents', 'monitoring_runs', 'offering_executions',
                     'pdf_extraction_cache', 'semantic_extraction_batches',
-                    'source_discovery_assessments', 'source_documents',
-                    'source_manifests', 'tariff_changes', 'tariff_snapshots'
+                    'source_discovery_assessments', 'source_manifests',
+                    'tariff_changes', 'tariff_snapshots'
                   )
                   AND base.data_type = 'timestamp with time zone'
                   AND companion.column_name IS NULL
