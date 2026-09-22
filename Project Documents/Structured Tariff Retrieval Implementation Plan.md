@@ -425,17 +425,55 @@ that require external services and did not finish in this environment.
 
 ### D. Query services and repository
 
-- [ ] Add typed repositories for latest accepted profile/facts/evidence, weighted
+- [x] Add typed repositories for latest accepted profile/facts/evidence, weighted
       PostgreSQL FTS (`simple` + `websearch_to_tsquery` + `ts_rank_cd`), bounded vector
       units, and accepted change history; benchmark Armenian/English retrieval.
-- [ ] Implement deterministic single-offering answer, comparison, family ranking,
+- [x] Implement deterministic single-offering answer, comparison, family ranking,
       and history branches in one application service.
-- [ ] Reject invalid cross-family IDs and requests that try to read inactive,
+- [x] Reject invalid cross-family IDs and requests that try to read inactive,
       pending, rejected, or superseded data.
-- [ ] Test currency/rate-basis separation, conditional promotional minima,
+- [x] Test currency/rate-basis separation, conditional promotional minima,
       incomparable fees/formulas, salary privileges, and missing evidence.
-- [ ] Keep exact source quote validation and immutable document provenance in all
+- [x] Keep exact source quote validation and immutable document provenance in all
       returned citations.
+
+**Phase D implementation summary (2026-09-22).** Added scoped typed PostgreSQL
+reads for active accepted profiles, tariff facts with captured quote and locator
+verification, weighted English/Armenian FTS, model-matched vector units, and
+accepted change history. Added one deterministic service for single answers,
+field-aligned comparisons, explicit-direction family ranking, and old/new change
+evidence. Lexical units are ranked first; sparse results can use lazy cached vector
+embeddings with versioned reciprocal-rank fusion. Ranking refuses mixed currencies,
+rate bases, fee scopes, units, and unmatched conditions; formulas remain descriptive.
+Explanatory units must reference returned fact/evidence IDs and retain their
+published content hash. Both repository SQL and service validation enforce scope.
+
+Files added: `app/repositories/structured_tariff_query.py`,
+`app/services/structured_tariff_query.py`,
+`app/services/structured_unit_embeddings.py`,
+`migrations/013_retrieval_unit_embedding_model.sql`,
+`scripts/benchmark_structured_fts.py`,
+`tests/unit/test_structured_tariff_query.py`, and
+`tests/unit/test_structured_unit_embeddings.py`. Files modified:
+`app/domain/structured_tariffs.py`, `app/domain/tariff_comparison.py`,
+`app/repositories/structured_projection.py`, `app/services/knowledge_index.py`,
+`app/services/structured_projection.py`, `docs/architecture.md`,
+`tests/unit/test_structured_projection.py`, and
+`tests/integration/test_monitoring_repository_postgres.py`. No files removed.
+
+Implementation notes: ranking direction is explicit in `ResolutionPlan`;
+`include_inactive` reads are confined to accepted historical snapshots for change
+citations. Linked immutable document checksums are present when a run's knowledge
+document key and URL match captured evidence. The isolated PostgreSQL fixture
+verified scoped English and Armenian FTS; the read-only benchmark script runs,
+but current local databases have no populated accepted projection for meaningful
+latency/recall measurement. Re-run after Phase F backfill. The new read service is
+not yet wired to ADK/API; Phase E owns authorization state and cutover. Historical
+changes lacking verified citations on either side abstain.
+
+Verification: 46 Phase D unit/PostgreSQL integration tests passed; Ruff passed
+on changed Python files. Full-suite external-service limitations remain as noted
+in Phase C.
 
 ### E. Resolution, tools, and API
 

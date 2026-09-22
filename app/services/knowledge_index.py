@@ -148,6 +148,10 @@ class GeminiQueryEmbeddingProvider:
     def dimensions(self) -> int:
         return self._dimensions
 
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
     async def embed_query(self, content: str) -> Sequence[float]:
         response = await observe_model_call(
             lambda: self._client.aio.models.embed_content(

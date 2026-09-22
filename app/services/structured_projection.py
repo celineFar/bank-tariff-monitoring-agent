@@ -51,6 +51,7 @@ _OFFICIAL = {
     Authority.OFFICIAL_CAMPAIGN_CONTENT,
 }
 RENDERER_VERSION = 1
+_SALARY_WORD = re.compile(r"(?i)\b(?:salary|payroll)\b|աշխատավարձ")
 _MARKDOWN_LINK = re.compile(r"\[([^]]+)\]\((?:<[^>]+>|[^)]+)\)")
 
 
@@ -68,6 +69,15 @@ def _stable(value: Any) -> str:
 
 def _hash(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
+
+
+def _currency_condition(conditions: tuple[Any, ...]) -> str | None:
+    currencies = {
+        str(item.value).upper()
+        for item in conditions
+        if getattr(item, "dimension", None) == "currency"
+    }
+    return next(iter(currencies)) if len(currencies) == 1 else None
 
 
 def _clean(value: str) -> str:
@@ -227,6 +237,25 @@ class StructuredTariffProjector:
                             group=_stable(item),
                             number=age.max_age,
                             unit="years",
+                        )
+            elif field is ExtractionField.SPECIAL_CONDITIONS:
+                for item in extracted.value:
+                    value = item.value if isinstance(item, ConditionalValue) else item
+                    conditions = (
+                        item.conditions if isinstance(item, ConditionalValue) else ()
+                    )
+                    emit(
+                        FieldPath.SPECIAL_CONDITION,
+                        value,
+                        extracted,
+                        conditions=conditions,
+                    )
+                    if isinstance(value, str) and _SALARY_WORD.search(value):
+                        emit(
+                            FieldPath.SALARY_PRIVILEGE,
+                            value,
+                            extracted,
+                            conditions=conditions,
                         )
             elif field is ExtractionField.VARIANTS:
                 for item in extracted.value:
@@ -422,6 +451,7 @@ class StructuredTariffProjector:
                     number=rate.min,
                     unit="percent",
                     rate_basis=rate.basis,
+                    currency=_currency_condition(item.conditions),
                 )
             if rate.max is not None:
                 emit(
@@ -433,6 +463,7 @@ class StructuredTariffProjector:
                     number=rate.max,
                     unit="percent",
                     rate_basis=rate.basis,
+                    currency=_currency_condition(item.conditions),
                 )
             if rate.formula is not None:
                 emit(
@@ -443,6 +474,7 @@ class StructuredTariffProjector:
                     group=group,
                     unit="formula",
                     rate_basis=rate.basis,
+                    currency=_currency_condition(item.conditions),
                 )
 
     @staticmethod

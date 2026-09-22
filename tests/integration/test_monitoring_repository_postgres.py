@@ -53,12 +53,17 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
+from app.domain.structured_tariffs import FieldPath
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
     PostgresRunRepository,
     PostgresSnapshotRepository,
 )
 from app.repositories.reviews import PostgresReviewRepository, ReviewConflictError
+from app.repositories.structured_tariff_query import (
+    PostgresStructuredTariffQueryRepository,
+    PostgresStructuredUnitEmbeddingRepository,
+)
 from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
     build_monitoring_app,
@@ -510,6 +515,14 @@ async def test_change_reads_are_scope_time_and_limit_bounded(
     assert [item.id for item in changes] == [change_set.id]
     assert older is not None
     assert older.id == change_set.id
+    structured_history = await PostgresStructuredTariffQueryRepository(
+        monitoring_session_factory
+    ).accepted_changes(
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+        limit=10,
+    )
+    assert [item.id for item in structured_history] == [change_set.id]
 
 
 @pytest.mark.asyncio
@@ -1002,6 +1015,13 @@ async def test_structured_projection_is_atomic_and_supersedes_only_accepted_scop
             text("SELECT count(*) FROM offering_profiles")
         )
     assert pending_count == 1
+    query = PostgresStructuredTariffQueryRepository(monitoring_session_factory)
+    pending_visible = await query.active_profiles(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+    )
+    assert [item.snapshot_id for item in pending_visible] == [first.id]
     await runs.finish(second_run.id, RunStatus.FAILED)
 
     _, third_run, third_execution = await _running_offering(monitoring_session_factory)
@@ -1037,6 +1057,19 @@ async def test_structured_projection_is_atomic_and_supersedes_only_accepted_scop
     assert {row.snapshot_id for row in rows if row.is_active} == {third.id}
     assert active_facts > 0
     assert old_active_units == 0
+    latest = await query.active_profiles(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+    )
+    assert [item.snapshot_id for item in latest] == [third.id]
+    assert (
+        await query.facts(
+            snapshots=(first.id,),
+            fields=(FieldPath.NOMINAL_RATE_MINIMUM,),
+        )
+        == ()
+    )
 
 
 @pytest.mark.asyncio
@@ -1199,3 +1232,134 @@ async def test_concurrent_accepted_publications_leave_one_active_projection(
     assert active[0] in {first.id, second.id}
     assert active_fact_scopes == active
     assert active_unit_scopes == active
+
+
+@pytest.mark.asyncio
+async def test_structured_query_reads_only_active_accepted_evidence(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id)
+    source_document = _document(run.id).model_copy(
+        update={
+            "document_key": "synthetic-page",
+            "source_url": "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans",
+            "final_url": "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans",
+        }
+    )
+    await PostgresOfferingPublicationRepository(monitoring_session_factory).publish(
+        OfferingPublication(
+            offering_execution_id=execution.id,
+            documents=(source_document,),
+            snapshot=snapshot,
+        )
+    )
+    query = PostgresStructuredTariffQueryRepository(monitoring_session_factory)
+    profiles = await query.active_profiles(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+    )
+    facts = await query.facts(
+        snapshots=(snapshot.id,),
+        fields=(FieldPath.NOMINAL_RATE_MINIMUM,),
+    )
+    lexical = await query.lexical_units(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+        query="consumer",
+        limit=5,
+    )
+    assert len(profiles) == 1
+    assert len(facts) == 2
+    assert len({fact.variant_key for fact in facts}) == 2
+    assert all(fact.conditions for fact in facts)
+    assert all(fact.evidence[0].quote for fact in facts)
+    assert all(fact.evidence[0].document_id for fact in facts)
+    assert all(fact.evidence[0].document_checksum == "a" * 64 for fact in facts)
+    assert lexical and all(hit.unit.snapshot_id == snapshot.id for hit in lexical)
+    assert lexical[0].score > 0
+    # PostgreSQL simple tokenization must preserve Armenian terms.
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE retrieval_units SET alias_purpose_text = "
+                "alias_purpose_text || ' սպառողական վարկ' "
+                "WHERE snapshot_id = :snapshot_id"
+            ),
+            {"snapshot_id": snapshot.id},
+        )
+    armenian = await query.lexical_units(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+        query="սպառողական վարկ",
+        limit=5,
+    )
+    assert armenian and armenian[0].score > 0
+    assert (
+        await query.vector_units(
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            offering_ids=(OfferingId.CONSUMER_STANDARD,),
+            embedding=[0.1] * 768,
+            model_id="gemini-embedding-001",
+        )
+        == ()
+    )
+    vector_index = PostgresStructuredUnitEmbeddingRepository(monitoring_session_factory)
+    missing = await vector_index.missing(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+        model_id="test-model",
+    )
+    assert missing
+    assert (
+        await vector_index.save(
+            model_id="test-model", vectors=((missing[0], [0.1] * 768),)
+        )
+        == 1
+    )
+    vector_hits = await query.vector_units(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+        embedding=[0.1] * 768,
+        model_id="test-model",
+        limit=5,
+    )
+    assert len(vector_hits) == 1
+    assert vector_hits[0].unit.unit_id == missing[0].unit_id
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE retrieval_units SET content = 'tampered' WHERE id = :unit_id"),
+            {"unit_id": lexical[0].unit.unit_id},
+        )
+    with pytest.raises(ValueError, match="stored retrieval text differs"):
+        await query.lexical_units(
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            offering_ids=(OfferingId.CONSUMER_STANDARD,),
+            query="consumer",
+            limit=5,
+        )
+    with pytest.raises(ValueError, match="outside requested product family"):
+        await query.active_profiles(
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            offering_ids=(OfferingId.MORTGAGE_PRIMARY,),
+        )
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE fact_evidence SET quote = 'tampered' WHERE fact_id = :fact_id"
+            ),
+            {"fact_id": facts[0].fact_id},
+        )
+    with pytest.raises(ValueError, match="differs from accepted capture"):
+        await query.facts(
+            snapshots=(snapshot.id,),
+            fields=(FieldPath.NOMINAL_RATE_MINIMUM,),
+        )

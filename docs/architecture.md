@@ -84,6 +84,18 @@ shell, or SQL tool.
   semantic extraction into offering profiles, typed tariff facts, verified citations,
   and clean evidence-backed retrieval units. Accepted projections are published
   transactionally; the current answer path still reads `knowledge_chunks`.
+- `app/repositories/structured_tariff_query.py` and
+  `app/services/structured_tariff_query.py`: typed reads of active accepted profiles,
+  verified fact evidence, and bounded retrieval units. Single-offering queries use
+  weighted PostgreSQL full-text search with `simple` tokenization, then optional
+  same-model vector retrieval when lexical recall is sparse. The service uses fixed
+  reciprocal-rank fusion (`rrf-v1-k60-lex1-vector0.7`) for explanatory units.
+  Exact comparisons, rankings, and history use accepted typed facts/changes, never
+  generated arithmetic. Historical changes require verified old and new citations.
+  This read service is not yet wired to the current ADK/API answer path (Phase E).
+- `app/services/structured_unit_embeddings.py` and migration `013`: lazily embed
+  active accepted retrieval units, with content-addressed reuse and explicit
+  model/dimension checks; rejected or superseded units are not embedded.
 - `migrations/011_structured_tariff_read_model.sql`: additive read-model tables
   `offering_profiles`, `tariff_facts`, `fact_evidence`, and `retrieval_units`, plus
   `model_call_usage` for call and cost monitoring. Live new runs populate these

@@ -203,6 +203,11 @@ class QueryOperation(StrEnum):
     HISTORY = "history"
 
 
+class RankDirection(StrEnum):
+    LOWEST = "lowest"
+    HIGHEST = "highest"
+
+
 class QueryStatus(StrEnum):
     ANSWERED = "answered"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
@@ -222,6 +227,7 @@ class ResolutionPlan(StructuredTariffModel):
     product: ProductType
     offering_ids: tuple[OfferingId, ...] = ()
     operation: QueryOperation
+    rank_direction: RankDirection | None = None
     fields: tuple[FieldPath, ...] = ()
     conditions: dict[str, JsonValue] = Field(default_factory=dict)
     taxonomy_version: int = FIELD_PATH_VERSION
@@ -245,6 +251,8 @@ class ResolutionPlan(StructuredTariffModel):
             raise ValueError("single query requires one offering")
         if self.operation is QueryOperation.COMPARE and len(self.offering_ids) < 2:
             raise ValueError("comparison requires at least two offerings")
+        if self.operation is QueryOperation.FAMILY_RANK and self.rank_direction is None:
+            raise ValueError("family rank requires an explicit direction")
         if (
             self.operation
             in {
@@ -308,16 +316,11 @@ class TariffFact(StructuredTariffModel):
         return self
 
 
-class TariffQueryResult(StructuredTariffModel):
-    status: QueryStatus
-    operation: QueryOperation
-    product: ProductType
-    offering_ids: tuple[OfferingId, ...]
-    facts: tuple[TariffFact, ...] = ()
-    answer: str | None = None
+class ComparisonRow(StructuredTariffModel):
+    field_path: FieldPath
+    facts: tuple[TariffFact, ...]
+    comparable: bool
     reason: str | None = None
-    as_of: datetime | None = None
-    metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class RetrievalUnitKind(StrEnum):
@@ -364,6 +367,20 @@ class RetrievalUnit(StructuredTariffModel):
         if not self.fact_ids or not self.evidence_ids:
             raise ValueError("retrieval unit requires supporting fact and evidence IDs")
         return self
+
+
+class TariffQueryResult(StructuredTariffModel):
+    status: QueryStatus
+    operation: QueryOperation
+    product: ProductType
+    offering_ids: tuple[OfferingId, ...]
+    facts: tuple[TariffFact, ...] = ()
+    comparison_rows: tuple[ComparisonRow, ...] = ()
+    retrieval_units: tuple[RetrievalUnit, ...] = ()
+    answer: str | None = None
+    reason: str | None = None
+    as_of: datetime | None = None
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class StructuredProjection(StructuredTariffModel):

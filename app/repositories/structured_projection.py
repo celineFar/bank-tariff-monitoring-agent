@@ -95,6 +95,46 @@ async def publish_structured_projection(
             "schema_version": profile.schema_version,
         },
     )
+    source_keys = tuple(
+        {
+            item.source_document_key
+            for fact in projection.facts
+            for item in fact.evidence
+            if item.source_document_key
+        }
+    )
+    cited_urls: dict[str, set[str]] = {}
+    for fact in projection.facts:
+        for evidence in fact.evidence:
+            if evidence.source_document_key:
+                cited_urls.setdefault(evidence.source_document_key, set()).add(
+                    str(evidence.source_url)
+                )
+    linked_documents: dict[str, tuple[object, str]] = {}
+    if source_keys:
+        linked_rows = (
+            await session.execute(
+                text(
+                    """SELECT document_key, id, content_sha256, source_url, final_url
+                    FROM knowledge_documents
+                    WHERE run_id = :run_id AND offering_id = :offering_id
+                      AND document_key = ANY(:source_keys)
+                    ORDER BY is_active DESC, retrieved_at DESC"""
+                ),
+                {
+                    "run_id": snapshot.run_id,
+                    "offering_id": snapshot.offering_id.value,
+                    "source_keys": list(source_keys),
+                },
+            )
+        ).all()
+        for row in linked_rows:
+            if row.source_url in cited_urls.get(
+                row.document_key, ()
+            ) or row.final_url in cited_urls.get(row.document_key, ()):
+                linked_documents.setdefault(
+                    row.document_key, (row.id, row.content_sha256)
+                )
     # Reprojection after a process restart is idempotent. Existing immutable
     # fact/evidence rows remain unchanged; only active state is restored.
     await session.execute(
@@ -154,8 +194,12 @@ async def publish_structured_projection(
                     "source_url": str(evidence.source_url),
                     "source_item_id": evidence.source_item_id,
                     "source_document_key": evidence.source_document_key,
-                    "source_document_id": evidence.document_id,
-                    "source_checksum": evidence.document_checksum,
+                    "source_document_id": linked_documents.get(
+                        evidence.source_document_key, (None, None)
+                    )[0],
+                    "source_checksum": linked_documents.get(
+                        evidence.source_document_key, (None, None)
+                    )[1],
                     "locator": _json(evidence.locator),
                     "authority": evidence.authority,
                 },

@@ -19,6 +19,7 @@ class IncomparabilityReason(StrEnum):
     DIFFERENT_RATE_BASIS = "different_rate_basis"
     DIFFERENT_UNIT = "different_unit"
     DIFFERENT_FEE_SCOPE = "different_fee_scope"
+    DIFFERENT_CONDITIONS = "different_conditions"
     UNCLASSIFIED_FEE = "unclassified_fee"
 
 
@@ -81,4 +82,6 @@ def comparison_issue(
         return IncomparabilityReason.DIFFERENT_RATE_BASIS
     if left.fee_scope != right.fee_scope:
         return IncomparabilityReason.DIFFERENT_FEE_SCOPE
+    if set(left.conditions) != set(right.conditions):
+        return IncomparabilityReason.DIFFERENT_CONDITIONS
     return None

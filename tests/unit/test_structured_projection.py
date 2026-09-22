@@ -159,3 +159,17 @@ def test_profile_unit_contains_only_evidence_backed_identity_fields() -> None:
     assert profile_unit.evidence_ids
     assert all(path.value.startswith("identity.") for path in profile_unit.field_paths)
     assert "<" not in profile_unit.content
+
+
+def test_salary_customer_condition_is_explicit_and_evidence_backed() -> None:
+    projection = StructuredTariffProjector().project(
+        accepted_snapshot("consumer"), display_name="Synthetic offering"
+    )
+    privileges = [
+        fact
+        for fact in projection.facts
+        if fact.field_path is FieldPath.SALARY_PRIVILEGE
+    ]
+    assert len(privileges) == 1
+    assert "Salary" in privileges[0].value
+    assert privileges[0].evidence
