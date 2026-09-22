@@ -54,8 +54,10 @@ from app.services.snapshot_lifecycle import (
     evidence_changed,
     non_reviewable_extraction_failure,
 )
+from app.services.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer()
 T = TypeVar("T")
 
 
@@ -146,7 +148,18 @@ class IndexingPipeline:
                 await self._runs.start_offering_execution(
                     offering_execution_id, stage=name
                 )
-            return await self._stage(name, failure_code, operation, timings)
+            # Every stage funnels through here, so one span covers all of them.
+            # Nested ADK runners inside a stage open their spans under the
+            # ambient context, which makes their model calls children of it.
+            with tracer.start_as_current_span(f"stage {name}") as span:
+                span.set_attribute("tariff.stage", name)
+                span.set_attribute("tariff.run_id", str(run_id))
+                span.set_attribute("tariff.offering_id", offering.offering_id.value)
+                try:
+                    return await self._stage(name, failure_code, operation, timings)
+                except OfferingPipelineError as exc:
+                    span.set_attribute("tariff.failure_code", exc.failure_code)
+                    raise
 
         artifact = await stage(
             "acquisition",
@@ -422,11 +435,21 @@ class TariffPipeline:
                 stage="acquisition",
             )
             try:
-                result = await self._indexing.refresh(
-                    offering,
-                    run.id,
-                    execution.id,
-                )
+                # Parents every stage span of this offering, so one run with
+                # several offerings stays readable as separate subtrees.
+                with tracer.start_as_current_span(
+                    f"offering {offering.offering_id.value}"
+                ) as span:
+                    span.set_attribute("tariff.run_id", str(run.id))
+                    span.set_attribute("tariff.product", offering.product.value)
+                    span.set_attribute(
+                        "tariff.offering_id", offering.offering_id.value
+                    )
+                    result = await self._indexing.refresh(
+                        offering,
+                        run.id,
+                        execution.id,
+                    )
             except OfferingPipelineError as exc:
                 failed += 1
                 failure_codes.append(exc.failure_code)
