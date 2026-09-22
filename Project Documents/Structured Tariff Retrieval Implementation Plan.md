@@ -341,7 +341,8 @@ new tables yet.
 Files added: `migrations/011_structured_tariff_read_model.sql`,
 `app/services/structured_projection.py`, and
 `tests/unit/test_structured_projection.py`. Files modified:
-`app/domain/structured_tariffs.py` and this plan. Files removed: none.
+`app/domain/structured_tariffs.py`, `docs/architecture.md`, and this plan.
+Files removed: none.
 
 Verification: 21 structured-contract/projector unit tests passed; 6 knowledge-store
 PostgreSQL integration tests passed with the new migration applied to the isolated

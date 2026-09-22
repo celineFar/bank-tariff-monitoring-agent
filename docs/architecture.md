@@ -69,6 +69,14 @@ shell, or SQL tool.
   scheduled families are submitted independently through `RunService`. Claimed work
   enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`
   once and returns immediately when native human input is requested.
+- `app/services/structured_projection.py`: pure, fail-closed projection of final accepted
+  semantic extraction into offering profiles, typed tariff facts, verified citations,
+  and clean evidence-backed retrieval units. It is staged for transactional publication;
+  the current answer path still reads `knowledge_chunks`.
+- `migrations/011_structured_tariff_read_model.sql`: additive read-model tables
+  `offering_profiles`, `tariff_facts`, `fact_evidence`, and `retrieval_units`, plus
+  `model_call_usage` for future call and cost monitoring. The tables are currently
+  unpopulated by the application until the publication phase is implemented.
 - `migrations/`: PostgreSQL/pgvector schema.
   Project-owned event timestamps retain their `timestamptz` instants and have
   stored `timestamp` columns suffixed `_yerevan` for direct local-time inspection.
