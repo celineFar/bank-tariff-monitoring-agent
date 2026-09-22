@@ -94,6 +94,13 @@ shell, or SQL tool.
   transaction. Pending candidates create no active read projection.
 - `app/services/logging_setup.py`: shared console and rotating file logging for API and
   worker; Compose mounts host `logs/` for archives that survive container recreation.
+  `configure_retrieval_logging` additionally routes the `tariff.retrieval`
+  logger to its own rotating file when `RETRIEVAL_LOG_FILE` is set.
+- `app/services/retrieval_trace.py`: per-call, correlated step trace of one
+  structured retrieval on the separate `tariff.retrieval` logger, at the
+  `RETRIEVAL_TRACE_LEVEL` detail level (`off`, `summary`, `steps`, `verbose`).
+  A trace always closes, carrying the outcome or the error type. Only `verbose`
+  writes derived search terms and rendered unit text.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`. Claimed work
   enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`

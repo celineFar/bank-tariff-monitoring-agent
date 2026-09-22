@@ -54,6 +54,13 @@ downloader receives `settings.http` and the PDF extraction service receives
   (default) answers from accepted typed facts, `legacy` restores the old RAG
   answer path without a code change. `TARIFF_RUN_WAIT_SECONDS` (at most 120) and `TARIFF_RUN_POLL_SECONDS` bound
   chat-side persisted run polling; HTTP submission remains asynchronous.
+- **Retrieval trace:** `RETRIEVAL_TRACE_LEVEL` controls the `tariff.retrieval`
+  logger — `off`, `summary` (default, one closing line per answer), `steps`
+  (one line per stage with identifiers, counts, and scores), or `verbose`
+  (also the derived search terms and the rendered unit text). `verbose` prints
+  text projected from bank source documents, so it is for local debugging
+  only. `RETRIEVAL_LOG_FILE` adds a dedicated rotating file for that logger,
+  separate from `LOG_FILE`, reusing `LOG_MAX_BYTES` and `LOG_BACKUP_COUNT`.
 - **Source discovery:** `SOURCE_DISCOVERY_POLICY_VERSION`,
   `SOURCE_DISCOVERY_PROMPT_VERSION`, `SOURCE_DISCOVERY_MAX_ITEMS_PER_BATCH`,
   `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`, and

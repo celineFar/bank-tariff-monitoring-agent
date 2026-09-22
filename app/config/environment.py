@@ -81,6 +81,8 @@ class EnvironmentSettings(BaseSettings):
     tariff_run_wait_seconds: float = 120
     tariff_run_poll_seconds: float = 0.5
     tariff_answer_read_model: str = "structured"
+    retrieval_trace_level: str = "summary"
+    retrieval_log_file: Path | None = None
     source_discovery_policy_version: str = "1"
     source_discovery_prompt_version: str = "1"
     source_discovery_max_items_per_batch: int = 8

@@ -4,9 +4,11 @@ import logging
 import sys
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.config.models import ObservabilitySettings
+from app.services.retrieval_trace import RETRIEVAL_LOGGER_NAME
 
 
 class ZonedFormatter(logging.Formatter):
@@ -21,7 +23,9 @@ class ZonedFormatter(logging.Formatter):
 
 
 def configure_application_logging(
-    settings: ObservabilitySettings, *, include_uvicorn: bool = False,
+    settings: ObservabilitySettings,
+    *,
+    include_uvicorn: bool = False,
     console_output: bool = True,
 ) -> None:
     """Keep console logs and archive bounded, timezone-aware files when configured."""
@@ -63,3 +67,30 @@ def configure_application_logging(
         ):
             if archive not in logger.handlers:
                 logger.addHandler(archive)
+
+
+def configure_retrieval_logging(
+    log_file: Path | None, *, timezone: str, max_bytes: int, backup_count: int
+) -> None:
+    """Give the retrieval trace its own rotating file, separate from the app log.
+
+    The `tariff.retrieval` logger keeps propagating to the root handlers, so the
+    trace still reaches the console; the extra file simply isolates it for
+    replay. Calling this twice with the same path adds no second handler.
+    """
+    retrieval = logging.getLogger(RETRIEVAL_LOGGER_NAME)
+    retrieval.setLevel(logging.INFO)
+    if log_file is None:
+        return
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    resolved = str(log_file.resolve())
+    if any(
+        isinstance(handler, RotatingFileHandler) and handler.baseFilename == resolved
+        for handler in retrieval.handlers
+    ):
+        return
+    handler = RotatingFileHandler(
+        resolved, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+    )
+    handler.setFormatter(ZonedFormatter(timezone))
+    retrieval.addHandler(handler)

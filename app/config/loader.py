@@ -102,6 +102,8 @@ def load_settings(
             run_wait_seconds=raw.tariff_run_wait_seconds,
             run_poll_seconds=raw.tariff_run_poll_seconds,
             answer_read_model=raw.tariff_answer_read_model,
+            retrieval_trace_level=raw.retrieval_trace_level,
+            retrieval_log_file=raw.retrieval_log_file,
         ),
         source_discovery=SourceDiscoverySettings(
             policy_version=raw.source_discovery_policy_version,

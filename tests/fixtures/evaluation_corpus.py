@@ -23,9 +23,11 @@ from app.domain.structured_tariffs import (
     TariffFact,
 )
 from app.repositories.structured_tariff_query import (
+    LEXICAL_QUERY_VERSION,
     RankedUnit,
     lexical_search_terms,
 )
+from app.services.retrieval_trace import record, record_text
 from app.services.structured_projection import StructuredTariffProjector
 from tests.fixtures.structured_tariffs import (
     CONSUMER_URL,
@@ -311,6 +313,14 @@ class EvaluationRepository:
         """Mirror the PostgreSQL ranker's term selection and OR semantics."""
         self.lexical_calls.append(query)
         selected = lexical_search_terms(query)
+        record(
+            "lexical.query",
+            version=LEXICAL_QUERY_VERSION,
+            offerings=[item.value for item in offering_ids],
+            terms=0 if selected is None else len(selected.split(" or ")),
+            limit=limit,
+        )
+        record_text("lexical.terms", tsquery=repr(selected))
         if selected is None:
             return ()
         terms = [item.strip('"') for item in selected.split(" or ")]

@@ -27,6 +27,12 @@ from app.domain.structured_tariffs import (
 )
 from app.domain.tariff_comparison import ComparableMeasure, comparison_issue
 from app.repositories.structured_tariff_query import RankedUnit
+from app.services.retrieval_trace import (
+    record,
+    record_text,
+    retrieval_trace,
+    set_outcome,
+)
 
 logger = logging.getLogger(__name__)
 RANK_FUSION_VERSION = "rrf-v1-k60-lex1-vector0.7"
@@ -172,6 +178,24 @@ class StructuredTariffQueryService:
     async def answer(
         self, plan: ResolutionPlan, question: str, *, now: datetime | None = None
     ) -> TariffQueryResult:
+        with retrieval_trace(
+            operation=plan.operation.value,
+            product=plan.product.value,
+            question_sha12=plan.question_sha256[:12],
+        ):
+            result = await self._answer(plan, question, now=now)
+            set_outcome(
+                status=result.status.value,
+                facts=len(result.facts),
+                units=len(result.retrieval_units),
+                rows=len(result.comparison_rows),
+                reason=result.reason,
+            )
+            return result
+
+    async def _answer(
+        self, plan: ResolutionPlan, question: str, *, now: datetime | None = None
+    ) -> TariffQueryResult:
         current = now or datetime.now(UTC)
         if current.tzinfo is None or current.utcoffset() is None:
             raise ValueError("current time must be timezone-aware")
@@ -184,10 +208,24 @@ class StructuredTariffQueryService:
         )
         if any(item.product is not plan.product for item in offering_ids):
             raise ValueError("offering outside authorized family")
+        record(
+            "plan.authorized",
+            offerings=[item.value for item in offering_ids],
+            fields=[item.value for item in plan.fields],
+            conditions=plan.conditions,
+            rank_direction=(plan.rank_direction.value if plan.rank_direction else None),
+            expires_at=plan.expires_at.isoformat(),
+        )
         if plan.operation is QueryOperation.HISTORY:
             return await self._history(plan, offering_ids)
         profiles = await self._repository.active_profiles(
             bank=plan.bank, product=plan.product, offering_ids=offering_ids
+        )
+        record(
+            "profiles.loaded",
+            requested=len(offering_ids),
+            active=len(profiles),
+            snapshots=[str(item.snapshot_id)[:8] for item in profiles],
         )
         if not profiles:
             return self._empty(
@@ -196,11 +234,19 @@ class StructuredTariffQueryService:
         facts = await self._repository.facts(
             snapshots=[item.snapshot_id for item in profiles], fields=plan.fields
         )
+        loaded = len(facts)
         facts = tuple(fact for fact in facts if _condition_match(fact, plan.conditions))
         found = tuple(
             fact
             for fact in facts
             if fact.status is ExtractionStatus.FOUND and fact.evidence
+        )
+        record(
+            "facts.loaded",
+            loaded=loaded,
+            after_conditions=len(facts),
+            evidence_backed=len(found),
+            citations=sum(len(fact.evidence) for fact in found),
         )
         if not found:
             return self._empty(
@@ -208,6 +254,7 @@ class StructuredTariffQueryService:
                 QueryStatus.INSUFFICIENT_EVIDENCE,
                 "no accepted evidence-backed fact for requested fields",
             )
+        record("branch.selected", branch=plan.operation.value)
         if plan.operation is QueryOperation.FAMILY_RANK:
             return self._rank(plan, profiles, found)
         if plan.operation is QueryOperation.COMPARE:
@@ -228,7 +275,21 @@ class StructuredTariffQueryService:
             query=question,
             limit=8,
         )
+        record(
+            "lexical.result",
+            hits=len(lexical),
+            top=[(hit.unit.unit_id[:8], round(hit.score, 4)) for hit in lexical[:3]],
+        )
         vector: tuple[RankedUnit, ...] = ()
+        if len(lexical) >= 4 or self._unit_embedder is None:
+            record(
+                "vector.skipped",
+                reason=(
+                    "lexical recall sufficient"
+                    if len(lexical) >= 4
+                    else "no embedder configured"
+                ),
+            )
         if len(lexical) < 4 and self._unit_embedder is not None:
             try:
                 await self._unit_embedder.ensure(
@@ -246,6 +307,15 @@ class StructuredTariffQueryService:
                     model_id=self._unit_embedder.model_name,
                     limit=8,
                 )
+                record(
+                    "vector.result",
+                    model=self._unit_embedder.model_name,
+                    hits=len(vector),
+                    top=[
+                        (hit.unit.unit_id[:8], round(hit.score, 4))
+                        for hit in vector[:3]
+                    ],
+                )
             except Exception as exc:
                 logger.warning(
                     "supplemental vector retrieval unavailable error=%s",
@@ -262,6 +332,14 @@ class StructuredTariffQueryService:
         hits = tuple(
             units[unit_id]
             for unit_id in sorted(scores, key=lambda key: (-scores[key], key))
+        )
+        record(
+            "fusion.ranked",
+            version=RANK_FUSION_VERSION,
+            candidates=len(hits),
+            fused=[
+                (unit.unit_id[:8], round(scores[unit.unit_id], 6)) for unit in hits[:5]
+            ],
         )
         fact_ids = {fact.fact_id for fact in facts}
         evidence_ids = {item.evidence_id for fact in facts for item in fact.evidence}
@@ -281,6 +359,22 @@ class StructuredTariffQueryService:
                 if unit.kind is RetrievalUnitKind.FIELD_DETAIL
             ][:6]
         )
+        record(
+            "units.admitted",
+            candidates=len(hits),
+            supported=len(supported),
+            rejected_unsupported=len(hits) - len(supported),
+            selected=len(selected),
+            rule="a unit needs every fact and citation inside the answer",
+        )
+        for unit in selected:
+            record_text(
+                "unit.content",
+                unit=unit.unit_id[:8],
+                kind=unit.kind.value,
+                renderer=unit.renderer_version,
+                content=repr(unit.content),
+            )
         return TariffQueryResult(
             status=QueryStatus.ANSWERED,
             operation=plan.operation,
@@ -303,6 +397,7 @@ class StructuredTariffQueryService:
         facts: tuple[TariffFact, ...],
     ) -> TariffQueryResult:
         present = {fact.offering_id for fact in facts}
+        record("compare.offerings", with_facts=len(present), requested=len(profiles))
         if len(present) < 2:
             return self._empty(
                 plan,
@@ -388,6 +483,12 @@ class StructuredTariffQueryService:
         if len(plan.fields) != 1:
             raise ValueError("family rank requires exactly one canonical field")
         candidates = [fact for fact in facts if fact.number is not None]
+        record(
+            "rank.candidates",
+            numeric=len(candidates),
+            offerings=len({fact.offering_id for fact in candidates}),
+            direction=plan.rank_direction.value if plan.rank_direction else None,
+        )
         if len({fact.offering_id for fact in candidates}) < 2:
             return self._empty(
                 plan,
@@ -438,6 +539,7 @@ class StructuredTariffQueryService:
         changes = await self._repository.accepted_changes(
             product=plan.product, offering_ids=offering_ids, limit=50
         )
+        record("history.changes", accepted_change_sets=len(changes))
         relevant = tuple(
             change
             for change in changes

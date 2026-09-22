@@ -107,6 +107,30 @@ have not been tuned; see `tests/eval/RESULTS.md`.
 
 ### Tracing
 
+Set `RETRIEVAL_TRACE_LEVEL=steps` to have every stage of every retrieval write
+one correlated line to the `tariff.retrieval` logger, in call order:
+
+```text
+trace=1f9f step=2  stage=plan.authorized   offerings=['overdraft'] fields=[...] conditions={}
+trace=1f9f step=3  stage=profiles.loaded   requested=1 active=1 snapshots=['c68e2d4c']
+trace=1f9f step=4  stage=facts.loaded      loaded=5 after_conditions=5 evidence_backed=5 citations=5
+trace=1f9f step=5  stage=branch.selected   branch=single
+trace=1f9f step=6  stage=lexical.query     version=simple-or-v1 terms=4 limit=8
+trace=1f9f step=7  stage=lexical.result    hits=8 top=[('0941b09c', 1.6), ...]
+trace=1f9f step=8  stage=vector.skipped    reason=lexical recall sufficient
+trace=1f9f step=9  stage=fusion.ranked     version=rrf-v1-k60-lex1-vector0.7 candidates=8
+trace=1f9f step=10 stage=units.admitted    candidates=8 supported=5 rejected_unsupported=3 selected=5
+trace=1f9f steps=10 elapsed_ms=80.08 status=answered facts=5 units=5
+```
+
+`summary` keeps only the closing line, `off` disables it, and `verbose` adds
+`lexical.terms` (the derived `tsquery`) and one `unit.content` line per admitted
+unit. A trace always closes, including on an exception, where the summary
+carries `outcome=error` and the error type. `RETRIEVAL_LOG_FILE` routes the
+logger to its own rotating file. At `steps` and below, neither the question text
+nor any unit text is written; the question stays correlatable through the
+`question_sha12` prefix.
+
 `uv run python -m scripts.trace_structured_answer "<question>" --no-vector`
 prints resolution, the issued authorization plan, the typed facts with their
 verified citations, the admitted explanatory units, and the ranking version,

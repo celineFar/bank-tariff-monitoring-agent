@@ -22,6 +22,7 @@ from app.domain.structured_tariffs import (
     RetrievalUnit,
     TariffFact,
 )
+from app.services.retrieval_trace import record, record_text
 
 
 def _decoded(value):
@@ -374,6 +375,14 @@ class PostgresStructuredTariffQueryRepository:
     ) -> tuple[RankedUnit, ...]:
         self._validate_search(product, offering_ids, limit)
         terms = lexical_search_terms(query) if offering_ids else None
+        record(
+            "lexical.query",
+            version=LEXICAL_QUERY_VERSION,
+            offerings=[item.value for item in offering_ids],
+            terms=0 if terms is None else len(terms.split(" or ")),
+            limit=limit,
+        )
+        record_text("lexical.terms", tsquery=repr(terms))
         if terms is None:
             return ()
         return await self._search(
@@ -413,6 +422,13 @@ class PostgresStructuredTariffQueryRepository:
             math.isfinite(value) for value in embedding
         ):
             raise ValueError("query embedding must contain 768 finite dimensions")
+        record(
+            "vector.query",
+            model=model_id,
+            dimensions=len(embedding),
+            offerings=[item.value for item in offering_ids],
+            limit=limit,
+        )
         vector = "[" + ",".join(str(value) for value in embedding) + "]"
         return await self._search(
             """SELECT u.*, 1 - (u.embedding <=> CAST(:vector AS vector)) AS score

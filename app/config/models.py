@@ -22,6 +22,15 @@ _HOST_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _LOG_LEVELS = frozenset(logging.getLevelNamesMapping())
 
 
+class RetrievalTraceLevel(StrEnum):
+    """How much of one retrieval to write to the `tariff.retrieval` logger."""
+
+    OFF = "off"
+    SUMMARY = "summary"
+    STEPS = "steps"
+    VERBOSE = "verbose"
+
+
 class AnswerReadModel(StrEnum):
     """Which read model answers ordinary tariff questions."""
 
@@ -255,6 +264,9 @@ class TariffQuerySettings(SettingsGroup):
     run_poll_seconds: float = Field(default=0.5, gt=0, le=10)
     # Reversible cutover switch; `legacy` restores the old RAG answer path.
     answer_read_model: AnswerReadModel = AnswerReadModel.STRUCTURED
+    # `verbose` writes text projected from source documents; keep it local.
+    retrieval_trace_level: RetrievalTraceLevel = RetrievalTraceLevel.SUMMARY
+    retrieval_log_file: Path | None = None
 
 
 class SourceDiscoverySettings(SettingsGroup):
