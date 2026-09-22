@@ -75,6 +75,7 @@ holding a tool:
 |---|---|---|---|
 | `AdkIntentClassifier` | `MODEL_NAME` | intent and offering, only when exact and fuzzy matching were insufficient | output restricted to the supplied enum values and candidate IDs |
 | `GeminiPdfExtractionService` | `PDF_EXTRACTION_MODEL_NAME` | transcribing an admitted PDF into blocks, tables, and notes | every page present exactly once, rectangular tables, strict schema |
+| `TesseractOcrTranscriber` | none — local engine, no model | reading a rendered page image when the probe says `image_only` and Gemini returned nothing | deterministic trigger, page/pixel/timeout bounds, confidence floor, OCR-marked provenance |
 | `AdkSourceDiscoveryClassifier` | `SOURCE_DISCOVERY_MODEL_NAME` | whether an unresolved unit belongs to this product | exactly one known source ID per requested item |
 | `AdkSemanticExtractor` | `MODEL_NAME` | evidence into typed tariff field values | in-batch evidence IDs, verbatim quotes, Pydantic contracts |
 | `GeminiEmbeddingProvider` | `EMBEDDING_MODEL_NAME` | nothing — vectors only | count, 768 dimensions, finite values |
@@ -106,7 +107,7 @@ flowchart TD
     CLAIM["Worker claim<br/>FOR UPDATE SKIP LOCKED"]
 
     S1["1 · acquisition<br/>allowlisted fetch, conditional browser render,<br/>linked PDFs, captured payloads"]
-    S2["2 · normalization<br/>uniform blocks/tables/notes + locators<br/>PDF admission gate then Gemini transcription"]
+    S2["2 · normalization<br/>uniform blocks/tables/notes + locators<br/>PDF admission gate, Gemini transcription,<br/>OCR fallback for empty image-only pages"]
     S3["3 · source discovery<br/>rules + cache first, model only for<br/>what is genuinely unresolved"]
     S4["4 · semantic extraction<br/>bounded field packets, exact JSON Schema,<br/>verbatim-quote validation, bounded repair"]
     S5["5 · previous snapshot<br/>latest accepted for this offering"]
@@ -289,7 +290,8 @@ For terminals without Mermaid rendering:
   +--------------- TariffPipeline, per offering ----------------+
   |                                                             |
   |  1 acquisition       allowlist, render, linked PDFs         |
-  |  2 normalization     uniform evidence      [PDF -> Gemini]  |
+  |  2 normalization     uniform evidence   [PDF -> Gemini,    |
+|                                          scanned -> OCR]   |
   |  3 source discovery  rules + cache first   [rest -> Gemini] |
   |  4 semantic extract  bounded packets       [-> Gemini]      |
   |        |                                                    |

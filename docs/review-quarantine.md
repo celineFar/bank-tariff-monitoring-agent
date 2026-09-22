@@ -37,3 +37,22 @@ Nominal and effective rate endpoints are compared by their canonical conditional
 An absolute change of at least the configured three percentage points quarantines the
 otherwise valid candidate. Multiple agreeing official citations remain attached to the
 accepted value and do not create a review signal.
+
+## OCR evidence
+
+A `found` value whose supporting citation resolves to a block produced by the OCR
+fallback raises an `ocr_evidence` signal and quarantines the candidate. This is the
+§5.10 scenario "OCR or extraction quality is insufficient".
+
+The reasoning is that a value read off a page image is not the same evidence as one
+read from a text layer, even after clearing the confidence floor: OCR can turn `13.5`
+into `135` without any of the deterministic checks noticing, because both are
+well-formed rates. The deterministic stages cannot tell those apart, so a human does.
+
+Provenance survives to the reviewer because the evidence `source_item_id` carries an
+`:ocr:` marker — evidence records keep the item id, not the extraction method, so the
+id is what transports it. The reviewer is shown the quoted text and the PDF page it
+came from, and may approve, reject all candidates, or supply an evidence-linked
+structured override. Approval is permitted here, unlike most reasons, because the
+reviewer is confirming a reading against a page they were shown rather than inventing
+a value.

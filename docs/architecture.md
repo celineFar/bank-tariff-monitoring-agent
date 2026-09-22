@@ -308,8 +308,9 @@ warnings. It never assigns tariff-field meaning.
 
 HTML tables are reconstructed from cell coordinates and rowspan/colspan metadata,
 with phantom columns and duplicate carry-only rows removed. A deterministic probe
-records each PDF as machine-readable, image-only, mixed, or unknown, but its extracted
-text is not used as business evidence. Before any model call, deterministic link
+records each PDF page as machine-readable, image-only, mixed, or unknown; its
+extracted text is not used as business evidence, but the classification is what
+routes a page to the OCR fallback described below. Before any model call, deterministic link
 metadata decides admission: a document with no product-relevant term that matches an
 off-topic marker is admitted as irrelevant, and (unless `PDF_EXTRACTION_SKIP_HISTORICAL`
 is disabled) a document whose metadata resolves to a historical temporal status is also
@@ -320,6 +321,21 @@ footnotes. PDF outputs retain page locators and are cached by source hash, schem
 prompt, model, and admission/probe fingerprint. Captured JSON leaves retain exact JSON paths. Raw source text
 and acquisition locators remain attached throughout, so later chunks and extracted
 values can cite the original evidence rather than a rendered Markdown approximation.
+
+A scanned page is the one case that needs a second engine. When the probe called a
+page `image_only` and the model returned no block and no table for it, that page —
+and only that page — is rendered by `PdfiumPageRasterizer` and read by
+`TesseractOcrTranscriber` (`app/services/pdf_rasterizer.py`,
+`app/services/ocr_transcriber.py`). The same stage is the recovery path when every
+configured Gemini model has failed, so a document degrades to a marked OCR
+transcription instead of yielding nothing. OCR is deterministic application code,
+never a model tool; it is bounded by page count, a pixel budget, and a per-page
+timeout; and a page below the configured confidence floor emits no blocks rather
+than plausible-looking text. Its blocks carry `ocr:tesseract:<version>` and an
+`:ocr:` marker in their ids, which is what later routes an OCR-sourced tariff value
+to human review. The optional `ocr` dependency extra and the tesseract engine are
+both optional at runtime: without them the stage reports itself unavailable once and
+scanned pages stay empty.
 See `docs/normalization.md` for the complete contract and inspection workflow.
 
 ## Source discovery boundary

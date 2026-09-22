@@ -44,7 +44,8 @@ Per-stage designs live in [acquisition](docs/acquisition.md),
 [knowledge store](docs/knowledge-store.md), [indexing projections](docs/indexing-projection.md),
 [snapshot lifecycle](docs/snapshot-lifecycle.md), and [seed catalog](docs/seed-catalog.md).
 Operating it is covered by [run lifecycle](docs/run-lifecycle.md),
-[native ADK review](docs/native-hitl-review.md), [failure behavior](docs/failure-behavior.md),
+[native ADK review](docs/native-hitl-review.md),
+[review quarantine](docs/review-quarantine.md), [failure behavior](docs/failure-behavior.md),
 [observability](docs/observability.md), and [demonstrations](docs/demonstrations.md).
 The generated ADK integration surface is described in
 [.agents-cli-spec.md](.agents-cli-spec.md).
@@ -54,6 +55,12 @@ The generated ADK integration surface is described in
 1. Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
 2. Install dependencies: `agents-cli install`.
 3. Install the local acquisition browser: `uv run playwright install chromium`.
+   For the scanned-PDF OCR fallback, also install the optional extra and a
+   tesseract engine: `uv sync --extra ocr`, plus `tesseract-ocr`,
+   `tesseract-ocr-hye`, and `tesseract-ocr-eng` (Linux), or the Tesseract
+   installer with `hye.traineddata` and `OCR_TESSERACT_CMD` set (Windows). The
+   pipeline runs without it; scanned pages simply stay empty rather than being
+   guessed.
 4. Verify/create the ADK session schema: `uv run python scripts/check_adk_session_schema.py`.
 5. Run deterministic tests: `uv run pytest tests/unit`.
 6. Start the full stack: `docker compose up --build`.

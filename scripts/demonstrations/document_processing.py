@@ -1,135 +1,181 @@
-"""Deliverable 11 — digital PDF path and the scanned-page fallback."""
+"""Deliverable 11 — digital PDF path and the scanned-page OCR fallback."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from app.domain.pdf_extraction import PdfInputMode
+from app.config import get_settings
+from app.domain.pdf_extraction import OcrPageOutcome, PdfInputMode
+from app.services.ocr_transcriber import TesseractOcrTranscriber
 from app.services.pdf_input_probe import probe_pdf_input
+from app.services.pdf_rasterizer import PdfiumPageRasterizer
 from scripts.demonstrations import ScenarioResult
 
-SAMPLES = Path("data/extraction-review-cases")
+FIXTURES = Path("tests/fixtures/pdfs")
+DIGITAL = FIXTURES / "digital_sample.pdf"
+SCANNED = FIXTURES / "scanned_armenian_sample.pdf"
 
-
-def image_only_pdf(width: int = 64, height: int = 64) -> bytes:
-    """Build a one-page PDF whose only content is a raster image.
-
-    The assignment allows a rendered or scanned sample page when the live bank
-    documents happen to be machine readable, which the samples in
-    `data/extraction-review-cases` are.
-    """
-    rows = [
-        "".join(f"{(x * 4 + y * 3) % 256:02x}" for x in range(width))
-        for y in range(height)
-    ]
-    data = "".join(rows) + ">"
-    objects = [
-        "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        "/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>",
-        f"<< /Type /XObject /Subtype /Image /Width {width} /Height {height} "
-        f"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /ASCIIHexDecode "
-        f"/Length {len(data)} >>\nstream\n{data}\nendstream",
-    ]
-    stream = "q 612 0 0 792 0 0 cm /Im0 Do Q"
-    objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
-
-    out = bytearray(b"%PDF-1.4\n")
-    offsets: list[int] = []
-    for index, body in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += f"{index} 0 obj\n{body}\nendobj\n".encode("latin-1")
-    xref = len(out)
-    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
-    for offset in offsets:
-        out += f"{offset:010d} 00000 n \n".encode()
-    out += (
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref}\n%%EOF\n"
-    ).encode()
-    return bytes(out)
+# Tokens rendered into the scanned fixture by scripts/build_scanned_fixture.py.
+# Recovering any of them proves OCR read the page image, not a text layer.
+EXPECTED_TOKENS = ("13.5", "14.2", "AMD", "300,000")
 
 
 async def run() -> ScenarioResult:
     result = ScenarioResult(
         deliverable="Deliverable 11",
-        title="Document processing: digital PDF path and scanned-page fallback",
+        title="Document processing: digital PDF path and scanned-page OCR fallback",
     )
 
-    digital_samples = sorted(SAMPLES.glob("*/source.pdf"))
-    probes = {}
-    for path in digital_samples:
-        probes[path.parent.name] = probe_pdf_input(path.read_bytes())
-        probe = probes[path.parent.name]
+    digital_bytes = DIGITAL.read_bytes() if DIGITAL.exists() else b""
+    digital_probe = probe_pdf_input(digital_bytes) if digital_bytes else None
+    if digital_probe is not None:
         result.step(
-            f"Probed real sample {path.parent.name}: {probe.page_count} page(s), "
-            f"mode={probe.document_mode.value}, "
-            f"native text on page 1 = {probe.pages[0].native_text_characters} chars, "
-            f"images on page 1 = {probe.pages[0].images_detected}."
+            f"Probed the committed real bank PDF {DIGITAL.name}: "
+            f"{digital_probe.page_count} page(s), "
+            f"mode={digital_probe.document_mode.value}, "
+            f"native text on page 1 = "
+            f"{digital_probe.pages[0].native_text_characters} chars."
+        )
+        result.step(
+            "    It has a text layer, so it takes the direct path and never "
+            "reaches the OCR stage."
         )
 
-    scanned = image_only_pdf()
-    scanned_probe = probe_pdf_input(scanned)
-    result.step(
-        f"Built a rendered scanned page ({len(scanned)} bytes) with no text layer "
-        "and probed it with the same deterministic prober."
-    )
-    result.step(
-        f"    scanned page: mode={scanned_probe.document_mode.value}, "
-        f"native text = {scanned_probe.pages[0].native_text_characters} chars, "
-        f"images detected = {scanned_probe.pages[0].images_detected}."
-    )
-    result.step(
-        "The probe result is what routes the document: a page with no text layer "
-        "cannot be parsed directly and is transcribed from the page image instead."
-    )
+    scanned_bytes = SCANNED.read_bytes() if SCANNED.exists() else b""
+    scanned_probe = probe_pdf_input(scanned_bytes) if scanned_bytes else None
+    if scanned_probe is not None:
+        result.step(
+            f"Probed the committed rendered page {SCANNED.name} "
+            f"({len(scanned_bytes):,} bytes): "
+            f"mode={scanned_probe.document_mode.value}, "
+            f"native text = {scanned_probe.pages[0].native_text_characters} chars, "
+            f"images detected = {scanned_probe.pages[0].images_detected}."
+        )
+        result.step(
+            "    The page carries Armenian tariff text as a raster image only, "
+            "so nothing can be parsed from it directly."
+        )
 
-    machine_readable = [
-        name
-        for name, probe in probes.items()
-        if probe.document_mode is PdfInputMode.MACHINE_READABLE
-    ]
-    mixed = [
-        name
-        for name, probe in probes.items()
-        if probe.document_mode is PdfInputMode.MIXED
-    ]
+    # Use the configured settings, so OCR_TESSERACT_CMD and OCR_LANGUAGES
+    # from the environment apply here exactly as they do in the pipeline.
+    settings = get_settings().ocr
+    rasterizer = PdfiumPageRasterizer()
+    transcriber = TesseractOcrTranscriber(settings)
+    engine_ready = rasterizer.available and transcriber.available
+
+    recovered_text = ""
+    confidence = 0.0
+    outcome: OcrPageOutcome | None = None
+    if engine_ready and scanned_bytes:
+        result.step(
+            f"OCR engine available: tesseract {transcriber.engine_version} "
+            f"with languages {settings.languages}."
+        )
+        rendered = rasterizer.rasterize_pages(
+            scanned_bytes,
+            [1],
+            dpi=settings.render_dpi,
+            max_pages=settings.max_pages,
+            max_pixels=settings.max_pixels_per_page,
+        )
+        result.step(
+            f"Rasterized page 1 at {settings.render_dpi} dpi "
+            f"({rendered.pages[0].width}x{rendered.pages[0].height} px)."
+            if rendered.pages
+            else f"Rasterization skipped: {rendered.skipped[0].reason}"
+        )
+        if rendered.pages:
+            page_result = await transcriber.transcribe(
+                rendered.pages[0],
+                languages=settings.languages,
+                timeout_seconds=settings.timeout_seconds,
+                min_confidence=settings.min_confidence,
+            )
+            outcome = page_result.outcome
+            confidence = page_result.mean_confidence
+            recovered_text = page_result.text
+            result.step(
+                f"OCR outcome={outcome.value}, mean confidence="
+                f"{confidence:.1f}, words={page_result.word_count}."
+            )
+            if recovered_text:
+                preview = recovered_text.replace("\n", " / ")[:160]
+                result.step(f"    recovered: {preview}")
+    else:
+        reason = (
+            "pypdfium2 is not installed"
+            if not rasterizer.available
+            else transcriber.unavailable_reason
+        )
+        result.step(f"OCR engine not available in this environment: {reason}")
+        result.note(
+            "Install the optional extra and the engine to run the OCR leg:\n"
+            "      uv sync --extra ocr\n"
+            "      Linux:   apt-get install tesseract-ocr tesseract-ocr-hye\n"
+            "      Windows: install Tesseract with the Armenian language data "
+            "and set OCR_TESSERACT_CMD"
+        )
 
     result.check(
-        "real samples are available",
-        "at least one real bank PDF is probed, not only a synthetic one",
-        bool(probes),
-        f"{len(probes)} sample PDF(s) under {SAMPLES}",
+        "digital sample is committed",
+        "a real bank PDF ships in the repository, not an ignored data directory",
+        bool(digital_bytes),
+        f"{DIGITAL} ({len(digital_bytes):,} bytes)",
     )
     result.check(
         "digital PDFs take the direct path",
         "a PDF with a text layer is classified machine_readable or mixed",
-        bool(machine_readable or mixed),
-        f"machine_readable={machine_readable}, mixed={mixed}",
+        digital_probe is not None
+        and digital_probe.document_mode
+        in (PdfInputMode.MACHINE_READABLE, PdfInputMode.MIXED),
+        f"mode={digital_probe.document_mode.value}" if digital_probe else "no sample",
     )
     result.check(
         "scanned page is detected",
         "a page with no text layer is classified image_only, not machine_readable",
-        scanned_probe.document_mode is PdfInputMode.IMAGE_ONLY,
-        f"mode={scanned_probe.document_mode.value}",
+        scanned_probe is not None
+        and scanned_probe.document_mode is PdfInputMode.IMAGE_ONLY,
+        f"mode={scanned_probe.document_mode.value}" if scanned_probe else "no sample",
     )
     result.check(
         "no text is invented for a scanned page",
         "the prober reports zero native characters rather than guessing",
-        scanned_probe.pages[0].native_text_characters == 0
+        scanned_probe is not None
+        and scanned_probe.pages[0].native_text_characters == 0
         and scanned_probe.pages[0].images_detected,
-        f"chars={scanned_probe.pages[0].native_text_characters}, "
-        f"images={scanned_probe.pages[0].images_detected}",
+        (
+            f"chars={scanned_probe.pages[0].native_text_characters}, "
+            f"images={scanned_probe.pages[0].images_detected}"
+        )
+        if scanned_probe
+        else "no sample",
     )
-    result.note(
-        "This project has no tesseract OCR stage. Scanned pages are transcribed "
-        "by Gemini's multimodal PDF reading, which is the fallback the probe "
-        "routes to. The OCR_* variables in .env are dead configuration that no "
-        "code reads."
+
+    if not engine_ready:
+        result.note(
+            "SKIPPED: the OCR fallback criteria below were not evaluated because "
+            "no OCR engine is installed. This is reported as a skip, not a pass."
+        )
+        return result
+
+    found = [token for token in EXPECTED_TOKENS if token in recovered_text]
+    result.check(
+        "OCR reads the scanned page",
+        "the OCR stage transcribes the image-only page",
+        outcome is OcrPageOutcome.TRANSCRIBED and bool(recovered_text),
+        f"outcome={outcome.value if outcome else 'none'}, "
+        f"{len(recovered_text)} chars recovered",
     )
-    result.note(
-        "Run `uv run python scripts/demonstrate_pdf_extraction.py <case> "
-        "--execute-llm` to see the actual transcription; that spends credits."
+    result.check(
+        "recovered text contains the rendered tariff values",
+        "OCR output matches values rendered into the page image",
+        bool(found),
+        f"recovered tokens: {found}",
+    )
+    result.check(
+        "confidence is reported",
+        "the stage reports a mean confidence rather than an opaque success",
+        confidence > 0,
+        f"mean confidence={confidence:.1f}, floor={settings.min_confidence:.1f}",
     )
     return result

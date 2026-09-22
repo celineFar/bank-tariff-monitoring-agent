@@ -68,6 +68,14 @@ class EnvironmentSettings(BaseSettings):
     pdf_extraction_retry_jitter_ratio: float = 0.25
     pdf_extraction_probe_text_threshold: int = 20
     pdf_extraction_skip_historical: bool = True
+    ocr_enabled: bool = True
+    ocr_languages: str = "hye+eng"
+    ocr_render_dpi: int = 200
+    ocr_max_pages: int = 20
+    ocr_max_pixels_per_page: int = 40_000_000
+    ocr_min_confidence: float = 60.0
+    ocr_timeout_seconds: float = 60.0
+    ocr_tesseract_cmd: str | None = None
     chunk_size_chars: int = 1500
     chunk_overlap_chars: int = 150
     retrieval_top_k: int = 8

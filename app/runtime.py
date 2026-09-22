@@ -47,7 +47,9 @@ from app.services.monitoring_workflow import (
     build_monitoring_workflow,
 )
 from app.services.normalization import StructuralNormalizationService
+from app.services.ocr_transcriber import TesseractOcrTranscriber
 from app.services.pdf_extraction import GeminiPdfExtractionService
+from app.services.pdf_rasterizer import PdfiumPageRasterizer
 from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
 from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
 from app.services.rag_retrieval import RagRetriever
@@ -129,6 +131,9 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             PostgresPdfExtractionRepository(sessions),
             api_key=api_key,
             usage_repository=model_usage,
+            ocr_settings=settings.ocr,
+            ocr_transcriber=TesseractOcrTranscriber(settings.ocr),
+            rasterizer=PdfiumPageRasterizer(),
         ),
     )
     discovery_model = (

@@ -19,6 +19,7 @@ class ReviewReason(StrEnum):
     OFFICIAL_SOURCE_CONFLICT = "official_source_conflict"
     SOURCE_APPLICABILITY = "source_applicability"
     MISSING_REQUIRED_FIELD = "missing_required_field"
+    OCR_EVIDENCE = "ocr_evidence"
 
 
 class ReviewStatus(StrEnum):

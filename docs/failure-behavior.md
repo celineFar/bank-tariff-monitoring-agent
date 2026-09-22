@@ -20,6 +20,7 @@ official evidence gives a reviewer a bounded business choice.
 | Invalid PDF signature | `source.signature_rejected` | reject source, no review |
 | Page/normalization parsing failure | `source.parsing_failed` | fail offering when no trustworthy evidence remains |
 | PDF extraction failure | `source.pdf_extraction_failed` | fail offering when no trustworthy evidence remains |
+| OCR fallback produced nothing | `source.ocr_failed` | recorded after every model attempt and OCR both failed; no values are emitted |
 | Gemini/provider failure | `source.model_failed` | fail offering after bounded attempts, no review |
 | Invalid structured model response | `source.malformed_structured_output` | bounded repair, then safe failure/review only with captured evidence |
 | Other deterministic validation failure | `source.validation_failed` | reject candidate; never fabricate |

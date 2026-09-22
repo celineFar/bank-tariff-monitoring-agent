@@ -14,6 +14,12 @@
 
 FROM python:3.12-slim
 
+# Tesseract with Armenian and English data backs the scanned-PDF OCR fallback.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-hye tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv==0.8.13
 
 WORKDIR /code
@@ -23,7 +29,7 @@ COPY ./pyproject.toml ./README.md ./uv.lock* ./
 COPY ./app ./app
 COPY ./migrations ./migrations
 
-RUN uv sync --frozen
+RUN uv sync --frozen --extra ocr
 RUN uv run playwright install --with-deps chromium
 
 ARG AGENT_VERSION=0.0.0

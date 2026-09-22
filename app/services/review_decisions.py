@@ -78,10 +78,13 @@ class ReviewDecisionService:
                 raise ValueError("override evidence is outside the review scope")
         elif (
             decision.decision_type is ReviewDecisionType.APPROVE
-            and task.reason is not ReviewReason.LARGE_RATE_CHANGE
+            and task.reason
+            not in (ReviewReason.LARGE_RATE_CHANGE, ReviewReason.OCR_EVIDENCE)
         ):
+            # OCR evidence is approvable because the reviewer is confirming a
+            # reading against a page they were shown, not inventing a value.
             raise ValueError(
-                "approve is valid only for a complete large-change candidate"
+                "approve is valid only for a complete large-change or OCR candidate"
             )
 
         snapshot = await self._snapshots.get(task.snapshot_id)

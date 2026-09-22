@@ -288,6 +288,34 @@ class RunMetricsRepository:
             end,
         )
 
+    async def transcription_sources(self, start: datetime, end: datetime):
+        """Which engine produced the stored evidence, digital path versus OCR.
+
+        `extraction_method` is already persisted per knowledge document and per
+        chunk, so the split between Gemini transcription and the OCR fallback is
+        a query over data the pipeline writes rather than new instrumentation.
+        A non-zero `ocr` row means at least one scanned page was recovered by
+        the fallback instead of being dropped.
+        """
+        return await self._query(
+            """
+            SELECT
+                CASE
+                    WHEN extraction_method LIKE 'ocr:%' THEN 'ocr'
+                    WHEN extraction_method LIKE 'gemini_pdf:%' THEN 'gemini_pdf'
+                    ELSE extraction_method
+                END AS transcription_source,
+                count(*) AS documents,
+                round(avg(quality_score)::numeric, 3) AS avg_quality_score
+            FROM knowledge_documents
+            WHERE first_seen_at >= :start AND first_seen_at < :end
+            GROUP BY transcription_source
+            ORDER BY documents DESC
+            """,
+            start,
+            end,
+        )
+
     async def collect(self, start: datetime, end: datetime) -> dict[str, object]:
         return {
             "window": {"from": start.isoformat(), "to": end.isoformat()},
@@ -296,6 +324,7 @@ class RunMetricsRepository:
             "document_retrieval": await self.document_retrieval(start, end),
             "extraction_completeness": await self.extraction_completeness(start, end),
             "evidence_coverage": await self.evidence_coverage(start, end),
+            "transcription_sources": await self.transcription_sources(start, end),
             "validation_signals": await self.validation_signals(start, end),
             "review_rate": await self.review_rate(start, end),
             "review_activity": await self.review_activity(start, end),
