@@ -285,8 +285,28 @@ monitoring, and expect per-stage progress lines, a completed run, an accepted sn
 
 ## 7. Verification checklist for the implementer
 
-- [ ] `grep -rn "list_offering_executions" app/` shows service, protocol, repository, and
+Verified here, without spending model credits or touching the bank's site:
+
+- [x] `grep -rn "list_offering_executions" app/` shows service, protocol, repository, and
       CLI in agreement.
+- [x] `uv run pytest tests/unit` — 491 passed. (`tests/unit/test_build_extraction_review_bundle.py`
+      is a gitignored local leftover importing a module that does not exist; it fails to
+      collect on a clean checkout too and is excluded.)
+- [x] `uv run pytest tests/integration` — 28 passed, 33 skipped; the one failure
+      (`test_agent_stream`, "No API key") and the three `test_server_e2e` errors
+      reproduce on a clean tree and are environmental.
+- [x] `uv run ruff check` and `ruff format --check` pass on every changed file.
+- [x] The composition root builds with the real `.env` settings, so the model chains
+      and price ceilings are consistent.
+- [x] A unit test now fails if `RunService` stops satisfying the CLI's progress port,
+      if the review tool becomes pollable again, or if the chat loop stops containing
+      an unexpected error.
+
+Still open, because they need a live run against the bank's site and the Gemini
+API, and the running containers carry the pre-fix image (the code is baked in,
+not mounted, so `docker compose build` + `up -d` for `api` and `worker` comes
+first):
+
 - [ ] A chat-started run prints: started notice → per-stage lines → terminal status.
 - [ ] The ADK event log for a new session shows **zero** `get_next_monitoring_review`
       calls while the run is merely running.
