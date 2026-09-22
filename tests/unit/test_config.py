@@ -4,6 +4,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.config import Environment, get_settings, load_settings
+from app.services.model_pricing import enforce_model_price_cap
 
 
 def test_defaults_match_the_approved_architecture() -> None:
@@ -21,22 +22,22 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.http.max_retry_delay_seconds == 120
     assert settings.acquisition.browser_enabled is True
     assert settings.acquisition.max_interactions == 100
-    assert settings.pdf_extraction.model_name == "gemini-3.1-flash-lite"
-    assert settings.pdf_extraction.fallback_model_names == (
-        "gemini-3.5-flash-lite",
-        "gemini-3.6-flash",
-    )
-    assert settings.pdf_extraction.max_price_per_million_tokens_usd == 4.0
+    # Transcription and discovery default to the cheapest capable models, and the
+    # price ceilings are tight enough to reject a premium model rather than admit it.
+    assert settings.pdf_extraction.model_name == "gemini-2.5-flash-lite"
+    assert settings.pdf_extraction.fallback_model_names == ("gemini-3.1-flash-lite",)
+    assert settings.pdf_extraction.max_price_per_million_tokens_usd == 1.5
+    assert settings.pdf_extraction.skip_historical is True
     assert settings.source_discovery.max_items_per_batch == 8
     assert settings.source_discovery.max_chars_per_item == 3000
     assert settings.source_discovery.max_chars_per_batch == 18_000
     assert settings.source_discovery.classifier_max_attempts == 3
     assert settings.source_discovery.classifier_backoff_base_seconds == 5.0
-    assert settings.source_discovery.fallback_model_names == (
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite",
-    )
-    assert settings.source_discovery.max_price_per_million_tokens_usd == 4.0
+    assert settings.source_discovery.model_name == "gemini-2.5-flash-lite"
+    assert settings.source_discovery.fallback_model_names == ("gemini-3.1-flash-lite",)
+    assert settings.source_discovery.max_price_per_million_tokens_usd == 1.5
+    assert settings.semantic_extraction.thinking_budget == 0
+    assert settings.semantic_extraction.max_repairs_per_run == 3
     assert settings.intent_resolution.fuzzy_min_score == 0.82
     assert settings.intent_resolution.fuzzy_min_gap == 0.08
     assert settings.intent_resolution.max_candidates == 5
@@ -250,3 +251,17 @@ def test_example_environment_contains_no_api_key() -> None:
     lines = Path(".env.example").read_text(encoding="utf-8").splitlines()
     api_key_line = next(line for line in lines if line.startswith("GEMINI_API_KEY="))
     assert api_key_line == "GEMINI_API_KEY="
+
+
+def test_default_model_chains_satisfy_their_own_price_ceilings() -> None:
+    """A ceiling below its own fallback chain would fail every run at construction."""
+    settings = load_settings(_env_file=None)
+    for group, default_model in (
+        (settings.pdf_extraction, settings.pdf_extraction.model_name),
+        (settings.source_discovery, settings.source_discovery.model_name),
+    ):
+        assert default_model is not None
+        enforce_model_price_cap(
+            tuple(dict.fromkeys((default_model, *group.fallback_model_names))),
+            max_price_per_million_tokens_usd=group.max_price_per_million_tokens_usd,
+        )
