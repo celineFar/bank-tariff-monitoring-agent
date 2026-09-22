@@ -409,3 +409,34 @@ async def test_missing_snapshot_offer_authorizes_confirmed_monitoring() -> None:
     assert context.state["monitoring_original_question"] == (
         "What is the Express Mortgage rate?"
     )
+
+
+@pytest.mark.asyncio
+async def test_bilingual_explicit_comparison_preserves_both_offerings() -> None:
+    resolver = _resolver()
+    english = await resolver.resolve_turn(
+        "How does Overdraft differ from the standard Consumer Loan in amount and fees?"
+    )
+    armenian = await resolver.resolve_turn(
+        "Համեմատիր Օվերդրաֆտ և Սպառողական վարկ տոկոսադրույքը"
+    )
+    expected = {OfferingId.OVERDRAFT, OfferingId.CONSUMER_STANDARD}
+    assert set(english.resolution.offering_ids) == expected
+    assert set(armenian.resolution.offering_ids) == expected
+    assert set(armenian.state.latest_offering_ids) == expected
+    assert not english.resolution.needs_clarification
+
+
+@pytest.mark.asyncio
+async def test_family_rank_resolves_enabled_family_scope() -> None:
+    turn = await _resolver().resolve_turn(
+        "Which consumer loan offering has the lowest nominal interest rate?"
+    )
+    assert turn.resolution.product is ProductType.CONSUMER_LOAN
+    assert set(turn.resolution.offering_ids) == {
+        OfferingId.CONSUMER_STANDARD,
+        OfferingId.OVERDRAFT,
+        OfferingId.CREDIT_LINE,
+        OfferingId.ONLINE_CONSUMER_FINANCE,
+    }
+    assert not turn.resolution.needs_clarification

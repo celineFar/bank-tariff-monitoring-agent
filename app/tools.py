@@ -1,7 +1,9 @@
+import hashlib
 import json
+from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlencode
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from google.adk.tools import ToolContext
 
@@ -18,6 +20,7 @@ from app.domain.monitoring import QuestionCommand, RunCommand, RunStatus, RunTri
 from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
 from app.domain.review import ReviewDecision, ReviewDecisionType
 from app.domain.semantic_extraction import ExtractionField
+from app.domain.structured_tariffs import ResolutionPlan
 from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
 from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
@@ -28,6 +31,8 @@ from app.services.rag_answer import RagAnswerService
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.semantic_extraction import validate_review_field_value
+from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.tariff_queries import (
     CurrentTariffService,
     RunWaitService,
@@ -36,12 +41,17 @@ from app.services.tariff_queries import (
 
 _run_service: RunServicePort | None = None
 _answer_service: RagAnswerService | None = None
+_structured_query_service: StructuredTariffQueryService | None = None
 _request_resolver: RequestResolver | None = None
 _current_tariff_service: CurrentTariffService | None = None
 _tariff_history_service: TariffHistoryService | None = None
 _run_wait_service: RunWaitService | None = None
 _chat_review_service: ChatReviewService | None = None
 _RESOLUTION_STATE_KEY = "intent_resolution"
+_TARIFF_PLAN_KEY = "tariff_resolution_plan"
+_TARIFF_PLAN_USED_KEY = "tariff_resolution_plan_used"
+_TARIFF_LAST_USED_TURN_KEY = "tariff_resolution_last_used_turn"
+_TARIFF_SESSION_KEY = "tariff_resolution_session_id"
 _MONITOR_AUTHORIZATION_KEY = "temp:monitoring_authorization"
 _ACTIVE_RUN_KEY = "monitoring_active_run_id"
 _CHAT_RUN_IDS_KEY = "monitoring_chat_run_ids"
@@ -54,9 +64,10 @@ _REVIEW_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
         "review_id": {"type": "string"},
-        "decision_type": {"type": "string", "enum": [
-            "approve", "select_candidate", "reject_all", "override"
-        ]},
+        "decision_type": {
+            "type": "string",
+            "enum": ["approve", "select_candidate", "reject_all", "override"],
+        },
         "candidate_id": {"type": "string"},
         "override_value": {},
         "reason": {"type": "string"},
@@ -81,17 +92,56 @@ def configure_services(
     tariff_history_service: TariffHistoryService | None = None,
     run_wait_service: RunWaitService | None = None,
     chat_review_service: ChatReviewService | None = None,
+    structured_query_service: StructuredTariffQueryService | None = None,
 ) -> None:
-    global _answer_service, _request_resolver
+    global _answer_service, _request_resolver, _structured_query_service
     global _current_tariff_service, _tariff_history_service, _run_wait_service
     global _chat_review_service
     configure_run_service(run_service)
     _answer_service = answer_service
+    _structured_query_service = structured_query_service
     _request_resolver = request_resolver
     _current_tariff_service = current_tariff_service
     _tariff_history_service = tariff_history_service
     _run_wait_service = run_wait_service
     _chat_review_service = chat_review_service
+
+
+def _current_user_text(tool_context: ToolContext) -> str | None:
+    session = getattr(tool_context, "session", None)
+    if session is None:
+        return None
+    invocation = getattr(tool_context, "invocation_id", None)
+    for event in reversed(list(getattr(session, "events", ()) or ())):
+        if getattr(event, "author", None) != "user":
+            continue
+        if invocation and getattr(event, "invocation_id", None) != invocation:
+            continue
+        parts = getattr(getattr(event, "content", None), "parts", ()) or ()
+        values = [
+            part.text for part in parts if isinstance(getattr(part, "text", None), str)
+        ]
+        if values:
+            return "".join(values)
+    return ""
+
+
+def _tariff_session_id(tool_context: ToolContext) -> str:
+    session = getattr(tool_context, "session", None)
+    session_id = getattr(session, "id", None)
+    if isinstance(session_id, str) and session_id:
+        return session_id
+    saved = tool_context.state.get(_TARIFF_SESSION_KEY)
+    if isinstance(saved, str) and saved:
+        return saved
+    generated = str(uuid4())
+    tool_context.state[_TARIFF_SESSION_KEY] = generated
+    return generated
+
+
+def _tariff_turn_id(tool_context: ToolContext) -> str:
+    invocation = getattr(tool_context, "invocation_id", None)
+    return invocation if isinstance(invocation, str) and invocation else str(uuid4())
 
 
 async def resolve_request(
@@ -104,14 +154,26 @@ async def resolve_request(
             "status": "unavailable",
             "reason_code": "intent.service_unavailable",
         }
+    invocation = getattr(tool_context, "invocation_id", None)
+    if (
+        isinstance(invocation, str)
+        and invocation
+        and tool_context.state.get(_TARIFF_LAST_USED_TURN_KEY) == invocation
+    ):
+        return {"status": "rejected", "reason_code": "intent.turn_already_used"}
+    # Each resolution replaces any prior business-data authorization.
+    tool_context.state[_TARIFF_PLAN_KEY] = None
+    tool_context.state[_TARIFF_PLAN_USED_KEY] = False
+    user_text = _current_user_text(tool_context)
+    if user_text is not None and query != user_text:
+        return {"status": "rejected", "reason_code": "intent.query_mismatch"}
     raw_state = tool_context.state.get(_RESOLUTION_STATE_KEY)
     try:
         state = ConversationResolutionState.model_validate(raw_state or {})
     except ValueError:
         state = ConversationResolutionState()
-    if (
-        normalize_catalog_term(query) in _AFFIRMATIVE_REPLIES
-        and isinstance(tool_context.state.get(_MONITOR_OFFER_KEY), dict)
+    if normalize_catalog_term(query) in _AFFIRMATIVE_REPLIES and isinstance(
+        tool_context.state.get(_MONITOR_OFFER_KEY), dict
     ):
         authorization = dict(tool_context.state[_MONITOR_OFFER_KEY])
         tool_context.state[_MONITOR_OFFER_KEY] = None
@@ -154,6 +216,36 @@ async def resolve_request(
     else:
         tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     result = turn.resolution.model_dump(mode="json")
+    if (
+        resolved_intent
+        in {
+            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+            RequestIntent.GET_CURRENT_TARIFFS,
+            RequestIntent.GET_CHANGE_HISTORY,
+        }
+        and not turn.resolution.needs_clarification
+        and turn.resolution.product is not None
+    ):
+        try:
+            plan = issue_resolution_plan(
+                query,
+                turn.resolution,
+                session_id=_tariff_session_id(tool_context),
+                turn_id=_tariff_turn_id(tool_context),
+            )
+        except ValueError:
+            plan = None
+        if plan is not None:
+            tool_context.state[_TARIFF_PLAN_KEY] = plan.model_dump(mode="json")
+            result["query_plan"] = {
+                "operation": plan.operation.value,
+                "offering_ids": [item.value for item in plan.offering_ids],
+                "fields": [item.value for item in plan.fields],
+                "conditions": plan.conditions,
+                "rank_direction": (
+                    plan.rank_direction.value if plan.rank_direction else None
+                ),
+            }
     active_run_id = tool_context.state.get(_ACTIVE_RUN_KEY)
     if isinstance(active_run_id, str):
         result["active_monitoring_run_id"] = active_run_id
@@ -260,6 +352,35 @@ async def start_tariff_monitoring(
     }
 
 
+async def answer_tariff_query(
+    query: str, tool_context: ToolContext
+) -> dict[str, object]:
+    """Read only the server-held per-turn scope from resolve_request."""
+    if _structured_query_service is None:
+        return {"status": "unavailable", "reason_code": "query.service_unavailable"}
+    raw = tool_context.state.get(_TARIFF_PLAN_KEY)
+    if not isinstance(raw, dict):
+        return {"status": "rejected", "reason_code": "query.plan_absent"}
+    if tool_context.state.get(_TARIFF_PLAN_USED_KEY):
+        return {"status": "rejected", "reason_code": "query.plan_replayed"}
+    try:
+        plan = ResolutionPlan.model_validate(raw)
+        if plan.session_id != _tariff_session_id(tool_context):
+            raise ValueError("session mismatch")
+        invocation = getattr(tool_context, "invocation_id", None)
+        if isinstance(invocation, str) and invocation and plan.turn_id != invocation:
+            raise ValueError("turn mismatch")
+        if hashlib.sha256(query.encode("utf-8")).hexdigest() != plan.question_sha256:
+            raise ValueError("question mismatch")
+        if not plan.issued_at <= datetime.now(UTC) < plan.expires_at:
+            raise ValueError("plan expired")
+    except ValueError:
+        return {"status": "rejected", "reason_code": "query.plan_invalid"}
+    tool_context.state[_TARIFF_PLAN_USED_KEY] = True
+    tool_context.state[_TARIFF_LAST_USED_TURN_KEY] = plan.turn_id
+    return (await _structured_query_service.answer(plan, query)).model_dump(mode="json")
+
+
 async def answer_tariff_question(
     query: str,
     product: Literal["consumer_loan", "mortgage"] | None = None,
@@ -291,8 +412,10 @@ async def get_current_tariffs(
         )
     except ValueError:
         return {"status": "rejected", "reason_code": "current.invalid_scope"}
-    if tool_context is not None and product is not None and any(
-        item.freshness is FreshnessStatus.MISSING for item in result.items
+    if (
+        tool_context is not None
+        and product is not None
+        and any(item.freshness is FreshnessStatus.MISSING for item in result.items)
     ):
         tool_context.state[_MONITOR_OFFER_KEY] = {
             "product": product,
@@ -485,7 +608,8 @@ async def submit_monitoring_review_input(
         run_id = UUID(raw_run_id)
         request = await _chat_review_service.pending_request(run_id)
         item = next(
-            view for view in request.reviews
+            view
+            for view in request.reviews
             if str(view.review_id) == expected_review_id
         )
         decision = ReviewDecision.model_validate(
@@ -505,7 +629,8 @@ async def submit_monitoring_review_input(
             raise ValueError("evidence is outside this review")
         if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
             selected = next(
-                candidate for candidate in item.candidates
+                candidate
+                for candidate in item.candidates
                 if candidate.candidate_id == decision.candidate_id
             )
             if selected.conditions.get("conditions"):
@@ -576,7 +701,9 @@ async def submit_monitoring_review_input(
             decisions=tuple(
                 ReviewResponseItem(
                     review_id=view.review_id,
-                    decision=ReviewDecision.model_validate(choices[str(view.review_id)]),
+                    decision=ReviewDecision.model_validate(
+                        choices[str(view.review_id)]
+                    ),
                 )
                 for view in request.reviews
             )
@@ -585,9 +712,12 @@ async def submit_monitoring_review_input(
         return await get_next_monitoring_review(tool_context)
     try:
         result = await _chat_review_service.resume(
-            run_id, response,
+            run_id,
+            response,
             actor_user_id=str(getattr(tool_context, "user_id", "unknown")),
-            actor_session_id=str(getattr(getattr(tool_context, "session", None), "id", "unknown")),
+            actor_session_id=str(
+                getattr(getattr(tool_context, "session", None), "id", "unknown")
+            ),
         )
     except (ValueError, ReviewNotReadyError):
         tool_context.state[_REVIEW_CHOICES_KEY] = {}

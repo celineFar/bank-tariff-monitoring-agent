@@ -20,6 +20,10 @@ from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
 from app.repositories.reviews import PostgresReviewRepository
 from app.repositories.semantic_extraction import PostgresSemanticExtractionRepository
 from app.repositories.source_discovery import PostgresSourceDiscoveryRepository
+from app.repositories.structured_tariff_query import (
+    PostgresStructuredTariffQueryRepository,
+    PostgresStructuredUnitEmbeddingRepository,
+)
 from app.services.acquisition import build_acquisition_service
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.chat_reviews import ChatReviewService
@@ -52,6 +56,8 @@ from app.services.semantic_extraction import (
     SemanticExtractionService,
 )
 from app.services.source_discovery import SourceDiscoveryService
+from app.services.structured_tariff_query import StructuredTariffQueryService
+from app.services.structured_unit_embeddings import StructuredUnitEmbeddingService
 from app.services.tariff_queries import (
     CurrentTariffService,
     RunWaitService,
@@ -73,6 +79,7 @@ class ApplicationContainer:
     chat_review_service: ChatReviewService
     workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
+    structured_query_service: StructuredTariffQueryService
     request_resolver: RequestResolver
     current_tariff_service: CurrentTariffService
     tariff_history_service: TariffHistoryService
@@ -196,6 +203,24 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             usage_repository=model_usage,
         ),
     )
+    structured_query_service = StructuredTariffQueryService(
+        PostgresStructuredTariffQueryRepository(sessions),
+        StructuredUnitEmbeddingService(
+            PostgresStructuredUnitEmbeddingRepository(sessions),
+            PostgresEmbeddingCache(sessions),
+            GeminiEmbeddingProvider(
+                embedding_client,
+                settings.models.embedding_model,
+                usage_repository=model_usage,
+            ),
+            GeminiQueryEmbeddingProvider(
+                embedding_client,
+                settings.models.embedding_model,
+                usage_repository=model_usage,
+            ),
+            usage_repository=model_usage,
+        ),
+    )
     reviews = PostgresReviewRepository(sessions)
     tariff_pipeline = TariffPipeline(
         catalog=catalog,
@@ -226,6 +251,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         reviews=reviews,
         run_service=run_service,
         answer_service=answer_service,
+        structured_query_service=structured_query_service,
         request_resolver=request_resolver,
         current_tariff_service=CurrentTariffService(
             catalog,

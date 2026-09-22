@@ -477,15 +477,50 @@ in Phase C.
 
 ### E. Resolution, tools, and API
 
-- [ ] Extend resolver output/session state for multiple offering IDs and bounded
+- [x] Extend resolver output/session state for multiple offering IDs and bounded
       operation/field/condition selection; add bilingual comparison tests.
-- [ ] Enforce per-turn `ResolutionPlan` scope authorization before repository access;
+- [x] Enforce per-turn `ResolutionPlan` scope authorization before repository access;
       test absent, stale, replayed, changed-query, and widened-scope calls.
-- [ ] Replace the ADK RAG adapter with `answer_tariff_query` backed by trusted
+- [x] Replace the ADK RAG adapter with `answer_tariff_query` backed by trusted
       resolution state; update root and CLI agent instructions without changing models.
-- [ ] Wire FastAPI and ADK to the same application service in `app/runtime.py`.
-- [ ] Preserve monitoring/HITL flow and add route/tool tests for no acquisition on
+- [x] Wire FastAPI and ADK to the same application service in `app/runtime.py`.
+- [x] Preserve monitoring/HITL flow and add route/tool tests for no acquisition on
       ordinary questions, scope integrity, and controlled insufficient-evidence results.
+
+**Phase E implementation summary (2026-09-22).** Resolution now retains explicit
+multi-offering IDs and bounded operation, field, currency, and ranking selections.
+ADK saves a server-held `ResolutionPlan` tied to the actual user text, session,
+and turn. The replacement `answer_tariff_query` tool accepts only the query
+text, consumes the plan once, and rejects absent, stale, changed-query, replayed,
+or widened calls before data access. The root and CLI agents use that tool;
+their model settings were preserved. FastAPI exposes
+`POST /api/v1/tariffs/query` through the same runtime query service and rejects
+caller-provided scope keys. Monitoring and HITL tools remain available.
+
+Files added: `app/services/structured_query_planning.py`,
+`tests/unit/test_structured_query_planning.py`,
+`tests/unit/test_tariff_query_authorization.py`, and
+`tests/unit/test_structured_query_route.py`. Files modified: `app/domain/intent.py`,
+`app/services/intent_resolution.py`, `app/tools.py`, `app/agent.py`, `app/cli.py`,
+`app/runtime.py`, `app/fast_api_app.py`, `app/api/routes.py`,
+`tests/unit/test_intent_resolution.py`, and `docs/architecture.md`. No files
+removed.
+
+Implementation notes: the plan lives in ADK session state, expires after 30
+minutes, and is bound to the current invocation. `resolve_request` checks its
+query argument against the actual user event before issuing a grant. The API
+issues its own short-lived plan after server-side resolution. Generic or
+ambiguous family questions return controlled unresolved scope; the new API
+request has no caller-settable product/offering fields. Existing
+`POST /api/v1/questions` remains on the legacy RAG service until Phase F.
+The local ADK wiring is staged in code; no deployment was performed. A long
+monitoring/review session may outlive its 30-minute plan and require the user
+to ask the tariff question again, which safely creates a new grant.
+
+Verification: 387 available unit tests passed (excluding the pre-existing
+obsolete import test), 22 PostgreSQL/vertical integration tests passed, and
+Ruff passed on changed Python files. Route tests confirmed that ordinary
+questions never submit monitoring work and that scope keys are rejected.
 
 ### F. Backfill and cutover
 

@@ -413,6 +413,98 @@ class RequestResolver:
                 expects_single_value=False,
             )
 
+        if intent in {
+            None,
+            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+            RequestIntent.GET_CURRENT_TARIFFS,
+            RequestIntent.GET_CHANGE_HISTORY,
+        }:
+            padded_query = f" {normalized_query} "
+            explicit = tuple(
+                _candidate_from_target(
+                    target,
+                    language,
+                    score=1.0,
+                    matched_term=max(
+                        term
+                        for term in target.terms
+                        if _contains_normalized_term(padded_query, term)
+                    ),
+                )
+                for target in self._targets
+                if target.scope is ResolutionScope.OFFERING
+                and any(
+                    _contains_normalized_term(padded_query, term)
+                    for term in target.terms
+                )
+            )
+            if (
+                len(explicit) >= 2
+                and len({candidate.product for candidate in explicit}) == 1
+                and _contains_any(
+                    normalized_query,
+                    (
+                        "compare",
+                        "differ",
+                        "difference",
+                        "versus",
+                        "vs",
+                        "համեմատ",
+                        "համեմատիր",
+                        "տարբեր",
+                        "տարբերությունը",
+                    ),
+                )
+            ):
+                return IntentResolution(
+                    intent=intent or RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+                    language=language,
+                    normalized_query=normalized_query,
+                    method=ResolutionMethod.EXACT,
+                    product=explicit[0].product,
+                    offering_ids=tuple(candidate.offering_id for candidate in explicit),
+                    candidates=exact,
+                    expects_single_value=False,
+                )
+            if (
+                _contains_any(
+                    normalized_query,
+                    (
+                        "lowest",
+                        "highest",
+                        "largest",
+                        "longest",
+                        "ամենացածր",
+                        "ամենաբարձր",
+                        "ամենամեծ",
+                        "ամենաերկար",
+                    ),
+                )
+                and exact
+            ):
+                family = next(
+                    (
+                        candidate
+                        for candidate in exact
+                        if candidate.scope is ResolutionScope.FAMILY
+                    ),
+                    None,
+                )
+                if family is not None:
+                    return IntentResolution(
+                        intent=intent,
+                        language=language,
+                        normalized_query=normalized_query,
+                        method=ResolutionMethod.EXACT,
+                        product=family.product,
+                        offering_ids=tuple(
+                            item.offering_id
+                            for item in self._catalog.enabled_for(family.product)
+                        ),
+                        candidates=exact,
+                        expects_single_value=False,
+                    )
+
         deterministic_candidate = self._deterministic_winner(exact, ranked)
         if intent is not None and deterministic_candidate is not None:
             return self._finalize_candidate(
@@ -800,6 +892,12 @@ class RequestResolver:
                     resolution.offering_id
                     if resolution.product is not None
                     else current.latest_offering_id
+                ),
+                "latest_offering_ids": (
+                    resolution.offering_ids
+                    or ((resolution.offering_id,) if resolution.offering_id else ())
+                    if resolution.product is not None
+                    else current.latest_offering_ids
                 ),
             }
         )

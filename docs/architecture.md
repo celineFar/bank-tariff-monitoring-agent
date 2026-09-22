@@ -63,6 +63,16 @@ shell, or SQL tool.
   (including the pending-review handoff), and `ChatReviewService` for original-chat
   review prompts, workflow resumption, and audited bulk abort,
   retrieval, and `RagAnswerService`.
+- `app/services/structured_query_planning.py`, `app/services/intent_resolution.py`,
+  and `app/tools.py`: deterministic bilingual resolution selects a bounded
+  operation, canonical fields, conditions, and explicit offering IDs. ADK stores
+  a 30-minute `ResolutionPlan` tied to the actual user text, session, and turn;
+  `answer_tariff_query` consumes it once and accepts no model-supplied scope.
+  The existing monitoring/review tools remain separate.
+- `POST /api/v1/tariffs/query`: resolves a query server-side and uses the same
+  `StructuredTariffQueryService` as ADK. It rejects caller-supplied scope fields
+  and never triggers acquisition. The previous `/questions` route remains on
+  its legacy answer service until Phase F acceptance and cutover.
 - `app/services/model_call_usage.py` and `model_call_usage`: redacted, dated paid-tier
   model call/cost ledger shared by direct Gemini adapters and ADK callbacks. The
   read-only `scripts/model_cost_report.py` reports known and unknown costs;

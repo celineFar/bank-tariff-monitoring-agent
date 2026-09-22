@@ -37,7 +37,7 @@ from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbac
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.semantic_extraction import validate_review_field_value
 from app.tools import (
-    answer_tariff_question,
+    answer_tariff_query,
     configure_services,
     get_current_tariffs,
     get_next_monitoring_review,
@@ -109,7 +109,8 @@ cli_agent = Agent(
         "The CLI supplies its final function response when the worker reaches a "
         "terminal or review state. On a failed result, report the exact saved "
         "failure_code without claiming tariff data. On success, answer the original "
-        "question from accepted snapshots with answer_tariff_question. On review, "
+        "question from accepted snapshots with answer_tariff_query using the "
+        "saved query_plan and exact original user text. On review, "
         "call get_next_monitoring_review, show the field, candidate, and evidence, "
         "then call request_input with the returned review_id and response_schema. "
         "After native input, call submit_monitoring_review_input; repeat until "
@@ -125,7 +126,7 @@ cli_agent = Agent(
         get_next_monitoring_review,
         request_input,
         submit_monitoring_review_input,
-        answer_tariff_question,
+        answer_tariff_query,
     ],
 )
 cli_app = App(
@@ -788,6 +789,7 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
         container.tariff_history_service,
         container.run_wait_service,
         container.chat_review_service,
+        structured_query_service=container.structured_query_service,
     )
     runner = Runner(
         app=cli_app,

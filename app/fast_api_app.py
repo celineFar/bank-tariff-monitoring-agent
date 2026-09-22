@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         container.tariff_history_service,
         container.run_wait_service,
         container.chat_review_service,
+        structured_query_service=container.structured_query_service,
     )
     runner = Runner(
         app=adk_app,
@@ -73,6 +74,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.application_container = container
     app.state.run_service = container.run_service
     app.state.answer_service = container.answer_service
+    app.state.structured_query_service = container.structured_query_service
+    app.state.request_resolver = container.request_resolver
     app.state.current_tariff_service = container.current_tariff_service
     app.state.tariff_history_service = container.tariff_history_service
     app.state.review_repository = container.reviews

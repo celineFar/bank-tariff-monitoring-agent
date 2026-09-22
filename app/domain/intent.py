@@ -77,6 +77,7 @@ class IntentResolution(IntentModel):
     method: ResolutionMethod
     product: ProductType | None = None
     offering_id: OfferingId | None = None
+    offering_ids: tuple[OfferingId, ...] = ()
     candidates: tuple[ResolutionCandidate, ...] = ()
     needs_clarification: bool = False
     expects_single_value: bool = False
@@ -87,6 +88,18 @@ class IntentResolution(IntentModel):
             raise ValueError("offering_id requires product")
         if self.product is not None:
             validate_offering_product(self.product, self.offering_id)
+        if len(set(self.offering_ids)) != len(self.offering_ids):
+            raise ValueError("duplicate resolved offering IDs")
+        if self.offering_ids and self.product is None:
+            raise ValueError("resolved offering IDs require product")
+        if any(item.product is not self.product for item in self.offering_ids):
+            raise ValueError("resolved offering outside product family")
+        if (
+            self.offering_id is not None
+            and self.offering_ids
+            and (self.offering_ids != (self.offering_id,))
+        ):
+            raise ValueError("single and multiple offering scopes disagree")
         if self.needs_clarification:
             if self.method is not ResolutionMethod.CLARIFICATION:
                 raise ValueError("clarification requires clarification method")
@@ -145,6 +158,7 @@ class ConversationResolutionState(IntentModel):
     pending_clarification: PendingClarification | None = None
     latest_product: ProductType | None = None
     latest_offering_id: OfferingId | None = None
+    latest_offering_ids: tuple[OfferingId, ...] = ()
 
     @model_validator(mode="after")
     def validate_scope(self) -> ConversationResolutionState:
@@ -155,6 +169,10 @@ class ConversationResolutionState(IntentModel):
                 self.latest_product,
                 self.latest_offering_id,
             )
+        if any(
+            item.product is not self.latest_product for item in self.latest_offering_ids
+        ):
+            raise ValueError("latest offering outside product family")
         return self
 
 

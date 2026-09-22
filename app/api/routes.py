@@ -1,10 +1,10 @@
 from datetime import datetime
 from hmac import compare_digest
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.intent import HistoryQuery, HistoryRequestKind
 from app.domain.models import OfferingId, ProductType
@@ -17,6 +17,7 @@ from app.domain.monitoring import (
     RunTrigger,
 )
 from app.domain.review import ReviewStatus, ReviewTask
+from app.domain.structured_tariffs import TariffQueryResult
 from app.domain.tariff_queries import (
     CurrentTariffResult,
     ReviewHandoff,
@@ -24,8 +25,11 @@ from app.domain.tariff_queries import (
 )
 from app.repositories.contracts import ReviewRepository
 from app.services.chat_reviews import ChatReviewService
+from app.services.intent_resolution import RequestResolver
 from app.services.rag_answer import RagAnswerService
 from app.services.run_service import RunServicePort, run_covers_command
+from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.tariff_queries import (
     CurrentTariffService,
     RunWaitService,
@@ -40,6 +44,12 @@ def _failure(status_code: int, code: str, message: str) -> HTTPException:
         status_code=status_code,
         detail={"code": code, "message": message},
     )
+
+
+class StructuredQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=2, max_length=1000)
 
 
 class RunRequest(BaseModel):
@@ -64,6 +74,14 @@ def get_run_service(request: Request) -> RunServicePort:
 
 def get_answer_service(request: Request) -> RagAnswerService:
     return request.app.state.answer_service
+
+
+def get_structured_query_service(request: Request) -> StructuredTariffQueryService:
+    return request.app.state.structured_query_service
+
+
+def get_request_resolver(request: Request) -> RequestResolver:
+    return request.app.state.request_resolver
 
 
 def get_current_tariff_service(request: Request) -> CurrentTariffService:
@@ -194,6 +212,37 @@ async def answer_question(
         ) from exc
 
 
+@router.post("/tariffs/query", response_model=TariffQueryResult, tags=["tariffs"])
+async def query_structured_tariffs(
+    command: StructuredQueryRequest,
+    service: Annotated[
+        StructuredTariffQueryService, Depends(get_structured_query_service)
+    ],
+    resolver: Annotated[RequestResolver, Depends(get_request_resolver)],
+) -> TariffQueryResult:
+    """Resolve and answer one bounded query without triggering acquisition."""
+    try:
+        resolution = (await resolver.resolve_turn(command.query)).resolution
+        plan = issue_resolution_plan(
+            command.query,
+            resolution,
+            session_id=f"api-{uuid4()}",
+            turn_id=str(uuid4()),
+        )
+    except ValueError as exc:
+        raise _failure(422, "query.unresolved_scope", str(exc)) from exc
+    try:
+        return await service.answer(plan, command.query)
+    except ValueError as exc:
+        raise _failure(422, "query.invalid_scope", str(exc)) from exc
+    except Exception as exc:
+        raise _failure(
+            503,
+            "query.persistence_failed",
+            "Tariff evidence is temporarily unavailable.",
+        ) from exc
+
+
 @router.get(
     "/tariffs/current",
     response_model=CurrentTariffResult,
@@ -286,7 +335,9 @@ async def abort_pending_reviews(
 ) -> dict[str, object]:
     configured = request.app.state.settings.hitl.review_admin_token
     if configured is None or not configured.get_secret_value():
-        raise _failure(503, "review.abort_not_configured", "Review abort is not configured")
+        raise _failure(
+            503, "review.abort_not_configured", "Review abort is not configured"
+        )
     if admin_token is None or not compare_digest(
         admin_token, configured.get_secret_value()
     ):
@@ -295,7 +346,9 @@ async def abort_pending_reviews(
     try:
         return await service.abort_all()
     except Exception as exc:
-        raise _failure(503, "review.abort_failed", "Review abort could not complete") from exc
+        raise _failure(
+            503, "review.abort_failed", "Review abort could not complete"
+        ) from exc
 
 
 @router.get("/reviews/{review_id}", response_model=ReviewTask, tags=["reviews"])

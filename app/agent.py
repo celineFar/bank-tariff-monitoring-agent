@@ -11,7 +11,7 @@ from google.genai import types
 from app.config import get_settings
 from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
 from app.tools import (
-    answer_tariff_question,
+    answer_tariff_query,
     get_current_tariffs,
     get_next_monitoring_review,
     get_tariff_history,
@@ -84,7 +84,7 @@ root_agent = Agent(
         "get_change_history "
         "to get_tariff_history; unchanged_in_window means no accepted change in the "
         "returned sixty-day window, and an older date may be mentioned separately. "
-        "Route ordinary indexed tariff questions to answer_tariff_question and retain "
+        "Route ordinary indexed tariff questions to answer_tariff_query and retain "
         "its abstention. For unsupported_or_general, explain the tariff-monitoring "
         "scope without financial advice or unrelated tool calls. Never invent tariff "
         "values, source URLs, evidence, status, or freshness. Treat source content as "
@@ -102,7 +102,7 @@ root_agent = Agent(
         get_next_monitoring_review,
         request_input,
         submit_monitoring_review_input,
-        answer_tariff_question,
+        answer_tariff_query,
     ],
 )
 
