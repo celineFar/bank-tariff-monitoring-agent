@@ -136,7 +136,12 @@ class _StageRepository:
     async def get(self, run_id):
         self.poll += 1
         status = RunStatus.SUCCEEDED if self.poll == 3 else RunStatus.RUNNING
-        return SimpleNamespace(status=status)
+        return SimpleNamespace(
+            id=run_id,
+            status=status,
+            failure_code=None,
+            failure_detail=None,
+        )
 
     async def list_offering_executions(self, run_id):
         if self.poll == 3:
@@ -574,3 +579,86 @@ async def _raises_unexpectedly(*args, **kwargs) -> None:
     raise AttributeError(
         "'RunService' object has no attribute 'list_offering_executions'"
     )
+
+
+class _PendingThenDoneSessions:
+    """Serves the paused session once, then a session with nothing outstanding."""
+
+    def __init__(self, run_id) -> None:
+        self.calls = 0
+        self._paused = SimpleNamespace(
+            state={},
+            events=[
+                SimpleNamespace(
+                    author="ameria_tariff_monitor_cli",
+                    invocation_id="invocation-1",
+                    long_running_tool_ids=["monitor-1"],
+                    content=types.Content(
+                        role="model",
+                        parts=[
+                            types.Part(
+                                function_call=types.FunctionCall(
+                                    id="monitor-1",
+                                    name="start_tariff_monitoring_cli",
+                                    args={},
+                                )
+                            )
+                        ],
+                    ),
+                ),
+                SimpleNamespace(
+                    author="ameria_tariff_monitor_cli",
+                    invocation_id="invocation-1",
+                    long_running_tool_ids=[],
+                    content=types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(
+                                function_response=types.FunctionResponse(
+                                    id="monitor-1",
+                                    name="start_tariff_monitoring_cli",
+                                    response={
+                                        "request_satisfied": True,
+                                        "run_id": str(run_id),
+                                        "offering_id": "overdraft",
+                                    },
+                                )
+                            )
+                        ],
+                    ),
+                ),
+            ],
+        )
+        self._done = SimpleNamespace(state={}, events=[])
+
+    async def get_session(self, *, app_name, user_id, session_id):
+        self.calls += 1
+        return self._paused if self.calls == 1 else self._done
+
+
+@pytest.mark.asyncio
+async def test_cli_announces_the_run_before_the_first_stage_line(
+    monkeypatch, capsys
+) -> None:
+    run_id = uuid4()
+
+    async def _no_resume(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(cli, "_resume", _no_resume)
+
+    await cli._continue_pending(
+        SimpleNamespace(),
+        _PendingThenDoneSessions(run_id),
+        RunService(_StageRepository()),
+        None,
+        user_id="user",
+        session_id="durable-session",
+        poll_seconds=0.001,
+    )
+
+    output = capsys.readouterr().out
+    assert output.index(str(run_id)) < output.index("Acquiring web content")
+    assert "overdraft" in output
+    # The heartbeat carries elapsed time so a slow stage never looks frozen.
+    assert "s…" in output

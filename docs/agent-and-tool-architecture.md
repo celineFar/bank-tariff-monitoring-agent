@@ -65,7 +65,7 @@ Nine tools, each doing one thing and re-checking its own authorization:
 | `get_tariff_history` | Read accepted snapshot and change history in a bounded window. | — |
 | `start_tariff_monitoring` | Submit a typed `RunCommand` through `RunService`. | the one-use authorization is missing, stale, mismatched, or non-monitoring |
 | `wait_for_monitoring_run` | Poll persisted run state for at most two minutes. | — always returns durable state, never a guess |
-| `get_next_monitoring_review` | Fetch the next review item with its evidence for this chat's run. | the run is not owned by this chat |
+| `get_next_monitoring_review` | Fetch the next review item with its evidence for this chat's run. A run that is merely running answers `in_progress` with `action: stop_and_wait` and no live detail, so it cannot be used as a status poller. | the run is not owned by this chat, or the CLI still owes the final result of a long-running monitoring call (`review.awaiting_cli_result`) |
 | `request_input` | ADK's native durable pause. | — |
 | `submit_monitoring_review_input` | Read the human's actual ADK function response, validate it against the pending review and saved evidence, and resume the worker's workflow. | the decision type is not allowed, the candidate is unknown, or the review ID does not match |
 

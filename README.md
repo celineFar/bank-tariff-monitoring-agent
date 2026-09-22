@@ -67,6 +67,38 @@ The ADK playground can be started with `agents-cli playground` after dependencie
 installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured
 model credentials and an indexed local corpus.
 
+## Demonstrations
+
+Recorded demonstrations live under [`artifacts/demonstrations/`](artifacts/demonstrations/).
+Numbered `run_NNN/` directories hold the markdown transcripts written by
+`scripts/run_demonstration.py` — one file per deliverable scenario, each claiming a
+fresh directory so an earlier run is never overwritten. How to reproduce them is
+described in [demonstrations](docs/demonstrations.md).
+
+[`artifacts/demonstrations/extraction_pipeline_demonstration/`](artifacts/demonstrations/extraction_pipeline_demonstration/)
+is the printable walkthrough of one real page as it moves through the four extraction
+stages. Each PDF shows the same document again, so the stages can be read side by side
+and the effect of each one is visible rather than described:
+
+1. [`1_acquired_content.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/1_acquired_content.pdf)
+   — **acquisition**. The bank page exactly as it was retrieved: the rendered content
+   captured as markdown, links and menus included, before anything is cleaned up.
+2. [`2_acquired_content_normalized.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/2_acquired_content_normalized.pdf)
+   — **normalization**. The same page after deterministic structural normalization,
+   with the transformations annotated in place: removed source content in red
+   strikethrough, added normalized content on a green highlight.
+3. [`3_source_discovery.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/3_source_discovery.pdf)
+   — **source discovery**. The normalized document in its original order under a
+   selection overlay, one labelled band per block: green for selected current
+   material, orange for selected-with-uncertainty, gray for historical and blue for
+   future material kept only for audit, white for content that was not selected. Each
+   band carries the block id, its classification and the reason for the decision.
+4. [`4_semantic_extraction.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/4_semantic_extraction.pdf)
+   — **semantic extraction**. Every requested field with its outcome — extracted, not
+   stated, or not sent to the model — its JSON value, and the document overlay
+   underneath in which only the exact quotations the model cited are highlighted, so
+   each accepted value can be traced back to the text it came from.
+
 ## Local logs
 
 `docker compose logs -f --tail=200 worker api` shows live console output. Compose also

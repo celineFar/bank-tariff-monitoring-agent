@@ -116,8 +116,12 @@ cli_agent = Agent(
         "cover and call it again only after they confirm that wider scope. "
         "This long-running "
         "tool starts the worker and pauses this invocation; do not call it twice. "
-        "The CLI supplies its final function response when the worker reaches a "
-        "terminal or review state. On a failed result, report the saved "
+        "When it returns, say in one short line that the run has started, then end "
+        "your turn. Do not call any tool to check on a run that is already "
+        "running: the CLI narrates its progress and supplies the final function "
+        "response when the worker reaches a terminal or review state. A tool that "
+        "answers with action stop_and_wait means exactly that; asking again "
+        "cannot change it. On a failed result, report the saved "
         "failure_summary and the exact failure_code, without claiming tariff "
         "data. On success, answer the original "
         "question from accepted snapshots with answer_tariff_query using the "
@@ -232,6 +236,7 @@ async def _resume(
 
 
 _STAGE_LABELS = {
+    "starting": "Starting",
     "acquisition": "Acquiring web content",
     "normalization": "Reading source documents",
     "source_discovery": "Finding tariff evidence",
@@ -242,12 +247,20 @@ _STAGE_LABELS = {
     "review_approved": "Review approved",
     "review_rejected": "Review rejected",
     "published": "Snapshot published",
+    "internal": "Recovering from an internal error",
 }
+
+
+def _elapsed(started: float) -> str:
+    seconds = int(monotonic() - started)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
 
 
 async def _wait_for_run(run_service: RunProgressPort, run_id: UUID, seconds: float):
     last_progress = None
     last_message_at = 0.0
+    started = monotonic()
     while True:
         run = await run_service.get(run_id)
         if run is None:
@@ -260,6 +273,8 @@ async def _wait_for_run(run_service: RunProgressPort, run_id: UUID, seconds: flo
         )
         progress = (run.status.value, active)
         now = monotonic()
+        # A stage can outlast the poll interval by minutes, so repeat the line
+        # it is on with the elapsed time rather than leaving a still cursor.
         if progress != last_progress or (
             run.status is RunStatus.RUNNING and now - last_message_at >= 30
         ):
@@ -268,14 +283,15 @@ async def _wait_for_run(run_service: RunProgressPort, run_id: UUID, seconds: flo
                     label = _STAGE_LABELS.get(
                         stage, stage.replace("_", " ").capitalize()
                     )
-                    _notice(f"{label} · {offering_id}…")
+                    _notice(f"{label} · {offering_id} · {_elapsed(started)}…")
             elif run.status is RunStatus.QUEUED:
-                _notice("Waiting for the worker…")
+                _notice(f"Waiting for the worker · {_elapsed(started)}…")
             elif run.status is RunStatus.RUNNING:
-                _notice("Monitoring is still running…")
+                _notice(f"Monitoring is still running · {_elapsed(started)}…")
             else:
                 _notice(
-                    f"Monitoring {run.status.value.replace('_', ' ')}.",
+                    f"Monitoring {run.status.value.replace('_', ' ')} "
+                    f"after {_elapsed(started)}.",
                     tone="green" if run.status is RunStatus.SUCCEEDED else "yellow",
                     symbol="✓" if run.status is RunStatus.SUCCEEDED else "•",
                 )
@@ -307,6 +323,12 @@ async def _continue_pending(
             result = pending.initial_response or {}
             if not result.get("request_satisfied") or not result.get("run_id"):
                 return
+            scope = result.get("offering_id") or result.get("product") or "monitoring"
+            _notice(
+                f"Monitoring run {result['run_id']} started for {scope}. "
+                "Progress appears here as each stage completes.",
+                symbol="▶",
+            )
             run = await _wait_for_run(
                 run_service, UUID(str(result["run_id"])), poll_seconds
             )

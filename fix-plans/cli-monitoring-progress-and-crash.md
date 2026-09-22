@@ -66,30 +66,33 @@ calls that bought nothing — directly against the cost-bounding goal of commit 
 Make the tool boundary enforce the hand-off rather than relying on instruction wording,
 and keep a heartbeat visible from the moment the run is submitted.
 
-### 2.3 To-do
+### 2.3 To-do — done (commit for phase A)
 
-- [ ] In `get_next_monitoring_review` ([app/tools.py:516](app/tools.py#L516)), stop
+- [x] In `get_next_monitoring_review` ([app/tools.py:516](app/tools.py#L516)), stop
       returning live run status as a pollable result. When the run exists but is neither
       `AWAITING_REVIEW` nor terminal, return
       `{"status": "in_progress", "reason_code": "review.run_not_ready", "action":
       "stop_and_wait"}` with no other fields, so there is nothing for the model to loop on.
-- [ ] Track the unanswered long-running call in session state (set a key such as
-      `monitoring_awaiting_cli_result` when `start_tariff_monitoring_cli` returns, clear
-      it when the CLI resumes the call). While it is set, have
-      `get_next_monitoring_review` reject with `review.awaiting_cli_result`.
-- [ ] Tighten the CLI agent instruction ([app/cli.py:97-126](app/cli.py#L97-L126)): after
+- [x] Detect the unanswered long-running call and reject with
+      `review.awaiting_cli_result`. Built by reading the session's own events for a
+      `start_tariff_monitoring_cli` call with no matching response, rather than the
+      planned state key: the CLI resumes that call from outside any tool, so a state
+      key would have had no owner to clear it and could have stuck the chat.
+- [x] Tighten the CLI agent instruction ([app/cli.py:97-126](app/cli.py#L97-L126)): after
       `start_tariff_monitoring_cli` returns, emit one short line for the user and end the
       turn; never call any tool to check progress; the CLI supplies the result.
-- [ ] Print an immediate "Monitoring run <id> started for <offering>…" notice as soon as
+- [x] Print an immediate "Monitoring run <id> started for <offering>…" notice as soon as
       `_continue_pending` picks up the pending call, before the first poll, so there is
       never a silent gap.
-- [ ] Extend `_STAGE_LABELS` with the stages it currently misses (`validation`,
-      `change_detection`, and any other name `stage(...)` passes in
-      `monitoring_pipeline.refresh`) after auditing the full stage list; unknown stages
-      already fall back to a title-cased name, but the labels should be deliberate.
-- [ ] Show elapsed time on the repeating heartbeat (`_wait_for_run` already re-prints
+- [x] Audited the full stage vocabulary the pipeline and review repository write:
+      `acquisition`, `normalization`, `source_discovery`, `semantic_extraction`,
+      `previous_snapshot`, `embedding`, `publication`, `review_approved`,
+      `review_rejected`, plus `starting` and `internal`. There is no `validation`
+      or `change_detection` stage; only `starting` and `internal` were missing
+      from `_STAGE_LABELS`, and both are now labelled.
+- [x] Show elapsed time on the repeating heartbeat (`_wait_for_run` already re-prints
       every 30s) so a long stage does not look frozen.
-- [ ] Tests: a unit test asserting `get_next_monitoring_review` returns the non-pollable
+- [x] Tests: a unit test asserting `get_next_monitoring_review` returns the non-pollable
       shape for a `RUNNING` run and rejects while a CLI result is pending; a CLI test
       asserting the "started" notice precedes the first stage line.
 

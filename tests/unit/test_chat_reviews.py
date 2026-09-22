@@ -140,9 +140,7 @@ class _Workflow:
                 task.model_copy(update={"status": ReviewStatus.REJECTED})
                 for task in self.reviews.tasks
             )
-        return MonitoringWorkflowResult(
-            run_id=kwargs["run_id"], status=self.status
-        )
+        return MonitoringWorkflowResult(run_id=kwargs["run_id"], status=self.status)
 
 
 class _Context:
@@ -228,7 +226,9 @@ async def test_native_chat_review_requires_adk_input_and_resumes_worker() -> Non
         assert first["review"]["evidence"][0]["excerpt"] == "Official rate is 12.5%"
         assert first["response_schema"]["required"] == ["review_id", "decision_type"]
         assert first["response_schema"]["properties"]["decision_type"]["enum"] == [
-            "select_candidate", "reject_all", "override"
+            "select_candidate",
+            "reject_all",
+            "override",
         ]
 
         untrusted_text = await submit_monitoring_review_input(_Context(state))
@@ -238,7 +238,10 @@ async def test_native_chat_review_requires_adk_input_and_resumes_worker() -> Non
         rejected = await submit_monitoring_review_input(
             _Context(
                 state,
-                {"review_id": first["review"]["review_id"], "decision_type": "reject_all"},
+                {
+                    "review_id": first["review"]["review_id"],
+                    "decision_type": "reject_all",
+                },
             )
         )
     finally:
@@ -248,7 +251,9 @@ async def test_native_chat_review_requires_adk_input_and_resumes_worker() -> Non
     assert len(workflow.calls) == 1
     sent = workflow.calls[0]["response"]
     assert {item.review_id for item in sent.decisions} == {task.id for task in tasks}
-    assert {item.decision.decision_type.value for item in sent.decisions} == {"reject_all"}
+    assert {item.decision.decision_type.value for item in sent.decisions} == {
+        "reject_all"
+    }
     assert runs.audits == ["review.chat_resume_requested"]
 
 
@@ -257,7 +262,9 @@ async def test_chat_review_rejects_answer_for_another_review() -> None:
     run = _run()
     task = _review(run)
     workflow = _Workflow()
-    service = ChatReviewService(runs=_Runs(run), reviews=_Reviews((task,)), workflow=workflow)
+    service = ChatReviewService(
+        runs=_Runs(run), reviews=_Reviews((task,)), workflow=workflow
+    )
     state = {"monitoring_active_run_id": str(run.id), "monitoring_review_choices": {}}
     configure_services(_Runs(run), None, chat_review_service=service)
     try:
@@ -277,9 +284,7 @@ async def test_review_response_without_saved_adk_interrupt_is_rejected() -> None
     task = _review(run)
     runs = _Runs(run)
     workflow = _Workflow()
-    service = ChatReviewService(
-        runs=runs, reviews=_Reviews((task,)), workflow=workflow
-    )
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
     state = {
         "monitoring_active_run_id": str(run.id),
         "monitoring_review_current_id": str(task.id),
@@ -302,9 +307,7 @@ async def test_review_response_without_saved_adk_interrupt_is_rejected() -> None
 async def test_chat_reply_after_admin_abort_reports_terminal_run() -> None:
     run = _run(RunStatus.FAILED)
     runs = _Runs(run)
-    service = ChatReviewService(
-        runs=runs, reviews=_Reviews(()), workflow=_Workflow()
-    )
+    service = ChatReviewService(runs=runs, reviews=_Reviews(()), workflow=_Workflow())
     review_id = str(uuid4())
     state = {
         "monitoring_active_run_id": str(run.id),
@@ -342,9 +345,7 @@ async def test_successful_chat_review_answers_original_question() -> None:
     task = _review(run)
     runs = _Runs(run)
     workflow = _Workflow(status=RunStatus.SUCCEEDED)
-    service = ChatReviewService(
-        runs=runs, reviews=_Reviews((task,)), workflow=workflow
-    )
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
     answer = _AnswerService()
     state = {
         "monitoring_active_run_id": str(run.id),
@@ -439,8 +440,11 @@ async def test_abort_api_requires_configured_admin_token() -> None:
         )
     assert unconfigured.status_code == 503
 
+
 @pytest.mark.asyncio
-async def test_adk_native_input_resumes_original_session_and_is_visible_to_tool() -> None:
+async def test_adk_native_input_resumes_original_session_and_is_visible_to_tool() -> (
+    None
+):
     from google.adk.agents import Agent
     from google.adk.apps import App, ResumabilityConfig
     from google.adk.models.base_llm import BaseLlm
@@ -471,7 +475,9 @@ async def test_adk_native_input_resumes_original_session_and_is_visible_to_tool(
                 )
             elif self.calls == 2:
                 part = types.Part(
-                    function_call=types.FunctionCall(name="capture_native_reply", args={})
+                    function_call=types.FunctionCall(
+                        name="capture_native_reply", args={}
+                    )
                 )
             else:
                 part = types.Part(text="Review response received")
@@ -534,7 +540,8 @@ async def test_adk_native_input_resumes_original_session_and_is_visible_to_tool(
         part.function_response.response
         for event in resumed
         for part in (event.content.parts if event.content else ())
-        if part.function_response and part.function_response.name == "capture_native_reply"
+        if part.function_response
+        and part.function_response.name == "capture_native_reply"
     ]
     assert captured == [response]
     assert any(
@@ -562,9 +569,7 @@ async def test_indefinite_term_candidate_resumes_review_workflow() -> None:
     )
     runs = _Runs(run)
     workflow = _Workflow(status=RunStatus.SUCCEEDED)
-    service = ChatReviewService(
-        runs=runs, reviews=_Reviews((task,)), workflow=workflow
-    )
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
     state = {
         "monitoring_active_run_id": str(run.id),
         "monitoring_review_choices": {},
@@ -612,9 +617,7 @@ async def test_invalid_term_candidate_is_rejected_before_workflow_resume() -> No
     )
     runs = _Runs(run)
     workflow = _Workflow()
-    service = ChatReviewService(
-        runs=runs, reviews=_Reviews((task,)), workflow=workflow
-    )
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
     response = MonitoringReviewResponse(
         decisions=(
             ReviewResponseItem(
@@ -629,7 +632,8 @@ async def test_invalid_term_candidate_is_rejected_before_workflow_resume() -> No
 
     with pytest.raises(ValueError, match="does not match the field schema"):
         await service.resume(
-            run.id, response,
+            run.id,
+            response,
             actor_user_id="reviewer-1",
             actor_session_id="original-chat-1",
         )
@@ -674,9 +678,7 @@ async def test_on_demand_text_override_can_resume_review() -> None:
     )
     runs = _Runs(run)
     workflow = _Workflow(status=RunStatus.SUCCEEDED)
-    service = ChatReviewService(
-        runs=runs, reviews=_Reviews((task,)), workflow=workflow
-    )
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
     state = {
         "monitoring_active_run_id": str(run.id),
         "monitoring_review_choices": {},
@@ -701,3 +703,121 @@ async def test_on_demand_text_override_can_resume_review() -> None:
 
     assert result["status"] == "succeeded"
     assert len(workflow.calls) == 1
+
+
+class _MonitoringContext:
+    """A chat whose long-running monitoring call is still unanswered."""
+
+    def __init__(self, state: dict, *, answered: bool) -> None:
+        self.state = state
+        self.user_id = "reviewer-1"
+        self.user_content = types.Content(role="user", parts=[types.Part(text="yes")])
+        events = [
+            SimpleNamespace(
+                author="ameria_tariff_monitor_cli",
+                content=types.Content(
+                    role="model",
+                    parts=[
+                        types.Part(
+                            function_call=types.FunctionCall(
+                                id="monitor-1",
+                                name="start_tariff_monitoring_cli",
+                                args={"product": "consumer_loan"},
+                            )
+                        )
+                    ],
+                ),
+            )
+        ]
+        if answered:
+            events.append(
+                SimpleNamespace(
+                    author="user",
+                    content=types.Content(
+                        role="user",
+                        parts=[
+                            types.Part(
+                                function_response=types.FunctionResponse(
+                                    id="monitor-1",
+                                    name="start_tariff_monitoring_cli",
+                                    response={"status": "failed"},
+                                )
+                            )
+                        ],
+                    ),
+                )
+            )
+        self.session = SimpleNamespace(id="original-chat-1", events=events)
+
+
+@pytest.mark.asyncio
+async def test_review_tool_refuses_while_the_cli_owes_a_monitoring_result() -> None:
+    """The model polled this tool 45 times during one run; it must not pay for that."""
+    run = _run(RunStatus.RUNNING)
+    runs = _Runs(run)
+    service = ChatReviewService(runs=runs, reviews=_Reviews(()), workflow=_Workflow())
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_chat_run_ids": [str(run.id)],
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        answer = await get_next_monitoring_review(
+            _MonitoringContext(state, answered=False)
+        )
+    finally:
+        configure_services(None, None, chat_review_service=None)
+
+    assert answer == {
+        "status": "rejected",
+        "reason_code": "review.awaiting_cli_result",
+        "action": "stop_and_wait",
+    }
+
+
+@pytest.mark.asyncio
+async def test_review_tool_reports_a_running_run_without_pollable_detail() -> None:
+    run = _run(RunStatus.RUNNING)
+    runs = _Runs(run)
+    service = ChatReviewService(runs=runs, reviews=_Reviews(()), workflow=_Workflow())
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_chat_run_ids": [str(run.id)],
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        answer = await get_next_monitoring_review(
+            _MonitoringContext(state, answered=True)
+        )
+    finally:
+        configure_services(None, None, chat_review_service=None)
+
+    assert answer["status"] == "in_progress"
+    assert answer["action"] == "stop_and_wait"
+    # Nothing here changes between polls, so there is nothing to poll for.
+    assert "failure_code" not in answer
+    assert "current_stage" not in answer
+
+
+@pytest.mark.asyncio
+async def test_review_tool_explains_a_failed_run_in_words_and_code() -> None:
+    run = _run(RunStatus.FAILED).model_copy(
+        update={"failure_code": "source.model_failed"}
+    )
+    runs = _Runs(run)
+    service = ChatReviewService(runs=runs, reviews=_Reviews(()), workflow=_Workflow())
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_chat_run_ids": [str(run.id)],
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        answer = await get_next_monitoring_review(
+            _MonitoringContext(state, answered=True)
+        )
+    finally:
+        configure_services(None, None, chat_review_service=None)
+
+    assert answer["status"] == "failed"
+    assert answer["failure_code"] == "source.model_failed"
+    assert "no configured model was available" in answer["failure_summary"]

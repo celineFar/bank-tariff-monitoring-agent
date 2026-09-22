@@ -23,6 +23,7 @@ from app.domain.semantic_extraction import ExtractionField
 from app.domain.structured_tariffs import ResolutionPlan
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
+from app.services.failure_mapping import explain_failure_code
 from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
     MONITORING_WORKFLOW_APP_NAME,
@@ -513,12 +514,39 @@ def _switch_chat_run(tool_context: ToolContext, run_id: str) -> None:
     tool_context.state[_REVIEW_CURRENT_KEY] = saved.get("current_review_id")
 
 
+def _awaiting_cli_monitoring_result(tool_context: ToolContext) -> bool:
+    """Whether a CLI monitoring call is still waiting for the CLI's own result.
+
+    `start_tariff_monitoring_cli` is long-running: the CLI narrates the run and
+    supplies the final function response. Until it does, there is nothing this
+    chat can learn by asking again, and every ask costs a model round trip.
+    """
+    events = list(getattr(tool_context.session, "events", ()) or ())
+    answered: set[str] = set()
+    pending: set[str] = set()
+    for event in events:
+        for part in getattr(event.content, "parts", None) or ():
+            call = getattr(part, "function_call", None)
+            if call is not None and call.name == "start_tariff_monitoring_cli":
+                pending.add(call.id)
+            response = getattr(part, "function_response", None)
+            if response is not None and response.name == "start_tariff_monitoring_cli":
+                answered.add(response.id)
+    return bool(pending - answered)
+
+
 async def get_next_monitoring_review(
     tool_context: ToolContext, run_id: str | None = None
 ) -> dict[str, object]:
     """Get the next evidence-bound review item for this conversation's run."""
     if _chat_review_service is None or _run_service is None:
         return {"status": "unavailable", "reason_code": "review.service_unavailable"}
+    if _awaiting_cli_monitoring_result(tool_context):
+        return {
+            "status": "rejected",
+            "reason_code": "review.awaiting_cli_result",
+            "action": "stop_and_wait",
+        }
     known_run_ids = tool_context.state.get(_CHAT_RUN_IDS_KEY) or []
     if run_id is not None:
         if run_id not in known_run_ids:
@@ -532,10 +560,23 @@ async def get_next_monitoring_review(
     if run is None:
         return {"status": "rejected", "reason_code": "review.run_missing"}
     if run.status is not RunStatus.AWAITING_REVIEW:
+        if not run.status.is_terminal:
+            # Deliberately carries no live detail: a tool that reports a
+            # running run's stage invites the model to poll it, and each poll
+            # is a model call that tells the user nothing.
+            return {
+                "status": "in_progress",
+                "run_id": raw_run_id,
+                "reason_code": "review.run_not_ready",
+                "action": "stop_and_wait",
+            }
         return {
             "status": run.status.value,
             "run_id": raw_run_id,
             "failure_code": run.failure_code,
+            "failure_summary": explain_failure_code(run.failure_code)
+            if run.failure_code
+            else None,
             "failure_detail": run.failure_detail,
             "original_question": tool_context.state.get(_ORIGINAL_QUESTION_KEY),
         }
