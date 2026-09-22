@@ -7,10 +7,17 @@ line per criterion. The process exits `0` only when every criterion of every
 selected scenario passed, so a reviewer does not have to interpret the output.
 
 Scenarios are deterministic and offline. They drive the real application
-services — the run lifecycle, snapshot comparison, review repository, URL
-allowlist, HTTP retriever, retry policy, failure mapping, projection, and the
-structured query service — against a disposable `_test` database and fixture
-data. No demonstration touches the bank website or spends model credits.
+services — the run lifecycle, snapshot admission and comparison, review
+repository, URL allowlist, HTTP retriever, retry policy, failure mapping,
+projection, and the structured query service — against a disposable `_test`
+database. No demonstration touches the bank website or spends model credits.
+
+Deliverable 9 runs on a **recorded live capture** rather than fixture data: it
+replays the newest readable `end-to-end/run_NNN` written by
+`scripts/demonstrate_end_to_end.py`, so the page text and the Gemini output on
+screen are the real ones. The other scenarios use the synthetic corpus in
+`tests/fixtures/`. Each scenario also writes a markdown transcript under
+`artifacts/demonstrations/` for screenshots; pass `--no-audit` to skip it.
 
 ## Setup
 
@@ -35,11 +42,24 @@ uv run python scripts/run_demonstration.py --scenario hitl --scenario failures
 echo $?   # 0 only when every criterion passed
 ```
 
+To record a fresh capture for the `extraction` scenario, or to replay a
+specific one:
+
+```bash
+uv run python scripts/demonstrate_end_to_end.py \
+  https://ameriabank.am/en/personal/loans/consumer-loans/overdraft
+DEMONSTRATION_CAPTURE=run_006 uv run python scripts/run_demonstration.py \
+  --scenario extraction
+```
+
+The capture must be of a seed URL in `app/config/seed_catalog.yaml`, so that
+the replayed extraction belongs to a catalog offering.
+
 ## What a successful run shows
 
 | Scenario | Deliverable | Criteria that must pass |
 |---|---|---|
-| `extraction` | 9 — normal tariff extraction | answered from accepted data; both requested rate fields returned; every value cited; each citation has an exact quote and locator; AMD and USD stay separate; the accepted as-of time is reported |
+| `extraction` | 9 — normal tariff extraction | every quote the model cited is found verbatim in the captured source text; the extraction clears deterministic admission with no review signal; the question is answered from stored data; both requested rate fields returned; every value cited; each citation has an exact quote and locator; the stored as-of time is reported |
 | `change-detection` | 10 — tariff change detection | the rate change between two accepted runs is detected; only that field is reported changed; two snapshots with equal disclosed values raise no alert; a history question answers; each change carries both previous and current evidence |
 | `document-processing` | 11 — digital PDF and scanned fallback | at least one real bank PDF is probed; PDFs with a text layer classify as `machine_readable` or `mixed`; a page with no text layer classifies as `image_only`; the prober reports zero characters rather than guessing |
 | `hitl` | 12 — human-in-the-loop | a jump past the threshold raises a signal without the model; the candidate is stored `review_required`, never auto-accepted; the reviewer gets candidate value, previous value and an evidence link; answers during review still show the older accepted value; the decision records its reviewer; the queue clears |
@@ -59,12 +79,17 @@ half-written scenario cannot report a pass.
 - **Transport failures are scripted** through `httpx.MockTransport` so the run
   is reproducible offline. The retriever, allowlist, retry policy, and failure
   mapping are the production code paths; only the socket is simulated.
-- **The read side, not live acquisition.** Deliverable 9 demonstrates an
-  accepted snapshot being projected and answered with evidence. The live
-  acquisition pipeline needs the bank website and Gemini; use
-  `scripts/demonstrate_end_to_end.py` for that.
-- **Fixture values are synthetic.** The numbers come from
-  `tests/fixtures/evaluation_corpus.py` and are not observed Ameriabank
+- **Deliverable 9 replays, it does not re-acquire.** The fetch and the Gemini
+  calls happened when the capture was recorded; the scenario replays their
+  stored output and runs admission, persistence, projection and the query for
+  real. Re-record with `scripts/demonstrate_end_to_end.py` to demonstrate
+  acquisition itself.
+- **Row citations inherit a rowspan cell's locator.** A table row is cited with
+  the locator of its first cell (`app/services/extraction_evidence.py`), so
+  rows sharing a vertical rowspan header resolve to the same DOM node. The
+  quote and the row id stay exact; the CSS path is not row-unique.
+- **Fixture values are synthetic.** Outside deliverable 9, the numbers come
+  from `tests/fixtures/evaluation_corpus.py` and are not observed Ameriabank
   tariffs.
 
 ## Related demonstrations

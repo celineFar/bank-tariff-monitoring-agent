@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from pathlib import Path
 
 from scripts.demonstrations import (
     ScenarioResult,
@@ -33,6 +34,7 @@ from scripts.demonstrations import (
     failures,
     hitl,
     render,
+    render_markdown,
 )
 from scripts.demonstrations.support import DemonstrationError
 
@@ -50,14 +52,20 @@ SCENARIOS = {
     "failures": (failures.run, "Deliverable 13 — controlled failure scenarios"),
 }
 ORDER = list(SCENARIOS)
+DEFAULT_AUDIT_DIRECTORY = Path("artifacts/demonstrations")
 
 
-async def _run(names: list[str]) -> list[ScenarioResult]:
+async def _run(names: list[str], audit_directory: Path | None) -> list[ScenarioResult]:
     results: list[ScenarioResult] = []
     for name in names:
         runner, _ = SCENARIOS[name]
         result = await runner()
         print(render(result), flush=True)
+        if audit_directory is not None:
+            audit_directory.mkdir(parents=True, exist_ok=True)
+            path = audit_directory / f"{name}.md"
+            path.write_text(render_markdown(result), encoding="utf-8")
+            print(f"\nWrote {path}", flush=True)
         results.append(result)
     return results
 
@@ -92,6 +100,20 @@ def main() -> int:
     parser.add_argument(
         "--list", action="store_true", help="list the scenarios and exit"
     )
+    parser.add_argument(
+        "--audit-directory",
+        type=Path,
+        default=DEFAULT_AUDIT_DIRECTORY,
+        help=(
+            "where to write one markdown transcript per scenario "
+            f"(default: {DEFAULT_AUDIT_DIRECTORY}); pass --no-audit to skip"
+        ),
+    )
+    parser.add_argument(
+        "--no-audit",
+        action="store_true",
+        help="print to the terminal only, writing no markdown transcript",
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -102,7 +124,8 @@ def main() -> int:
     chosen = args.scenario or ["all"]
     names = ORDER if "all" in chosen else [n for n in ORDER if n in set(chosen)]
     try:
-        results = asyncio.run(_run(names))
+        audit = None if args.no_audit else args.audit_directory
+        results = asyncio.run(_run(names, audit))
     except DemonstrationError as exc:
         print(f"demonstration setup failed: {exc}", file=sys.stderr)
         return 2

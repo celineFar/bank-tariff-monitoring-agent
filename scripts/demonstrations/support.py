@@ -5,22 +5,26 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.domain.models import OfferingId
+from app.domain.catalog import SeedCatalog, SeedCatalogEntry
+from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     RunCommand,
     RunStatus,
     RunTrigger,
     SnapshotAttempt,
 )
+from app.domain.semantic_extraction import SemanticExtractionResult
 from app.repositories.monitoring import (
     PostgresRunRepository,
     PostgresSnapshotRepository,
 )
+from app.services.snapshot_lifecycle import build_snapshot_attempt
 from tests.fixtures.structured_tariffs import SnapshotSpec, build_snapshot
 
 
@@ -59,6 +63,26 @@ async def demonstration_sessions(
         await engine.dispose()
 
 
+async def claim_execution(
+    sessions: async_sessionmaker[AsyncSession],
+    product: ProductType,
+    offering_id: OfferingId,
+) -> tuple[UUID, UUID]:
+    """Open one offering execution the way a worker does, and return its ids."""
+    runs = PostgresRunRepository(sessions)
+    submitted = await runs.submit(
+        RunCommand(product=product, offering_id=offering_id, trigger=RunTrigger.API)
+    )
+    claimed = await runs.claim_next("demonstration")
+    if claimed is None:
+        raise DemonstrationError(f"no run could be claimed for {offering_id.value}")
+    execution = await runs.create_offering_execution(
+        submitted.run.id, product, offering_id
+    )
+    execution = await runs.start_offering_execution(execution.id)
+    return submitted.run.id, execution.id
+
+
 async def accept_snapshot(
     sessions: async_sessionmaker[AsyncSession],
     spec: SnapshotSpec,
@@ -66,33 +90,61 @@ async def accept_snapshot(
     previous: SnapshotAttempt | None = None,
 ) -> SnapshotAttempt:
     """Move one synthetic offering through the real run lifecycle to accepted."""
-    runs = PostgresRunRepository(sessions)
-    submitted = await runs.submit(
-        RunCommand(
-            product=spec.product,
-            offering_id=spec.offering_id,
-            trigger=RunTrigger.API,
-        )
+    run_id, execution_id = await claim_execution(
+        sessions, spec.product, spec.offering_id
     )
-    claimed = await runs.claim_next("demonstration")
-    if claimed is None:
-        raise DemonstrationError(
-            f"no run could be claimed for {spec.offering_id.value}"
-        )
-    execution = await runs.create_offering_execution(
-        submitted.run.id, spec.product, spec.offering_id
-    )
-    execution = await runs.start_offering_execution(execution.id)
     snapshot = build_snapshot(spec).model_copy(
         update={
-            "run_id": submitted.run.id,
-            "offering_execution_id": execution.id,
+            "run_id": run_id,
+            "offering_execution_id": execution_id,
             "previous_accepted_snapshot_id": previous.id if previous else None,
         }
     )
     await PostgresSnapshotRepository(sessions).save_attempt(snapshot)
-    await runs.finish(submitted.run.id, RunStatus.SUCCEEDED)
+    await PostgresRunRepository(sessions).finish(run_id, RunStatus.SUCCEEDED)
     return snapshot
+
+
+async def store_extraction(
+    sessions: async_sessionmaker[AsyncSession],
+    offering: SeedCatalogEntry,
+    extraction: SemanticExtractionResult,
+    *,
+    previous: SnapshotAttempt | None = None,
+) -> SnapshotAttempt:
+    """Run one real extraction result through snapshot admission and persist it.
+
+    The snapshot status is decided by `build_snapshot_attempt`, the same
+    deterministic admission the monitoring pipeline applies, so a demonstration
+    never hand-marks an extraction as accepted.
+    """
+    run_id, execution_id = await claim_execution(
+        sessions, offering.product, offering.offering_id
+    )
+    snapshot = build_snapshot_attempt(
+        run_id=run_id,
+        offering_execution_id=execution_id,
+        product=offering.product,
+        offering_id=offering.offering_id,
+        result=extraction,
+        previous_accepted_snapshot_id=previous.id if previous else None,
+        previous_accepted_snapshot=previous,
+    )
+    await PostgresSnapshotRepository(sessions).save_attempt(snapshot)
+    await PostgresRunRepository(sessions).finish(run_id, RunStatus.SUCCEEDED)
+    return snapshot
+
+
+def offering_for_url(catalog: SeedCatalog, url: str) -> SeedCatalogEntry:
+    """Find the catalog offering a recorded capture belongs to."""
+    wanted = url.rstrip("/")
+    for entry in catalog.offerings:
+        if str(entry.seed_url).rstrip("/") == wanted:
+            return entry
+    raise DemonstrationError(
+        f"{url} is not a seed URL in the catalog, so the capture cannot be tied "
+        "to an offering. Record a capture for one of the catalog seed URLs."
+    )
 
 
 def money(value) -> str:

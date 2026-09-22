@@ -148,6 +148,10 @@ shell, or SQL tool.
   deliverable demonstrations with machine-checked success criteria. Each
   scenario drives the real services against a disposable `_test` database and
   exits non-zero unless every criterion passed; see `docs/demonstrations.md`.
+  `scripts/demonstrations/capture.py` loads a recorded `end-to-end/run_NNN`, so
+  the extraction demonstration replays a real page and a real model response
+  instead of fixture values, and skips recordings written against an older
+  schema.
 - `tests/fixtures/target_questions.py`, `tests/eval/structured_metrics.py`,
   `scripts/structured_eval_metrics.py`, `scripts/seed_evaluation_corpus.py`, and
   `scripts/trace_structured_answer.py`: the 25 target questions with their
