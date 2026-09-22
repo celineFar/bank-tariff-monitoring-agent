@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/tariff-monitor-logo.png" alt="Ameria Tariff Monitor logo" width="320">
+</p>
+
 # Ameria Tariff Monitor
 
 An evidence-backed Google ADK prototype for monitoring Ameria Bank consumer-loan
@@ -10,8 +14,10 @@ The repository contains deterministic acquisition, structural normalization,
 cache-aware source discovery, secure PDF retrieval, bounded Gemini PDF extraction and
 semantic extraction, dual source/summary knowledge projections, a transactional
 PostgreSQL/pgvector store, hybrid retrieval, durable monitoring runs and snapshots,
-change detection, and evidence-bound RAG answering. Claim generation and semantic
-claim verification are intentionally deferred.
+change detection, and human-in-the-loop review. Ordinary tariff questions are
+answered from accepted typed facts with per-value citations; the older chunk-RAG
+answer path remains available behind `TARIFF_ANSWER_READ_MODEL=legacy`. Claim
+generation and semantic claim verification are intentionally deferred.
 
 ## Runtime
 
@@ -21,16 +27,26 @@ claim verification are intentionally deferred.
 - PostgreSQL 17 with pgvector
 - Docker Compose for a single AWS compute instance
 
-See [the architecture](docs/architecture.md), [configuration reference](docs/configuration.md),
-[acquisition design](docs/acquisition.md), [normalization design](docs/normalization.md),
-[source-discovery design](docs/source-discovery.md),
-[semantic-extraction design](docs/semantic-extraction.md),
-[knowledge-store design](docs/knowledge-store.md),
-[seed catalog](docs/seed-catalog.md), [monitoring run lifecycle](docs/run-lifecycle.md),
-[snapshot lifecycle](docs/snapshot-lifecycle.md),
-[native ADK review](docs/native-hitl-review.md),
-[indexing projections](docs/indexing-projection.md), [RAG answering](docs/rag-answering.md),
-[observability](docs/observability.md), and
+## Documentation
+
+[`docs/README.md`](docs/README.md) indexes everything. Start with:
+
+- [agent and tool architecture](docs/agent-and-tool-architecture.md) — what the agent
+  is, which tools it has, and the major design decisions;
+- [architecture diagram](docs/architecture-diagram.md) — components, the pipeline,
+  the human-review pause, and the read path;
+- [architecture](docs/architecture.md) — the boundary-by-boundary reference;
+- [configuration](docs/configuration.md) — every environment variable.
+
+Per-stage designs live in [acquisition](docs/acquisition.md),
+[normalization](docs/normalization.md), [source discovery](docs/source-discovery.md),
+[semantic extraction](docs/semantic-extraction.md),
+[knowledge store](docs/knowledge-store.md), [indexing projections](docs/indexing-projection.md),
+[snapshot lifecycle](docs/snapshot-lifecycle.md), and [seed catalog](docs/seed-catalog.md).
+Operating it is covered by [run lifecycle](docs/run-lifecycle.md),
+[native ADK review](docs/native-hitl-review.md), [failure behavior](docs/failure-behavior.md),
+[observability](docs/observability.md), and [demonstrations](docs/demonstrations.md).
+The generated ADK integration surface is described in
 [.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
