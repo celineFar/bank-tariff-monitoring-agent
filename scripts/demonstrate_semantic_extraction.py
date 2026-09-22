@@ -16,7 +16,7 @@ from app.domain.semantic_extraction import (
     SemanticExtractionResult,
 )
 from app.domain.source_discovery import SourceDiscoveryResult
-from app.services.discovery_classifier import is_retryable_api_error
+from app.services.discovery_classifier import is_model_fallback_error
 from app.services.model_pricing import enforce_model_price_cap, get_model_price
 from app.services.pipeline_audit import (
     render_pre_validation,
@@ -127,7 +127,7 @@ async def demonstrate(
         except Exception as exc:
             attempts.append(_attempt(model_name, extractor, exc))
             _write_json(output_directory / "model_attempts.json", attempts)
-            if is_retryable_api_error(exc) and index + 1 < len(models):
+            if is_model_fallback_error(exc) and index + 1 < len(models):
                 print(
                     f"Model {model_name} exhausted retries; falling back to "
                     f"{models[index + 1]}.",

@@ -192,3 +192,13 @@ def build_classifier_prompt(batch: DiscoveryBatch) -> str:
 
 def is_retryable_api_error(error: Exception) -> bool:
     return isinstance(error, APIError) and error.code in _RETRYABLE_STATUS_CODES
+
+
+def is_model_fallback_error(error: Exception) -> bool:
+    """Whether the next model in a configured sequence should get a turn.
+
+    A retryable status has already been retried until the classifier gave up,
+    and a permanent one — the 404 a retired model answers — is exactly what a
+    fallback chain is for. Either way the run continues on the next model.
+    """
+    return isinstance(error, APIError)

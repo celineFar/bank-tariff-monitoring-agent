@@ -24,6 +24,7 @@ from app.services.discovery_classifier import (
     AdkSourceDiscoveryClassifier,
     ClassifierUsage,
     build_classifier_prompt,
+    is_model_fallback_error,
     is_retryable_api_error,
 )
 from app.services.model_pricing import (
@@ -116,7 +117,7 @@ async def demonstrate(
             attempts.append(_model_attempt(model_name, classifier.usage, exc))
             _write_model_attempts(output_directory, attempts)
             has_fallback = model_index + 1 < len(models)
-            if is_retryable_api_error(exc) and has_fallback:
+            if is_model_fallback_error(exc) and has_fallback:
                 next_model = models[model_index + 1]
                 print(
                     f"Model {model_name} exhausted retries with HTTP "

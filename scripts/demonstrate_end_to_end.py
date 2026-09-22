@@ -8,10 +8,10 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.config import Settings, load_settings
 from app.domain.acquisition import PageArtifact, SourceType
@@ -38,7 +38,7 @@ from app.services.acquisition import build_acquisition_service
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import (
     AdkSourceDiscoveryClassifier,
-    is_retryable_api_error,
+    is_model_fallback_error,
 )
 from app.services.model_pricing import enforce_model_price_cap
 from app.services.normalization import StructuralNormalizationService
@@ -64,6 +64,8 @@ from app.services.source_selection import build_selected_source_bundle
 
 DEFAULT_OUTPUT_DIRECTORY = Path("end-to-end")
 _RUN_DIRECTORY = re.compile(r"^run_(\d+)$")
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 class EndToEndStageError(RuntimeError):
@@ -643,7 +645,7 @@ async def _run_discovery(
     repository: FileSystemSourceDiscoveryRepository,
 ) -> tuple[SourceDiscoveryPlan, SourceDiscoveryResult, list[dict[str, Any]]]:
     models = _model_sequence(
-        settings.models.generation_model,
+        settings.source_discovery.model_name or settings.models.generation_model,
         settings.source_discovery.fallback_model_names,
     )
     enforce_model_price_cap(
@@ -681,7 +683,7 @@ async def _run_discovery(
             result = await service.discover(bundle, product)
         except Exception as exc:
             attempts.append(_model_attempt(model_name, classifier.usage, exc))
-            if is_retryable_api_error(exc) and index + 1 < len(models):
+            if is_model_fallback_error(exc) and index + 1 < len(models):
                 print(f"  falling back to {models[index + 1]}", flush=True)
                 continue
             raise ModelSequenceError(exc, plan=plan, attempts=attempts) from exc
@@ -715,13 +717,11 @@ async def _run_semantic_extraction(
     repository: FileSystemSemanticExtractionRepository,
     retrieved_at,
 ) -> tuple[SemanticExtractionPlan, SemanticExtractionResult, list[dict[str, Any]]]:
+    # Extraction runs on the configured generation model, as it does in
+    # app.runtime. The source-discovery price ceiling governs that stage only.
     models = _model_sequence(
         settings.models.generation_model,
         settings.source_discovery.fallback_model_names,
-    )
-    enforce_model_price_cap(
-        models,
-        max_price_per_million_tokens_usd=settings.source_discovery.max_price_per_million_tokens_usd,
     )
     attempts: list[dict[str, Any]] = []
     for index, model_name in enumerate(models):
@@ -750,7 +750,7 @@ async def _run_semantic_extraction(
             result = await service.extract(bundle, discovery, retrieved_at=retrieved_at)
         except Exception as exc:
             attempts.append(_model_attempt(model_name, extractor.usage, exc))
-            if is_retryable_api_error(exc) and index + 1 < len(models):
+            if is_model_fallback_error(exc) and index + 1 < len(models):
                 print(f"  falling back to {models[index + 1]}", flush=True)
                 continue
             raise ModelSequenceError(
@@ -853,7 +853,12 @@ async def _import_previous_run_caches(
     discovery_repository: FileSystemSourceDiscoveryRepository,
     semantic_repository: FileSystemSemanticExtractionRepository,
 ) -> dict[str, int]:
-    counts = {"pdf": 0, "source_discovery": 0, "semantic_extraction": 0}
+    counts = {
+        "pdf": 0,
+        "source_discovery": 0,
+        "semantic_extraction": 0,
+        "incompatible": 0,
+    }
     previous_runs = sorted(
         child
         for child in root.iterdir()
@@ -874,22 +879,24 @@ async def _import_previous_run_caches(
                 counts["pdf"] += 1
 
         discovery_path = run / "source-discovery" / "result.json"
-        if discovery_path.is_file():
-            result = SourceDiscoveryResult.model_validate_json(
-                discovery_path.read_text(encoding="utf-8")
-            )
+        discovery = (
+            _load_recording(discovery_path, SourceDiscoveryResult, counts)
+            if discovery_path.is_file()
+            else None
+        )
+        if discovery is not None:
             reusable = tuple(
                 assessment
-                for assessment in result.assessments
+                for assessment in discovery.assessments
                 if assessment.decision_source
                 in {DecisionSource.LLM, DecisionSource.CACHE}
             )
             if reusable:
                 await discovery_repository.save(
-                    product=result.product,
-                    policy_version=result.policy_version,
-                    prompt_version=result.prompt_version,
-                    model_name=result.model_name,
+                    product=discovery.product,
+                    policy_version=discovery.policy_version,
+                    prompt_version=discovery.prompt_version,
+                    model_name=discovery.model_name,
                     assessments=reusable,
                 )
                 counts["source_discovery"] += len(reusable)
@@ -897,14 +904,14 @@ async def _import_previous_run_caches(
         semantic_plan_path = run / "semantic-extraction" / "plan.json"
         semantic_result_path = run / "semantic-extraction" / "result.json"
         if semantic_plan_path.is_file() and semantic_result_path.is_file():
-            plan = SemanticExtractionPlan.model_validate_json(
-                semantic_plan_path.read_text(encoding="utf-8")
-            )
-            result = SemanticExtractionResult.model_validate_json(
-                semantic_result_path.read_text(encoding="utf-8")
+            plan = _load_recording(semantic_plan_path, SemanticExtractionPlan, counts)
+            result = _load_recording(
+                semantic_result_path, SemanticExtractionResult, counts
             )
             if (
-                result.status.value == "completed"
+                plan is not None
+                and result is not None
+                and result.status.value == "completed"
                 and not plan.cache_hits
                 and len(plan.batches) == len(result.batch_results)
             ):
@@ -923,6 +930,22 @@ async def _import_previous_run_caches(
                 )
                 counts["semantic_extraction"] += len(values)
     return counts
+
+
+def _load_recording(
+    path: Path, model: type[ModelT], counts: dict[str, int]
+) -> ModelT | None:
+    """Skip a recording written before the schema it is validated against.
+
+    Earlier runs stay on disk as the audit trail. A schema change makes their
+    JSON unreadable, and that must not stop a fresh run from importing the
+    caches it can still use.
+    """
+    try:
+        return model.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValidationError:
+        counts["incompatible"] += 1
+        return None
 
 
 def _write_json(path: Path, value: Any) -> None:
