@@ -349,6 +349,19 @@ class SchedulerSettings(SettingsGroup):
         return value
 
 
+class TraceContentMode(StrEnum):
+    """How much model content a exported span may carry.
+
+    `NONE` keeps prompts and responses out of exported spans entirely. `MAPPED`
+    keeps them, but only after the exporter has rewritten ADK's vendor-specific
+    attributes into the names a trace backend reads, so the content that leaves
+    the process is exactly what the exporter chose to emit.
+    """
+
+    NONE = "none"
+    MAPPED = "mapped"
+
+
 class ObservabilitySettings(SettingsGroup):
     log_level: str = "INFO"
     log_file: Path | None = None
@@ -356,6 +369,31 @@ class ObservabilitySettings(SettingsGroup):
     log_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
     log_backup_count: int = Field(default=10, ge=1)
     otel_to_cloud: bool = False
+    otel_enabled: bool = False
+    otel_traces_endpoint: str | None = None
+    otel_service_name: str = "tariff-monitor"
+    otel_trace_content: TraceContentMode = TraceContentMode.NONE
+    otel_export_timeout_seconds: float = Field(default=10.0, gt=0)
+
+    @field_validator("otel_traces_endpoint")
+    @classmethod
+    def validate_traces_endpoint(cls, value: str | None) -> str | None:
+        """Reject anything that is not an absolute http(s) OTLP URL.
+
+        A malformed endpoint otherwise fails silently inside the batch
+        exporter's background thread, which looks identical to "tracing is off".
+        """
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            return None
+        parts = urlsplit(candidate)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise ValueError(
+                f"otel_traces_endpoint must be an absolute http(s) URL: {value}"
+            )
+        return candidate
 
     @field_validator("log_timezone")
     @classmethod

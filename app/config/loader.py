@@ -164,6 +164,11 @@ def load_settings(
             log_max_bytes=raw.log_max_bytes,
             log_backup_count=raw.log_backup_count,
             otel_to_cloud=raw.otel_to_cloud,
+            otel_enabled=raw.otel_enabled,
+            otel_traces_endpoint=raw.otel_traces_endpoint,
+            otel_service_name=raw.otel_service_name,
+            otel_trace_content=raw.otel_trace_content,
+            otel_export_timeout_seconds=raw.otel_export_timeout_seconds,
         ),
     )
 

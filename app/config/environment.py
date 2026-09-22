@@ -120,6 +120,11 @@ class EnvironmentSettings(BaseSettings):
     log_max_bytes: int = 10 * 1024 * 1024
     log_backup_count: int = 10
     otel_to_cloud: bool = False
+    otel_enabled: bool = False
+    otel_traces_endpoint: str | None = None
+    otel_service_name: str = "tariff-monitor"
+    otel_trace_content: str = "none"
+    otel_export_timeout_seconds: float = 10.0
     allow_origins: Annotated[tuple[str, ...], NoDecode] = ("http://localhost:3000",)
 
     @field_validator(

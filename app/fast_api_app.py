@@ -29,6 +29,7 @@ from app.app_utils.agent_loader import RuntimeAgentLoader
 from app.config import get_settings
 from app.runtime import build_application_container
 from app.services.logging_setup import configure_application_logging
+from app.services.telemetry import configure_telemetry
 from app.tools import configure_services
 
 load_dotenv()
@@ -108,6 +109,9 @@ app: FastAPI = get_fast_api_app(
     otel_to_cloud=otel_to_cloud,
     lifespan=lifespan,
 )
+# After `get_fast_api_app`, so the provider ADK installs for its own trace view
+# is extended rather than replaced.
+configure_telemetry(settings.observability, component="api")
 app.title = settings.application.name
 app.description = f"API for interacting with the Agent {settings.application.name}"
 app.include_router(project_router)

@@ -17,8 +17,13 @@ warnings.filterwarnings(
 
 from app.config import get_settings  # noqa: E402
 from app.services.logging_setup import configure_application_logging  # noqa: E402
+from app.services.telemetry import configure_telemetry  # noqa: E402
 
-configure_application_logging(get_settings().observability, console_output=False)
+_settings = get_settings()
+configure_application_logging(_settings.observability, console_output=False)
+# A review decision taken here resumes the worker's paused workflow in this
+# process, so the CLI has to export spans for that half of the run to appear.
+configure_telemetry(_settings.observability, component="cli")
 
 from app.cli import main  # noqa: E402
 
