@@ -81,6 +81,14 @@ exclude = [".venv/**"]
 [tool.ty.rules]
 # Ignore common issues with third-party libraries and dynamic code patterns
 unresolved-import = "ignore"
+# Kept off deliberately: ~97 sites still trip it, almost all of them ADK session,
+# event, and review objects that this codebase passes around as `object`, plus
+# `Session | None` narrowing after `get_session`. The application-service
+# boundaries the CLI calls through are now typed against real protocols
+# (`RunProgressPort`, `ChatReviewService`, `BaseSessionService`), which is what
+# let a missing `RunService.list_offering_executions` reach production once.
+# Turning this rule back on needs the remaining `object` annotations replaced
+# first; until then it would be pure noise.
 unresolved-attribute = "ignore"
 invalid-argument-type = "ignore"
 invalid-assignment = "ignore"

@@ -13,7 +13,9 @@ from uuid import UUID, uuid4
 
 from google.adk.agents import Agent
 from google.adk.apps import App, ResumabilityConfig
+from google.adk.events import Event
 from google.adk.runners import Runner
+from google.adk.sessions import BaseSessionService
 from google.adk.tools import LongRunningFunctionTool, ToolContext, request_input
 from google.genai import types
 from google.genai.errors import APIError
@@ -32,9 +34,10 @@ from app.domain.review import ReviewDecision, ReviewDecisionType
 from app.domain.semantic_extraction import ExtractionField
 from app.runtime import build_application_container
 from app.services.adk_logging import suppress_resource_exhaustion_adk_logs
-from app.services.chat_reviews import ReviewNotReadyError
+from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
 from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
 from app.services.review_decisions import coerce_review_candidate_value
+from app.services.run_service import RunProgressPort
 from app.services.semantic_extraction import validate_review_field_value
 from app.tools import (
     answer_tariff_query,
@@ -151,7 +154,7 @@ class PendingInput:
     initial_response: dict[str, object] | None = None
 
 
-def pending_input(events: list[object]) -> PendingInput | None:
+def pending_input(events: list[Event]) -> PendingInput | None:
     """Find the latest unmatched ADK long-running call in saved session events."""
     pending: dict[str, PendingInput] = {}
     for event in events:
@@ -240,7 +243,7 @@ _STAGE_LABELS = {
 }
 
 
-async def _wait_for_run(run_service: object, run_id: UUID, seconds: float):
+async def _wait_for_run(run_service: RunProgressPort, run_id: UUID, seconds: float):
     last_progress = None
     last_message_at = 0.0
     while True:
@@ -283,9 +286,9 @@ async def _wait_for_run(run_service: object, run_id: UUID, seconds: float):
 
 async def _continue_pending(
     runner: Runner,
-    session_service: object,
-    run_service: object,
-    review_service: object,
+    session_service: BaseSessionService,
+    run_service: RunProgressPort,
+    review_service: ChatReviewService,
     *,
     user_id: str,
     session_id: str,
@@ -650,9 +653,9 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
 
 async def _recover_review(
     runner: Runner,
-    session_service: object,
-    run_service: object,
-    review_service: object,
+    session_service: BaseSessionService,
+    run_service: RunProgressPort,
+    review_service: ChatReviewService,
     *,
     user_id: str,
     session_id: str,
@@ -783,6 +786,22 @@ def _print_api_error(exc: APIError) -> None:
         )
 
 
+def _print_unexpected_error(exc: Exception, step: str, session_id: str) -> None:
+    """Keep one broken step from ending a durable session.
+
+    The traceback still reaches `logs/cli.log`; the terminal gets the step that
+    broke and the command that reopens this session.
+    """
+    logger.exception("CLI step failed: %s", step)
+    _error(
+        "Something went wrong",
+        f"{step} failed: {type(exc).__name__}: {exc}\n"
+        "The full traceback is in logs/cli.log. This session is still open; "
+        "the monitoring run keeps going in the worker.\n"
+        f"Resume later with: ./tariff-chat --session-id {session_id}",
+    )
+
+
 async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
     settings = get_settings()
     container = build_application_container(settings)
@@ -840,6 +859,8 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
             )
         except APIError as exc:
             _print_api_error(exc)
+        except Exception as exc:
+            _print_unexpected_error(exc, "Reopening the saved session", session_id)
         while True:
             prompt = (
                 await asyncio.to_thread(_input, "[bold cyan]You[/] [cyan]>[/] ")
@@ -886,6 +907,8 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
                 )
             except APIError as exc:
                 _print_api_error(exc)
+            except Exception as exc:
+                _print_unexpected_error(exc, "This turn", session_id)
     finally:
         configure_services(None, None, None, None, None, None, None)
         await container.close()

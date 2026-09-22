@@ -15,9 +15,11 @@ from google.adk.tools import LongRunningFunctionTool
 from google.genai import types
 from pydantic import PrivateAttr
 
+from app import cli
 from app.cli import _wait_for_run, pending_input, start_tariff_monitoring_cli
 from app.domain.models import OfferingId
 from app.domain.monitoring import OfferingRunStatus, RunStatus
+from app.services.run_service import RunProgressPort, RunService
 
 
 class _LocalModel(BaseLlm):
@@ -120,32 +122,44 @@ async def test_cli_long_running_monitoring_pauses_and_resumes_same_invocation(
     assert pending_input(session.events) is None
 
 
+class _StageRepository:
+    """Stands in for `PostgresRunRepository`, not for the service above it.
+
+    The CLI narrates progress through `RunService`, so the fake belongs one layer
+    lower: a method the service forgets to expose then fails this test instead of
+    the live chat.
+    """
+
+    def __init__(self) -> None:
+        self.poll = 0
+
+    async def get(self, run_id):
+        self.poll += 1
+        status = RunStatus.SUCCEEDED if self.poll == 3 else RunStatus.RUNNING
+        return SimpleNamespace(status=status)
+
+    async def list_offering_executions(self, run_id):
+        if self.poll == 3:
+            return ()
+        stage = "acquisition" if self.poll == 1 else "semantic_extraction"
+        return (
+            SimpleNamespace(
+                offering_id=OfferingId.OVERDRAFT,
+                current_stage=stage,
+                status=OfferingRunStatus.RUNNING,
+            ),
+        )
+
+
+def test_run_service_satisfies_the_cli_progress_port() -> None:
+    assert isinstance(RunService(_StageRepository()), RunProgressPort)
+
+
 @pytest.mark.asyncio
 async def test_cli_reports_persisted_pipeline_stages(capsys) -> None:
     run_id = uuid4()
 
-    class _Runs:
-        def __init__(self) -> None:
-            self.poll = 0
-
-        async def get(self, run_id):
-            self.poll += 1
-            status = RunStatus.SUCCEEDED if self.poll == 3 else RunStatus.RUNNING
-            return SimpleNamespace(status=status)
-
-        async def list_offering_executions(self, run_id):
-            if self.poll == 3:
-                return ()
-            stage = "acquisition" if self.poll == 1 else "semantic_extraction"
-            return (
-                SimpleNamespace(
-                    offering_id=OfferingId.OVERDRAFT,
-                    current_stage=stage,
-                    status=OfferingRunStatus.RUNNING,
-                ),
-            )
-
-    result = await _wait_for_run(_Runs(), run_id, 0.001)
+    result = await _wait_for_run(RunService(_StageRepository()), run_id, 0.001)
 
     assert result.status is RunStatus.SUCCEEDED
     output = capsys.readouterr().out
@@ -503,4 +517,60 @@ def test_cli_agent_disables_sdk_afc_but_retains_adk_tools() -> None:
         or getattr(getattr(tool, "func", None), "__name__", None)
         == "start_tariff_monitoring_cli"
         for tool in cli_agent.tools
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_survives_an_unexpected_error_in_one_turn(
+    monkeypatch, capsys
+) -> None:
+    """One broken turn must not end a durable session with a traceback."""
+    prompts = iter(["show me the overdraft tariff", "quit"])
+    container = SimpleNamespace(
+        run_service=None,
+        answer_service=None,
+        request_resolver=None,
+        current_tariff_service=None,
+        tariff_history_service=None,
+        run_wait_service=None,
+        chat_review_service=None,
+        structured_query_service=None,
+        answer_router=None,
+        close=_noop_close,
+    )
+    monkeypatch.setattr(cli, "get_settings", lambda: SimpleNamespace())
+    monkeypatch.setattr(cli, "build_application_container", lambda settings: container)
+    monkeypatch.setattr(cli, "configure_services", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cli, "Runner", lambda **kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        cli.services, "ensure_session_service_ready", _in_memory_session_service
+    )
+    monkeypatch.setattr(cli.services, "get_artifact_service", lambda: None)
+    monkeypatch.setattr(cli, "_input", lambda prompt: next(prompts))
+    monkeypatch.setattr(cli, "_recover_review", _never_recovers)
+    monkeypatch.setattr(cli, "_run_and_print", _raises_unexpectedly)
+
+    await cli.chat("user", "durable-session", 0.001)
+
+    output = capsys.readouterr().out
+    assert "Something went wrong" in output
+    assert "durable-session" in output
+    assert next(prompts, None) is None
+
+
+async def _noop_close() -> None:
+    return None
+
+
+async def _in_memory_session_service():
+    return InMemorySessionService()
+
+
+async def _never_recovers(*args, **kwargs) -> bool:
+    return False
+
+
+async def _raises_unexpectedly(*args, **kwargs) -> None:
+    raise AttributeError(
+        "'RunService' object has no attribute 'list_offering_executions'"
     )
