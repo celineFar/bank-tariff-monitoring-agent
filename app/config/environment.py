@@ -55,6 +55,7 @@ class EnvironmentSettings(BaseSettings):
     acquisition_max_network_payloads: int = 25
     acquisition_max_network_payload_bytes: int = 2 * 1024 * 1024
     acquisition_max_linked_documents: int = 10
+    acquisition_freshness_hours: float = 1.0
     pdf_extraction_schema_version: str = "2"
     pdf_extraction_prompt_version: str = "2"
     pdf_extraction_model_name: str = "gemini-3.1-flash-lite"

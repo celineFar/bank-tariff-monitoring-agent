@@ -8,6 +8,9 @@ from google.adk.apps import App
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.config import Settings, load_seed_catalog
+from app.repositories.acquisition_snapshots import (
+    PostgresAcquisitionSnapshotRepository,
+)
 from app.repositories.embedding_cache import PostgresEmbeddingCache
 from app.repositories.knowledge_store import PostgresKnowledgeStore
 from app.repositories.monitoring import (
@@ -25,6 +28,7 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredUnitEmbeddingRepository,
 )
 from app.services.acquisition import build_acquisition_service
+from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.chat_reviews import ChatReviewService
@@ -212,7 +216,12 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         else None
     )
     indexing = IndexingPipeline(
-        acquisition=build_acquisition_service(http_client, settings),
+        acquisition=FreshnessGatedAcquisitionService(
+            build_acquisition_service(http_client, settings),
+            PostgresAcquisitionSnapshotRepository(sessions),
+            freshness_hours=settings.acquisition.freshness_hours,
+            artifact_reader=artifacts,
+        ),
         normalization=normalization,
         discovery=discovery,
         extraction=extraction,

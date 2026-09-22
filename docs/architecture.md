@@ -308,6 +308,23 @@ every semantic-extraction cache key, hashes the document id alongside the text i
 quotes, so an identity that drifts over unchanged content silently costs a full
 re-extraction.
 
+### Acquisition freshness
+
+`FreshnessGatedAcquisitionService` wraps `AcquisitionService` and serves the stored
+`PageArtifact` for a seed URL when the last acquisition is younger than
+`ACQUISITION_FRESHNESS_HOURS` (default 1; 0 disables reuse). The most recent
+acquisition per URL lives in `acquisition_snapshots`, replaced rather than
+accumulated -- it is a reuse window, not a history, and the audited record of what
+each run saw remains in `source_manifests` and `knowledge_documents`.
+
+Only acquisition is skipped. Normalization, discovery, extraction, embedding and
+publication still execute, so the run produces its own manifest, audit overlay and
+snapshot; because the reused artifact carries the same hashes as before, each of
+those stages resolves from its own content-addressed cache instead of calling a
+model. Reuse is declined when the stored artifact's linked documents are no longer
+readable from the artifact store, and it is never a fallback for a failed
+acquisition: a fetch that fails fails the offering.
+
 Acquisition, parsing, PDF, model, and validation exceptions are translated at the
 pipeline boundary into stable source failure codes while retaining only exception type
 and stage in bounded audit payloads. RAG generation/malformed-output failures return a
@@ -586,7 +603,9 @@ that deterministic pipeline work executes exactly once.
 ## Indexing coordinator boundary
 
 `IndexingPipeline.refresh()` orders acquisition, normalization, discovery, extraction,
-projection, embedding, and atomic publication for one offering. `TariffPipeline` owns
+projection, embedding, and atomic publication for one offering. Its acquisition port is
+the freshness gate, so reuse is a composition detail the coordinator never has to know
+about. `TariffPipeline` owns
 the family run and isolates siblings, allowing `partial_success`. Source-faithful
 documents preserve normalized evidence locations; accepted snapshots additionally
 produce deterministic offering summaries. See `docs/indexing-projection.md`,

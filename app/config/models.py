@@ -203,6 +203,11 @@ class AcquisitionSettings(SettingsGroup):
     max_network_payloads: int = Field(default=25, ge=0, le=200)
     max_network_payload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
     max_linked_documents: int = Field(default=10, ge=0, le=50)
+    # How long an acquisition stays usable. Within the window a run reuses the
+    # stored page artifact instead of fetching the bank again; 0 disables reuse
+    # and every run re-acquires. Only acquisition is skipped -- normalization
+    # onward still execute, and hit their own content-addressed caches.
+    freshness_hours: float = Field(default=1.0, ge=0, le=720)
 
 
 class PdfExtractionSettings(SettingsGroup):
