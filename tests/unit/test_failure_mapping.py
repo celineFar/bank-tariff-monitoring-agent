@@ -1,7 +1,12 @@
 import pytest
+from google.genai.errors import ClientError
 
 from app.domain.monitoring import SourceFailureCode
-from app.services.failure_mapping import source_failure_code
+from app.services.failure_mapping import (
+    bounded_failure_detail,
+    describe_failure,
+    source_failure_code,
+)
 from app.services.html_retriever import HtmlRetrievalError, HtmlRetrievalFailure
 from app.services.monitoring_pipeline import IndexingPipeline, OfferingPipelineError
 from app.services.pdf_downloader import PdfDownloadError, PdfDownloadFailure
@@ -111,3 +116,33 @@ async def test_pipeline_preserves_precise_failure_code_without_source_body() -> 
         source_failure_code(RuntimeError("document body"), stage="normalization")
         is SourceFailureCode.PARSING_FAILED
     )
+
+
+def test_stored_detail_keeps_the_provider_status_without_its_message() -> None:
+    error = ClientError(
+        404,
+        {
+            "error": {
+                "status": "NOT_FOUND",
+                "message": "This model is no longer available to new users.",
+            }
+        },
+    )
+
+    detail = bounded_failure_detail(error)
+
+    assert detail == "ClientError:http_404_NOT_FOUND"
+    assert "no longer available" not in detail
+
+
+def test_stored_detail_of_an_ordinary_error_is_its_type() -> None:
+    assert bounded_failure_detail(RuntimeError("fixture failure")) == "RuntimeError"
+
+
+def test_log_description_keeps_the_provider_message_for_operators() -> None:
+    error = ClientError(
+        404,
+        {"error": {"status": "NOT_FOUND", "message": "model retired"}},
+    )
+
+    assert describe_failure(error) == "HTTP 404 / NOT_FOUND: model retired"

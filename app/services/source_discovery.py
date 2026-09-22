@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -34,11 +35,15 @@ from app.domain.source_discovery import (
     TemporalStatus,
 )
 from app.repositories.contracts import SourceDiscoveryRepository
+from app.services.discovery_classifier import is_model_fallback_error
 from app.services.discovery_prefilter import build_discovery_candidates
+from app.services.failure_mapping import describe_failure
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     record_model_cache_hit,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class SourceDiscoveryClassifier(Protocol):
@@ -141,6 +146,10 @@ class SourceDiscoveryService:
         self._settings = settings
         self._model_name = model_name
         self._usage_repository = usage_repository
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     async def plan(
         self, bundle: NormalizedSourceBundle, product: ProductType
@@ -282,6 +291,40 @@ class SourceDiscoveryService:
             llm_batch_count=len(plan.batches),
             reused_assessment_count=len(plan.cache_hits),
         )
+
+
+class FallbackSourceDiscoveryService:
+    """Try each configured discovery model in turn before failing the offering.
+
+    A retired model answers a permanent 404, which the classifier's retry loop
+    cannot help with; without a chain that ends the whole offering as
+    `source.model_failed`. Each model gets its own service so the assessment
+    cache namespace and the persisted `model_name` stay the model that actually
+    answered.
+    """
+
+    def __init__(self, services: Sequence[SourceDiscoveryService]) -> None:
+        if not services:
+            raise ValueError("source discovery needs at least one model")
+        self._services = tuple(services)
+
+    async def discover(
+        self, bundle: NormalizedSourceBundle, product: ProductType
+    ) -> SourceDiscoveryResult:
+        last = len(self._services) - 1
+        for index, service in enumerate(self._services):
+            try:
+                return await service.discover(bundle, product)
+            except Exception as exc:
+                if index == last or not is_model_fallback_error(exc):
+                    raise
+                logger.warning(
+                    "Source-discovery model %s failed (%s); falling back to %s",
+                    service.model_name,
+                    describe_failure(exc),
+                    self._services[index + 1].model_name,
+                )
+        raise AssertionError("source-discovery model sequence exhausted")
 
 
 def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:

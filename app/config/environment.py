@@ -108,6 +108,7 @@ class EnvironmentSettings(BaseSettings):
     semantic_extraction_max_items_per_batch: int = 20
     semantic_extraction_thinking_budget: int = 0
     semantic_extraction_max_repairs_per_run: int = 3
+    semantic_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     review_admin_token: SecretStr | None = None
@@ -133,6 +134,7 @@ class EnvironmentSettings(BaseSettings):
         "allow_origins",
         "source_discovery_fallback_model_names",
         "pdf_extraction_fallback_model_names",
+        "semantic_extraction_fallback_model_names",
         mode="before",
     )
     @classmethod

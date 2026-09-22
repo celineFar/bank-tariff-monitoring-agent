@@ -311,6 +311,9 @@ class SourceDiscoverySettings(SettingsGroup):
 
 
 class SemanticExtractionSettings(SettingsGroup):
+    # Empty by default: the successor to a retired extraction model is an
+    # operational choice, so it is configured rather than assumed here.
+    fallback_model_names: tuple[str, ...] = ()
     schema_version: str = Field(default="4", min_length=1, max_length=50)
     prompt_version: str = Field(default="4", min_length=1, max_length=50)
     max_evidence_chars_per_item: int = Field(default=5000, ge=500, le=20_000)
@@ -318,6 +321,18 @@ class SemanticExtractionSettings(SettingsGroup):
     max_items_per_batch: int = Field(default=20, ge=1, le=100)
     thinking_budget: int = Field(default=0, ge=-1, le=24_576)
     max_repairs_per_run: int = Field(default=3, ge=0, le=50)
+
+    @field_validator("fallback_model_names")
+    @classmethod
+    def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if len(normalized) > 5:
+            raise ValueError(
+                "at most five semantic extraction fallback models are allowed"
+            )
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("semantic extraction fallback models must be unique")
+        return normalized
 
     @model_validator(mode="after")
     def validate_batch_limits(self) -> SemanticExtractionSettings:

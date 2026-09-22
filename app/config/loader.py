@@ -146,6 +146,7 @@ def load_settings(
             max_items_per_batch=raw.semantic_extraction_max_items_per_batch,
             thinking_budget=raw.semantic_extraction_thinking_budget,
             max_repairs_per_run=raw.semantic_extraction_max_repairs_per_run,
+            fallback_model_names=raw.semantic_extraction_fallback_model_names,
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

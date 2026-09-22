@@ -40,6 +40,7 @@ from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     configure_default_model_usage_repository,
 )
+from app.services.model_pricing import enforce_model_price_cap, model_sequence
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
 from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
@@ -55,9 +56,13 @@ from app.services.review_decisions import ReviewDecisionService
 from app.services.run_service import RunService
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
+    FallbackSemanticExtractionService,
     SemanticExtractionService,
 )
-from app.services.source_discovery import SourceDiscoveryService
+from app.services.source_discovery import (
+    FallbackSourceDiscoveryService,
+    SourceDiscoveryService,
+)
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.structured_unit_embeddings import StructuredUnitEmbeddingService
 from app.services.tariff_queries import (
@@ -131,41 +136,64 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             usage_repository=model_usage,
         ),
     )
-    discovery_model = (
-        settings.source_discovery.model_name or settings.models.generation_model
+    discovery_models = model_sequence(
+        settings.source_discovery.model_name or settings.models.generation_model,
+        settings.source_discovery.fallback_model_names,
     )
-    discovery = SourceDiscoveryService(
-        AdkSourceDiscoveryClassifier(
-            discovery_model,
-            api_key=api_key,
-            max_attempts=settings.source_discovery.classifier_max_attempts,
-            backoff_base_seconds=(
-                settings.source_discovery.classifier_backoff_base_seconds
-            ),
-            max_backoff_seconds=(
-                settings.source_discovery.classifier_max_backoff_seconds
-            ),
-            retry_jitter_ratio=(
-                settings.source_discovery.classifier_retry_jitter_ratio
-            ),
-            usage_repository=model_usage,
+    enforce_model_price_cap(
+        discovery_models,
+        max_price_per_million_tokens_usd=(
+            settings.source_discovery.max_price_per_million_tokens_usd
         ),
-        PostgresSourceDiscoveryRepository(sessions),
-        settings.source_discovery,
-        model_name=discovery_model,
-        usage_repository=model_usage,
     )
-    extraction = SemanticExtractionService(
-        AdkSemanticExtractor(
-            settings.models.generation_model,
-            api_key=api_key,
-            thinking_budget=settings.semantic_extraction.thinking_budget,
-            usage_repository=model_usage,
-        ),
-        PostgresSemanticExtractionRepository(sessions),
-        settings.semantic_extraction,
-        model_name=settings.models.generation_model,
-        usage_repository=model_usage,
+    discovery_repository = PostgresSourceDiscoveryRepository(sessions)
+    discovery = FallbackSourceDiscoveryService(
+        tuple(
+            SourceDiscoveryService(
+                AdkSourceDiscoveryClassifier(
+                    discovery_model,
+                    api_key=api_key,
+                    max_attempts=settings.source_discovery.classifier_max_attempts,
+                    backoff_base_seconds=(
+                        settings.source_discovery.classifier_backoff_base_seconds
+                    ),
+                    max_backoff_seconds=(
+                        settings.source_discovery.classifier_max_backoff_seconds
+                    ),
+                    retry_jitter_ratio=(
+                        settings.source_discovery.classifier_retry_jitter_ratio
+                    ),
+                    usage_repository=model_usage,
+                ),
+                discovery_repository,
+                settings.source_discovery,
+                model_name=discovery_model,
+                usage_repository=model_usage,
+            )
+            for discovery_model in discovery_models
+        )
+    )
+    extraction_models = model_sequence(
+        settings.models.generation_model,
+        settings.semantic_extraction.fallback_model_names,
+    )
+    extraction_repository = PostgresSemanticExtractionRepository(sessions)
+    extraction = FallbackSemanticExtractionService(
+        tuple(
+            SemanticExtractionService(
+                AdkSemanticExtractor(
+                    extraction_model,
+                    api_key=api_key,
+                    thinking_budget=settings.semantic_extraction.thinking_budget,
+                    usage_repository=model_usage,
+                ),
+                extraction_repository,
+                settings.semantic_extraction,
+                model_name=extraction_model,
+                usage_repository=model_usage,
+            )
+            for extraction_model in extraction_models
+        )
     )
     embedding_client = genai.Client(api_key=api_key) if api_key else genai.Client()
     indexer = KnowledgeIndexer(

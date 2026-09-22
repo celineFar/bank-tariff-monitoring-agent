@@ -1,5 +1,5 @@
 import pytest
-from google.genai.errors import ServerError
+from google.genai.errors import ClientError, ServerError
 
 from app.config import SourceDiscoverySettings
 from app.domain.acquisition import SourceLocator, SourceType
@@ -26,13 +26,14 @@ from app.domain.source_discovery import (
     TemporalStatus,
 )
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
+from app.services.model_pricing import model_sequence
 from app.services.source_discovery import (
+    FallbackSourceDiscoveryService,
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
 from scripts.demonstrate_source_discovery import (
     SourceDiscoveryRunFailed,
-    _model_sequence,
     _render_classification_results,
     main,
 )
@@ -41,7 +42,7 @@ URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
 
 
 def test_model_sequence_preserves_order_and_removes_duplicates() -> None:
-    assert _model_sequence(
+    assert model_sequence(
         "gemini-3.7-flash",
         ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"),
     ) == ("gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.6-flash")
@@ -378,3 +379,83 @@ async def test_classifier_retries_transient_server_error(
     assert calls == 3
     assert classifier.usage.application_retries == 2
     assert classifier.usage.request_attempts == 3
+
+
+class _RetiredModelClassifier:
+    """Answers the way a model id the provider has retired does: a permanent 404."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
+        self.calls += 1
+        raise ClientError(
+            404,
+            {
+                "error": {
+                    "status": "NOT_FOUND",
+                    "message": "This model is no longer available to new users.",
+                }
+            },
+        )
+
+
+def _service(classifier, repository, model_name: str) -> SourceDiscoveryService:
+    return SourceDiscoveryService(
+        classifier,
+        repository,
+        SourceDiscoverySettings(),
+        model_name=model_name,
+    )
+
+
+@pytest.mark.asyncio
+async def test_discovery_falls_back_when_the_primary_model_is_retired() -> None:
+    repository = InMemorySourceDiscoveryRepository()
+    retired = _RetiredModelClassifier()
+    successor = _Classifier()
+    service = FallbackSourceDiscoveryService(
+        (
+            _service(retired, repository, "retired-model"),
+            _service(successor, repository, "successor-model"),
+        )
+    )
+
+    result = await service.discover(_bundle(), ProductType.MORTGAGE)
+
+    assert retired.calls == 1
+    assert successor.batches
+    # The assessments were produced by the successor, so that is the model the
+    # cache namespace and the stored rows must name.
+    assert result.model_name == "successor-model"
+
+
+@pytest.mark.asyncio
+async def test_discovery_raises_once_every_configured_model_fails() -> None:
+    repository = InMemorySourceDiscoveryRepository()
+    service = FallbackSourceDiscoveryService(
+        (
+            _service(_RetiredModelClassifier(), repository, "retired-model"),
+            _service(_RetiredModelClassifier(), repository, "also-retired"),
+        )
+    )
+
+    with pytest.raises(ClientError):
+        await service.discover(_bundle(), ProductType.MORTGAGE)
+
+
+@pytest.mark.asyncio
+async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> None:
+    """A malformed response is the same on the next model, so do not pay twice."""
+    repository = InMemorySourceDiscoveryRepository()
+    successor = _Classifier()
+    service = FallbackSourceDiscoveryService(
+        (
+            _service(_InvalidClassifier(), repository, "first-model"),
+            _service(successor, repository, "successor-model"),
+        )
+    )
+
+    with pytest.raises(ValueError):
+        await service.discover(_bundle(), ProductType.MORTGAGE)
+    assert not successor.batches

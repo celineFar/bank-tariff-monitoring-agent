@@ -50,11 +50,18 @@ The Google SDK performs its own bounded request retries. The classifier adds a
 second bounded application-level retry loop for status codes 429, 500, 502, 503,
 and 504, using exponential backoff and jitter. Authentication, permission, schema,
 and validation failures are not retried. After a model exhausts retryable failures,
-the demonstration may restart the complete discovery run with the next explicitly
-configured `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` entry. Whole-run fallback avoids
-mixing model decisions within one accepted result. Console messages announce every
-model attempt and transition, while `model_attempts.json` records failures, retries,
-usage, and cost per model.
+the run restarts complete discovery with the next explicitly configured
+`SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` entry. This applies to the worker's
+pipeline and to the demonstration alike: a provider error on any configured
+model — including the permanent 404 a retired model id answers — moves the run
+to the next model rather than failing the offering with `source.model_failed`.
+A deterministic failure such as a malformed or mismatched response is not a
+model-availability problem, so it fails the offering without paying for the
+next model. Each model keeps its own assessment cache namespace and is the
+`model_name` stored with the rows it produced, so whole-run fallback avoids
+mixing model decisions within one accepted result. The worker logs every model
+transition; the demonstration also announces them on the console and records
+failures, retries, usage, and cost per model in `model_attempts.json`.
 
 Because the classifier's output is schema-bound rather than free prose, this
 stage runs on its own cheap model instead of the global `MODEL_NAME`:

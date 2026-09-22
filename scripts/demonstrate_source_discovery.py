@@ -31,6 +31,7 @@ from app.services.model_pricing import (
     ModelPrice,
     enforce_model_price_cap,
     get_model_price,
+    model_sequence,
 )
 from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
@@ -74,7 +75,7 @@ async def demonstrate(
         raise RuntimeError(
             "GEMINI_API_KEY is required for --execute-llm; set it in .env or the process environment"
         )
-    models = _model_sequence(
+    models = model_sequence(
         settings.models.generation_model,
         settings.source_discovery.fallback_model_names,
     )
@@ -150,10 +151,6 @@ async def demonstrate(
             )
         return output_directory
     raise AssertionError("source discovery model sequence exhausted unexpectedly")
-
-
-def _model_sequence(primary: str, fallbacks: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys((primary, *fallbacks)))
 
 
 def _build_classifier(

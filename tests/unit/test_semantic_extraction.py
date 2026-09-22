@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from google.genai.errors import ClientError
 from pydantic import ValidationError
 
 from app.config import SemanticExtractionSettings
@@ -45,6 +46,7 @@ from app.domain.source_discovery import (
 )
 from app.services.extraction_evidence import build_evidence_catalog
 from app.services.semantic_extraction import (
+    FallbackSemanticExtractionService,
     InMemorySemanticExtractionRepository,
     SemanticExtractionService,
     _normalize_field_contract,
@@ -653,9 +655,83 @@ def test_term_range_represents_bounded_and_indefinite_on_demand_terms() -> None:
 def test_term_range_rejects_mixed_or_unspecified_duration() -> None:
     from pydantic import ValidationError
 
-    with pytest.raises(ValidationError, match="indefinite term cannot have month bounds"):
+    with pytest.raises(
+        ValidationError, match="indefinite term cannot have month bounds"
+    ):
         TermRange(indefinite=True, end_condition="on_demand", max_months=60)
-    with pytest.raises(ValidationError, match="indefinite term requires an end condition"):
+    with pytest.raises(
+        ValidationError, match="indefinite term requires an end condition"
+    ):
         TermRange(indefinite=True)
     with pytest.raises(ValidationError, match="term requires a minimum or maximum"):
         TermRange()
+
+
+class _RetiredModelExtractor:
+    """Answers the way a model id the provider has retired does: a permanent 404."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def extract(self, batch):
+        self.calls += 1
+        raise ClientError(
+            404,
+            {
+                "error": {
+                    "status": "NOT_FOUND",
+                    "message": "This model is no longer available to new users.",
+                }
+            },
+        )
+
+
+def _extraction_service(extractor, repository, model_name: str):
+    return SemanticExtractionService(
+        extractor=extractor,
+        repository=repository,
+        settings=SemanticExtractionSettings(),
+        model_name=model_name,
+    )
+
+
+@pytest.mark.asyncio
+async def test_extraction_falls_back_when_the_primary_model_is_retired() -> None:
+    bundle, discovery = _fixture()
+    repository = InMemorySemanticExtractionRepository()
+    retired = _RetiredModelExtractor()
+    successor = FakeExtractor()
+    service = FallbackSemanticExtractionService(
+        (
+            _extraction_service(retired, repository, "retired-model"),
+            _extraction_service(successor, repository, "successor-model"),
+        )
+    )
+
+    result = await service.extract(
+        bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    assert retired.calls >= 1
+    assert successor.calls
+    assert result.model_name == "successor-model"
+
+
+@pytest.mark.asyncio
+async def test_extraction_without_a_configured_chain_behaves_like_one_model() -> None:
+    """The chain is empty by default, so nothing changes until it is configured."""
+    bundle, discovery = _fixture()
+    extractor = FakeExtractor()
+    service = FallbackSemanticExtractionService(
+        (
+            _extraction_service(
+                extractor, InMemorySemanticExtractionRepository(), "only-model"
+            ),
+        )
+    )
+
+    result = await service.extract(
+        bundle, discovery, retrieved_at=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    assert result.model_name == "only-model"

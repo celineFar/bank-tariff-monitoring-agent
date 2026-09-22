@@ -105,7 +105,9 @@ class RunRepository(Protocol):
         self, offering_execution_id: UUID, *, stage: str = "starting"
     ) -> OfferingExecution: ...
 
-    async def list_offering_executions(self, run_id: UUID) -> tuple[OfferingExecution, ...]: ...
+    async def list_offering_executions(
+        self, run_id: UUID
+    ) -> tuple[OfferingExecution, ...]: ...
 
     async def fail_offering_execution(
         self,

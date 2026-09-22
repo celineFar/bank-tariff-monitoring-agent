@@ -45,7 +45,11 @@ from app.repositories.contracts import (
     ReviewRepository,
     RunRepository,
 )
-from app.services.failure_mapping import source_failure_code
+from app.services.failure_mapping import (
+    bounded_failure_detail,
+    describe_failure,
+    source_failure_code,
+)
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
 from app.services.snapshot_lifecycle import (
@@ -103,6 +107,11 @@ class OfferingPipelineError(RuntimeError):
         self.cause_type = type(cause).__name__
         reason = getattr(cause, "reason", None)
         self.cause_reason = reason.value if isinstance(reason, StrEnum) else None
+        # `ClientError` alone cannot tell an operator that a model was retired,
+        # so keep the transport status too. The provider's message stays in the
+        # logs; `docs/failure-behavior.md` keeps it out of stored details.
+        self.cause_detail = bounded_failure_detail(cause)
+        self.cause_log_detail = describe_failure(cause)
 
 
 class IndexingPipeline:
@@ -442,9 +451,7 @@ class TariffPipeline:
                 ) as span:
                     span.set_attribute("tariff.run_id", str(run.id))
                     span.set_attribute("tariff.product", offering.product.value)
-                    span.set_attribute(
-                        "tariff.offering_id", offering.offering_id.value
-                    )
+                    span.set_attribute("tariff.offering_id", offering.offering_id.value)
                     result = await self._indexing.refresh(
                         offering,
                         run.id,
@@ -459,7 +466,7 @@ class TariffPipeline:
                     offering.offering_id.value,
                     exc.stage,
                     exc.failure_code,
-                    exc.cause_reason or exc.cause_type,
+                    exc.cause_reason or exc.cause_log_detail,
                 )
                 await self._runs.fail_offering_execution(
                     execution.id,
@@ -468,11 +475,12 @@ class TariffPipeline:
                     failure_detail=(
                         f"{exc.cause_type}:{exc.cause_reason}"
                         if exc.cause_reason
-                        else exc.cause_type
+                        else exc.cause_detail
                     ),
                     audit_payload={
                         "stage": exc.stage,
                         "exception_type": exc.cause_type,
+                        "detail": exc.cause_detail,
                         **({"reason": exc.cause_reason} if exc.cause_reason else {}),
                     },
                 )
@@ -484,10 +492,11 @@ class TariffPipeline:
                     execution.id,
                     stage="internal",
                     failure_code=RunFailureCode.INTERNAL_ERROR.value,
-                    failure_detail=type(exc).__name__,
+                    failure_detail=bounded_failure_detail(exc),
                     audit_payload={
                         "stage": "internal",
                         "exception_type": type(exc).__name__,
+                        "detail": bounded_failure_detail(exc),
                     },
                 )
                 continue

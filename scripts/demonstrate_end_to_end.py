@@ -40,7 +40,7 @@ from app.services.discovery_classifier import (
     AdkSourceDiscoveryClassifier,
     is_model_fallback_error,
 )
-from app.services.model_pricing import enforce_model_price_cap
+from app.services.model_pricing import enforce_model_price_cap, model_sequence
 from app.services.normalization import StructuralNormalizationService
 from app.services.pdf_extraction import GeminiPdfExtractionService
 from app.services.pipeline_audit import (
@@ -671,7 +671,7 @@ async def _run_discovery(
     *,
     repository: FileSystemSourceDiscoveryRepository,
 ) -> tuple[SourceDiscoveryPlan, SourceDiscoveryResult, list[dict[str, Any]]]:
-    models = _model_sequence(
+    models = model_sequence(
         settings.source_discovery.model_name or settings.models.generation_model,
         settings.source_discovery.fallback_model_names,
     )
@@ -746,7 +746,7 @@ async def _run_semantic_extraction(
 ) -> tuple[SemanticExtractionPlan, SemanticExtractionResult, list[dict[str, Any]]]:
     # Extraction runs on the configured generation model, as it does in
     # app.runtime. The source-discovery price ceiling governs that stage only.
-    models = _model_sequence(
+    models = model_sequence(
         settings.models.generation_model,
         settings.source_discovery.fallback_model_names,
     )
@@ -842,10 +842,6 @@ def _infer_product(url: str) -> ProductType:
         if "mortgage" in url.casefold()
         else ProductType.CONSUMER_LOAN
     )
-
-
-def _model_sequence(primary: str, fallbacks: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys((primary, *fallbacks)))
 
 
 def _url_extension(url: str) -> str:

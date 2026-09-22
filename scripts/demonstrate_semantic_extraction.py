@@ -17,7 +17,11 @@ from app.domain.semantic_extraction import (
 )
 from app.domain.source_discovery import SourceDiscoveryResult
 from app.services.discovery_classifier import is_model_fallback_error
-from app.services.model_pricing import enforce_model_price_cap, get_model_price
+from app.services.model_pricing import (
+    enforce_model_price_cap,
+    get_model_price,
+    model_sequence,
+)
 from app.services.pipeline_audit import (
     render_pre_validation,
     render_review_queue,
@@ -80,7 +84,7 @@ async def demonstrate(
 
     if settings.models.api_key is None:
         raise RuntimeError("GEMINI_API_KEY is required for --execute-llm")
-    models = _model_sequence(
+    models = model_sequence(
         settings.models.generation_model,
         settings.source_discovery.fallback_model_names,
     )
@@ -440,10 +444,6 @@ def _retrieved_at(case: Path) -> datetime:
         if value:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
     return datetime.now(UTC)
-
-
-def _model_sequence(primary: str, fallbacks: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys((primary, *fallbacks)))
 
 
 def _next_run_directory(parent: Path) -> Path:

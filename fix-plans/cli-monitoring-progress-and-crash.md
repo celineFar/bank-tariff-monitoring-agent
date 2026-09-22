@@ -234,29 +234,36 @@ Secondary defect: `failure_detail` for that row is the bare string `ClientError`
 actual 404 message was logged but not persisted, so neither the chat nor the API can
 explain the failure.
 
-### 5.2 To-do
+### 5.2 To-do — done (commit for phase D)
 
-- [ ] Move the fallback loop out of the demonstration scripts into a shared helper and
+- [x] Move the fallback loop out of the demonstration scripts into a shared helper and
       use it in the production source-discovery path, so
       `source_discovery.fallback_model_names` is honored by the worker.
-- [ ] Audit every production model call site for the same gap — at minimum semantic
+- [x] Audit every production model call site for the same gap — at minimum semantic
       extraction ([app/services/semantic_extraction.py](app/services/semantic_extraction.py)
       via [app/runtime.py:162-166](app/runtime.py#L162-L166)) has no fallback chain
       configured or applied; decide whether it needs one.
-- [ ] Persist a useful `failure_detail`: include the model id, HTTP status, and the
+- [x] Persist a useful `failure_detail`: include the model id, HTTP status, and the
       provider message (truncated to the column's 2000-char limit) instead of the
       exception class name.
-- [ ] Review the default model ids in `app/config/environment.py:60-101` and `.env`;
-      `gemini-2.5-flash-lite` is being retired by the provider, and the retirement notice
-      names `gemini-3.5-flash-lite` as the successor. Confirm the intended target with the
-      user before changing any model id — per AGENTS.md, models are not changed
-      unilaterally.
-- [ ] Surface the failure to the user in words, not just a code: map
+- [~] Reviewed, awaiting the user's decision: `gemini-2.5-flash-lite` is the
+      primary for both `PDF_EXTRACTION_MODEL_NAME` and `SOURCE_DISCOVERY_MODEL_NAME`
+      and now answers `404 … no longer available to new users`; the provider names
+      `gemini-3.5-flash-lite` as its successor, while the configured fallback
+      `gemini-3.1-flash-lite` is proven working in today's logs. Every run now pays
+      one wasted call on the retired primary before falling back. Changing the
+      primary is a model change, so it waits for the user.
+- [x] Surface the failure to the user in words, not just a code: map
       `source.model_failed` to a sentence that says the discovery model was unavailable
       and the run can be retried, keeping the exact code visible for the audit trail.
-- [ ] Tests: unit test that a `404`/unavailable error on the primary discovery model
+      Done as `explain_failure_code`, printed by the CLI itself and handed to the
+      model as `failure_summary` so both say the same thing.
+- [x] Tests: unit test that a `404`/unavailable error on the primary discovery model
       falls through to the configured fallback and the run completes; unit test that a
       failure on every model in the chain persists a detailed `failure_detail`.
+      The stored detail is bounded to `ClientError:http_404_NOT_FOUND` rather than
+      the provider's message: `docs/failure-behavior.md` forbids persisting
+      provider text, and the message stays in the log file.
 
 ## 6. Suggested order of work
 

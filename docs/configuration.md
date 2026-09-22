@@ -26,7 +26,12 @@ downloader receives `settings.http` and the PDF extraction service receives
   stages override it with a cheaper model of their own —
   `PDF_EXTRACTION_MODEL_NAME` and `SOURCE_DISCOVERY_MODEL_NAME` — and each has
   its own fallback list and price ceiling. Changing `MODEL_NAME` therefore does
-  not change what those two stages spend.
+  not change what those two stages spend. Semantic extraction stays on
+  `MODEL_NAME` and accepts an optional comma-separated
+  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES`; it is empty by default, so the
+  stage behaves as a single model until a successor is configured. Every stage
+  that names a model tries its configured chain in order before failing the
+  offering, because providers retire model ids on their own schedule.
 - **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`, `ARTIFACT_TEMP_DIR`.
   Application storage must use PostgreSQL; the ADK session URI may also use
   `shared://`.

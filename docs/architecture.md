@@ -58,7 +58,7 @@ shell, or SQL tool.
   to report progress during long monitoring runs.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/runtime.py`: shared composition root for HTTP/worker run, review, and snapshot
-  repositories, ingestion,
+  repositories, ingestion, per-model discovery and extraction fallback chains,
   `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services
   (including the pending-review handoff), and `ChatReviewService` for original-chat
   review prompts, workflow resumption, and audited bulk abort,
@@ -330,6 +330,14 @@ rules; reuses content-addressed PostgreSQL assessments; and sends only unresolve
 semantic cases to a tool-free ADK classifier with strict structured output. Child
 blocks and JSON leaves inherit their container decision, so model use scales with
 semantic novelty rather than raw normalized block count.
+
+`app/runtime.py` wraps one `SourceDiscoveryService` per configured model in a
+`FallbackSourceDiscoveryService`, so a provider error on the primary model —
+including the permanent 404 a retired model id answers — restarts discovery on
+the next configured model instead of failing the offering. Each service keeps
+its own cache namespace and stores its own `model_name`, so one accepted result
+never mixes decisions from two models. `FallbackSemanticExtractionService` does
+the same for extraction; its chain is empty unless configured.
 
 Downloaded PDFs with strongly product-relevant link text, title, URL, or surrounding
 heading receive a deterministic document assessment, so their extracted content is

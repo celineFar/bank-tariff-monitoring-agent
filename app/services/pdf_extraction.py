@@ -28,6 +28,7 @@ from app.domain.pdf_extraction import (
     PdfTemporalStatus,
 )
 from app.repositories.contracts import PdfExtractionRepository
+from app.services.failure_mapping import describe_failure
 from app.services.gemini_pdf_extractor import AdkGeminiPdfExtractor
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
@@ -244,13 +245,13 @@ class GeminiPdfExtractionService:
                         "PDF model %s failed for %s (%s); falling back to %s",
                         model_name,
                         document_id,
-                        _failure_summary(exc),
+                        describe_failure(exc),
                         self._models[index],
                     )
                     continue
                 raise RuntimeError(
                     f"all Gemini PDF models failed for {document_id}: "
-                    f"{_failure_summary(exc)}"
+                    f"{describe_failure(exc)}"
                 ) from exc
             await self._repository.save(
                 document_sha256=document.sha256,
@@ -446,11 +447,3 @@ def _cache_key(
         model_name,
         content_fingerprint,
     )
-
-
-def _failure_summary(error: Exception) -> str:
-    if isinstance(error, APIError):
-        message = (error.message or "no provider message").replace("\n", " ")[:500]
-        return f"HTTP {error.code} / {error.status or 'UNKNOWN'}: {message}"
-    message = str(error).replace("\n", " ")[:500]
-    return f"{type(error).__name__}: {message}"

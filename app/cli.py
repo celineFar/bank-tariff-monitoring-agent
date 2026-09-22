@@ -35,6 +35,7 @@ from app.domain.semantic_extraction import ExtractionField
 from app.runtime import build_application_container
 from app.services.adk_logging import suppress_resource_exhaustion_adk_logs
 from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
+from app.services.failure_mapping import explain_failure_code
 from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.run_service import RunProgressPort
@@ -116,8 +117,9 @@ cli_agent = Agent(
         "This long-running "
         "tool starts the worker and pauses this invocation; do not call it twice. "
         "The CLI supplies its final function response when the worker reaches a "
-        "terminal or review state. On a failed result, report the exact saved "
-        "failure_code without claiming tariff data. On success, answer the original "
+        "terminal or review state. On a failed result, report the saved "
+        "failure_summary and the exact failure_code, without claiming tariff "
+        "data. On success, answer the original "
         "question from accepted snapshots with answer_tariff_query using the "
         "saved query_plan and exact original user text. On review, "
         "call get_next_monitoring_review, show the field, candidate, and evidence, "
@@ -308,6 +310,15 @@ async def _continue_pending(
             run = await _wait_for_run(
                 run_service, UUID(str(result["run_id"])), poll_seconds
             )
+            # Say what the code means here, deterministically, rather than
+            # leaving the user with a bare `source.model_failed` from the model.
+            failure_summary = (
+                explain_failure_code(run.failure_code)
+                if run.status is RunStatus.FAILED
+                else None
+            )
+            if failure_summary is not None:
+                _error(f"Monitoring failed ({run.failure_code})", failure_summary)
             await _resume(
                 runner,
                 user_id=user_id,
@@ -318,6 +329,7 @@ async def _continue_pending(
                     "status": run.status.value,
                     "failure_code": run.failure_code,
                     "failure_detail": run.failure_detail,
+                    "failure_summary": failure_summary,
                     "review_required": run.status is RunStatus.AWAITING_REVIEW,
                 },
             )

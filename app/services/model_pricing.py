@@ -124,6 +124,15 @@ def get_model_price(model: str, *, on_date: date | None = None) -> ModelPrice:
     )
 
 
+def model_sequence(primary: str, fallbacks: tuple[str, ...]) -> tuple[str, ...]:
+    """Order the models a stage may try, primary first and without repeats.
+
+    Providers retire model ids on their own schedule, so every stage that calls
+    one needs the configured successors in a stable order.
+    """
+    return tuple(dict.fromkeys((primary, *fallbacks)))
+
+
 def enforce_model_price_cap(
     models: tuple[str, ...],
     *,

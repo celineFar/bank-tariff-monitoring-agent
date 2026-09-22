@@ -24,9 +24,18 @@ official evidence gives a reviewer a bounded business choice.
 | Invalid structured model response | `source.malformed_structured_output` | bounded repair, then safe failure/review only with captured evidence |
 | Other deterministic validation failure | `source.validation_failed` | reject candidate; never fabricate |
 
-The stored audit detail contains only the stage, stable code, and exception type. Response
-bodies, source bodies, credentials, database addresses, and raw provider errors are not
-copied into user-visible failure messages.
+The stored audit detail contains only the stage, stable code, exception type, and —
+for a provider error — its transport status, as in `ClientError:http_404_NOT_FOUND`.
+That status token separates a retired model from a rate limit months later without
+persisting the response. Response bodies, source bodies, credentials, database
+addresses, and raw provider errors are not copied into stored details or
+user-visible failure messages; the provider's own message is written to the log
+file only.
+
+The chat CLI turns a run's failure code into one sentence for the user
+(`explain_failure_code` in `app/services/failure_mapping.py`) and still shows the
+exact code. The sentence is derived from the stored code, never from the
+exception, so it cannot claim a cause the run did not record.
 
 RAG generation and malformed-output exceptions return an `AnswerResult` with no answer
 and no citations using `answer.generation_failed`. Invalid model citations get one

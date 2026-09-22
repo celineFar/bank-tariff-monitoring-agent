@@ -64,12 +64,17 @@ from app.domain.semantic_extraction import (
 from app.domain.source_discovery import ProductAssociation, SourceDiscoveryResult
 from app.repositories.contracts import SemanticExtractionRepository
 from app.services.adk_logging import suppress_handled_adk_exception_logs
-from app.services.discovery_classifier import ClassifierUsage, is_retryable_api_error
+from app.services.discovery_classifier import (
+    ClassifierUsage,
+    is_model_fallback_error,
+    is_retryable_api_error,
+)
 from app.services.extraction_evidence import build_evidence_catalog
 from app.services.extraction_planner import (
     build_extraction_batches,
     field_has_evidence_marker,
 )
+from app.services.failure_mapping import describe_failure
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     adk_usage_callbacks,
@@ -350,6 +355,10 @@ class SemanticExtractionService:
         self._settings = settings
         self._model_name = model_name
         self._usage_repository = usage_repository
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     async def plan(
         self,
@@ -1991,3 +2000,50 @@ def _decode_value(result: ModelFieldResult) -> Any:
         raise ValueError(
             f"extractor returned invalid value_json for {result.field.value}"
         ) from exc
+
+
+class FallbackSemanticExtractionService:
+    """Try each configured extraction model in turn before failing the offering.
+
+    The same retirement that can end source discovery can end extraction, and
+    the chain is empty unless an operator configures one, so by default this
+    behaves exactly like the single service it wraps.
+    """
+
+    def __init__(self, services: Sequence[SemanticExtractionService]) -> None:
+        if not services:
+            raise ValueError("semantic extraction needs at least one model")
+        self._services = tuple(services)
+
+    async def plan(
+        self,
+        bundle: NormalizedSourceBundle,
+        discovery: SourceDiscoveryResult,
+    ) -> SemanticExtractionPlan:
+        # Planning is deterministic and never calls a model; the primary model
+        # names the cache namespace the run starts from.
+        return await self._services[0].plan(bundle, discovery)
+
+    async def extract(
+        self,
+        bundle: NormalizedSourceBundle,
+        discovery: SourceDiscoveryResult,
+        *,
+        retrieved_at: datetime,
+    ) -> SemanticExtractionResult:
+        last = len(self._services) - 1
+        for index, service in enumerate(self._services):
+            try:
+                return await service.extract(
+                    bundle, discovery, retrieved_at=retrieved_at
+                )
+            except Exception as exc:
+                if index == last or not is_model_fallback_error(exc):
+                    raise
+                logger.warning(
+                    "Semantic-extraction model %s failed (%s); falling back to %s",
+                    service.model_name,
+                    describe_failure(exc),
+                    self._services[index + 1].model_name,
+                )
+        raise AssertionError("semantic-extraction model sequence exhausted")
