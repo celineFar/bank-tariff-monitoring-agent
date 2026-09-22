@@ -28,6 +28,19 @@ from enum import StrEnum
 from uuid import uuid4
 
 RETRIEVAL_LOGGER_NAME = "tariff.retrieval"
+
+
+def _correlation_id() -> str:
+    """Prefer the active OTel trace id so a log line and a trace share one key.
+
+    Falls back to a random id when nothing is recording, which keeps the trace
+    readable with tracing disabled.
+    """
+    from app.services.telemetry import current_trace_id
+
+    return current_trace_id() or uuid4().hex[:12]
+
+
 logger = logging.getLogger(RETRIEVAL_LOGGER_NAME)
 
 
@@ -94,7 +107,7 @@ def retrieval_trace(**opening: object) -> Iterator[str | None]:
     if not _enabled(RetrievalTraceLevel.SUMMARY):
         yield None
         return
-    trace_id = uuid4().hex[:12]
+    trace_id = _correlation_id()
     id_token = _trace_id.set(trace_id)
     step_token = _step.set(0)
     started = time.perf_counter()
