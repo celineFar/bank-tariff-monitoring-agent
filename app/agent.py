@@ -9,6 +9,7 @@ from google.adk.tools import request_input
 from google.genai import types
 
 from app.config import get_settings
+from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
 from app.tools import (
     answer_tariff_question,
     get_current_tariffs,
@@ -26,6 +27,7 @@ MODEL = get_settings().models.generation_model
 
 root_agent = Agent(
     name="ameria_tariff_monitor",
+    **adk_usage_callbacks(DEFAULT_USAGE_PROXY, stage="adk.root", model_id=MODEL),
     model=Gemini(model=MODEL, retry_options=types.HttpRetryOptions(attempts=3)),
     instruction=(
         "You are the Ameria Bank tariff-monitoring orchestrator. On ordinary text "

@@ -8,6 +8,7 @@ from google.adk.apps import App
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.config import Settings, load_seed_catalog
+from app.repositories.embedding_cache import PostgresEmbeddingCache
 from app.repositories.knowledge_store import PostgresKnowledgeStore
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
@@ -30,6 +31,10 @@ from app.services.knowledge_index import (
     KnowledgeIndexer,
 )
 from app.services.knowledge_projection import KnowledgeProjectionService
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    configure_default_model_usage_repository,
+)
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
 from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
@@ -91,6 +96,8 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         else None
     )
     runs = PostgresRunRepository(sessions)
+    model_usage = PostgresModelCallUsageRepository(sessions)
+    configure_default_model_usage_repository(model_usage)
     run_service = RunService(runs)
     catalog = load_seed_catalog(allowed_hosts=settings.http.allowed_source_hosts)
     request_resolver = RequestResolver(
@@ -100,6 +107,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             settings.models.generation_model,
             api_key=api_key,
             max_attempts=settings.intent_resolution.classifier_max_attempts,
+            usage_repository=model_usage,
         ),
     )
     artifacts = FileSystemArtifactStore(settings.application.artifact_temp_dir)
@@ -110,6 +118,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             settings.pdf_extraction,
             PostgresPdfExtractionRepository(sessions),
             api_key=api_key,
+            usage_repository=model_usage,
         ),
     )
     discovery = SourceDiscoveryService(
@@ -126,27 +135,34 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             retry_jitter_ratio=(
                 settings.source_discovery.classifier_retry_jitter_ratio
             ),
+            usage_repository=model_usage,
         ),
         PostgresSourceDiscoveryRepository(sessions),
         settings.source_discovery,
         model_name=settings.models.generation_model,
+        usage_repository=model_usage,
     )
     extraction = SemanticExtractionService(
         AdkSemanticExtractor(
             settings.models.generation_model,
             api_key=api_key,
+            usage_repository=model_usage,
         ),
         PostgresSemanticExtractionRepository(sessions),
         settings.semantic_extraction,
         model_name=settings.models.generation_model,
+        usage_repository=model_usage,
     )
     embedding_client = genai.Client(api_key=api_key) if api_key else genai.Client()
     indexer = KnowledgeIndexer(
         GeminiEmbeddingProvider(
             embedding_client,
             settings.models.embedding_model,
+            usage_repository=model_usage,
         ),
         PostgresKnowledgeStore(sessions),
+        PostgresEmbeddingCache(sessions),
+        usage_repository=model_usage,
     )
     indexing = IndexingPipeline(
         acquisition=build_acquisition_service(http_client, settings),
@@ -169,11 +185,16 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             GeminiQueryEmbeddingProvider(
                 embedding_client,
                 settings.models.embedding_model,
+                usage_repository=model_usage,
             ),
             PostgresRagRetrievalRepository(sessions),
             settings.rag,
         ),
-        GeminiAnswerGenerator(embedding_client, settings.models.generation_model),
+        GeminiAnswerGenerator(
+            embedding_client,
+            settings.models.generation_model,
+            usage_repository=model_usage,
+        ),
     )
     reviews = PostgresReviewRepository(sessions)
     tariff_pipeline = TariffPipeline(

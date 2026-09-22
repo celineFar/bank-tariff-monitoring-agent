@@ -16,6 +16,15 @@ class ModelPrice:
 
 
 MODEL_PRICE_CATALOG: dict[str, tuple[ModelPrice, ...]] = {
+    "gemini-embedding-001": (
+        ModelPrice(
+            model="gemini-embedding-001",
+            starts_on=date(2026, 9, 22),
+            ends_on=None,
+            input_per_million_tokens_usd=0.15,
+            output_per_million_tokens_usd=0.0,
+        ),
+    ),
     "gemini-2.5-flash-lite": (
         ModelPrice(
             model="gemini-2.5-flash-lite",

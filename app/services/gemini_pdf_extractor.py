@@ -27,6 +27,10 @@ from app.domain.pdf_extraction import (
 )
 from app.services.adk_logging import suppress_handled_adk_exception_logs
 from app.services.discovery_classifier import is_retryable_api_error
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    adk_usage_callbacks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +60,14 @@ class AdkGeminiPdfExtractor:
         backoff_base_seconds: float,
         max_backoff_seconds: float,
         retry_jitter_ratio: float,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key)
         agent = Agent(
             name="pdf_document_extractor",
+            **adk_usage_callbacks(
+                usage_repository, stage="pdf.transcription", model_id=model_name
+            ),
             model=Gemini(
                 model=model_name,
                 client=client,

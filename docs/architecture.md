@@ -63,6 +63,17 @@ shell, or SQL tool.
   (including the pending-review handoff), and `ChatReviewService` for original-chat
   review prompts, workflow resumption, and audited bulk abort,
   retrieval, and `RagAnswerService`.
+- `app/services/model_call_usage.py` and `model_call_usage`: redacted, dated paid-tier
+  model call/cost ledger shared by direct Gemini adapters and ADK callbacks. The
+  read-only `scripts/model_cost_report.py` reports known and unknown costs;
+  `docs/model-cost-monitoring.md` records coverage and pricing assumptions.
+- `app/repositories/embedding_cache.py` and migration `012`: document-text vectors
+  reused only for matching model, dimensions, task type, and content hash. The
+  cache is content-addressed and independent of active document versions.
+- `app/repositories/structured_projection.py`: writes accepted offering profiles,
+  facts, evidence, and retrieval units in the snapshot publication transaction;
+  reviewer activation rebuilds from final reviewed extraction in its own acceptance
+  transaction. Pending candidates create no active read projection.
 - `app/services/logging_setup.py`: shared console and rotating file logging for API and
   worker; Compose mounts host `logs/` for archives that survive container recreation.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
@@ -71,12 +82,12 @@ shell, or SQL tool.
   once and returns immediately when native human input is requested.
 - `app/services/structured_projection.py`: pure, fail-closed projection of final accepted
   semantic extraction into offering profiles, typed tariff facts, verified citations,
-  and clean evidence-backed retrieval units. It is staged for transactional publication;
-  the current answer path still reads `knowledge_chunks`.
+  and clean evidence-backed retrieval units. Accepted projections are published
+  transactionally; the current answer path still reads `knowledge_chunks`.
 - `migrations/011_structured_tariff_read_model.sql`: additive read-model tables
   `offering_profiles`, `tariff_facts`, `fact_evidence`, and `retrieval_units`, plus
-  `model_call_usage` for future call and cost monitoring. The tables are currently
-  unpopulated by the application until the publication phase is implemented.
+  `model_call_usage` for call and cost monitoring. Live new runs populate these
+  tables; historical accepted snapshots require the Phase F backfill.
 - `migrations/`: PostgreSQL/pgvector schema.
   Project-owned event timestamps retain their `timestamptz` instants and have
   stored `timestamp` columns suffixed `_yerevan` for direct local-time inspection.

@@ -49,6 +49,7 @@ from app.domain.review import (
     ReviewDecision,
     ReviewDecisionType,
     ReviewReason,
+    ReviewSnapshotUpdate,
     ReviewStatus,
     ReviewTask,
 )
@@ -65,6 +66,7 @@ from app.services.monitoring_workflow import (
     workflow_identity,
 )
 from app.services.review_decisions import ReviewDecisionService
+from tests.fixtures.structured_tariffs import accepted_snapshot
 
 pytestmark = pytest.mark.postgres
 
@@ -172,25 +174,14 @@ async def _running_offering(
 
 def _snapshot(run_id, execution_id) -> SnapshotAttempt:
     now = datetime.now(UTC)
-    return SnapshotAttempt(
-        id=uuid4(),
-        run_id=run_id,
-        offering_execution_id=execution_id,
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=OfferingId.CONSUMER_STANDARD,
-        status=SnapshotStatus.ACCEPTED,
-        normalized_tariff={"nominal_interest_rate": "13.5%"},
-        evidence=(
-            {
-                "source_url": "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans",
-                "excerpt": "Nominal interest rate: 13.5%",
-            },
-        ),
-        semantic_extraction={"status": "completed"},
-        validation={"decision": "accept"},
-        canonical_sha256="c" * 64,
-        created_at=now,
-        accepted_at=now,
+    return accepted_snapshot("consumer").model_copy(
+        update={
+            "id": uuid4(),
+            "run_id": run_id,
+            "offering_execution_id": execution_id,
+            "created_at": now,
+            "accepted_at": now,
+        }
     )
 
 
@@ -237,7 +228,8 @@ async def test_project_timestamps_store_yerevan_wall_time_and_aware_instant(
             )
 
         missing = (
-            await session.execute(text("""
+            await session.execute(
+                text("""
                 SELECT base.table_name, base.column_name
                 FROM information_schema.columns AS base
                 LEFT JOIN information_schema.columns AS companion
@@ -254,7 +246,8 @@ async def test_project_timestamps_store_yerevan_wall_time_and_aware_instant(
                   )
                   AND base.data_type = 'timestamp with time zone'
                   AND companion.column_name IS NULL
-            """))
+            """)
+            )
         ).all()
         assert missing == []
 
@@ -291,20 +284,14 @@ async def test_different_offering_can_start_while_another_awaits_review(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     repository = PostgresRunRepository(monitoring_session_factory)
-    overdraft = await repository.submit(
-        _command(offering_id=OfferingId.OVERDRAFT)
-    )
+    overdraft = await repository.submit(_command(offering_id=OfferingId.OVERDRAFT))
     claimed = await repository.claim_next("review-worker")
     assert claimed is not None
     assert claimed.run.id == overdraft.run.id
     await repository.pause_for_review(overdraft.run.id, summary={"review_ids": []})
 
-    credit_line = await repository.submit(
-        _command(offering_id=OfferingId.CREDIT_LINE)
-    )
-    repeated = await repository.submit(
-        _command(offering_id=OfferingId.OVERDRAFT)
-    )
+    credit_line = await repository.submit(_command(offering_id=OfferingId.CREDIT_LINE))
+    repeated = await repository.submit(_command(offering_id=OfferingId.OVERDRAFT))
     family_wide = await repository.submit(_command())
 
     assert credit_line.created is True
@@ -322,9 +309,7 @@ async def test_family_wide_active_run_covers_targeted_requests(
 ) -> None:
     repository = PostgresRunRepository(monitoring_session_factory)
     family_wide = await repository.submit(_command())
-    targeted = await repository.submit(
-        _command(offering_id=OfferingId.CREDIT_LINE)
-    )
+    targeted = await repository.submit(_command(offering_id=OfferingId.CREDIT_LINE))
 
     assert targeted.created is False
     assert targeted.run.id == family_wide.run.id
@@ -641,11 +626,12 @@ async def test_review_candidate_documents_remain_hidden_and_keep_prior_active(
         monitoring_session_factory
     )
     publisher = PostgresOfferingPublicationRepository(monitoring_session_factory)
+    first_snapshot = _snapshot(first_run.id, first_execution.id)
     await publisher.publish(
         OfferingPublication(
             offering_execution_id=first_execution.id,
             documents=(_document(first_run.id),),
-            snapshot=_snapshot(first_run.id, first_execution.id),
+            snapshot=first_snapshot,
         )
     )
     await run_repository.finish(first_run.id, RunStatus.SUCCEEDED)
@@ -697,6 +683,28 @@ async def test_review_candidate_documents_remain_hidden_and_keep_prior_active(
         ("b" * 64, False, "pending_review"),
     ]
     assert candidate_active_chunks == 0
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    review = await reviews.create(
+        _review_task(
+            candidate_run.id,
+            candidate_execution.id,
+            candidate_snapshot.id,
+            idempotency_key="candidate-rejection",
+            created_at=candidate_snapshot.created_at,
+        )
+    )
+    await reviews.reject(review.id, reviewer="reviewer@example.test")
+    async with monitoring_session_factory() as session:
+        active = (
+            (
+                await session.execute(
+                    text("SELECT snapshot_id FROM offering_profiles WHERE is_active")
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert active == [first_snapshot.id]
 
 
 def _review_task(
@@ -930,4 +938,264 @@ async def test_postgres_session_restart_resumes_same_workflow_invocation(
     assert pipeline.calls == 1
     persisted = await runs.get(running.id)
     assert persisted is not None and persisted.status is RunStatus.SUCCEEDED
+    async with monitoring_session_factory() as session:
+        active_projection = await session.scalar(
+            text(
+                "SELECT count(*) FROM offering_profiles WHERE snapshot_id = :id AND is_active"
+            ),
+            {"id": snapshot.id},
+        )
+    assert active_projection == 1
     await second_sessions.db_engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_structured_projection_is_atomic_and_supersedes_only_accepted_scope(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    runs, first_run, first_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    publisher = PostgresOfferingPublicationRepository(monitoring_session_factory)
+    first = _snapshot(first_run.id, first_execution.id)
+    await publisher.publish(
+        OfferingPublication(
+            offering_execution_id=first_execution.id,
+            documents=(_document(first_run.id),),
+            snapshot=first,
+        )
+    )
+    async with monitoring_session_factory() as session:
+        first_counts = (
+            await session.execute(
+                text(
+                    """SELECT
+                        (SELECT count(*) FROM offering_profiles WHERE is_active),
+                        (SELECT count(*) FROM tariff_facts WHERE is_active),
+                        (SELECT count(*) FROM fact_evidence),
+                        (SELECT count(*) FROM retrieval_units WHERE is_active)
+                    """
+                )
+            )
+        ).one()
+    assert first_counts[0] == 1
+    assert first_counts[1] > 0
+    assert first_counts[2] > 0
+    assert first_counts[3] > 0
+    await runs.finish(first_run.id, RunStatus.SUCCEEDED)
+
+    _, second_run, second_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    candidate = _snapshot(second_run.id, second_execution.id).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await publisher.publish(
+        OfferingPublication(
+            offering_execution_id=second_execution.id,
+            documents=(_document(second_run.id, checksum="b" * 64),),
+            snapshot=candidate,
+        )
+    )
+    async with monitoring_session_factory() as session:
+        pending_count = await session.scalar(
+            text("SELECT count(*) FROM offering_profiles")
+        )
+    assert pending_count == 1
+    await runs.finish(second_run.id, RunStatus.FAILED)
+
+    _, third_run, third_execution = await _running_offering(monitoring_session_factory)
+    third = _snapshot(third_run.id, third_execution.id)
+    await publisher.publish(
+        OfferingPublication(
+            offering_execution_id=third_execution.id,
+            documents=(_document(third_run.id, checksum="d" * 64),),
+            snapshot=third,
+        )
+    )
+    async with monitoring_session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    """SELECT snapshot_id, is_active FROM offering_profiles
+                    ORDER BY accepted_at"""
+                )
+            )
+        ).all()
+        active_facts = await session.scalar(
+            text(
+                "SELECT count(*) FROM tariff_facts WHERE is_active AND snapshot_id = :id"
+            ),
+            {"id": third.id},
+        )
+        old_active_units = await session.scalar(
+            text(
+                "SELECT count(*) FROM retrieval_units WHERE is_active AND snapshot_id = :id"
+            ),
+            {"id": first.id},
+        )
+    assert {row.snapshot_id for row in rows if row.is_active} == {third.id}
+    assert active_facts > 0
+    assert old_active_units == 0
+
+
+@pytest.mark.asyncio
+async def test_projection_failure_rolls_back_snapshot_and_index(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    broken = _snapshot(run.id, execution.id).model_copy(
+        update={"semantic_extraction": {"status": "completed"}}
+    )
+    with pytest.raises(ValueError):
+        await PostgresOfferingPublicationRepository(monitoring_session_factory).publish(
+            OfferingPublication(
+                offering_execution_id=execution.id,
+                documents=(_document(run.id),),
+                snapshot=broken,
+            )
+        )
+    async with monitoring_session_factory() as session:
+        counts = (
+            await session.execute(
+                text(
+                    """SELECT
+                        (SELECT count(*) FROM tariff_snapshots),
+                        (SELECT count(*) FROM knowledge_documents),
+                        (SELECT count(*) FROM offering_profiles)
+                    """
+                )
+            )
+        ).one()
+    assert tuple(counts) == (0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_review_approval_activates_final_projection_atomically(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    accepted = _snapshot(run.id, execution.id)
+    pending = accepted.model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await PostgresOfferingPublicationRepository(monitoring_session_factory).publish(
+        OfferingPublication(
+            offering_execution_id=execution.id,
+            documents=(_document(run.id),),
+            snapshot=pending,
+        )
+    )
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    review = await reviews.create(
+        _review_task(
+            run.id,
+            execution.id,
+            pending.id,
+            idempotency_key="projection-approval",
+            created_at=pending.created_at,
+        )
+    )
+    update = ReviewSnapshotUpdate(
+        snapshot_id=pending.id,
+        expected_canonical_sha256=pending.canonical_sha256,
+        normalized_tariff=pending.normalized_tariff,
+        semantic_extraction=pending.semantic_extraction,
+        validation={"accepted": True, "review_signals": []},
+        canonical_sha256=pending.canonical_sha256,
+        ready_for_activation=True,
+    )
+    await reviews.approve_with_snapshot(
+        review.id,
+        ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+        update,
+        reviewer="reviewer@example.test",
+    )
+    async with monitoring_session_factory() as session:
+        snapshot_status = await session.scalar(
+            text("SELECT status FROM tariff_snapshots WHERE id = :id"),
+            {"id": pending.id},
+        )
+        profile_count = await session.scalar(
+            text(
+                "SELECT count(*) FROM offering_profiles WHERE snapshot_id = :id AND is_active"
+            ),
+            {"id": pending.id},
+        )
+        fact_count = await session.scalar(
+            text(
+                "SELECT count(*) FROM tariff_facts WHERE snapshot_id = :id AND is_active"
+            ),
+            {"id": pending.id},
+        )
+    assert snapshot_status == "accepted"
+    assert profile_count == 1
+    assert fact_count > 0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_accepted_publications_leave_one_active_projection(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    runs, first_run, first_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    await runs.finish(first_run.id, RunStatus.SUCCEEDED)
+    _, second_run, second_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    first = _snapshot(first_run.id, first_execution.id)
+    second = _snapshot(second_run.id, second_execution.id)
+    publisher = PostgresOfferingPublicationRepository(monitoring_session_factory)
+    await asyncio.gather(
+        publisher.publish(
+            OfferingPublication(
+                offering_execution_id=first_execution.id,
+                documents=(_document(first_run.id),),
+                snapshot=first,
+            )
+        ),
+        publisher.publish(
+            OfferingPublication(
+                offering_execution_id=second_execution.id,
+                documents=(_document(second_run.id, checksum="b" * 64),),
+                snapshot=second,
+            )
+        ),
+    )
+    async with monitoring_session_factory() as session:
+        active = (
+            (
+                await session.execute(
+                    text("SELECT snapshot_id FROM offering_profiles WHERE is_active")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        active_fact_scopes = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT DISTINCT snapshot_id FROM tariff_facts WHERE is_active"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        active_unit_scopes = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT DISTINCT snapshot_id FROM retrieval_units WHERE is_active"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(active) == 1
+    assert active[0] in {first.id, second.id}
+    assert active_fact_scopes == active
+    assert active_unit_scopes == active

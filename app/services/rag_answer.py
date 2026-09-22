@@ -23,6 +23,10 @@ from app.domain.retrieval import (
     RetrievalStatus,
     TariffField,
 )
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    observe_model_call,
+)
 
 _MAX_PROMPT_CHARS = 18_000
 _MAX_HIT_CHARS = 3_000
@@ -50,22 +54,35 @@ class AnswerGenerator(Protocol):
 
 
 class GeminiAnswerGenerator:
-    def __init__(self, client: genai.Client, model_name: str) -> None:
+    def __init__(
+        self,
+        client: genai.Client,
+        model_name: str,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
+    ) -> None:
         self._client = client
         self._model_name = model_name
+        self._usage_repository = usage_repository
 
     async def generate(self, prompt: str) -> AnswerDraft:
-        response = await self._client.aio.models.generate_content(
-            model=self._model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0,
-                response_mime_type="application/json",
-                response_schema=AnswerDraft,
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                    disable=True
+        response = await observe_model_call(
+            lambda: self._client.aio.models.generate_content(
+                model=self._model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0,
+                    response_mime_type="application/json",
+                    response_schema=AnswerDraft,
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    ),
                 ),
             ),
+            repository=self._usage_repository,
+            stage="rag.answer_generation",
+            operation="generate_content",
+            model_id=self._model_name,
+            input_count=1,
         )
         if response.parsed is not None:
             return AnswerDraft.model_validate(response.parsed)

@@ -37,6 +37,7 @@ from app.repositories.knowledge_store import (
     KnowledgeDocumentRecord,
     PostgresKnowledgeStore,
 )
+from app.repositories.structured_projection import publish_structured_projection
 
 _RUN_COLUMNS = """
     id,
@@ -1087,6 +1088,8 @@ class PostgresOfferingPublicationRepository:
                 ]
             )
             snapshot_id = await _insert_snapshot(session, snapshot)
+            if snapshot.status is SnapshotStatus.ACCEPTED:
+                await publish_structured_projection(session, snapshot)
             for manifest in publication.manifests:
                 await session.execute(
                     text(

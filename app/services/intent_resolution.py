@@ -36,6 +36,10 @@ from app.domain.intent import (
 )
 from app.domain.models import OfferingId, ProductType
 from app.services.adk_logging import suppress_handled_adk_exception_logs
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    adk_usage_callbacks,
+)
 
 _ARMENIAN_LETTER = re.compile(r"[\u0531-\u0586]")
 _LATIN_LETTER = re.compile(r"[a-zA-Z]")
@@ -182,10 +186,14 @@ class AdkIntentClassifier:
         *,
         api_key: str | None = None,
         max_attempts: int = 2,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
         agent = Agent(
             name="intent_catalog_classifier",
+            **adk_usage_callbacks(
+                usage_repository, stage="intent.resolution", model_id=model_name
+            ),
             model=Gemini(
                 model=model_name,
                 client=client,

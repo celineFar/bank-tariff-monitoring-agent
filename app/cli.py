@@ -33,6 +33,7 @@ from app.domain.semantic_extraction import ExtractionField
 from app.runtime import build_application_container
 from app.services.adk_logging import suppress_resource_exhaustion_adk_logs
 from app.services.chat_reviews import ReviewNotReadyError
+from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.semantic_extraction import validate_review_field_value
 from app.tools import (
@@ -83,6 +84,11 @@ async def start_tariff_monitoring_cli(
 
 
 cli_agent = Agent(
+    **adk_usage_callbacks(
+        DEFAULT_USAGE_PROXY,
+        stage="adk.cli",
+        model_id=get_settings().models.generation_model,
+    ),
     name="ameria_tariff_monitor_cli",
     model=root_agent.model,
     generate_content_config=types.GenerateContentConfig(

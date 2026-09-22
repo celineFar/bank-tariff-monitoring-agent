@@ -28,6 +28,10 @@ from app.domain.pdf_extraction import (
 )
 from app.repositories.contracts import PdfExtractionRepository
 from app.services.gemini_pdf_extractor import AdkGeminiPdfExtractor
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    record_model_cache_hit,
+)
 from app.services.model_pricing import enforce_model_price_cap
 from app.services.pdf_admission import assess_pdf_metadata
 from app.services.pdf_input_probe import probe_pdf_input
@@ -97,10 +101,12 @@ class GeminiPdfExtractionService:
         repository: PdfExtractionRepository,
         *,
         api_key: str | None,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         self._settings = settings
         self._repository = repository
         self._api_key = api_key
+        self._usage_repository = usage_repository
         self._models = tuple(
             dict.fromkeys((settings.model_name, *settings.fallback_model_names))
         )
@@ -179,6 +185,12 @@ class GeminiPdfExtractionService:
             )
             if cached is not None:
                 _validate_response(cached, plan)
+                await record_model_cache_hit(
+                    self._usage_repository,
+                    stage="pdf.transcription",
+                    operation="generate_content",
+                    model_id=model_name,
+                )
                 logger.info(
                     "Reusing cached Gemini PDF extraction for %s with %s",
                     document_id,
@@ -204,6 +216,7 @@ class GeminiPdfExtractionService:
                 backoff_base_seconds=self._settings.backoff_base_seconds,
                 max_backoff_seconds=self._settings.max_backoff_seconds,
                 retry_jitter_ratio=self._settings.retry_jitter_ratio,
+                usage_repository=self._usage_repository,
             )
             try:
                 response = await extractor.extract(content, plan)

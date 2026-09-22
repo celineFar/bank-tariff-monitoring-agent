@@ -24,6 +24,16 @@ from app.domain.semantic_extraction import (
     SemanticExtractionResult,
     SemanticExtractionRunStatus,
 )
+from app.domain.source_discovery import Authority
+
+_OFFICIAL_EVIDENCE_AUTHORITIES = frozenset(
+    {
+        Authority.OFFICIAL_TERMS,
+        Authority.OFFICIAL_PRODUCT_CONTENT,
+        Authority.OFFICIAL_FAQ,
+        Authority.OFFICIAL_CAMPAIGN_CONTENT,
+    }
+)
 
 _REQUIRED_TARIFF_FIELDS = frozenset(
     {
@@ -98,7 +108,7 @@ def build_snapshot_attempt(
     large_rate_change_percentage_points: Decimal = Decimal("3"),
 ) -> SnapshotAttempt:
     review_signals = detect_review_signals(result)
-    accepted = extraction_is_acceptable(result)
+    accepted = extraction_is_acceptable(result) and not review_signals
     source_value: LoanProduct | dict[str, Any]
     if result.loan_product is not None:
         source_value = result.loan_product
@@ -161,7 +171,8 @@ def extraction_is_acceptable(result: SemanticExtractionResult) -> bool:
         or result.review_items
     ):
         return False
-    available_ids = {item.evidence_id for item in result.evidence_catalog}
+    evidence_by_id = {item.evidence_id: item for item in result.evidence_catalog}
+    available_ids = set(evidence_by_id)
     for field in result.validated_fields:
         if field.status in {ExtractionStatus.AMBIGUOUS, ExtractionStatus.CONFLICTING}:
             return False
@@ -174,6 +185,14 @@ def extraction_is_acceptable(result: SemanticExtractionResult) -> bool:
             if field.value is None or not field.evidence:
                 return False
             if any(item.evidence_id not in available_ids for item in field.evidence):
+                return False
+            if any(
+                item.authority not in _OFFICIAL_EVIDENCE_AUTHORITIES
+                or evidence_by_id[item.evidence_id].authority
+                not in _OFFICIAL_EVIDENCE_AUTHORITIES
+                or item.authority != evidence_by_id[item.evidence_id].authority
+                for item in field.evidence
+            ):
                 return False
     return True
 
@@ -198,6 +217,23 @@ def detect_review_signals(
     evidence_by_id = {item.evidence_id: item for item in result.evidence_catalog}
     signals: list[dict[str, JsonValue]] = []
     for field in result.validated_fields:
+        if field.status is ExtractionStatus.FOUND and any(
+            item.authority not in _OFFICIAL_EVIDENCE_AUTHORITIES
+            or evidence_by_id.get(item.evidence_id) is None
+            or evidence_by_id[item.evidence_id].authority
+            not in _OFFICIAL_EVIDENCE_AUTHORITIES
+            for item in field.evidence
+        ):
+            signals.append(
+                {
+                    "reason": "source_applicability",
+                    "issue_scope": field.field.value,
+                    "field": field.field.value,
+                    "evidence_references": [
+                        item.evidence_id for item in field.evidence
+                    ],
+                }
+            )
         if field.status is ExtractionStatus.CONFLICTING:
             candidates = _conflict_candidates(field, evidence_by_id)
             signals.append(

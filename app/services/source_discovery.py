@@ -35,6 +35,10 @@ from app.domain.source_discovery import (
 )
 from app.repositories.contracts import SourceDiscoveryRepository
 from app.services.discovery_prefilter import build_discovery_candidates
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    record_model_cache_hit,
+)
 
 
 class SourceDiscoveryClassifier(Protocol):
@@ -130,11 +134,13 @@ class SourceDiscoveryService:
         settings: SourceDiscoverySettings,
         *,
         model_name: str,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         self._classifier = classifier
         self._repository = repository
         self._settings = settings
         self._model_name = model_name
+        self._usage_repository = usage_repository
 
     async def plan(
         self, bundle: NormalizedSourceBundle, product: ProductType
@@ -208,6 +214,13 @@ class SourceDiscoveryService:
         self, bundle: NormalizedSourceBundle, product: ProductType
     ) -> SourceDiscoveryResult:
         plan = await self.plan(bundle, product)
+        await record_model_cache_hit(
+            self._usage_repository,
+            stage="discovery.classification",
+            operation="generate_content",
+            model_id=self._model_name,
+            input_count=len(plan.cache_hits),
+        )
         if plan.batches and self._classifier is None:
             raise RuntimeError("source discovery has LLM candidates but no classifier")
 

@@ -243,3 +243,41 @@ async def test_embedding_provider_reports_non_retryable_api_status(caplog) -> No
 
     assert "code=400 status=INVALID_ARGUMENT" in caplog.text
     assert "tariff evidence" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_indexer_reuses_content_model_dimension_and_task_cache() -> None:
+    class Provider:
+        dimensions = 3
+        model_name = "test-embedding-model"
+
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        async def embed_documents(self, contents):
+            self.calls.append(list(contents))
+            return [[0.1, 0.2, 0.3] for _ in contents]
+
+    class Cache:
+        def __init__(self):
+            self.values: dict[str, tuple[float, ...]] = {}
+            self.keys: list[tuple[str, int, str]] = []
+
+        async def get_many(self, model_id, dimensions, task_type, hashes):
+            self.keys.append((model_id, dimensions, task_type))
+            return {key: self.values[key] for key in hashes if key in self.values}
+
+        async def put_many(self, model_id, dimensions, task_type, values):
+            self.values.update(values)
+
+    provider = Provider()
+    cache = Cache()
+    indexer = KnowledgeIndexer(provider, _FakeKnowledgeStore(), cache)
+    first = await indexer.embed(_document())
+    second = await indexer.embed(_document(checksum="b" * 64))
+    assert first.chunks[0].embedding == second.chunks[0].embedding
+    assert provider.calls == [["Nominal interest rate: 13.5%"]]
+    assert cache.keys == [
+        ("test-embedding-model", 3, "RETRIEVAL_DOCUMENT"),
+        ("test-embedding-model", 3, "RETRIEVAL_DOCUMENT"),
+    ]

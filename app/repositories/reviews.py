@@ -17,6 +17,8 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
+from app.repositories.monitoring import _snapshot_from_row
+from app.repositories.structured_projection import publish_structured_projection
 
 
 class ReviewConflictError(RuntimeError):
@@ -634,6 +636,22 @@ class PostgresReviewRepository:
             ),
             {"snapshot_id": update.snapshot_id, "now": now},
         )
+        accepted_row = (
+            await session.execute(
+                text("SELECT * FROM tariff_snapshots WHERE id = :id"),
+                {"id": update.snapshot_id},
+            )
+        ).one()
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+            {
+                "lock_key": (
+                    f"publication:{accepted_row.bank.lower()}:"
+                    f"{review.product.value}:{review.offering_id.value}"
+                )
+            },
+        )
+        await publish_structured_projection(session, _snapshot_from_row(accepted_row))
         await session.execute(
             text(
                 """

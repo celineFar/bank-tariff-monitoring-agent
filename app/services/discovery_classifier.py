@@ -15,6 +15,10 @@ from google.genai.errors import APIError
 
 from app.domain.source_discovery import DiscoveryBatch, DiscoveryBatchResponse
 from app.services.adk_logging import suppress_handled_adk_exception_logs
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    adk_usage_callbacks,
+)
 
 SOURCE_DISCOVERY_INSTRUCTION = """
 You classify official-bank source material for a tariff-monitoring pipeline.
@@ -58,10 +62,14 @@ class AdkSourceDiscoveryClassifier:
         backoff_base_seconds: float = 5.0,
         max_backoff_seconds: float = 60.0,
         retry_jitter_ratio: float = 0.25,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
         agent = Agent(
             name="source_discovery_classifier",
+            **adk_usage_callbacks(
+                usage_repository, stage="discovery.classification", model_id=model_name
+            ),
             model=Gemini(
                 model=model_name,
                 client=client,

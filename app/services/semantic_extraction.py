@@ -70,6 +70,11 @@ from app.services.extraction_planner import (
     build_extraction_batches,
     field_has_evidence_marker,
 )
+from app.services.model_call_usage import (
+    PostgresModelCallUsageRepository,
+    adk_usage_callbacks,
+    record_model_cache_hit,
+)
 from app.services.source_selection import build_selected_source_bundle
 
 logger = logging.getLogger(__name__)
@@ -237,10 +242,14 @@ class AdkSemanticExtractor:
         backoff_base_seconds: float = 5,
         max_backoff_seconds: float = 60,
         retry_jitter_ratio: float = 0.25,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
         agent = Agent(
             name="semantic_loan_extractor",
+            **adk_usage_callbacks(
+                usage_repository, stage="semantic.extraction", model_id=model_name
+            ),
             model=Gemini(
                 model=model_name,
                 client=client,
@@ -332,11 +341,13 @@ class SemanticExtractionService:
         settings: SemanticExtractionSettings,
         *,
         model_name: str,
+        usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         self._extractor = extractor
         self._repository = repository
         self._settings = settings
         self._model_name = model_name
+        self._usage_repository = usage_repository
 
     async def plan(
         self,
@@ -434,6 +445,13 @@ class SemanticExtractionService:
         execution_failures: list[tuple[ExtractionBatch, Exception, str | None]] = []
         batch_count = len(plan.batches)
         if plan.cache_hits:
+            await record_model_cache_hit(
+                self._usage_repository,
+                stage="semantic.extraction",
+                operation="generate_content",
+                model_id=self._model_name,
+                input_count=len(plan.cache_hits),
+            )
             logger.info(
                 "Reusing %s cached semantic-extraction batch(es)",
                 len(plan.cache_hits),

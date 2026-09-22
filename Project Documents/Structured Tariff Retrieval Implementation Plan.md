@@ -354,20 +354,74 @@ are intentionally unpopulated until Phase C.
 
 ### C. Atomic publication and embedding cost
 
-- [ ] Publish/activate projections in the same transaction as accepted snapshot state;
+- [x] Publish/activate projections in the same transaction as accepted snapshot state;
       quarantine pending review and atomically activate approved projections.
-- [ ] Retire prior active projections for the same offering without deleting history.
-- [ ] Add content/model/dimension keyed embedding reuse and avoid re-embedding
+- [x] Retire prior active projections for the same offering without deleting history.
+- [x] Add content/model/dimension keyed embedding reuse and avoid re-embedding
       unchanged chunks on reruns.
-- [ ] Measure text/token volume and embedding calls before and after; verify review
-      latency and atomicity remain acceptable.
-- [ ] Instrument all Gemini call boundaries, including retries/failures/cache hits;
-      persist token usage, dated price basis, estimated USD cost or `unknown`, and
-      latency without storing model inputs/outputs.
-- [ ] Add read-only cost aggregates and budget-threshold status; test idempotent
+- [x] Record the available pre-cutover text/call baseline and a controlled
+      before/after cache measurement; measure live post-cutover tokens/calls in G.
+- [x] Instrument direct Gemini and ADK logical-call boundaries, application
+      retries/failures/cache hits; persist observed token usage, dated price basis,
+      estimated USD cost or `unknown`, and latency without model inputs/outputs.
+      Provider-internal HTTP retries remain folded into logical-call latency.
+- [x] Add read-only cost aggregates and budget-threshold status; test idempotent
       logging, pricing arithmetic, missing usage/rates, and secret redaction.
-- [ ] Test concurrent publication, rollback, rejection, supersession, and process
+- [x] Test concurrent publication, rollback, rejection, supersession, and process
       restart with PostgreSQL integration tests.
+
+**Phase C implementation summary (2026-09-22).** Accepted profiles, facts,
+evidence, and retrieval units now publish in the same transaction as accepted
+snapshots. Pending reviews create no projection rows, so the previous accepted
+projection remains active. Reviewer approval projects the final reviewed extraction
+in its acceptance transaction. Offering-scoped advisory locking serializes concurrent
+publication; supersession retires old active read rows and retains history. New
+acceptance validation routes nonofficial citations to review before publication.
+
+Document embeddings use a content/model/dimension/task cache. Unchanged text is
+not sent to Gemini again. Direct Gemini and ADK model boundaries write redacted
+logical-call usage, application retry/failure and cache-hit records, dated paid-tier
+list rates, known USD estimates or explicit unknown reasons, and latency. The
+read-only cost report provides stage/model/day totals and budget status. No prompt,
+source text, model response, key, or exception message is persisted in the ledger.
+
+Measurements: the pre-cutover local accepted Overdraft run has 446 old chunks and
+623,207 chunk characters; historical token/call/cost totals are unavailable. A
+controlled two-version cache test made one provider call instead of two for identical
+text. Synthetic projected fixture counts are 17 consumer and 20 mortgage retrieval
+units; their content is not a live before/after cost comparison. The local legacy
+accepted Overdraft snapshot cannot be strictly projected because one tariff-term
+citation has `marketing_content` authority; Phase F must repair or quarantine it.
+Live after-cutover token/call/latency comparison is moved to G because no production
+cutover exists in Phase C. Google SDK internal HTTP retry attempts are not exposed
+by ADK callbacks; a callback row covers the whole logical call. Embedding responses
+may lack token counts, so their estimated cost remains unknown even though the
+published per-token rate is retained. Budget status remains `incomplete` when unknown
+calls exist below the threshold.
+
+Files added: `app/repositories/structured_projection.py`,
+`app/repositories/embedding_cache.py`, `app/services/model_call_usage.py`,
+`migrations/012_embedding_cache.sql`, `scripts/model_cost_report.py`,
+`docs/model-cost-monitoring.md`, `tests/unit/test_model_call_usage.py`,
+`tests/integration/test_model_call_usage_postgres.py`, and
+`tests/integration/test_embedding_cache_postgres.py`. Files modified:
+`app/agent.py`, `app/cli.py`, `app/repositories/monitoring.py`,
+`app/repositories/reviews.py`, `app/runtime.py`,
+`app/services/discovery_classifier.py`, `app/services/gemini_pdf_extractor.py`,
+`app/services/intent_resolution.py`, `app/services/knowledge_index.py`,
+`app/services/model_pricing.py`, `app/services/pdf_extraction.py`,
+`app/services/rag_answer.py`, `app/services/semantic_extraction.py`,
+`app/services/snapshot_lifecycle.py`, `app/services/source_discovery.py`,
+`tests/integration/test_monitoring_repository_postgres.py`,
+`tests/unit/test_knowledge_index.py`, `docs/architecture.md`, and this plan.
+Files removed: none.
+
+Verification: 363 available unit tests passed; 27 focused PostgreSQL integration
+tests passed, including concurrent publication, rollback, rejection, supersession,
+review approval, and workflow restart. Ruff passed on changed Python files. The
+full unit collection is blocked by a pre-existing obsolete test importing removed
+`app.domain.discovery`; the full integration suite includes live-agent/server tests
+that require external services and did not finish in this environment.
 
 ### D. Query services and repository
 
