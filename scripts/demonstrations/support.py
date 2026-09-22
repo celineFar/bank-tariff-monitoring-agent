@@ -137,14 +137,13 @@ async def store_extraction(
 
 def offering_for_url(catalog: SeedCatalog, url: str) -> SeedCatalogEntry:
     """Find the catalog offering a recorded capture belongs to."""
-    wanted = url.rstrip("/")
-    for entry in catalog.offerings:
-        if str(entry.seed_url).rstrip("/") == wanted:
-            return entry
-    raise DemonstrationError(
-        f"{url} is not a seed URL in the catalog, so the capture cannot be tied "
-        "to an offering. Record a capture for one of the catalog seed URLs."
-    )
+    entry = catalog.find_by_seed_url(url)
+    if entry is None:
+        raise DemonstrationError(
+            f"{url} is not a seed URL in the catalog, so the capture cannot be "
+            "tied to an offering. Record a capture for a catalog seed URL."
+        )
+    return entry
 
 
 def money(value) -> str:

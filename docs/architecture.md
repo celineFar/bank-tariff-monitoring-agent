@@ -230,11 +230,12 @@ model, prompt/schema version, product, and policy fingerprints must match before
 
 ## Pipeline audit archive
 
-Every ordinary pipeline run — API, worker, and scheduler alike — collects the same
-rendered Markdown overlays in one place. `app/services/pipeline_audit_archive.py`
-is the deterministic sink: `IndexingPipeline.refresh()` hands it each stage output,
-and it renders the reports from `app/services/pipeline_audit.py` off the event loop
-into `<PIPELINE_AUDIT_DIR>/run_<run_id>/<offering_id>/`, by default
+Every pipeline run — API, worker, and scheduler alike, and
+`scripts/demonstrate_end_to_end.py` — collects the same rendered Markdown overlays
+in one place. `app/services/pipeline_audit_archive.py` is the deterministic sink:
+`IndexingPipeline.refresh()` hands it each stage output, and it renders the reports
+from `app/services/pipeline_audit.py` off the event loop into
+`<PIPELINE_AUDIT_DIR>/run_<run_id>/<offering_id>/`, by default
 `artifacts/pipeline-audit/` (git-ignored). Filenames carry the stage number that
 produced them:
 
@@ -253,6 +254,12 @@ extraction plan is captured before extraction runs, because afterwards its batch
 are cache hits and the evidence overlay would report them as never sent. The archive
 is best effort: an unwritable report is logged and never fails or alters a run, and
 it stores no data that is not already persisted in PostgreSQL.
+
+The end-to-end script files its reports here under a synthetic run id alongside the
+stage-foldered tree it writes under `end-to-end/run_NNN/`, so one directory holds
+the overlays of every run whatever started it. It archives only a capture of a
+catalog seed URL, since the archive is keyed by offering; a run of any other URL
+writes its own tree and says why it filed nothing.
 
 ## PDF retrieval boundary
 

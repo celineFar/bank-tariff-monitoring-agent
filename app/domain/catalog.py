@@ -188,6 +188,14 @@ class SeedCatalog(CatalogModel):
                 return entry
         raise KeyError(offering_id.value)
 
+    def find_by_seed_url(self, url: str) -> SeedCatalogEntry | None:
+        """Return the offering a URL is the seed of, ignoring a trailing slash."""
+        wanted = url.strip().rstrip("/")
+        for entry in self.offerings:
+            if str(entry.seed_url).rstrip("/") == wanted:
+                return entry
+        return None
+
     def family(self, product: ProductType) -> ProductFamilyCatalogEntry:
         for entry in self.families:
             if entry.product is product:

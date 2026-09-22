@@ -8,11 +8,12 @@ import shutil
 import sys
 from pathlib import Path
 from typing import Any, TypeVar
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from app.config import Settings, load_settings
+from app.config import Settings, load_seed_catalog, load_settings
 from app.domain.acquisition import PageArtifact, SourceType
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedDocument, NormalizedSourceBundle
@@ -53,6 +54,10 @@ from app.services.pipeline_audit import (
     render_source_selection,
     render_source_selection_diff,
     render_unparsed_pre_validation,
+)
+from app.services.pipeline_audit_archive import (
+    AuditContext,
+    FileSystemPipelineAuditArchive,
 )
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
@@ -115,6 +120,7 @@ async def demonstrate(
     )
 
     selected_product = product or _infer_product(source_url)
+    audit, audit_context = _pipeline_audit(source_url, settings)
     api_key = (
         settings.models.api_key.get_secret_value()
         if settings.models.api_key is not None
@@ -180,6 +186,8 @@ async def demonstrate(
         documents_directory=documents_directory,
         normalization_directory=normalization_directory,
     )
+    if audit is not None and audit_context is not None:
+        await audit.record_normalization(audit_context, artifact, bundle)
 
     discovery_directory = output / "source-discovery"
     discovery_directory.mkdir()
@@ -214,10 +222,16 @@ async def demonstrate(
                 "message": str(failure),
             },
         )
+        if audit is not None and audit_context is not None:
+            await audit.record_source_discovery(
+                audit_context, bundle, None, error=failure
+            )
         raise EndToEndStageError("source-discovery", failure) from None
     _write_json(discovery_directory / "plan.json", discovery_plan)
     _write_json(discovery_directory / "result.json", discovery_result)
     _write_json(discovery_directory / "model_attempts.json", discovery_attempts)
+    if audit is not None and audit_context is not None:
+        await audit.record_source_discovery(audit_context, bundle, discovery_result)
     selected_bundle = _write_source_discovery_reports(
         discovery_directory,
         bundle,
@@ -274,6 +288,15 @@ async def demonstrate(
                 "message": str(failure),
             },
         )
+        if audit is not None and audit_context is not None:
+            await audit.record_semantic_extraction(
+                audit_context,
+                bundle,
+                discovery_result,
+                semantic_plan,
+                None,
+                error=failure,
+            )
         raise EndToEndStageError("semantic-extraction", failure) from None
     _write_json(semantic_directory / "plan.json", semantic_plan)
     _write_json(semantic_directory / "result.json", semantic_result)
@@ -303,6 +326,11 @@ async def demonstrate(
         ),
         encoding="utf-8",
     )
+    if audit is not None and audit_context is not None:
+        await audit.record_semantic_extraction(
+            audit_context, bundle, discovery_result, semantic_plan, semantic_result
+        )
+        print(f"  pipeline audit archive: {audit.directory(audit_context)}", flush=True)
     if semantic_result.review_items:
         print(
             "  semantic extraction completed with "
@@ -910,6 +938,34 @@ async def _import_previous_run_caches(
                 )
                 counts["semantic_extraction"] += len(values)
     return counts
+
+
+def _pipeline_audit(
+    source_url: str, settings: Settings
+) -> tuple[FileSystemPipelineAuditArchive | None, AuditContext | None]:
+    """Archive this run's overlays where API and worker runs archive theirs.
+
+    The archive is keyed by catalog offering, so a URL that is not a seed URL
+    has nowhere to file its reports; that run still writes its own tree.
+    """
+    offering = load_seed_catalog().find_by_seed_url(source_url)
+    if offering is None:
+        print(
+            f"  {source_url} is not a catalog seed URL; writing this run's tree "
+            "only, with no pipeline audit archive",
+            flush=True,
+        )
+        return None, None
+    return (
+        FileSystemPipelineAuditArchive(settings.application.pipeline_audit_dir),
+        AuditContext(
+            run_id=uuid4(),
+            offering_execution_id=uuid4(),
+            product=offering.product,
+            offering_id=offering.offering_id,
+            seed_url=str(offering.seed_url),
+        ),
+    )
 
 
 def _load_recording(
