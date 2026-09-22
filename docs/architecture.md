@@ -151,7 +151,10 @@ shell, or SQL tool.
   `scripts/demonstrations/capture.py` loads a recorded `end-to-end/run_NNN`, so
   the extraction demonstration replays a real page and a real model response
   instead of fixture values, and skips recordings written against an older
-  schema.
+  schema. `scripts/demonstrations/runs.py` allocates the numbered run
+  directories both scripts write into — `end-to-end/run_NNN` for a capture and
+  `artifacts/demonstrations/run_NNN` for the transcripts — so no invocation
+  overwrites an earlier one's audit record.
 - `tests/fixtures/target_questions.py`, `tests/eval/structured_metrics.py`,
   `scripts/structured_eval_metrics.py`, `scripts/seed_evaluation_corpus.py`, and
   `scripts/trace_structured_answer.py`: the 25 target questions with their

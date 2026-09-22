@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import json
 import logging
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -61,9 +60,9 @@ from app.services.semantic_extraction import (
 )
 from app.services.source_discovery import SourceDiscoveryService
 from app.services.source_selection import build_selected_source_bundle
+from scripts.demonstrations.runs import RUN_DIRECTORY, next_run_directory
 
 DEFAULT_OUTPUT_DIRECTORY = Path("end-to-end")
-_RUN_DIRECTORY = re.compile(r"^run_(\d+)$")
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -97,7 +96,7 @@ async def demonstrate(
     output_directory: Path = DEFAULT_OUTPUT_DIRECTORY,
     product: ProductType | None = None,
 ) -> Path:
-    output = _next_run_directory(output_directory)
+    output = next_run_directory(output_directory)
     (output / "source_url.txt").write_text(source_url.strip() + "\n", encoding="utf-8")
 
     acquisition_directory = output / "acquisition"
@@ -826,25 +825,6 @@ def _url_extension(url: str) -> str:
     return suffix if suffix and len(suffix) <= 10 else ".bin"
 
 
-def _next_run_directory(path: Path) -> Path:
-    root = path.resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    existing_numbers = [
-        int(match.group(1))
-        for child in root.iterdir()
-        if child.is_dir() and (match := _RUN_DIRECTORY.fullmatch(child.name))
-    ]
-    first_index = max(existing_numbers, default=0) + 1
-    for index in range(first_index, 100_000):
-        candidate = root / f"run_{index:03d}"
-        try:
-            candidate.mkdir()
-        except FileExistsError:
-            continue
-        return candidate
-    raise RuntimeError(f"No available numbered run directory below {root}")
-
-
 async def _import_previous_run_caches(
     root: Path,
     *,
@@ -864,7 +844,7 @@ async def _import_previous_run_caches(
         for child in root.iterdir()
         if child.is_dir()
         and child != current_run
-        and _RUN_DIRECTORY.fullmatch(child.name)
+        and RUN_DIRECTORY.fullmatch(child.name)
     )
     # The root itself supports the original, pre-run_NNN demonstration layout.
     for run in (root, *previous_runs):

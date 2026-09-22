@@ -16,8 +16,10 @@ Deliverable 9 runs on a **recorded live capture** rather than fixture data: it
 replays the newest readable `end-to-end/run_NNN` written by
 `scripts/demonstrate_end_to_end.py`, so the page text and the Gemini output on
 screen are the real ones. The other scenarios use the synthetic corpus in
-`tests/fixtures/`. Each scenario also writes a markdown transcript under
-`artifacts/demonstrations/` for screenshots; pass `--no-audit` to skip it.
+`tests/fixtures/`. Each scenario also writes a markdown transcript for screenshots. Every
+invocation claims its own numbered directory —
+`artifacts/demonstrations/run_NNN/<scenario>.md` — so a later run never
+overwrites an earlier run's transcripts; pass `--no-audit` to skip writing them.
 
 ## Setup
 

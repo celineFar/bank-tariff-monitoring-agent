@@ -46,10 +46,8 @@ from app.services.pipeline_audit import (
     render_source_selection,
     render_source_selection_diff,
 )
-from scripts.demonstrate_end_to_end import (
-    _next_run_directory,
-    _write_source_discovery_reports,
-)
+from scripts.demonstrate_end_to_end import _write_source_discovery_reports
+from scripts.demonstrations.runs import next_run_directory
 
 URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
 
@@ -101,10 +99,10 @@ def test_pdf_response_markdown_keeps_page_and_block_text() -> None:
 
 def test_end_to_end_runs_use_incrementing_directories(tmp_path) -> None:
     root = tmp_path / "end-to-end"
-    first = _next_run_directory(root)
-    second = _next_run_directory(root)
+    first = next_run_directory(root)
+    second = next_run_directory(root)
     (root / "run_010").mkdir()
-    after_gap = _next_run_directory(root)
+    after_gap = next_run_directory(root)
 
     assert first.name == "run_001"
     assert second.name == "run_002"

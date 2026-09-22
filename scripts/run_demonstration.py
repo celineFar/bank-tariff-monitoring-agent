@@ -36,6 +36,7 @@ from scripts.demonstrations import (
     render,
     render_markdown,
 )
+from scripts.demonstrations.runs import next_run_directory
 from scripts.demonstrations.support import DemonstrationError
 
 SCENARIOS = {
@@ -55,14 +56,18 @@ ORDER = list(SCENARIOS)
 DEFAULT_AUDIT_DIRECTORY = Path("artifacts/demonstrations")
 
 
-async def _run(names: list[str], audit_directory: Path | None) -> list[ScenarioResult]:
+async def _run(names: list[str], audit_root: Path | None) -> list[ScenarioResult]:
+    # Each invocation claims its own run_NNN, so the transcripts of an earlier
+    # run stay on disk instead of being overwritten by this one.
+    audit_directory = None if audit_root is None else next_run_directory(audit_root)
+    if audit_directory is not None:
+        print(f"Writing transcripts to {audit_directory}", flush=True)
     results: list[ScenarioResult] = []
     for name in names:
         runner, _ = SCENARIOS[name]
         result = await runner()
         print(render(result), flush=True)
         if audit_directory is not None:
-            audit_directory.mkdir(parents=True, exist_ok=True)
             path = audit_directory / f"{name}.md"
             path.write_text(render_markdown(result), encoding="utf-8")
             print(f"\nWrote {path}", flush=True)
@@ -105,8 +110,9 @@ def main() -> int:
         type=Path,
         default=DEFAULT_AUDIT_DIRECTORY,
         help=(
-            "where to write one markdown transcript per scenario "
-            f"(default: {DEFAULT_AUDIT_DIRECTORY}); pass --no-audit to skip"
+            "transcript container; creates run_NNN inside it and writes one "
+            f"markdown transcript per scenario there (default: "
+            f"{DEFAULT_AUDIT_DIRECTORY}); pass --no-audit to skip"
         ),
     )
     parser.add_argument(

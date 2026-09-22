@@ -14,7 +14,6 @@ is skipped rather than raising: the newest readable run wins.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
@@ -28,10 +27,10 @@ from app.domain.semantic_extraction import (
     SemanticExtractionResult,
 )
 from app.domain.source_discovery import SourceDiscoveryResult
+from scripts.demonstrations.runs import RUN_DIRECTORY, run_index
 from scripts.demonstrations.support import DemonstrationError
 
 DEFAULT_ROOT = Path("end-to-end")
-_RUN_DIRECTORY = re.compile(r"^run_(\d+)$")
 _ARTIFACT = Path("acquisition/source files/page_artifact.json")
 _BUNDLE = Path("normalization/normalized_bundle.json")
 _DISCOVERY = Path("source-discovery/result.json")
@@ -119,8 +118,8 @@ def load_capture(name: str | None = None, *, root: Path = DEFAULT_ROOT) -> Captu
         return capture
 
     candidates = sorted(
-        (child for child in root.iterdir() if _RUN_DIRECTORY.fullmatch(child.name)),
-        key=lambda child: int(_RUN_DIRECTORY.fullmatch(child.name).group(1)),
+        (child for child in root.iterdir() if RUN_DIRECTORY.fullmatch(child.name)),
+        key=run_index,
         reverse=True,
     )
     for directory in candidates:

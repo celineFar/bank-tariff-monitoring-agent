@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.domain.pdf_extraction import PdfInputMode
@@ -12,7 +14,7 @@ from scripts.demonstrations.support import (
     DemonstrationError,
     demonstration_database_url,
 )
-from scripts.run_demonstration import ORDER, SCENARIOS
+from scripts.run_demonstration import ORDER, SCENARIOS, _run
 
 
 def test_every_listed_scenario_is_runnable() -> None:
@@ -80,3 +82,34 @@ def test_demonstrations_refuse_a_database_that_is_not_disposable(monkeypatch) ->
     monkeypatch.delenv("TEST_DATABASE_URL")
     with pytest.raises(DemonstrationError, match="TEST_DATABASE_URL"):
         demonstration_database_url()
+
+
+def test_each_invocation_writes_a_new_run_directory(tmp_path, monkeypatch) -> None:
+    """An invocation must never overwrite the transcripts of an earlier one."""
+    result = ScenarioResult(deliverable="Deliverable 0", title="demo")
+    result.check("a", "must hold", True, "held")
+
+    async def runner() -> ScenarioResult:
+        return result
+
+    monkeypatch.setitem(SCENARIOS, "hitl", (runner, "Deliverable 0 — demo"))
+    root = tmp_path / "demonstrations"
+    asyncio.run(_run(["hitl"], root))
+    asyncio.run(_run(["hitl"], root))
+
+    assert (root / "run_001" / "hitl.md").is_file()
+    assert (root / "run_002" / "hitl.md").is_file()
+
+
+def test_no_audit_writes_no_transcript_directory(tmp_path, monkeypatch) -> None:
+    result = ScenarioResult(deliverable="Deliverable 0", title="demo")
+    result.check("a", "must hold", True, "held")
+
+    async def runner() -> ScenarioResult:
+        return result
+
+    monkeypatch.setitem(SCENARIOS, "hitl", (runner, "Deliverable 0 — demo"))
+    monkeypatch.chdir(tmp_path)
+    asyncio.run(_run(["hitl"], None))
+
+    assert list(tmp_path.iterdir()) == []
