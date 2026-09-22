@@ -34,7 +34,10 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
-from app.domain.semantic_extraction import SemanticExtractionResult
+from app.domain.semantic_extraction import (
+    SemanticExtractionPlan,
+    SemanticExtractionResult,
+)
 from app.domain.source_discovery import SourceDiscoveryResult
 from app.repositories.contracts import (
     MonitoringSnapshotRepository,
@@ -44,6 +47,7 @@ from app.repositories.contracts import (
 )
 from app.services.failure_mapping import source_failure_code
 from app.services.knowledge_projection import KnowledgeProjectionService
+from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
 from app.services.snapshot_lifecycle import (
     build_snapshot_attempt,
     compare_accepted_snapshots,
@@ -70,6 +74,12 @@ class SourceDiscoveryPort(Protocol):
 
 
 class SemanticExtractionPort(Protocol):
+    async def plan(
+        self,
+        bundle: NormalizedSourceBundle,
+        discovery: SourceDiscoveryResult,
+    ) -> SemanticExtractionPlan: ...
+
     async def extract(
         self,
         bundle: NormalizedSourceBundle,
@@ -106,6 +116,7 @@ class IndexingPipeline:
         snapshots: MonitoringSnapshotRepository,
         publications: OfferingPublicationRepository,
         runs: RunRepository | None = None,
+        audit_archive: PipelineAuditArchive | None = None,
         large_rate_change_percentage_points: float = 3.0,
     ) -> None:
         self._acquisition = acquisition
@@ -117,6 +128,7 @@ class IndexingPipeline:
         self._snapshots = snapshots
         self._publications = publications
         self._runs = runs
+        self._audit_archive = audit_archive
         self._large_rate_change_percentage_points = Decimal(
             str(large_rate_change_percentage_points)
         )
@@ -146,20 +158,62 @@ class IndexingPipeline:
             OfferingFailureCode.NORMALIZATION_FAILED,
             self._normalization.normalize(artifact),
         )
-        discovery = await stage(
-            "source_discovery",
-            OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
-            self._discovery.discover(bundle, offering.product),
+        audit = self._audit_archive
+        audit_context = (
+            AuditContext(
+                run_id=run_id,
+                offering_execution_id=offering_execution_id,
+                product=offering.product,
+                offering_id=offering.offering_id,
+                seed_url=str(offering.seed_url),
+            )
+            if audit is not None
+            else None
         )
-        extraction = await stage(
-            "semantic_extraction",
-            OfferingFailureCode.SEMANTIC_EXTRACTION_FAILED,
-            self._extraction.extract(
-                bundle,
-                discovery,
-                retrieved_at=artifact.retrieved_at,
-            ),
-        )
+        if audit is not None and audit_context is not None:
+            await audit.record_normalization(audit_context, artifact, bundle)
+        try:
+            discovery = await stage(
+                "source_discovery",
+                OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
+                self._discovery.discover(bundle, offering.product),
+            )
+        except OfferingPipelineError as exc:
+            if audit is not None and audit_context is not None:
+                await audit.record_source_discovery(
+                    audit_context, bundle, None, error=exc.__cause__ or exc
+                )
+            raise
+        if audit is not None and audit_context is not None:
+            await audit.record_source_discovery(audit_context, bundle, discovery)
+        # The plan is captured before extraction: afterwards its batches are
+        # cache hits, and the evidence overlay would report them as unsent.
+        plan = await self._audit_plan(bundle, discovery) if audit is not None else None
+        try:
+            extraction = await stage(
+                "semantic_extraction",
+                OfferingFailureCode.SEMANTIC_EXTRACTION_FAILED,
+                self._extraction.extract(
+                    bundle,
+                    discovery,
+                    retrieved_at=artifact.retrieved_at,
+                ),
+            )
+        except OfferingPipelineError as exc:
+            if audit is not None and audit_context is not None and plan is not None:
+                await audit.record_semantic_extraction(
+                    audit_context,
+                    bundle,
+                    discovery,
+                    plan,
+                    None,
+                    error=exc.__cause__ or exc,
+                )
+            raise
+        if audit is not None and audit_context is not None and plan is not None:
+            await audit.record_semantic_extraction(
+                audit_context, bundle, discovery, plan, extraction
+            )
         extraction_failure = non_reviewable_extraction_failure(extraction)
         if extraction_failure is not None:
             raise OfferingPipelineError(
@@ -274,6 +328,21 @@ class IndexingPipeline:
             publication=publication,
             provenance_changed=provenance_changed,
         )
+
+    async def _audit_plan(
+        self,
+        bundle: NormalizedSourceBundle,
+        discovery: SourceDiscoveryResult,
+    ) -> SemanticExtractionPlan | None:
+        """Plan deterministically for the audit overlay without failing the run."""
+        try:
+            return await self._extraction.plan(bundle, discovery)
+        except Exception:  # pragma: no cover - audit output is best effort
+            logger.warning(
+                "Failed to build the semantic-extraction plan for the audit trail",
+                exc_info=True,
+            )
+            return None
 
     async def _embed_all(
         self, documents: Sequence[KnowledgeDocument]

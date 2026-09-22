@@ -206,6 +206,32 @@ earlier evidence. Exact PDF, source-discovery, and semantic-extraction responses
 shared across those numbered runs under `end-to-end/.cache/`; their existing content,
 model, prompt/schema version, product, and policy fingerprints must match before reuse.
 
+## Pipeline audit archive
+
+Every ordinary pipeline run — API, worker, and scheduler alike — collects the same
+rendered Markdown overlays in one place. `app/services/pipeline_audit_archive.py`
+is the deterministic sink: `IndexingPipeline.refresh()` hands it each stage output,
+and it renders the reports from `app/services/pipeline_audit.py` off the event loop
+into `<PIPELINE_AUDIT_DIR>/run_<run_id>/<offering_id>/`, by default
+`artifacts/pipeline-audit/` (git-ignored). Filenames carry the stage number that
+produced them:
+
+| File | Stage |
+|---|---|
+| `0_run_context.md` | run, offering, and seed URL of the directory |
+| `2_normalized_webpage.md`, `2_normalization_diff.md` | normalization |
+| `3_source_selection_decisions.md`, `3_source_selection_diff.md`, `3_selected_sources.md` | source discovery |
+| `4_extraction_evidence.md`, `4_pre_validation.md`, `4_review_queue.md` | semantic extraction |
+
+Acquisition (stage 1) has no colour-coded overlay of its own; the acquired page
+Markdown is the baseline of the stage 2 normalization diff. Source discovery and
+semantic extraction also write their reports when the stage fails, with the stage
+error rendered into the report, so a failed run remains inspectable. The semantic
+extraction plan is captured before extraction runs, because afterwards its batches
+are cache hits and the evidence overlay would report them as never sent. The archive
+is best effort: an unwritable report is logged and never fails or alters a run, and
+it stores no data that is not already persisted in PostgreSQL.
+
 ## PDF retrieval boundary
 
 Official-source discovery hands a typed `PdfCandidate` to `PdfDownloader`; the

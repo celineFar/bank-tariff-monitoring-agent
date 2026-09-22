@@ -293,7 +293,9 @@ def render_semantic_extraction(
     error: Exception | None = None,
 ) -> str:
     sent_groups: dict[str, list[str]] = defaultdict(list)
-    for batch in plan.batches:
+    # Cached batches were packeted and answered by an earlier identical run, so
+    # their evidence was sent even though this run reuses the stored response.
+    for batch in (*plan.batches, *plan.cached_batches):
         for item in batch.evidence:
             sent_groups[item.evidence_id].append(batch.group)
     sent_ids = set(sent_groups)

@@ -52,6 +52,8 @@ class ApplicationSettings(SettingsGroup):
     name: str = "ameria-tariff-monitor"
     environment: Environment = Environment.DEVELOPMENT
     artifact_temp_dir: Path = Path("data/artifacts")
+    pipeline_audit_enabled: bool = True
+    pipeline_audit_dir: Path = Path("artifacts/pipeline-audit")
 
     @field_validator("name")
     @classmethod

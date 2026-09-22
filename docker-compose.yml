@@ -7,6 +7,7 @@ services:
       LOG_FILE: /var/log/tariff-monitor/api.log
     volumes:
       - ./logs:/var/log/tariff-monitor
+      - ./artifacts/pipeline-audit:/code/artifacts/pipeline-audit
     ports: ["8080:8080"]
     depends_on:
       db:
@@ -21,6 +22,7 @@ services:
       LOG_FILE: /var/log/tariff-monitor/worker.log
     volumes:
       - ./logs:/var/log/tariff-monitor
+      - ./artifacts/pipeline-audit:/code/artifacts/pipeline-audit
     depends_on:
       db:
         condition: service_healthy
@@ -50,7 +52,7 @@ services:
       POSTGRES_DB: tariff_monitor_test
       POSTGRES_USER: tariff
       POSTGRES_PASSWORD: tariff
-    ports: ["127.0.0.1:5433:5432"]
+    ports: ["5433:5432"]
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:

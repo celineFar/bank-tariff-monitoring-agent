@@ -33,6 +33,8 @@ def load_settings(
             name=raw.app_name,
             environment=raw.environment,
             artifact_temp_dir=raw.artifact_temp_dir,
+            pipeline_audit_enabled=raw.pipeline_audit_enabled,
+            pipeline_audit_dir=raw.pipeline_audit_dir,
         ),
         models=ModelSettings(
             api_key=raw.gemini_api_key,

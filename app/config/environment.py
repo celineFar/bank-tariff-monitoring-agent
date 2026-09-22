@@ -20,6 +20,8 @@ class EnvironmentSettings(BaseSettings):
     app_name: str = "ameria-tariff-monitor"
     environment: Environment = Environment.DEVELOPMENT
     artifact_temp_dir: Path = Path("data/artifacts")
+    pipeline_audit_enabled: bool = True
+    pipeline_audit_dir: Path = Path("artifacts/pipeline-audit")
     gemini_api_key: SecretStr | None = None
     model_name: str = "gemini-3.7-flash"
     embedding_model_name: str = "gemini-embedding-001"

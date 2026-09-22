@@ -42,16 +42,21 @@ from app.domain.semantic_extraction import (
     ExtractionStatus,
     LoanCategory,
     LoanProduct,
+    SemanticExtractionPlan,
     SemanticExtractionResult,
     SemanticExtractionRunStatus,
     ValidatedFieldResult,
 )
 from app.domain.source_discovery import (
     Authority,
+    DecisionSource,
     DiscoveryScope,
     ExtractionContext,
     ExtractionContextItem,
     InformationRole,
+    ProductAssociation,
+    Relevance,
+    SourceAssessment,
     SourceDiscoveryResult,
     TemporalStatus,
 )
@@ -61,6 +66,7 @@ from app.services.monitoring_pipeline import (
     OfferingPipelineError,
     TariffPipeline,
 )
+from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
 
 NOW = datetime(2026, 9, 19, tzinfo=UTC)
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
@@ -101,7 +107,13 @@ def _families() -> tuple[ProductFamilyCatalogEntry, ...]:
 
 
 def _artifact() -> PageArtifact:
-    return PageArtifact.model_construct(retrieved_at=NOW, language="en")
+    return PageArtifact.model_construct(
+        retrieved_at=NOW,
+        language="en",
+        title="Consumer loan",
+        canonical_url=URL,
+        markdown="# Consumer loan\n\nConsumer loan rate 13.5%\n",
+    )
 
 
 def _bundle() -> NormalizedSourceBundle:
@@ -159,9 +171,25 @@ def _discovery() -> SourceDiscoveryResult:
         text="Consumer loan rate 13.5%",
         source_refs=(reference,),
     )
+    assessment = SourceAssessment(
+        source_id="rate",
+        document_id="page",
+        scope=DiscoveryScope.BLOCK,
+        product_association=ProductAssociation.CURRENT_PRODUCT,
+        role=InformationRole.PRICING,
+        relevance=Relevance.RELEVANT,
+        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
+        temporal_status=TemporalStatus.CURRENT,
+        reason="states the consumer loan rate",
+        decision_source=DecisionSource.LLM,
+        input_fingerprint="c" * 64,
+        structural_fingerprint="d" * 64,
+        source_refs=(reference,),
+    )
     return SourceDiscoveryResult.model_construct(
         product=ProductType.CONSUMER_LOAN,
         input_content_hash="b" * 64,
+        assessments=(assessment,),
         extraction_context=ExtractionContext(
             product=ProductType.CONSUMER_LOAN,
             items=(item,),
@@ -256,6 +284,21 @@ class _Extraction:
     def __init__(self, events):
         self.events = events
 
+    async def plan(self, bundle, discovery):
+        self.events.append(("plan", discovery.product))
+        return SemanticExtractionPlan.model_construct(
+            product=discovery.product,
+            canonical_url=URL,
+            input_content_hash=bundle.acquisition_content_hash,
+            schema_version="1",
+            prompt_version="1",
+            model_name="test",
+            evidence_catalog=(),
+            batches=(),
+            cached_batches=(),
+            cache_hits=(),
+        )
+
     async def extract(self, bundle, discovery, *, retrieved_at):
         self.events.append(("extract", retrieved_at))
         return _extraction()
@@ -300,7 +343,7 @@ class _Publications:
         )
 
 
-def _indexing(*, fail_embedding=False):
+def _indexing(*, fail_embedding=False, audit_archive=None):
     events = []
     publications = _Publications()
     service = IndexingPipeline(
@@ -312,6 +355,7 @@ def _indexing(*, fail_embedding=False):
         embedder=_Embedder(events, fail=fail_embedding),
         snapshots=_Snapshots(),
         publications=publications,
+        audit_archive=audit_archive,
     )
     return service, events, publications
 
@@ -614,3 +658,70 @@ async def test_indexing_refresh_persists_progress_before_each_stage() -> None:
         "embedding",
         "publication",
     ]
+
+
+@pytest.mark.asyncio
+async def test_indexing_refresh_collects_stage_numbered_audit_markdown(
+    tmp_path,
+) -> None:
+    archive = FileSystemPipelineAuditArchive(tmp_path)
+    service, _, _ = _indexing(audit_archive=archive)
+    run_id = uuid4()
+
+    await service.refresh(_offering(), run_id, uuid4())
+
+    directory = tmp_path / f"run_{run_id}" / OfferingId.CONSUMER_STANDARD.value
+    assert sorted(path.name for path in directory.glob("*.md")) == [
+        "0_run_context.md",
+        "2_normalization_diff.md",
+        "2_normalized_webpage.md",
+        "3_selected_sources.md",
+        "3_source_selection_decisions.md",
+        "3_source_selection_diff.md",
+        "4_extraction_evidence.md",
+        "4_pre_validation.md",
+        "4_review_queue.md",
+    ]
+    assert "Consumer loan rate 13.5%" in (
+        directory / "3_source_selection_decisions.md"
+    ).read_text(encoding="utf-8")
+    assert "Semantic extraction audit" in (
+        directory / "4_extraction_evidence.md"
+    ).read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_indexing_audit_records_the_failing_stage_and_never_masks_it(
+    tmp_path,
+) -> None:
+    archive = FileSystemPipelineAuditArchive(tmp_path)
+    service, _, _ = _indexing(audit_archive=archive)
+    service._discovery = _FailingDiscovery()
+    run_id = uuid4()
+
+    with pytest.raises(OfferingPipelineError) as captured:
+        await service.refresh(_offering(), run_id, uuid4())
+
+    assert captured.value.stage == "source_discovery"
+    directory = tmp_path / f"run_{run_id}" / OfferingId.CONSUMER_STANDARD.value
+    report = (directory / "3_source_selection_decisions.md").read_text(encoding="utf-8")
+    assert "classifier unavailable" in report
+    assert not (directory / "4_extraction_evidence.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_indexing_audit_failure_does_not_fail_the_run(tmp_path) -> None:
+    unwritable = tmp_path / "blocked"
+    unwritable.write_text("not a directory", encoding="utf-8")
+    service, _, publications = _indexing(
+        audit_archive=FileSystemPipelineAuditArchive(unwritable)
+    )
+
+    await service.refresh(_offering(), uuid4(), uuid4())
+
+    assert len(publications.values) == 1
+
+
+class _FailingDiscovery:
+    async def discover(self, bundle, product):
+        raise RuntimeError("classifier unavailable")

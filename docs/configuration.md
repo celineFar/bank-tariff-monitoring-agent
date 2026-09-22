@@ -17,6 +17,9 @@ downloader receives `settings.http` and the PDF extraction service receives
 
 - **Application:** `APP_NAME`, `ENVIRONMENT` (`development`, `test`, or
   `production`). Production requires `GEMINI_API_KEY`.
+  `PIPELINE_AUDIT_ENABLED` (default `true`) and `PIPELINE_AUDIT_DIR` (default
+  `artifacts/pipeline-audit`) control the stage-numbered Markdown audit trail
+  written by every pipeline run; see `docs/architecture.md`.
 - **Models:** `GEMINI_API_KEY`, `MODEL_NAME`, `EMBEDDING_MODEL_NAME`.
 - **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`, `ARTIFACT_TEMP_DIR`.
   Application storage must use PostgreSQL; the ADK session URI may also use
