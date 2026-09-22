@@ -29,7 +29,8 @@ See [the architecture](docs/architecture.md), [configuration reference](docs/con
 [seed catalog](docs/seed-catalog.md), [monitoring run lifecycle](docs/run-lifecycle.md),
 [snapshot lifecycle](docs/snapshot-lifecycle.md),
 [native ADK review](docs/native-hitl-review.md),
-[indexing projections](docs/indexing-projection.md), [RAG answering](docs/rag-answering.md), and
+[indexing projections](docs/indexing-projection.md), [RAG answering](docs/rag-answering.md),
+[observability](docs/observability.md), and
 [.agents-cli-spec.md](.agents-cli-spec.md).
 
 ## Local setup
@@ -59,6 +60,22 @@ Use `rg '<run-id>' logs/` to inspect a past run. Each file entry has an ISO 8601
 with an explicit offset, defaulting to `Asia/Yerevan`. `LOG_TIMEZONE`, `LOG_LEVEL`,
 `LOG_MAX_BYTES`, and `LOG_BACKUP_COUNT` are configurable in `.env`. Logs stay on the EC2
 host disk and must be copied or shipped separately to survive host replacement.
+
+## Tracing and metrics
+
+Tracing is off by default. Set `OTEL_ENABLED=true` to print spans to the console,
+which is enough to see a whole run end to end. For a UI, start the opt-in profile
+with `docker compose --profile observability up -d` and point `OTEL_TRACES_ENDPOINT`
+at Langfuse on `http://localhost:3001`.
+
+One monitoring run is one trace even though it crosses processes: the trigger, the
+worker that claims it, and the process that resolves a human review all contribute
+spans. Prompts and model responses are kept out of exported spans unless
+`OTEL_TRACE_CONTENT=mapped` is set explicitly.
+
+`uv run python scripts/run_metrics_report.py --days 30` reports run duration,
+failure taxonomies, per-field extraction completeness, evidence coverage, and HITL
+rate from the audit tables. See [observability](docs/observability.md).
 
 ## Main layout
 

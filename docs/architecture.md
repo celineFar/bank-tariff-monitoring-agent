@@ -100,7 +100,22 @@ shell, or SQL tool.
   structured retrieval on the separate `tariff.retrieval` logger, at the
   `RETRIEVAL_TRACE_LEVEL` detail level (`off`, `summary`, `steps`, `verbose`).
   A trace always closes, carrying the outcome or the error type. Only `verbose`
-  writes derived search terms and rendered unit text.
+  writes derived search terms and rendered unit text. Its correlation id is the
+  active OpenTelemetry trace id when one is recording, so a log line and a trace
+  share one identifier.
+- `app/services/telemetry.py`: OpenTelemetry bootstrap for all three entry points
+  and the single boundary deciding what model content leaves the process. Spans
+  are rewritten by a wrapping exporter (`OTEL_TRACE_CONTENT=none|mapped`); the
+  setup refuses to start when `OTEL_EXPORTER_OTLP_*` is set, because ADK would
+  then export the same spans unredacted. `inject_trace_context` and
+  `extract_trace_context` carry W3C trace context through PostgreSQL, so the
+  triggering process, the worker, and the process that resolves a human review
+  all contribute to one trace. See [observability](observability.md).
+- `app/services/run_metrics.py` and `scripts/run_metrics_report.py`: aggregate
+  run duration, stage and document-retrieval failures, per-field extraction
+  completeness, evidence coverage, HITL rate and decision latency, model
+  reliability, and change volume, read from the durable audit tables. Run
+  latency excludes time waiting for a reviewer.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`. Claimed work
   enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`
