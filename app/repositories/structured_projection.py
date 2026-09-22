@@ -217,7 +217,20 @@ async def publish_structured_projection(
                     :evidence_ids, :language, :identity_text, :alias_purpose_text,
                     :detail_text, :content, :content_sha256, :renderer_version,
                     true
-                ) ON CONFLICT (id) DO UPDATE SET is_active = true"""
+                ) ON CONFLICT (id) DO UPDATE SET
+                    is_active = true,
+                    identity_text = EXCLUDED.identity_text,
+                    alias_purpose_text = EXCLUDED.alias_purpose_text,
+                    detail_text = EXCLUDED.detail_text,
+                    content = EXCLUDED.content,
+                    content_sha256 = EXCLUDED.content_sha256,
+                    renderer_version = EXCLUDED.renderer_version,
+                    -- Re-rendered text invalidates the vector keyed to the old text.
+                    embedding = NULL,
+                    embedding_model = NULL,
+                    embedding_dimensions = NULL
+                WHERE retrieval_units.renderer_version
+                      < EXCLUDED.renderer_version"""
             ),
             {
                 "id": unit.unit_id,

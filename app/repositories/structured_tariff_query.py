@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
@@ -35,6 +36,129 @@ def _without_none(value):
     if isinstance(value, list):
         return [_without_none(item) for item in value]
     return value
+
+
+# Checked-in bilingual function words. The `simple` text-search configuration
+# has no stopword list, and `websearch_to_tsquery` joins bare terms with AND, so
+# a natural-language question would otherwise require every filler word to
+# appear in a unit and match nothing.
+LEXICAL_QUERY_VERSION = "simple-or-v1"
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "allow",
+        "allows",
+        "am",
+        "an",
+        "and",
+        "any",
+        "apply",
+        "applies",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "can",
+        "cover",
+        "covers",
+        "do",
+        "does",
+        "for",
+        "from",
+        "get",
+        "gets",
+        "give",
+        "gives",
+        "has",
+        "have",
+        "how",
+        "i",
+        "in",
+        "is",
+        "it",
+        "its",
+        "many",
+        "me",
+        "much",
+        "my",
+        "of",
+        "offer",
+        "offers",
+        "on",
+        "or",
+        "reach",
+        "require",
+        "requires",
+        "that",
+        "the",
+        "their",
+        "there",
+        "these",
+        "they",
+        "this",
+        "to",
+        "under",
+        "was",
+        "we",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whose",
+        "will",
+        "with",
+        "would",
+        "you",
+        "your",
+        "և",
+        "է",
+        "եմ",
+        "են",
+        "ես",
+        "եք",
+        "ինչ",
+        "ինչպես",
+        "ինչու",
+        "որ",
+        "որը",
+        "որն",
+        "որքան",
+        "ու",
+        "ունի",
+        "ունեմ",
+        "կա",
+        "կան",
+        "այս",
+        "այդ",
+        "այն",
+        "մեջ",
+        "համար",
+        "հետ",
+        "ից",
+        "ի",
+    }
+)
+_MAX_LEXICAL_TERMS = 12
+_TERM_SPLIT = re.compile(r"[^0-9\w]+", re.UNICODE)
+# Armenian question, exclamation, and emphasis marks sit inside a word, so they
+# are removed rather than treated as separators.
+_INTRA_WORD_MARKS = str.maketrans("", "", "\u055a\u055b\u055c\u055d\u055e\u055f")
+
+
+def lexical_search_terms(query: str) -> str | None:
+    """Turn one question into a deterministic OR query of content terms."""
+    normalized = query.casefold().translate(_INTRA_WORD_MARKS)
+    tokens = [
+        token
+        for token in _TERM_SPLIT.split(normalized)
+        if len(token) > 1 and token not in _STOPWORDS
+    ]
+    unique = list(dict.fromkeys(tokens))[:_MAX_LEXICAL_TERMS]
+    if not unique:
+        return None
+    return " or ".join(f'"{token}"' for token in unique)
 
 
 @dataclass(frozen=True)
@@ -249,7 +373,8 @@ class PostgresStructuredTariffQueryRepository:
         limit: int = 8,
     ) -> tuple[RankedUnit, ...]:
         self._validate_search(product, offering_ids, limit)
-        if not offering_ids or not query.strip():
+        terms = lexical_search_terms(query) if offering_ids else None
+        if terms is None:
             return ()
         return await self._search(
             """WITH q AS (SELECT websearch_to_tsquery('simple', :query) AS terms)
@@ -267,7 +392,7 @@ class PostgresStructuredTariffQueryRepository:
             product=product,
             offering_ids=offering_ids,
             limit=limit,
-            query=query,
+            query=terms,
             source="lexical",
         )
 

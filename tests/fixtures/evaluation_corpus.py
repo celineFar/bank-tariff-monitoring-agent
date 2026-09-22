@@ -22,7 +22,10 @@ from app.domain.structured_tariffs import (
     StructuredProjection,
     TariffFact,
 )
-from app.repositories.structured_tariff_query import RankedUnit
+from app.repositories.structured_tariff_query import (
+    RankedUnit,
+    lexical_search_terms,
+)
 from app.services.structured_projection import StructuredTariffProjector
 from tests.fixtures.structured_tariffs import (
     CONSUMER_URL,
@@ -305,15 +308,27 @@ class EvaluationRepository:
         )
 
     async def lexical_units(self, *, bank, product, offering_ids, query, limit):
+        """Mirror the PostgreSQL ranker's term selection and OR semantics."""
         self.lexical_calls.append(query)
-        terms = {token for token in query.casefold().split() if len(token) > 3}
-        ranked = [
-            unit
-            for unit in self.units
-            if unit.offering_id in offering_ids
-            and any(term in unit.content.casefold() for term in terms)
-        ]
-        return tuple(RankedUnit(unit, 0.5, "lexical") for unit in ranked[:limit])
+        selected = lexical_search_terms(query)
+        if selected is None:
+            return ()
+        terms = [item.strip('"') for item in selected.split(" or ")]
+        scored = []
+        for unit in self.units:
+            if unit.offering_id not in offering_ids:
+                continue
+            haystack = " ".join(
+                (unit.identity_text, unit.alias_purpose_text, unit.detail_text)
+            ).casefold()
+            matched = sum(1 for term in terms if term in haystack)
+            if matched:
+                scored.append((matched, unit))
+        scored.sort(key=lambda item: (-item[0], item[1].unit_id))
+        return tuple(
+            RankedUnit(unit, matched / len(terms), "lexical")
+            for matched, unit in scored[:limit]
+        )
 
     async def vector_units(
         self, *, bank, product, offering_ids, embedding, model_id, limit

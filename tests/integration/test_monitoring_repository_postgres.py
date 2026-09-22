@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+from app.config import load_seed_catalog
+from app.config.models import IntentResolutionSettings
 from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
     EmbeddedKnowledgeChunk,
@@ -53,7 +55,7 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
-from app.domain.structured_tariffs import FieldPath
+from app.domain.structured_tariffs import FieldPath, QueryOperation
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
     PostgresRunRepository,
@@ -65,6 +67,7 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredUnitEmbeddingRepository,
 )
 from app.services.evidence_retention_audit import EvidenceRetentionAuditor
+from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
     build_monitoring_app,
@@ -73,8 +76,13 @@ from app.services.monitoring_workflow import (
 )
 from app.services.review_decisions import ReviewDecisionService
 from app.services.structured_backfill import StructuredProjectionBackfill
+from app.services.structured_projection import RENDERER_VERSION
 from app.services.structured_projection_audit import StructuredProjectionAuditor
-from tests.fixtures.structured_tariffs import accepted_snapshot
+from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_tariff_query import StructuredTariffQueryService
+from tests.fixtures.evaluation_corpus import CORPUS_SPECS, PREVIOUS_MORTGAGE_SPEC
+from tests.fixtures.structured_tariffs import accepted_snapshot, build_snapshot
+from tests.fixtures.target_questions import TARGET_QUESTIONS
 
 pytestmark = pytest.mark.postgres
 
@@ -1523,3 +1531,196 @@ async def test_evidence_retention_audit_gates_legacy_embedding_deprecation(
     assert not gapped.ready_to_deprecate_legacy_embeddings
     assert gapped.gaps[0].kind == "fact_without_evidence"
     assert gapped.gaps[0].field_path
+
+
+async def _accept_spec(session_factory: async_sessionmaker[AsyncSession], spec):
+    """Accept one synthetic offering snapshot through the real run lifecycle."""
+    runs = PostgresRunRepository(session_factory)
+    submitted = await runs.submit(
+        RunCommand(
+            product=spec.product,
+            offering_id=spec.offering_id,
+            trigger=RunTrigger.API,
+        )
+    )
+    claimed = await runs.claim_next("eval-worker")
+    assert claimed is not None
+    execution = await runs.create_offering_execution(
+        submitted.run.id, spec.product, spec.offering_id
+    )
+    execution = await runs.start_offering_execution(execution.id)
+    snapshot = build_snapshot(spec).model_copy(
+        update={
+            "run_id": submitted.run.id,
+            "offering_execution_id": execution.id,
+        }
+    )
+    await PostgresSnapshotRepository(session_factory).save_attempt(snapshot)
+    await runs.finish(submitted.run.id, RunStatus.SUCCEEDED)
+    return snapshot
+
+
+async def _accept_corpus(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Publish every synthetic evaluation offering as an accepted projection.
+
+    The prior mortgage version and its accepted change set are published too,
+    so the history question has real old and new evidence to cite.
+    """
+    backfill = StructuredProjectionBackfill(session_factory)
+    previous = await _accept_spec(session_factory, PREVIOUS_MORTGAGE_SPEC)
+    for spec in CORPUS_SPECS:
+        current = await _accept_spec(session_factory, spec)
+        if spec.offering_id is OfferingId.MORTGAGE_PRIMARY:
+            await PostgresSnapshotRepository(session_factory).save_changes(
+                SnapshotChangeSet(
+                    id=uuid4(),
+                    run_id=current.run_id,
+                    product=spec.product,
+                    offering_id=spec.offering_id,
+                    previous_snapshot_id=previous.id,
+                    current_snapshot_id=current.id,
+                    changes=(
+                        SnapshotChange(
+                            field="interest_rate",
+                            previous="10",
+                            current="11",
+                            previous_display="10% minimum nominal rate",
+                            current_display="11% minimum nominal rate",
+                        ),
+                    ),
+                    created_at=datetime.now(UTC),
+                )
+            )
+        result = await backfill.run_scope(
+            "ameria", spec.product.value, spec.offering_id.value, apply=True
+        )
+        assert result.published >= 1, result
+
+
+@pytest.mark.asyncio
+async def test_structured_read_model_answers_all_25_questions_on_postgres(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _accept_corpus(monitoring_session_factory)
+    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    service = StructuredTariffQueryService(
+        PostgresStructuredTariffQueryRepository(monitoring_session_factory)
+    )
+    lexical_hits = 0
+    single_offering_questions = 0
+    failures: list[str] = []
+
+    for question in TARGET_QUESTIONS:
+        resolution = (await resolver.resolve_turn(question.question)).resolution
+        plan = issue_resolution_plan(
+            question.question,
+            resolution,
+            session_id=f"pg-eval-{question.case_id}",
+            turn_id=question.case_id,
+        )
+        result = await service.answer(plan, question.question)
+        if result.status is not question.expected_status:
+            failures.append(
+                f"{question.case_id}: {result.status.value} "
+                f"!= {question.expected_status.value} ({result.reason})"
+            )
+            continue
+        if (
+            question.expected_winner is not None
+            and result.metadata.get("winner") != question.expected_winner.value
+        ):
+            failures.append(
+                f"{question.case_id}: winner {result.metadata.get('winner')}"
+            )
+        if plan.operation is QueryOperation.SINGLE and result.facts:
+            single_offering_questions += 1
+            lexical_hits += bool(result.retrieval_units)
+
+    assert not failures, failures
+    # Weighted `simple` full-text search must find supporting units for the
+    # descriptive part of most single-offering questions.
+    assert single_offering_questions >= 10
+    assert lexical_hits / single_offering_questions >= 0.85, (
+        lexical_hits,
+        single_offering_questions,
+    )
+
+
+@pytest.mark.asyncio
+async def test_accepted_facts_never_leak_across_offering_or_family_scope(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await _accept_corpus(monitoring_session_factory)
+    repository = PostgresStructuredTariffQueryRepository(monitoring_session_factory)
+    service = StructuredTariffQueryService(repository)
+    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+
+    for question in TARGET_QUESTIONS:
+        resolution = (await resolver.resolve_turn(question.question)).resolution
+        plan = issue_resolution_plan(
+            question.question,
+            resolution,
+            session_id=f"pg-scope-{question.case_id}",
+            turn_id=question.case_id,
+        )
+        result = await service.answer(plan, question.question)
+        assert all(fact.offering_id in plan.offering_ids for fact in result.facts)
+        assert all(
+            unit.offering_id in plan.offering_ids for unit in result.retrieval_units
+        )
+
+    with pytest.raises(ValueError):
+        await repository.active_profiles(
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            offering_ids=(OfferingId.MORTGAGE_PRIMARY,),
+        )
+
+
+@pytest.mark.asyncio
+async def test_renderer_upgrade_rerenders_units_and_drops_stale_vectors(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    runs, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id)
+    await PostgresSnapshotRepository(monitoring_session_factory).save_attempt(snapshot)
+    await runs.finish(run.id, RunStatus.SUCCEEDED)
+    backfill = StructuredProjectionBackfill(monitoring_session_factory)
+    await backfill.run_scope("ameria", "consumer_loan", "consumer_standard", apply=True)
+    # Simulate a projection written by the previous renderer, with its vector.
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                """UPDATE retrieval_units SET renderer_version = 1,
+                detail_text = 'rate.nominal.minimum: 12',
+                content = 'stale', content_sha256 = repeat('a', 64),
+                embedding = :vector, embedding_model = 'gemini-embedding-001',
+                embedding_dimensions = 768
+                WHERE snapshot_id = :snapshot_id"""
+            ),
+            {
+                "snapshot_id": snapshot.id,
+                "vector": "[" + ",".join("0.01" for _ in range(768)) + "]",
+            },
+        )
+
+    await backfill.run_scope("ameria", "consumer_loan", "consumer_standard", apply=True)
+
+    async with monitoring_session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    """SELECT renderer_version, detail_text, content,
+                    embedding IS NULL AS vector_cleared, embedding_model
+                    FROM retrieval_units WHERE snapshot_id = :snapshot_id"""
+                ),
+                {"snapshot_id": snapshot.id},
+            )
+        ).all()
+    assert rows
+    assert all(row.renderer_version == RENDERER_VERSION for row in rows)
+    assert all(row.content != "stale" for row in rows)
+    assert all(row.vector_cleared and row.embedding_model is None for row in rows)
+    assert any("minimum nominal interest rate" in row.detail_text for row in rows)

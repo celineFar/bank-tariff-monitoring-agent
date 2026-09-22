@@ -120,6 +120,19 @@ See the [Evaluation Guide](https://google.github.io/agents-cli/guide/evaluation/
 
 - `basic-dataset.json`: two core cases—Armenian bounded clarification and an
   accepted-only current-data read.
+- `structured-tariff-questions.json`: the two starter cases of the structured
+  retrieval loop—an answered single-offering rate and a must-abstain offering
+  with no accepted projection.
+- `structured-tariff-held-out.json`: eight held-out cases covering Armenian
+  phrasing, currency narrowing, explicit comparison, family ranking, an
+  incomparable fee ranking, mortgage down payment, a fee inventory, and accepted
+  change history. These were written after the starter loop and graded once.
+- `../../fixtures/target_questions.py`: all 25 target questions with their
+  expected typed route and structured outcome, asserted by
+  `tests/unit/test_target_questions.py` without any model call.
+- `../../../scripts/seed_evaluation_corpus.py`: loads the synthetic structured
+  corpus into a database whose name ends in `_test`. Run it instead of
+  `fixtures.sql` for the structured suites.
 - `expanded-intent-safety.json`: 22 cases spanning every configured offering,
   bilingual/fuzzy resolution, stale/history behavior, unsupported requests,
   and tool-routing safety.

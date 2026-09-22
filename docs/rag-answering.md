@@ -1,5 +1,15 @@
 # RAG answer contract
 
+After the Phase F cutover this is the **rollback** answer path, selected by
+`TARIFF_ANSWER_READ_MODEL=legacy`. With the default `structured` setting the
+same surfaces answer from accepted typed facts through
+`StructuredTariffQueryService`; see `docs/tariff-query-services.md`. Both read
+models are reached through `TariffAnswerRouter`, so the switch changes the
+evidence source without changing the authorized scope, and `POST
+/api/v1/questions` keeps returning an `AnswerResult` either way. Under the
+structured setting its citations carry the evidence ID, the exact quote, and the
+source locator instead of a chunk ID.
+
 `RagAnswerService` answers only from the active PostgreSQL/pgvector corpus; it never
 invokes acquisition. A `QuestionCommand` supplies the query and optional typed
 product/offering filters. Missing product scope returns `ambiguous_product`.
@@ -48,3 +58,18 @@ Chunks are stored in PostgreSQL table `knowledge_chunks`, linked by `document_id
 to `knowledge_documents`. `knowledge_chunks.content` holds the text,
 `search_vector` supports lexical search, and `embedding` stores the 768-dimensional
 pgvector. Both the document and chunk must have `is_active = true` to be retrieved.
+
+
+## Shadow comparison
+
+`app/services/structured_shadow_read.py` runs both read models over a
+checked-in set of representative queries and reports statuses, fact and citation
+counts, latency, and evidence-source overlap. It logs only a question hash,
+never question text, source text, excerpts, or generated wording. Its cutover
+gate stays closed until both paths ran, the structured model answered at least
+one query, and every divergence was audited:
+
+```bash
+uv run python scripts/shadow_read_report.py            # structured only, no model call
+uv run python scripts/shadow_read_report.py --with-legacy  # spends Gemini credits
+```

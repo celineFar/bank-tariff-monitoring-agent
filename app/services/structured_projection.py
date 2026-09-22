@@ -41,6 +41,7 @@ from app.domain.structured_tariffs import (
     StructuredProjection,
     TariffFact,
     fee_field_path,
+    field_label,
 )
 from app.services.snapshot_lifecycle import canonical_tariff_payload
 
@@ -50,7 +51,7 @@ _OFFICIAL = {
     Authority.OFFICIAL_FAQ,
     Authority.OFFICIAL_CAMPAIGN_CONTENT,
 }
-RENDERER_VERSION = 1
+RENDERER_VERSION = 2
 _SALARY_WORD = re.compile(r"(?i)\b(?:salary|payroll)\b|աշխատավարձ")
 _MARKDOWN_LINK = re.compile(r"\[([^]]+)\]\((?:<[^>]+>|[^)]+)\)")
 
@@ -593,7 +594,8 @@ class StructuredTariffProjector:
             )
         for fact in supported:
             conditions = "; ".join(_stable(item) for item in fact.conditions)
-            detail = f"{fact.field_path.value}: {fact.value}"
+            label = field_label(fact.field_path)
+            detail = f"{label} ({fact.field_path.value}): {fact.value}"
             if fact.currency:
                 detail += f" {fact.currency}"
             if fact.unit:
@@ -609,7 +611,8 @@ class StructuredTariffProjector:
                     content,
                     language,
                     profile.display_name,
-                    " ".join(profile.aliases),
+                    # The Armenian label reaches search only, never the packet.
+                    " ".join((*profile.aliases, field_label(fact.field_path, "hy"))),
                     _clean(detail),
                 )
             )

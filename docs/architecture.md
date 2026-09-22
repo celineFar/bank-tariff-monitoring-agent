@@ -114,6 +114,20 @@ shell, or SQL tool.
 - `app/services/structured_unit_embeddings.py` and migration `013`: lazily embed
   active accepted retrieval units, with content-addressed reuse and explicit
   model/dimension checks; rejected or superseded units are not embedded.
+  Publishing re-renders any unit left at a lower renderer version and clears its
+  stale vector, so a renderer upgrade cannot leave old text searchable.
+- `FIELD_LABELS` in `app/domain/structured_tariffs.py` and
+  `lexical_search_terms` in `app/repositories/structured_tariff_query.py`:
+  renderer version 2 writes a human field label beside each canonical path, and
+  the lexical query drops bilingual function words and Armenian intra-word marks
+  before building an OR query (`simple-or-v1`). Without both, `simple`
+  full-text search matched no natural-language question.
+- `tests/fixtures/target_questions.py`, `tests/eval/structured_metrics.py`,
+  `scripts/structured_eval_metrics.py`, `scripts/seed_evaluation_corpus.py`, and
+  `scripts/trace_structured_answer.py`: the 25 target questions with their
+  expected typed route and outcome, the model-free quality metrics over them,
+  a seeder for a disposable `_test` database, and a stage-by-stage trace of the
+  structured answer path. `tests/eval/RESULTS.md` records the measured scores.
 - `app/services/structured_backfill.py` and
   `scripts/backfill_structured_tariffs.py`: dry-run and additive historical
   projection from accepted semantic extractions. Apply mode processes bounded

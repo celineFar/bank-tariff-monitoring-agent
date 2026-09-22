@@ -85,6 +85,258 @@ class FieldPath(StrEnum):
     LINKED_ACCOUNT_OR_CARD = "revolving.linked_account_or_card"
 
 
+# Human field labels for deterministic retrieval text. They are our own
+# canonical vocabulary, not a translation of source wording, so a query can
+# match "minimum nominal interest rate" instead of "rate.nominal.minimum".
+FIELD_LABELS: dict[FieldPath, tuple[str, str]] = {
+    FieldPath.PRODUCT_NAME: (
+        "product name",
+        "ապրանքի անվանում",
+    ),
+    FieldPath.FORMAL_TERMS_NAME: (
+        "formal terms name",
+        "պայմանների պաշտոնական անվանում",
+    ),
+    FieldPath.CATEGORY: (
+        "category",
+        "կատեգորիա",
+    ),
+    FieldPath.VARIANT_NAME: (
+        "variant name",
+        "տարբերակի անվանում",
+    ),
+    FieldPath.VARIANT_PURPOSE: (
+        "variant purpose",
+        "տարբերակի նպատակ",
+    ),
+    FieldPath.PURPOSE: (
+        "purpose",
+        "նպատակ",
+    ),
+    FieldPath.AMOUNT_MINIMUM: (
+        "minimum loan amount",
+        "վարկի նվազագույն գումար",
+    ),
+    FieldPath.AMOUNT_MAXIMUM: (
+        "maximum loan amount",
+        "վարկի առավելագույն գումար",
+    ),
+    FieldPath.AMOUNT_SALARY_MULTIPLE_MINIMUM: (
+        "minimum salary multiple",
+        "աշխատավարձի նվազագույն պատիկ",
+    ),
+    FieldPath.AMOUNT_SALARY_MULTIPLE_MAXIMUM: (
+        "maximum salary multiple",
+        "աշխատավարձի առավելագույն պատիկ",
+    ),
+    FieldPath.AMOUNT_PROPERTY_VALUE_MINIMUM: (
+        "minimum percentage of property value",
+        "գույքի արժեքի նվազագույն տոկոս",
+    ),
+    FieldPath.AMOUNT_PROPERTY_VALUE_MAXIMUM: (
+        "maximum percentage of property value",
+        "գույքի արժեքի առավելագույն տոկոս",
+    ),
+    FieldPath.AMOUNT_FORMULA: (
+        "loan amount formula",
+        "վարկի գումարի բանաձև",
+    ),
+    FieldPath.NOMINAL_RATE_MINIMUM: (
+        "minimum nominal interest rate",
+        "նվազագույն անվանական տոկոսադրույք",
+    ),
+    FieldPath.NOMINAL_RATE_MAXIMUM: (
+        "maximum nominal interest rate",
+        "առավելագույն անվանական տոկոսադրույք",
+    ),
+    FieldPath.NOMINAL_RATE_FORMULA: (
+        "nominal interest rate formula",
+        "անվանական տոկոսադրույքի բանաձև",
+    ),
+    FieldPath.EFFECTIVE_RATE_MINIMUM: (
+        "minimum effective interest rate",
+        "նվազագույն փաստացի տոկոսադրույք",
+    ),
+    FieldPath.EFFECTIVE_RATE_MAXIMUM: (
+        "maximum effective interest rate",
+        "առավելագույն փաստացի տոկոսադրույք",
+    ),
+    FieldPath.EFFECTIVE_RATE_FORMULA: (
+        "effective interest rate formula",
+        "փաստացի տոկոսադրույքի բանաձև",
+    ),
+    FieldPath.TERM_MINIMUM_MONTHS: (
+        "minimum repayment term in months",
+        "մարման նվազագույն ժամկետ ամիսներով",
+    ),
+    FieldPath.TERM_MAXIMUM_MONTHS: (
+        "maximum repayment term in months",
+        "մարման առավելագույն ժամկետ ամիսներով",
+    ),
+    FieldPath.TERM_INDEFINITE: (
+        "indefinite repayment term",
+        "անժամկետ մարման ժամկետ",
+    ),
+    FieldPath.TERM_END_CONDITION: (
+        "repayment term end condition",
+        "մարման ժամկետի ավարտի պայման",
+    ),
+    FieldPath.FEE_APPLICATION: (
+        "application fee",
+        "հայտի վճար",
+    ),
+    FieldPath.FEE_DISBURSEMENT: (
+        "disbursement fee",
+        "տրամադրման վճար",
+    ),
+    FieldPath.FEE_SERVICE: (
+        "service fee",
+        "սպասարկման վճար",
+    ),
+    FieldPath.FEE_ORIGINATION: (
+        "origination fee",
+        "ձևակերպման վճար",
+    ),
+    FieldPath.FEE_EARLY_REPAYMENT: (
+        "early repayment fee",
+        "վաղաժամկետ մարման վճար",
+    ),
+    FieldPath.FEE_INSURANCE: (
+        "insurance fee",
+        "ապահովագրության վճար",
+    ),
+    FieldPath.FEE_OTHER: (
+        "other fee",
+        "այլ վճար",
+    ),
+    FieldPath.REPAYMENT_METHOD: (
+        "repayment method",
+        "մարման եղանակ",
+    ),
+    FieldPath.ELIGIBILITY_REQUIREMENT: (
+        "eligibility requirement",
+        "իրավասության պահանջ",
+    ),
+    FieldPath.ELIGIBILITY_RESIDENCY: (
+        "residency requirement",
+        "բնակության պահանջ",
+    ),
+    FieldPath.ELIGIBILITY_AGE_MINIMUM: (
+        "minimum applicant age",
+        "դիմողի նվազագույն տարիք",
+    ),
+    FieldPath.ELIGIBILITY_AGE_MAXIMUM: (
+        "maximum applicant age",
+        "դիմողի առավելագույն տարիք",
+    ),
+    FieldPath.APPLICATION_CHANNEL: (
+        "application channel",
+        "դիմելու եղանակ",
+    ),
+    FieldPath.DOCUMENT_REQUIRED: (
+        "required document",
+        "պահանջվող փաստաթուղթ",
+    ),
+    FieldPath.SPECIAL_CONDITION: (
+        "special condition",
+        "հատուկ պայման",
+    ),
+    FieldPath.SALARY_PRIVILEGE: (
+        "salary customer privilege",
+        "աշխատավարձային հաճախորդի արտոնություն",
+    ),
+    FieldPath.COLLATERAL_REQUIREMENT: (
+        "collateral requirement",
+        "գրավի պահանջ",
+    ),
+    FieldPath.COLLATERAL_ALTERNATIVE: (
+        "alternative security",
+        "այլընտրանքային ապահովում",
+    ),
+    FieldPath.INCOME_VERIFICATION_REQUIRED: (
+        "income verification requirement",
+        "եկամտի հաստատման պահանջ",
+    ),
+    FieldPath.CREDITWORTHINESS_REQUIRED: (
+        "creditworthiness assessment requirement",
+        "վարկունակության գնահատման պահանջ",
+    ),
+    FieldPath.PROPERTY_MARKET: (
+        "property market",
+        "գույքի շուկա",
+    ),
+    FieldPath.DOWN_PAYMENT_MINIMUM: (
+        "minimum down payment percentage",
+        "նվազագույն կանխավճարի տոկոս",
+    ),
+    FieldPath.DOWN_PAYMENT_MAXIMUM: (
+        "maximum down payment percentage",
+        "առավելագույն կանխավճարի տոկոս",
+    ),
+    FieldPath.LTV_MINIMUM: (
+        "minimum loan to value percentage",
+        "վարկ գրավ հարաբերակցության նվազագույն տոկոս",
+    ),
+    FieldPath.LTV_MAXIMUM: (
+        "maximum loan to value percentage",
+        "վարկ գրավ հարաբերակցության առավելագույն տոկոս",
+    ),
+    FieldPath.PROPERTY_REQUIREMENT: (
+        "property requirement",
+        "գույքի պահանջ",
+    ),
+    FieldPath.CREDIT_LIMIT_MINIMUM: (
+        "minimum credit limit",
+        "նվազագույն վարկային սահմանաչափ",
+    ),
+    FieldPath.CREDIT_LIMIT_MAXIMUM: (
+        "maximum credit limit",
+        "առավելագույն վարկային սահմանաչափ",
+    ),
+    FieldPath.CREDIT_LIMIT_SALARY_MULTIPLE_MINIMUM: (
+        "minimum credit limit salary multiple",
+        "վարկային սահմանաչափի աշխատավարձի նվազագույն պատիկ",
+    ),
+    FieldPath.CREDIT_LIMIT_SALARY_MULTIPLE_MAXIMUM: (
+        "maximum credit limit salary multiple",
+        "վարկային սահմանաչափի աշխատավարձի առավելագույն պատիկ",
+    ),
+    FieldPath.CREDIT_LIMIT_PROPERTY_VALUE_MINIMUM: (
+        "minimum credit limit percentage of property value",
+        "վարկային սահմանաչափի գույքի արժեքի նվազագույն տոկոս",
+    ),
+    FieldPath.CREDIT_LIMIT_PROPERTY_VALUE_MAXIMUM: (
+        "maximum credit limit percentage of property value",
+        "վարկային սահմանաչափի գույքի արժեքի առավելագույն տոկոս",
+    ),
+    FieldPath.CREDIT_LIMIT_FORMULA: (
+        "credit limit formula",
+        "վարկային սահմանաչափի բանաձև",
+    ),
+    FieldPath.GRACE_PERIOD_DAYS: (
+        "grace period in days",
+        "արտոնյալ ժամանակահատված օրերով",
+    ),
+    FieldPath.REVOLVING_ENABLED: (
+        "revolving credit",
+        "վերականգնվող վարկ",
+    ),
+    FieldPath.LINKED_ACCOUNT_OR_CARD: (
+        "linked account or card",
+        "կապակցված հաշիվ կամ քարտ",
+    ),
+}
+
+if set(FIELD_LABELS) != set(FieldPath):
+    raise RuntimeError("field-label registry does not cover every canonical path")
+
+
+def field_label(path: FieldPath, language: str = "en") -> str:
+    """Return the checked-in English or Armenian label for a canonical path."""
+    english, armenian = FIELD_LABELS[path]
+    return armenian if language.lower().startswith("hy") else english
+
+
 SOURCE_FIELD_PATHS: dict[ExtractionField, tuple[FieldPath, ...]] = {
     ExtractionField.PRODUCT_NAME: (FieldPath.PRODUCT_NAME,),
     ExtractionField.FORMAL_TERMS_NAMES: (FieldPath.FORMAL_TERMS_NAME,),

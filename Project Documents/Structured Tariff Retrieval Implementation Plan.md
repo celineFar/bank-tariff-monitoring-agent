@@ -649,18 +649,101 @@ citation or a fresh monitoring run.
 
 ### G. Evaluation and documentation
 
-- [ ] Create fixtures and expected structured outcomes for all 25 questions; start
+- [x] Create fixtures and expected structured outcomes for all 25 questions; start
       the agent eval loop with 1–2 cases, then expand with held-out cases.
-- [ ] Measure exact fact accuracy, conditional coverage, valid citation rate,
+- [x] Measure exact fact accuracy, conditional coverage, valid citation rate,
       unsupported-answer rate, scope leakage, comparison correctness, FTS/vector
       recall, latency, model calls, tokens, cache savings, and estimated cost; tune
       hybrid fusion only on held-out retrieval cases.
-- [ ] Run `uv run pytest tests/unit tests/integration`; run applicable `agents-cli`
+- [x] Run `uv run pytest tests/unit tests/integration`; run applicable `agents-cli`
       evals and inspect scores/traces, not just process exit codes.
-- [ ] Update `docs/architecture.md`, knowledge-store/retrieval/answering docs,
+- [x] Update `docs/architecture.md`, knowledge-store/retrieval/answering docs,
       API contracts, migration notes, and the RAG trace script to show the new stages.
-- [ ] Do not deploy as part of this plan; dev deployment requires separate explicit
+- [x] Do not deploy as part of this plan; dev deployment requires separate explicit
       human approval under `AGENTS.md`.
+
+**Phase G completion (2026-09-22).** The plan names the 25 questions only
+through the section 7 coverage map, so `tests/fixtures/target_questions.py`
+reconstructs them from it — 14 single-offering, 3 explicit comparisons, 5 family
+extrema, 1 fee inventory, 1 mortgage down payment, and 1 accepted change set —
+each with its expected product, operation, offering set, required canonical
+fields, rank direction, and expected typed status and winner. Every one is
+answered through the real deterministic resolver, a real `ResolutionPlan`, and
+the real query service, with no model call.
+
+Measured on the synthetic corpus: 25/25 deterministic routes, 25/25 exact fact
+accuracy, conditional coverage 1.000, valid citation rate 1.000,
+unsupported-answer rate 0.000, scope leakage 0.000, comparison correctness
+1.000, abstention correctness 1.000, supported explanatory-unit rate 0.867,
+median 1.6 ms and p95 2.8 ms in memory.
+`tests/unit/test_target_questions.py` asserts those thresholds.
+Replayed against real PostgreSQL projections the same 25 questions again match
+25/25 with full-text recall 13/15, median 9.0 ms and p95 11.7 ms.
+`tests/eval/RESULTS.md` records the figures, the reproduction commands, and the
+model call, token, and estimated-cost totals read from the usage ledger
+(46 `adk.root` calls, 168629 input and 21535 output tokens, USD 0.20723 for the
+eval suites; embedding calls report no billable tokens and stay `unknown`).
+
+The agent eval loop started with two cases and expanded to eight held-out cases,
+scoring 2/2 at mean 5.00 and 8/8 at mean 4.88 with a minimum of 4. It found two
+real prompt defects. The first answer reported the Overdraft rate correctly but
+printed no citation and no accepted-as-of time, which breaks the completion
+criterion that every answer cites accepted official evidence; the instruction
+now requires the as-of time and a per-value citation drawn only from that fact's
+evidence. Over-tightening the follow-up rule then cost the abstention case a
+point, so the instruction now forbids a redundant `get_current_tariffs` only
+when `answer_tariff_query` already answered. One residual 4/5 remains where the
+agent still makes that redundant read-only call on an answered mortgage
+question; values and citations were correct, so it is recorded rather than
+chased with more paid iterations.
+
+Building the suite surfaced three further defects, all fixed. Retrieval units
+rendered the bare canonical path, so `simple` full-text search could not match
+`nominal interest rate`; renderer version 2 now writes a human field label from
+a checked-in bilingual `FIELD_LABELS` registry that must cover every
+`FieldPath`, with the Armenian label reaching the weight-`B` search text only
+and never the model packet. `websearch_to_tsquery` joins bare terms with AND and
+`simple` has no stopword list, so a whole question matched nothing; the new
+`lexical_search_terms` (`simple-or-v1`) strips Armenian intra-word marks, drops
+a checked-in bilingual function-word list, and builds a bounded OR query ranked
+by `ts_rank_cd`. Publishing also kept stale renderer-version-1 text because the
+unit upsert only reactivated an existing row; it now re-renders forward and
+clears the stale vector so the embedder recomputes it.
+
+Hybrid fusion weights were **not** tuned. Once lexical recall improved the
+bounded vector fallback fired on only 1 of 15 single-offering questions, so
+there is no held-out retrieval case where lexical recall is genuinely
+insufficient, and `rrf-v1-k60-lex1-vector0.7` stands unchanged. The structured
+unit embedder was likewise not exercised, so this suite reports no embedding
+cache-saving figure. Both are recorded as open measurement gaps rather than
+claimed results.
+
+Nothing was deployed. `agents-cli deploy` was not run and dev deployment still
+requires separate explicit human approval under `AGENTS.md`.
+
+Files added: `tests/eval/structured_metrics.py`,
+`tests/eval/datasets/structured-tariff-questions.json`,
+`tests/eval/datasets/structured-tariff-held-out.json`,
+`tests/unit/test_target_questions.py`, `scripts/structured_eval_metrics.py`,
+`scripts/seed_evaluation_corpus.py`, and `scripts/trace_structured_answer.py`.
+Files modified: `app/agent.py`, `app/domain/structured_tariffs.py`,
+`app/services/structured_projection.py`,
+`app/repositories/structured_projection.py`,
+`app/repositories/structured_tariff_query.py`,
+`tests/fixtures/evaluation_corpus.py`,
+`tests/unit/test_structured_projection.py`,
+`tests/integration/test_monitoring_repository_postgres.py`,
+`tests/eval/RESULTS.md`, `tests/eval/datasets/README.md`,
+`docs/architecture.md`, `docs/rag-retrieval.md`, `docs/rag-answering.md`, and
+`docs/tariff-query-services.md`. No files removed.
+
+**Known environment gaps.** `agents-cli eval grade` still constructs a Vertex
+client before running a purely local metric, so it fails without Application
+Default Credentials even though the judge authenticates with `GEMINI_API_KEY`;
+a throwaway non-functional `authorized_user` JSON outside the repository
+satisfies that constructor and no credential is committed. The scaffold's
+`tests/integration/test_agent.py` and `tests/integration/test_server_e2e.py`
+still need live credentials and a live server and were not made to pass here.
 
 ## 9. Completion criteria
 

@@ -3,7 +3,11 @@ from copy import deepcopy
 import pytest
 
 from app.domain.structured_tariffs import FieldPath, RetrievalUnitKind
-from app.services.structured_projection import StructuredTariffProjector, _clean
+from app.services.structured_projection import (
+    RENDERER_VERSION,
+    StructuredTariffProjector,
+    _clean,
+)
 from tests.fixtures.structured_tariffs import accepted_snapshot
 
 
@@ -124,7 +128,20 @@ def test_projection_paths_round_trip_through_taxonomy() -> None:
     assert all(
         FieldPath(fact.field_path.value) is fact.field_path for fact in projected.facts
     )
-    assert all(unit.renderer_version == 1 for unit in projected.units)
+    assert all(unit.renderer_version == RENDERER_VERSION for unit in projected.units)
+    detail_units = [
+        unit for unit in projected.units if unit.kind is RetrievalUnitKind.FIELD_DETAIL
+    ]
+    rate_unit = next(
+        unit
+        for unit in detail_units
+        if FieldPath.NOMINAL_RATE_MINIMUM in unit.field_paths
+    )
+    # Retrieval text carries the human field label as well as the canonical path.
+    assert "minimum nominal interest rate" in rate_unit.detail_text
+    assert "rate.nominal.minimum" in rate_unit.detail_text
+    assert "նվազագույն անվանական տոկոսադրույք" in rate_unit.alias_purpose_text
+    assert "նվազագույն" not in rate_unit.content
     assert all(
         set(unit.evidence_ids)
         <= {

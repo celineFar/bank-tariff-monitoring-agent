@@ -1,0 +1,20 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "q01_overdraft_nominal_rate",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "What is the nominal interest rate of the Overdraft?"}]
+      },
+      "reference": {"response": {"role": "model", "parts": [{"text": "Call resolve_request then answer_tariff_query for overdraft only. Report the accepted nominal interest rate range per currency (AMD 14-18%, USD 10-13%) from typed accepted facts with official citations and the accepted-as-of time. Do not start monitoring, do not merge currencies into one number, and do not cite a product summary as the source of a value."}]}}
+    },
+    {
+      "eval_case_id": "q18_express_mortgage_missing",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "What application fee applies to the Express Mortgage?"}]
+      },
+      "reference": {"response": {"role": "model", "parts": [{"text": "Call resolve_request then answer_tariff_query for mortgage_express only; one get_current_tariffs freshness check after the abstention is acceptable. No accepted projection exists, so state plainly that there is no accepted evidence for this offering and offer monitoring only as a question. Never invent a fee, never substitute another mortgage's fee, and never start a monitoring run on its own."}]}}
+    }
+  ]
+}
