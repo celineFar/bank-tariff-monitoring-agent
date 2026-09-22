@@ -57,10 +57,8 @@ class EnvironmentSettings(BaseSettings):
     acquisition_max_linked_documents: int = 10
     pdf_extraction_schema_version: str = "2"
     pdf_extraction_prompt_version: str = "2"
-    pdf_extraction_model_name: str = "gemini-2.5-flash-lite"
-    pdf_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
-        "gemini-3.1-flash-lite",
-    )
+    pdf_extraction_model_name: str = "gemini-3.1-flash-lite"
+    pdf_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
     pdf_extraction_max_price_per_million_tokens_usd: float = 1.5
     pdf_extraction_max_attempts: int = 3
     pdf_extraction_backoff_base_seconds: float = 5.0
@@ -96,10 +94,10 @@ class EnvironmentSettings(BaseSettings):
     source_discovery_classifier_backoff_base_seconds: float = 5.0
     source_discovery_classifier_max_backoff_seconds: float = 60.0
     source_discovery_classifier_retry_jitter_ratio: float = 0.25
-    source_discovery_model_name: str | None = "gemini-2.5-flash-lite"
-    source_discovery_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
-        "gemini-3.1-flash-lite",
-    )
+    source_discovery_model_name: str | None = "gemini-3.1-flash-lite"
+    source_discovery_fallback_model_names: Annotated[
+        tuple[str, ...], NoDecode
+    ] = ()
     source_discovery_max_price_per_million_tokens_usd: float = 1.5
     semantic_extraction_schema_version: str = "5"
     semantic_extraction_prompt_version: str = "5"

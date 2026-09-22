@@ -134,21 +134,18 @@ mutually exclusive:
   `TariffPipeline`'s publication services, never insert rows directly, so evidence
   retention and the accept/review decision stay unchanged.
 
-### 3.3 To-do
+### 3.3 To-do — done (commit for phase B)
 
-- [ ] Decide between B1 alone and B1+B2 (ask the user; B2 is demo convenience, not a
-      correctness fix).
-- [ ] Document in `docs/demonstrations.md` — explicitly — that
+- [x] Decided with the user on 2026-09-22: **B1 alone**. No replay script; the
+      demonstration boundary is documented instead, and Phase D is what makes a real
+      run able to publish.
+- [x] Document in `docs/demonstrations.md` — explicitly — that
       `demonstrate_end_to_end.py` writes files only, stops after semantic extraction, and
       never produces an accepted snapshot or affects chat answers.
-- [ ] Make the chat's "snapshot missing" message say *why* monitoring is needed, so the
+- [x] Make the chat's "snapshot missing" message say *why* monitoring is needed, so the
       difference between a demonstration artifact and a persisted snapshot is visible to
       the user.
-- [ ] If B2 is chosen: add `scripts/replay_end_to_end_run.py` that loads a run directory,
-      re-uses the existing publication path, and refuses to run against a non-empty
-      snapshot for the same offering without an explicit flag.
-- [ ] If B2 is chosen: integration test that replaying `end-to-end/run_006` yields one
-      `tariff_snapshots` row for `overdraft` with intact evidence.
+- [–] Not done: B2 was declined, so no replay script and no replay integration test.
 
 ## 4. Problem C — The CLI crashed with an uncaught `AttributeError`
 
@@ -249,7 +246,12 @@ explain the failure.
 - [x] Persist a useful `failure_detail`: include the model id, HTTP status, and the
       provider message (truncated to the column's 2000-char limit) instead of the
       exception class name.
-- [~] Reviewed, awaiting the user's decision: `gemini-2.5-flash-lite` is the
+- [x] Settled with the user on 2026-09-22: `gemini-3.1-flash-lite` is now the
+      primary for both stages and both fallback lists are empty. It was already the
+      configured fallback, today's logs show it working, and at $0.25/$1.50 it is the
+      cheapest model still served that fits the stages' $1.50 ceiling — the named
+      successor `gemini-3.5-flash-lite` prices output at $2.50 and would require
+      raising that ceiling. Original finding: `gemini-2.5-flash-lite` is the
       primary for both `PDF_EXTRACTION_MODEL_NAME` and `SOURCE_DISCOVERY_MODEL_NAME`
       and now answers `404 … no longer available to new users`; the provider names
       `gemini-3.5-flash-lite` as its successor, while the configured fallback

@@ -79,11 +79,13 @@ rejects invalid output and converts accepted blocks, tables, notes, and footnote
 to the same page-addressable normalized structures used downstream.
 
 This stage has its own model rather than the global `MODEL_NAME`:
-`PDF_EXTRACTION_MODEL_NAME` defaults to `gemini-2.5-flash-lite` with
-`PDF_EXTRACTION_FALLBACK_MODEL_NAMES` defaulting to `gemini-3.1-flash-lite`, and
+`PDF_EXTRACTION_MODEL_NAME` defaults to `gemini-3.1-flash-lite`, with
+`PDF_EXTRACTION_FALLBACK_MODEL_NAMES` empty, and
 `PDF_EXTRACTION_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `1.50`) rejects any
 configured model whose input or output rate exceeds the ceiling before a live
-call. Transient failures receive bounded retries before the next model is tried.
+call. `gemini-2.5-flash-lite` held this slot until the provider stopped serving
+it to new users on 2026-09-22; its successor `gemini-3.5-flash-lite` prices
+output at `2.50`, so naming it here also means raising that ceiling. Transient failures receive bounded retries before the next model is tried.
 Exact results are reusable by PDF SHA-256, schema version, prompt version, model,
 and admission/probe fingerprint.
 The demonstration stores this exact cache under `pdf_extraction/cache` and writes a

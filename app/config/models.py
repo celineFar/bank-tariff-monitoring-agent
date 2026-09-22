@@ -208,8 +208,8 @@ class AcquisitionSettings(SettingsGroup):
 class PdfExtractionSettings(SettingsGroup):
     schema_version: str = Field(default="2", min_length=1, max_length=50)
     prompt_version: str = Field(default="2", min_length=1, max_length=50)
-    model_name: str = "gemini-2.5-flash-lite"
-    fallback_model_names: tuple[str, ...] = ("gemini-3.1-flash-lite",)
+    model_name: str = "gemini-3.1-flash-lite"
+    fallback_model_names: tuple[str, ...] = ()
     max_price_per_million_tokens_usd: float = Field(default=1.5, gt=0, le=100)
     max_attempts: int = Field(default=3, ge=1, le=10)
     backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
@@ -281,8 +281,8 @@ class SourceDiscoverySettings(SettingsGroup):
     classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
     classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
-    model_name: str | None = "gemini-2.5-flash-lite"
-    fallback_model_names: tuple[str, ...] = ("gemini-3.1-flash-lite",)
+    model_name: str | None = "gemini-3.1-flash-lite"
+    fallback_model_names: tuple[str, ...] = ()
     max_price_per_million_tokens_usd: float = Field(default=1.5, gt=0, le=100)
 
     @field_validator("fallback_model_names")

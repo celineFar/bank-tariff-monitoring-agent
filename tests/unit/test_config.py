@@ -22,10 +22,12 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.http.max_retry_delay_seconds == 120
     assert settings.acquisition.browser_enabled is True
     assert settings.acquisition.max_interactions == 100
-    # Transcription and discovery default to the cheapest capable models, and the
-    # price ceilings are tight enough to reject a premium model rather than admit it.
-    assert settings.pdf_extraction.model_name == "gemini-2.5-flash-lite"
-    assert settings.pdf_extraction.fallback_model_names == ("gemini-3.1-flash-lite",)
+    # Transcription and discovery default to the cheapest capable models still
+    # served, and the price ceilings are tight enough to reject a premium model
+    # rather than admit it. `gemini-2.5-flash-lite` was cheaper and held both
+    # slots until the provider stopped serving it to new users.
+    assert settings.pdf_extraction.model_name == "gemini-3.1-flash-lite"
+    assert settings.pdf_extraction.fallback_model_names == ()
     assert settings.pdf_extraction.max_price_per_million_tokens_usd == 1.5
     assert settings.pdf_extraction.skip_historical is True
     assert settings.source_discovery.max_items_per_batch == 8
@@ -33,8 +35,9 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.source_discovery.max_chars_per_batch == 18_000
     assert settings.source_discovery.classifier_max_attempts == 3
     assert settings.source_discovery.classifier_backoff_base_seconds == 5.0
-    assert settings.source_discovery.model_name == "gemini-2.5-flash-lite"
-    assert settings.source_discovery.fallback_model_names == ("gemini-3.1-flash-lite",)
+    assert settings.source_discovery.model_name == "gemini-3.1-flash-lite"
+    assert settings.source_discovery.fallback_model_names == ()
+    assert settings.semantic_extraction.fallback_model_names == ()
     assert settings.source_discovery.max_price_per_million_tokens_usd == 1.5
     assert settings.semantic_extraction.thinking_budget == 0
     assert settings.semantic_extraction.max_repairs_per_run == 3

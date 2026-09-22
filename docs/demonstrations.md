@@ -57,6 +57,18 @@ DEMONSTRATION_CAPTURE=run_006 uv run python scripts/run_demonstration.py \
 The capture must be of a seed URL in `app/config/seed_catalog.yaml`, so that
 the replayed extraction belongs to a catalog offering.
 
+### A capture is not a monitored tariff
+
+`scripts/demonstrate_end_to_end.py` writes files and nothing else. It runs on
+the filesystem repositories, covers `acquisition`, `normalization`,
+`source-discovery`, and `semantic-extraction`, and stops there: it never
+validates, publishes, compares, or persists a snapshot, and it never touches
+PostgreSQL. So `end-to-end/run_006` being an Overdraft capture does not give
+the chat an Overdraft tariff to answer from — `get_current_tariffs` reads
+accepted rows in `tariff_snapshots`, which only a worker run writes. When the
+chat says a snapshot is missing for an offering you have a capture of, both
+statements are true; ask it to monitor that offering to publish one.
+
 ## What a successful run shows
 
 | Scenario | Deliverable | Criteria that must pass |
@@ -98,7 +110,7 @@ half-written scenario cannot report a pass.
 
 | Script | Purpose | Cost |
 |---|---|---|
-| `scripts/demonstrate_end_to_end.py` | the live acquisition pipeline | network + Gemini |
+| `scripts/demonstrate_end_to_end.py` | the live acquisition pipeline, to files only — no snapshot is published | network + Gemini |
 | `scripts/demonstrate_source_discovery.py` | official source discovery | network + Gemini |
 | `scripts/demonstrate_pdf_extraction.py` | PDF transcription (`--execute-llm`) | Gemini |
 | `scripts/demonstrate_native_hitl.py` | the ADK native review payload | free |

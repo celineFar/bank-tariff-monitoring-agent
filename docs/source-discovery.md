@@ -65,8 +65,13 @@ failures, retries, usage, and cost per model in `model_attempts.json`.
 
 Because the classifier's output is schema-bound rather than free prose, this
 stage runs on its own cheap model instead of the global `MODEL_NAME`:
-`SOURCE_DISCOVERY_MODEL_NAME` defaults to `gemini-2.5-flash-lite`, falls back to
+`SOURCE_DISCOVERY_MODEL_NAME` defaults to `gemini-3.1-flash-lite`, falls back to
 `MODEL_NAME` only when explicitly unset, and runs with thinking disabled.
+`gemini-2.5-flash-lite` held this slot until the provider stopped serving it to
+new users on 2026-09-22. `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` is empty by
+default because the named successor, `gemini-3.5-flash-lite`, prices output
+above this stage's `1.50` ceiling; configuring it means raising that ceiling
+deliberately.
 
 Before live execution, every primary and fallback model is checked against
 `SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `1.50`). If either

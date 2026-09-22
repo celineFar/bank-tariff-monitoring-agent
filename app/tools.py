@@ -449,7 +449,15 @@ async def get_current_tariffs(
             "product": product,
             "offering_id": offering_id,
         }
-    return result.model_dump(mode="json")
+    payload = result.model_dump(mode="json")
+    if any(item.freshness is FreshnessStatus.MISSING for item in result.items):
+        # Demonstration artifacts under `end-to-end/` look like completed work
+        # but never publish a snapshot, so say what "missing" actually means.
+        payload["missing_means"] = (
+            "no monitoring run has published an accepted snapshot for this "
+            "offering yet; demonstration artifacts do not count"
+        )
+    return payload
 
 
 async def get_tariff_history(
