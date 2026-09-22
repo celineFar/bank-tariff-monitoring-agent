@@ -119,7 +119,8 @@ class PostgresStructuredTariffQueryRepository:
                 (
                     await session.execute(
                         text(
-                            """SELECT f.* FROM tariff_facts AS f
+                            """SELECT f.*, f.value_json::text AS value_json_text
+                        FROM tariff_facts AS f
                         JOIN offering_profiles AS p ON p.snapshot_id = f.snapshot_id
                         JOIN tariff_snapshots AS s ON s.id = f.snapshot_id
                         WHERE f.snapshot_id = ANY(:snapshots)
@@ -225,7 +226,7 @@ class PostgresStructuredTariffQueryRepository:
                 field_path=row["field_path"],
                 variant_key=row["variant_key"],
                 status=row["status"],
-                value=_decoded(row["value_json"]),
+                value=_decoded(row["value_json_text"]),
                 number=row["number_value"],
                 unit=row["unit"],
                 currency=row["currency"],

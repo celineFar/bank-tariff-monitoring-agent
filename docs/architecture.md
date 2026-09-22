@@ -106,6 +106,15 @@ shell, or SQL tool.
 - `app/services/structured_unit_embeddings.py` and migration `013`: lazily embed
   active accepted retrieval units, with content-addressed reuse and explicit
   model/dimension checks; rejected or superseded units are not embedded.
+- `app/services/structured_backfill.py` and
+  `scripts/backfill_structured_tariffs.py`: dry-run and additive historical
+  projection from accepted semantic extractions. Apply mode processes bounded
+  snapshot batches within an offering transaction and publication advisory lock,
+  preserving accepted history and activating only the newest projectable
+  accepted version. Unprojectable latest versions leave no active projection.
+  `app/services/structured_projection_audit.py` and its script compare typed
+  stored facts and verified citations with canonical accepted extraction without
+  model calls; failed evidence gates are reported.
 - `migrations/011_structured_tariff_read_model.sql`: additive read-model tables
   `offering_profiles`, `tariff_facts`, `fact_evidence`, and `retrieval_units`, plus
   `model_call_usage` for call and cost monitoring. Live new runs populate these

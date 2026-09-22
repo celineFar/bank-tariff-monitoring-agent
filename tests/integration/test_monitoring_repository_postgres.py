@@ -71,6 +71,8 @@ from app.services.monitoring_workflow import (
     workflow_identity,
 )
 from app.services.review_decisions import ReviewDecisionService
+from app.services.structured_backfill import StructuredProjectionBackfill
+from app.services.structured_projection_audit import StructuredProjectionAuditor
 from tests.fixtures.structured_tariffs import accepted_snapshot
 
 pytestmark = pytest.mark.postgres
@@ -1363,3 +1365,112 @@ async def test_structured_query_reads_only_active_accepted_evidence(
             snapshots=(snapshot.id,),
             fields=(FieldPath.NOMINAL_RATE_MINIMUM,),
         )
+
+
+@pytest.mark.asyncio
+async def test_structured_backfill_is_atomic_idempotent_and_flags_legacy_bad_evidence(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    runs, first_run, first_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    snapshots = PostgresSnapshotRepository(monitoring_session_factory)
+    old = _snapshot(first_run.id, first_execution.id)
+    await snapshots.save_attempt(old)
+    await runs.finish(first_run.id, RunStatus.SUCCEEDED)
+
+    _, second_run, second_execution = await _running_offering(
+        monitoring_session_factory
+    )
+    newer = accepted_snapshot("reviewed_consumer").model_copy(
+        update={
+            "id": uuid4(),
+            "run_id": second_run.id,
+            "offering_execution_id": second_execution.id,
+            "created_at": old.created_at + timedelta(seconds=1),
+            "accepted_at": old.accepted_at + timedelta(seconds=1),
+            "previous_accepted_snapshot_id": old.id,
+        }
+    )
+    await snapshots.save_attempt(newer)
+    backfill = StructuredProjectionBackfill(monitoring_session_factory)
+    dry = await backfill.run_scope(
+        "ameria", "consumer_loan", "consumer_standard", batch_size=1
+    )
+    assert dry.examined == dry.projectable == 2
+    assert dry.published == 0
+    applied = await backfill.run_scope(
+        "ameria", "consumer_loan", "consumer_standard", batch_size=1, apply=True
+    )
+    assert applied.published == 2
+    assert applied.active_snapshot_id == newer.id
+    repeated = await backfill.run_scope(
+        "ameria", "consumer_loan", "consumer_standard", batch_size=1, apply=True
+    )
+    assert repeated.active_snapshot_id == newer.id
+    query = PostgresStructuredTariffQueryRepository(monitoring_session_factory)
+    profiles = await query.active_profiles(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+    )
+    historical = await query.facts(
+        snapshots=(old.id,),
+        fields=(FieldPath.NOMINAL_RATE_MINIMUM,),
+        include_inactive=True,
+    )
+    assert [profile.snapshot_id for profile in profiles] == [newer.id]
+    assert historical and all(fact.evidence for fact in historical)
+    auditor = StructuredProjectionAuditor(monitoring_session_factory)
+    old_audit = await auditor.audit_snapshot(old.id)
+    assert old_audit.status == "matched", old_audit
+    assert (await auditor.audit_snapshot(newer.id)).status == "matched"
+    async with monitoring_session_factory() as session:
+        counts = (
+            await session.execute(
+                text(
+                    """SELECT
+                    (SELECT count(*) FROM offering_profiles WHERE is_active),
+                    (SELECT count(*) FROM tariff_facts WHERE is_active),
+                    (SELECT count(*) FROM retrieval_units WHERE is_active)"""
+                )
+            )
+        ).one()
+    assert counts[0] == 1
+    assert counts[1] > 0 and counts[2] > 0
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE tariff_facts SET value_json = CAST('\"tampered\"' AS jsonb) "
+                "WHERE snapshot_id = :snapshot_id AND field_path = 'identity.product_name'"
+            ),
+            {"snapshot_id": old.id},
+        )
+    assert (await auditor.audit_snapshot(old.id)).status == "mismatch"
+
+    await runs.finish(second_run.id, RunStatus.SUCCEEDED)
+    _, third_run, third_execution = await _running_offering(monitoring_session_factory)
+    legacy = _snapshot(third_run.id, third_execution.id).model_copy(
+        update={
+            "id": uuid4(),
+            "created_at": newer.created_at + timedelta(seconds=1),
+            "accepted_at": newer.accepted_at + timedelta(seconds=1),
+            "semantic_extraction": {},
+        }
+    )
+    await snapshots.save_attempt(legacy)
+    audited = await backfill.run_scope(
+        "ameria", "consumer_loan", "consumer_standard", batch_size=1
+    )
+    assert audited.projectable == 2
+    assert [issue.snapshot_id for issue in audited.issues] == [legacy.id]
+    assert (await auditor.audit_snapshot(legacy.id)).status == "unprojectable"
+    failed_latest = await backfill.run_scope(
+        "ameria", "consumer_loan", "consumer_standard", batch_size=1, apply=True
+    )
+    assert failed_latest.active_snapshot_id is None
+    assert not await query.active_profiles(
+        bank="ameria",
+        product=ProductType.CONSUMER_LOAN,
+        offering_ids=(OfferingId.CONSUMER_STANDARD,),
+    )

@@ -524,8 +524,36 @@ questions never submit monitoring work and that scope keys are rejected.
 
 ### F. Backfill and cutover
 
-- [ ] Backfill accepted snapshots in batches using stored semantic extraction and
+- [x] Backfill accepted snapshots in batches using stored semantic extraction and
       evidence; identify legacy snapshots that cannot be projected reliably.
+
+**Phase F progress (2026-09-22; phase incomplete).** Added dry-run and apply
+backfill with bounded batches, offering-level advisory locking, atomic active
+version selection, idempotent replays, and explicit unprojectable-snapshot
+reports. Applied additive migrations 011–013 to the local development database.
+Its only accepted legacy snapshot (Overdraft,
+`c9394125-847e-4630-8608-34a98cde2e95`) cannot be projected: the accepted
+repayment-term citation is classified `marketing_content`. No authority was
+silently upgraded and no structured projection was activated. A read-only
+canonical-versus-stored-fact auditor and PostgreSQL tests were added; two
+synthetic historical versions match, while the real legacy version is reported
+unprojectable. Comparison to a fresh legacy generated answer remains pending:
+automatic approval review rejected sending retrieved local tariff text to
+Gemini and writing its result to `artifacts/`. Explicit user approval was
+granted for one bounded Overdraft term query. The call failed before an answer
+was generated with `402 RESOURCE_EXHAUSTED` because the configured Gemini
+project has depleted prepaid credits. No legacy answer artifact was written;
+the old-output comparison and cutover gates remain open/closed respectively.
+Partial Phase F files added: `app/services/structured_backfill.py`,
+`app/services/structured_projection_audit.py`,
+`scripts/backfill_structured_tariffs.py`, and
+`scripts/audit_structured_projection.py`. Files modified so far:
+`app/repositories/structured_tariff_query.py` (lossless JSONB scalar reads),
+`tests/integration/test_monitoring_repository_postgres.py`, and
+`docs/architecture.md`. No files removed. The safe backfill and audit passed
+21 PostgreSQL repository tests; model costs for the failed call are recorded
+by the usage ledger as unknown where token counts are unavailable.
+
 - [ ] Compare projected facts to canonical snapshots and old answer outputs; audit
       every mismatch before using the new path for answers.
 - [ ] Shadow-read old and new retrieval paths on representative queries, logging
