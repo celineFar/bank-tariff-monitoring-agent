@@ -78,7 +78,10 @@ class AdkGeminiPdfExtractor:
             generate_content_config=types.GenerateContentConfig(
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
-                )
+                ),
+                # Transcription is schema-bound: the model copies structure it can
+                # already see, so reasoning tokens bill at the output rate for no gain.
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         self._runner = InMemoryRunner(agent=agent, app_name="pdf_document_extractor")

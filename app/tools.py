@@ -62,6 +62,7 @@ _REVIEW_CURRENT_KEY = "monitoring_review_current_id"
 _REVIEW_CHOICES_KEY = "monitoring_review_choices"
 _ORIGINAL_QUESTION_KEY = "monitoring_original_question"
 _MONITOR_OFFER_KEY = "monitoring_confirmation_offer"
+_FULL_PRODUCT_ACK_KEY = "monitoring_full_product_ack"
 _REVIEW_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -308,6 +309,24 @@ async def start_tariff_monitoring(
             "offering_id": offering_id,
             "reason_code": "run.intent_not_authorized",
         }
+    # An unscoped run fans out to every enabled offering in the product family, so it
+    # costs a multiple of a single-offering run. Make that scope explicit once before
+    # spending it, rather than letting a question about one product launch all of them.
+    if resolved_offering is None:
+        family = tuple(
+            item.value for item in OfferingId if item.product is resolved_product
+        )
+        if tool_context.state.get(_FULL_PRODUCT_ACK_KEY) != product:
+            tool_context.state[_FULL_PRODUCT_ACK_KEY] = product
+            return {
+                "status": "needs_scope_confirmation",
+                "product": product,
+                "offering_id": None,
+                "offering_count": len(family),
+                "offerings": list(family),
+                "reason_code": "run.full_product_scope",
+            }
+    tool_context.state[_FULL_PRODUCT_ACK_KEY] = None
     tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     tool_context.state[_MONITOR_OFFER_KEY] = None
     result = await _run_service.submit(command)

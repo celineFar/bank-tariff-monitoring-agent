@@ -327,3 +327,59 @@ async def test_relevant_historical_pdf_skips_discovery_llm_but_not_temporal_rule
     assert direct.product_association is ProductAssociation.HISTORICAL_VERSION
     assert direct.temporal_status is TemporalStatus.POSSIBLY_STALE
     assert result.extraction_context.items == ()
+
+
+def test_metadata_admission_can_reject_off_topic_documents() -> None:
+    """The pre-transcription gate must be able to reach IRRELEVANT.
+
+    A gate that can only return RELEVANT or AMBIGUOUS makes the skip branch in
+    GeminiPdfExtractionService unreachable, so every downloaded PDF is paid for.
+    """
+    document = _document(
+        _blank_pdf(),
+        link_text="Privacy policy",
+        heading_path=("About us",),
+        final_url="https://ameriabank.am/privacy-policy.pdf",
+    )
+
+    admission = assess_pdf_metadata(document, as_of=date(2026, 9, 18))
+
+    assert admission.relevance is PdfAdmissionRelevance.IRRELEVANT
+    assert "transcription is skipped" in admission.reason
+
+
+def test_metadata_admission_reaches_every_relevance_value() -> None:
+    produced = {
+        assess_pdf_metadata(document, as_of=date(2026, 9, 18)).relevance
+        for document in (
+            _document(_blank_pdf()),
+            _document(
+                _blank_pdf(),
+                link_text="Privacy policy",
+                heading_path=("About us",),
+                final_url="https://ameriabank.am/privacy-policy.pdf",
+            ),
+            _document(
+                _blank_pdf(),
+                link_text="Annex 3",
+                heading_path=("Documents",),
+                final_url="https://ameriabank.am/annex-3.pdf",
+            ),
+        )
+    }
+
+    assert produced == set(PdfAdmissionRelevance)
+
+
+def test_product_relevance_outranks_an_off_topic_marker() -> None:
+    document = _document(
+        _blank_pdf(),
+        link_text="Consumer loan tariffs",
+        heading_path=("Contact",),
+        final_url="https://ameriabank.am/consumer-loan-tariffs.pdf",
+    )
+
+    assert (
+        assess_pdf_metadata(document, as_of=date(2026, 9, 18)).relevance
+        is PdfAdmissionRelevance.RELEVANT
+    )

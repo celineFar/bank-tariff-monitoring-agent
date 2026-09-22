@@ -45,6 +45,11 @@ downloader receives `settings.http` and the PDF extraction service receives
   affects only the deterministic input-mode diagnostic.
   `PDF_EXTRACTION_MAX_PRICE_PER_MILLION_TOKENS_USD` rejects any configured model
   whose input or output rate exceeds the ceiling before a live call.
+  `PDF_EXTRACTION_SKIP_HISTORICAL` (default `true`) skips transcription for any
+  document whose link metadata resolves to a historical temporal status, so
+  superseded tariff sheets are never sent to the model. Documents whose metadata
+  carries no product-relevant term and matches an off-topic marker are admitted
+  as irrelevant and skipped regardless of this setting.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
 - **Intent resolution:** `INTENT_FUZZY_MIN_SCORE`, `INTENT_FUZZY_MIN_GAP`,
@@ -75,6 +80,8 @@ downloader receives `settings.http` and the PDF extraction service receives
   `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`, and
   `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Whole-run fallback order is
   configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`.
+  `SOURCE_DISCOVERY_MODEL_NAME` overrides the primary classifier model for this
+  stage; when unset the stage falls back to the global `MODEL_NAME`.
   `SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` is a hard ceiling applied
   independently to both input and output rates before any live model call.
   Model-specific paid-tier
@@ -88,6 +95,12 @@ downloader receives `settings.http` and the PDF extraction service receives
   `SEMANTIC_EXTRACTION_MAX_CHARS_PER_BATCH`, and
   `SEMANTIC_EXTRACTION_MAX_ITEMS_PER_BATCH`. Schema, prompt, model, product, and
   selected-evidence fingerprints jointly define exact extraction-batch cache reuse.
+  `SEMANTIC_EXTRACTION_THINKING_BUDGET` (default `0`) sets the model thinking
+  budget for extraction and its repairs; raise it only if bounded reasoning
+  measurably improves extraction quality. `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN`
+  (default `3`) caps how many suspicious fields may be re-asked in one run, so a
+  batch that keeps failing its contract falls through to human review instead of
+  issuing an unbounded number of paid repair calls.
   The demonstration command uses the source-discovery retry, fallback-model, and
   price-ceiling settings for live calls.
 - **HITL:** `HITL_DOCUMENT_RANK_GAP` and

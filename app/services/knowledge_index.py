@@ -192,6 +192,27 @@ class KnowledgeIndexer:
         return await self._repository.upsert_document(embedded_document)
 
     async def embed(self, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
+        try:
+            return await self._embed(document)
+        except EmbeddingError:
+            raise
+        except Exception as exc:
+            # A provider error escaping here is not one the batch retry loop saw, so
+            # name the document and keep the traceback: the stage failure code alone
+            # ("indexing.embedding_failed") does not say which call rejected us.
+            logger.warning(
+                "embedding failed outside the batch retry loop for document_key=%s "
+                "chunks=%s model=%s error=%s: %s",
+                document.document_key,
+                len(document.chunks),
+                getattr(self._embedding_provider, "model_name", "unknown"),
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            raise
+
+    async def _embed(self, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
         contents = [chunk.content for chunk in document.chunks]
         if self._embedding_cache is not None:
             model_name = getattr(self._embedding_provider, "model_name", None)

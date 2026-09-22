@@ -219,6 +219,7 @@ class PdfExtractionSettings(SettingsGroup):
     max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
     probe_text_threshold: int = Field(default=20, ge=0, le=10_000)
+    skip_historical: bool = True
 
     @field_validator("fallback_model_names")
     @classmethod
@@ -283,6 +284,7 @@ class SourceDiscoverySettings(SettingsGroup):
     classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
     classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    model_name: str | None = None
     fallback_model_names: tuple[str, ...] = (
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
@@ -320,6 +322,8 @@ class SemanticExtractionSettings(SettingsGroup):
     max_evidence_chars_per_item: int = Field(default=5000, ge=500, le=20_000)
     max_chars_per_batch: int = Field(default=20_000, ge=1000, le=100_000)
     max_items_per_batch: int = Field(default=20, ge=1, le=100)
+    thinking_budget: int = Field(default=0, ge=-1, le=24_576)
+    max_repairs_per_run: int = Field(default=3, ge=0, le=50)
 
     @model_validator(mode="after")
     def validate_batch_limits(self) -> SemanticExtractionSettings:

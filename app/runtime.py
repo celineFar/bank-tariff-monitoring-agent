@@ -48,6 +48,7 @@ from app.services.monitoring_workflow import (
 )
 from app.services.normalization import StructuralNormalizationService
 from app.services.pdf_extraction import GeminiPdfExtractionService
+from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
 from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
 from app.services.rag_retrieval import RagRetriever
 from app.services.review_decisions import ReviewDecisionService
@@ -130,9 +131,12 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             usage_repository=model_usage,
         ),
     )
+    discovery_model = (
+        settings.source_discovery.model_name or settings.models.generation_model
+    )
     discovery = SourceDiscoveryService(
         AdkSourceDiscoveryClassifier(
-            settings.models.generation_model,
+            discovery_model,
             api_key=api_key,
             max_attempts=settings.source_discovery.classifier_max_attempts,
             backoff_base_seconds=(
@@ -148,13 +152,14 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         ),
         PostgresSourceDiscoveryRepository(sessions),
         settings.source_discovery,
-        model_name=settings.models.generation_model,
+        model_name=discovery_model,
         usage_repository=model_usage,
     )
     extraction = SemanticExtractionService(
         AdkSemanticExtractor(
             settings.models.generation_model,
             api_key=api_key,
+            thinking_budget=settings.semantic_extraction.thinking_budget,
             usage_repository=model_usage,
         ),
         PostgresSemanticExtractionRepository(sessions),
@@ -173,6 +178,11 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         PostgresEmbeddingCache(sessions),
         usage_repository=model_usage,
     )
+    audit_archive = (
+        FileSystemPipelineAuditArchive(settings.application.pipeline_audit_dir)
+        if settings.application.pipeline_audit_enabled
+        else None
+    )
     indexing = IndexingPipeline(
         acquisition=build_acquisition_service(http_client, settings),
         normalization=normalization,
@@ -185,6 +195,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
         runs=runs,
+        audit_archive=audit_archive,
         large_rate_change_percentage_points=(
             settings.hitl.large_rate_change_percentage_points
         ),

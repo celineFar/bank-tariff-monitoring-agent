@@ -213,6 +213,7 @@ class AdkIntentClassifier:
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
                 ),
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         self._runner = InMemoryRunner(

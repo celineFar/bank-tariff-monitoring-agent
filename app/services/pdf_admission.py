@@ -35,6 +35,24 @@ _HISTORICAL_TERMS = (
     "/previous-loans/",
     "/archive/",
 )
+_IRRELEVANT_TERMS = (
+    "privacy-policy",
+    "privacy policy",
+    "cookie",
+    "terms-of-use",
+    "annual-report",
+    "annual report",
+    "financial-statement",
+    "financial statement",
+    "vacancy",
+    "career",
+    "press-release",
+    "press release",
+    "branch",
+    "atm",
+    "sitemap",
+    "contact",
+)
 _FEE_TERMS = ("fee", "tariff", "commission", "վճար")
 _LEGAL_TERMS = ("procedure", "regulation", "disclosure", "agreement")
 _DATE = r"(?P<{name}>\d{{1,2}}[./-]\d{{1,2}}[./-]\d{{2,4}})"
@@ -58,6 +76,7 @@ def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmiss
     )
     folded = metadata.casefold()
     relevant_matches = tuple(term for term in _RELEVANT_TERMS if term in folded)
+    irrelevant_matches = tuple(term for term in _IRRELEVANT_TERMS if term in folded)
     historical_matches = tuple(term for term in _HISTORICAL_TERMS if term in folded)
     periods = _effective_periods(metadata)
     temporal = _temporal_status(periods, historical_matches, as_of)
@@ -65,6 +84,8 @@ def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmiss
     basis: list[str] = []
     if relevant_matches:
         basis.append("relevant metadata: " + ", ".join(relevant_matches[:6]))
+    if irrelevant_matches and not relevant_matches:
+        basis.append("irrelevant metadata: " + ", ".join(irrelevant_matches[:6]))
     if historical_matches:
         basis.append("historical metadata: " + ", ".join(historical_matches[:4]))
     if periods:
@@ -72,24 +93,38 @@ def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmiss
     if document.origin_heading_path:
         basis.append("origin heading: " + " > ".join(document.origin_heading_path))
 
-    relevance = (
-        PdfAdmissionRelevance.RELEVANT
-        if relevant_matches
-        else PdfAdmissionRelevance.AMBIGUOUS
-    )
+    # Product-relevant metadata always wins: a tariff sheet that happens to mention
+    # a branch or contact line stays admissible. Only a document with no relevant
+    # term at all and an explicit off-topic marker is rejected before transcription.
+    if relevant_matches:
+        relevance = PdfAdmissionRelevance.RELEVANT
+    elif irrelevant_matches:
+        relevance = PdfAdmissionRelevance.IRRELEVANT
+    else:
+        relevance = PdfAdmissionRelevance.AMBIGUOUS
     role = PdfAdmissionRole.PRODUCT_TERMS
     if any(term in folded for term in _FEE_TERMS):
         role = PdfAdmissionRole.FEES
     elif any(term in folded for term in _LEGAL_TERMS):
         role = PdfAdmissionRole.LEGAL_DISCLOSURE
-    elif relevance is PdfAdmissionRelevance.AMBIGUOUS:
+    elif relevance is not PdfAdmissionRelevance.RELEVANT:
         role = PdfAdmissionRole.OTHER
 
-    reason = (
-        "PDF was admitted from product-relevant link metadata; content discovery is unnecessary."
-        if relevance is PdfAdmissionRelevance.RELEVANT
-        else "PDF metadata is inconclusive; extracted content still requires source discovery."
-    )
+    if relevance is PdfAdmissionRelevance.RELEVANT:
+        reason = (
+            "PDF was admitted from product-relevant link metadata; "
+            "content discovery is unnecessary."
+        )
+    elif relevance is PdfAdmissionRelevance.IRRELEVANT:
+        reason = (
+            "PDF link metadata carries no product-relevant term and matches an "
+            "off-topic marker; transcription is skipped."
+        )
+    else:
+        reason = (
+            "PDF metadata is inconclusive; extracted content still requires "
+            "source discovery."
+        )
     return PdfAdmission(
         relevance=relevance,
         role=role,

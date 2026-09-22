@@ -239,18 +239,20 @@ async def test_scheduler_and_adk_tool_submit_through_same_service() -> None:
     configure_run_service(service)
     try:
         await run_scheduled_monitoring(service)
-        result = await start_tariff_monitoring(
-            "consumer_loan",
-            None,
-            _ToolContext(
-                state={
-                    "temp:monitoring_authorization": {
-                        "product": "consumer_loan",
-                        "offering_id": None,
-                    }
+        # An unscoped run first returns needs_scope_confirmation, so the wider
+        # product-family scope is acknowledged before the run is submitted.
+        context = _ToolContext(
+            state={
+                "temp:monitoring_authorization": {
+                    "product": "consumer_loan",
+                    "offering_id": None,
                 }
-            ),
+            }
         )
+        confirmation = await start_tariff_monitoring("consumer_loan", None, context)
+        assert confirmation["status"] == "needs_scope_confirmation"
+        assert confirmation["offering_count"] == 4
+        result = await start_tariff_monitoring("consumer_loan", None, context)
     finally:
         configure_run_service(None)
 

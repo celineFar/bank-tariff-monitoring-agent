@@ -83,6 +83,7 @@ def load_settings(
             max_backoff_seconds=raw.pdf_extraction_max_backoff_seconds,
             retry_jitter_ratio=raw.pdf_extraction_retry_jitter_ratio,
             probe_text_threshold=raw.pdf_extraction_probe_text_threshold,
+            skip_historical=raw.pdf_extraction_skip_historical,
         ),
         rag=RagSettings(
             chunk_size_chars=raw.chunk_size_chars,
@@ -129,6 +130,7 @@ def load_settings(
             classifier_retry_jitter_ratio=(
                 raw.source_discovery_classifier_retry_jitter_ratio
             ),
+            model_name=raw.source_discovery_model_name,
             fallback_model_names=raw.source_discovery_fallback_model_names,
             max_price_per_million_tokens_usd=(
                 raw.source_discovery_max_price_per_million_tokens_usd
@@ -142,6 +144,8 @@ def load_settings(
             ),
             max_chars_per_batch=raw.semantic_extraction_max_chars_per_batch,
             max_items_per_batch=raw.semantic_extraction_max_items_per_batch,
+            thinking_budget=raw.semantic_extraction_thinking_budget,
+            max_repairs_per_run=raw.semantic_extraction_max_repairs_per_run,
         ),
         hitl=HitlSettings(
             document_rank_gap=raw.hitl_document_rank_gap,

@@ -25,6 +25,7 @@ from app.domain.pdf_extraction import (
     PdfExtractionPlan,
     PdfExtractionResponse,
     PdfModelUsage,
+    PdfTemporalStatus,
 )
 from app.repositories.contracts import PdfExtractionRepository
 from app.services.gemini_pdf_extractor import AdkGeminiPdfExtractor
@@ -150,6 +151,17 @@ class GeminiPdfExtractionService:
             content_fingerprint=fingerprint,
         )
 
+    def _skip_reason(self, plan: PdfExtractionPlan) -> str | None:
+        """Decide from link metadata alone whether transcription is worth paying for."""
+        if plan.admission.relevance is PdfAdmissionRelevance.IRRELEVANT:
+            return "metadata relevance is irrelevant"
+        if (
+            self._settings.skip_historical
+            and plan.admission.temporal_status is PdfTemporalStatus.HISTORICAL
+        ):
+            return "metadata temporal status is historical"
+        return None
+
     async def extract(
         self,
         document: DocumentArtifact,
@@ -166,7 +178,11 @@ class GeminiPdfExtractionService:
             plan.admission.relevance.value,
             plan.admission.temporal_status.value,
         )
-        if plan.admission.relevance is PdfAdmissionRelevance.IRRELEVANT:
+        skip_reason = self._skip_reason(plan)
+        if skip_reason is not None:
+            logger.info(
+                "Skipping Gemini PDF transcription for %s: %s", document_id, skip_reason
+            )
             return PdfExtractionOutcome(
                 plan=plan,
                 normalized_document=_empty_document(document, plan, "pdf_skipped"),

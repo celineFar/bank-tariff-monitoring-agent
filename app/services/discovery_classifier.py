@@ -81,7 +81,8 @@ class AdkSourceDiscoveryClassifier:
                 types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(
                         disable=True
-                    )
+                    ),
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 )
                 if model_name in {"gemini-3.8-flash", "gemini-3.5-flash-lite"}
                 else types.GenerateContentConfig(
@@ -89,6 +90,7 @@ class AdkSourceDiscoveryClassifier:
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(
                         disable=True
                     ),
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 )
             ),
         )

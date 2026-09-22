@@ -68,6 +68,7 @@ class EnvironmentSettings(BaseSettings):
     pdf_extraction_max_backoff_seconds: float = 60.0
     pdf_extraction_retry_jitter_ratio: float = 0.25
     pdf_extraction_probe_text_threshold: int = 20
+    pdf_extraction_skip_historical: bool = True
     chunk_size_chars: int = 1500
     chunk_overlap_chars: int = 150
     retrieval_top_k: int = 8
@@ -96,6 +97,7 @@ class EnvironmentSettings(BaseSettings):
     source_discovery_classifier_backoff_base_seconds: float = 5.0
     source_discovery_classifier_max_backoff_seconds: float = 60.0
     source_discovery_classifier_retry_jitter_ratio: float = 0.25
+    source_discovery_model_name: str | None = None
     source_discovery_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
@@ -106,6 +108,8 @@ class EnvironmentSettings(BaseSettings):
     semantic_extraction_max_evidence_chars_per_item: int = 5000
     semantic_extraction_max_chars_per_batch: int = 20_000
     semantic_extraction_max_items_per_batch: int = 20
+    semantic_extraction_thinking_budget: int = 0
+    semantic_extraction_max_repairs_per_run: int = 3
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     review_admin_token: SecretStr | None = None

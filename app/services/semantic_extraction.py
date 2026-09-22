@@ -242,6 +242,7 @@ class AdkSemanticExtractor:
         backoff_base_seconds: float = 5,
         max_backoff_seconds: float = 60,
         retry_jitter_ratio: float = 0.25,
+        thinking_budget: int = 0,
         usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
@@ -260,7 +261,8 @@ class AdkSemanticExtractor:
             generate_content_config=types.GenerateContentConfig(
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
-                )
+                ),
+                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
             ),
         )
         self._runner = InMemoryRunner(agent=agent, app_name="semantic_loan_extractor")
@@ -594,6 +596,11 @@ class SemanticExtractionService:
         evidence_by_id = {item.evidence_id: item for item in plan.evidence_catalog}
         repaired_pairs: list[tuple[ExtractionBatch, ExtractionBatchResponse]] = []
         raw_outputs: list[RawBatchOutput] = []
+        # Each repair is a full paid model call. A batch whose contract keeps failing
+        # would otherwise repair every suspicious field on every run, so the budget is
+        # spent on the first few and the rest fall through to human review.
+        repair_budget = self._settings.max_repairs_per_run
+        repairs_skipped = 0
         for batch, response in batch_pairs:
             replacements: dict[ExtractionField, ModelFieldResult] = {}
             by_field: dict[ExtractionField, list[ModelFieldResult]] = {}
@@ -623,6 +630,10 @@ class SemanticExtractionService:
                     )
                 if not issues:
                     continue
+                if repair_budget <= 0:
+                    repairs_skipped += 1
+                    continue
+                repair_budget -= 1
                 repair_batch = _repair_batch(
                     batch,
                     field,
@@ -706,6 +717,13 @@ class SemanticExtractionService:
                 )
                 response = ExtractionBatchResponse(results=tuple(updated))
             repaired_pairs.append((batch, response))
+        if repairs_skipped:
+            logger.warning(
+                "Semantic-extraction repair budget of %s exhausted; %s suspicious "
+                "field(s) left for review without a repair call",
+                self._settings.max_repairs_per_run,
+                repairs_skipped,
+            )
         return tuple(repaired_pairs), tuple(raw_outputs)
 
 

@@ -280,7 +280,12 @@ warnings. It never assigns tariff-field meaning.
 HTML tables are reconstructed from cell coordinates and rowspan/colspan metadata,
 with phantom columns and duplicate carry-only rows removed. A deterministic probe
 records each PDF as machine-readable, image-only, mixed, or unknown, but its extracted
-text is not used as business evidence. A tool-free ADK agent sends the original PDF
+text is not used as business evidence. Before any model call, deterministic link
+metadata decides admission: a document with no product-relevant term that matches an
+off-topic marker is admitted as irrelevant, and (unless `PDF_EXTRACTION_SKIP_HISTORICAL`
+is disabled) a document whose metadata resolves to a historical temporal status is also
+skipped. Skipped documents yield an empty `pdf_skipped` normalized document and never
+reach the model. Otherwise a tool-free ADK agent sends the original PDF
 bytes to Gemini and requires page-complete blocks, rectangular tables, notes, and
 footnotes. PDF outputs retain page locators and are cached by source hash, schema,
 prompt, model, and admission/probe fingerprint. Captured JSON leaves retain exact JSON paths. Raw source text
@@ -530,6 +535,13 @@ both families and every offering.
 URLs from `Project Documents/Loan_data_extraction.md`. The loader rejects duplicate
 offering identities, duplicate enabled URLs, family mismatches, non-HTTPS URLs, and
 hosts outside the acquisition allowlist before a run can be submitted.
+
+A `RunCommand` without an `offering_id` fans out to every enabled offering in the
+product family, so it costs a multiple of a single-offering run. `start_tariff_monitoring`
+therefore returns `needs_scope_confirmation` with the offering count the first time an
+unscoped run is requested in a session, and submits only after the caller repeats the
+request. Chat agents pass the `offering_id` that `resolve_request` resolved, so an
+ordinary question about one offering never launches the whole family.
 
 Offering identity and `KnowledgeDocumentKind` participate in knowledge-document and
 chunk identities. Consequently, two offerings cannot overwrite one another even if they
