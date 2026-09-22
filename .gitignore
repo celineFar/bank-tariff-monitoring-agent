@@ -217,10 +217,6 @@ tools/a2a-inspector/
 credentials*.json
 scripts/build_extraction_review_bundle.py
 tests/unit/test_build_extraction_review_bundle.py
-# end-to-end/*
-
-
-end-to-end/run_005/normalization/normalized_bundle.json
-end-to-end/run_005/source-discovery/result.json
+end-to-end/
 # Local container log archive
 /logs/

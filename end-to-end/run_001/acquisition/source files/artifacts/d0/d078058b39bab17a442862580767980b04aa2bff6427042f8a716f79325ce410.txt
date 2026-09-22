@@ -1,3 +1,0 @@
-{{wscSlidesContainer}}
-  {{wscSlidesGrid type='HTML' /}}
-{{/wscSlidesContainer}}
