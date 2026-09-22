@@ -452,12 +452,19 @@ not expose a review-decision endpoint:
 |---|---|
 | `POST /api/v1/runs` | Validate a canonical family/offering, enqueue through `RunService`, and return `202` plus the durable run, status link, and review-handoff link. |
 | `GET /api/v1/runs/{run_id}` | Read the persisted run state and summary. |
-| `POST /api/v1/questions` | Answer from the active evidence corpus; never acquire sources. |
+| `POST /api/v1/questions` | Answer from the active evidence corpus through `TariffAnswerRouter`; never acquire sources. |
+| `POST /api/v1/tariffs/query` | Resolve one free-text query server-side and answer it from accepted typed facts; caller-supplied scope is rejected. |
 | `GET /api/v1/tariffs/current` | Read accepted snapshots only, with freshness and pending-newer-review indicators. |
 | `GET /api/v1/tariffs/history` | Read bounded accepted snapshot/change history. |
 | `GET /api/v1/reviews[/{review_id}]` | Inspect durable review records; decisions enter through native ADK resume only. |
 | `POST /api/v1/reviews/abort-pending` | Token-protected admin rejection of pending reviews through their saved ADK workflow invocations. |
 | `GET /api/v1/runs/{run_id}/review-handoff` | Read pending review scopes and the saved ADK Web session link for a paused run. |
+| `GET /api/v1/healthz` | Liveness probe. |
+
+ADK's own surface (`/dev-ui/`, the agent run endpoints) and the A2A routes under
+`/a2a/app` are mounted by `get_fast_api_app` and the generated
+`app/app_utils/a2a.py`; they are not project routes and carry no tariff contract
+of their own.
 
 The business lifecycle is `queued -> running -> awaiting_review -> terminal`, where the
 terminal states are `succeeded`, `partial_success`, and `failed`. A run may go directly

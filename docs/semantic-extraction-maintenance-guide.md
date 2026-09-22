@@ -271,6 +271,13 @@ It is instructed to preserve supported facts and repair only structure or citati
 It cannot expand retrieval, cite a new evidence ID, or re-extract the whole product.
 The repaired field is validated through the same path as the original.
 
+Repairs are also capped across the whole run by
+`SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `3`). Each repair is a full
+paid model call, and a batch whose contract keeps failing would otherwise repair
+the same suspicious fields on every run. Once the budget is spent, the remaining
+invalid fields are logged and enter the review queue exactly as an exhausted
+repair would, so the ceiling costs coverage rather than correctness.
+
 This repair is not the future verification repair described in the project design. It
 does not determine whether a well-formed claim is true. It only repairs an extraction
 contract or grounding failure.
@@ -371,9 +378,19 @@ current PDF disagreements, or equally authoritative conflicts.
 
 ### 13.5 Business-conflict HITL routing
 
-There is no durable HITL workflow that turns `conflicting` or high-risk `ambiguous`
-fields into assigned review tasks with approve/reject/override decisions and an audit
-history.
+This has since been built downstream of extraction, not inside it.
+`detect_review_signals` in `app/services/snapshot_lifecycle.py` turns
+`conflicting` and `ambiguous` fields — along with missing required fields and
+large rate changes — into durable `ReviewTask` rows with bounded candidates and
+captured evidence, and the resumable ADK workflow collects
+`approve`/`select_candidate`/`reject_all`/`override` decisions with an audit
+history. See [review-quarantine.md](review-quarantine.md) and
+[native-hitl-review.md](native-hitl-review.md).
+
+What remains is routing at *claim* granularity: a review today is scoped to a
+field of a snapshot, not to one atomic claim and its verifier reason, so a
+reviewer cannot yet approve one branch of a conditional value while rejecting
+another.
 
 ### 13.6 Verification-level repair
 
@@ -399,11 +416,16 @@ More deterministic checks are needed for relationships such as:
   failures;
 - a document marked required for a variant should not silently become global.
 
-### 13.9 Production persistence and observability
+### 13.9 Verifier persistence
 
-The final system still needs complete persistence of claims, verifier decisions,
-repairs, human decisions, snapshots, and changes, plus metrics for extraction failure,
-review rate, cache reuse, token cost, and field-level quality.
+Snapshots, changes, human decisions, and audit events are now persisted, and
+`app/services/run_metrics.py` reports extraction completeness per field,
+validation signals, review rate and decision latency, model reliability and cache
+hits, and change volume; `model_call_usage` carries token cost per stage. What is
+still missing is the persistence that belongs to the unbuilt stages above: claim
+rows, verifier decisions, and repair outcomes as first-class records rather than
+audit payloads. See [observability.md](observability.md) and
+[model-cost-monitoring.md](model-cost-monitoring.md).
 
 ## 14. Recommended improvement sequence
 
@@ -438,20 +460,26 @@ RAG and semantic extraction solve different problems:
 - semantic extraction maps supplied evidence into typed product facts;
 - verification decides whether those facts are safe to accept.
 
-It is reasonable to implement or improve the RAG chunking, indexing, and retrieval
-path now. The semantic domain contract and provenance model are sufficiently defined
-to tell RAG what metadata it must preserve. In particular, every chunk should retain
+The chunking, indexing, and retrieval path described here has since been built,
+and the read side has moved on: ordinary tariff questions are answered from the
+typed accepted facts of the structured read model, and chunk retrieval is the
+rollback path behind `TARIFF_ANSWER_READ_MODEL=legacy`. Every chunk still retains
 document version, source URL, page/section locator, product association, temporal
-status, and content checksum.
+status, and content checksum, because monitoring and the rollback path both
+depend on it. See [tariff-query-services.md](tariff-query-services.md) and
+[rag-retrieval.md](rag-retrieval.md).
 
 RAG must not become an authority resolver. Retrieval rank means “useful for this
 query,” not “true,” “current,” or “preferred over a conflicting official source.” It
 must also return `INSUFFICIENT_EVIDENCE` rather than asking extraction to infer from a
 weak result.
 
-Proceeding with RAG does not mean the complete subsystem is production-ready. Before
-retrieved facts can become publishable tariffs, the atomic claim, verification,
-conflict-resolution, repair, and HITL stages described above still need to be built.
+Having RAG does not mean the complete subsystem is production-ready. Snapshot
+publication and HITL routing exist, but the atomic claim, independent semantic
+verification, and conflict-resolution stages described above are still deferred:
+an accepted snapshot today rests on deterministic schema, citation, and evidence
+checks over one extraction, not on a second opinion about whether a well-formed
+claim is true.
 
 ## 16. Key implementation files
 

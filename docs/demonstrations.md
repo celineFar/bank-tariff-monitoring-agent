@@ -52,10 +52,10 @@ half-written scenario cannot report a pass.
 
 - **No OCR engine.** This project has no tesseract stage. Scanned pages are
   transcribed by Gemini's multimodal PDF reading; the deterministic prober is
-  what detects a page with no text layer and routes it there. The `OCR_*`
-  variables in `.env` are dead configuration that no code reads. The
-  `document-processing` scenario proves the detection and routing, not a local
-  OCR engine.
+  what detects a page with no text layer and routes it there. `.env.example` no
+  longer carries `OCR_*` variables — no code ever read them — so delete them
+  from an older local `.env` rather than tuning them. The `document-processing`
+  scenario proves the detection and routing, not a local OCR engine.
 - **Transport failures are scripted** through `httpx.MockTransport` so the run
   is reproducible offline. The retriever, allowlist, retry policy, and failure
   mapping are the production code paths; only the socket is simulated.

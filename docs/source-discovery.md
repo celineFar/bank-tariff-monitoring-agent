@@ -56,9 +56,15 @@ mixing model decisions within one accepted result. Console messages announce eve
 model attempt and transition, while `model_attempts.json` records failures, retries,
 usage, and cost per model.
 
+Because the classifier's output is schema-bound rather than free prose, this
+stage runs on its own cheap model instead of the global `MODEL_NAME`:
+`SOURCE_DISCOVERY_MODEL_NAME` defaults to `gemini-2.5-flash-lite`, falls back to
+`MODEL_NAME` only when explicitly unset, and runs with thinking disabled.
+
 Before live execution, every primary and fallback model is checked against
-`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD`. If either its current input
-or output price exceeds the ceiling, the run stops before making an API request.
+`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `1.50`). If either
+its current input or output price exceeds the ceiling, the run stops before
+making an API request.
 
 Children inherit the validated container assessment. The final result still contains
 an assessment for every block, while the model operates on a much smaller set of
@@ -479,7 +485,7 @@ Its structure is approximately:
   "input_content_hash": "a522...",
   "policy_version": "1",
   "prompt_version": "1",
-  "model_name": "gemini-3.7-flash",
+  "model_name": "gemini-2.5-flash-lite",
   "deterministic_assessments": [...],
   "cache_hits": [],
   "llm_candidates": [...],

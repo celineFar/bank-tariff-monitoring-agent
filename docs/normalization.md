@@ -47,16 +47,45 @@ Tables are rebuilt from physical cell coordinates and span metadata. The normali
 Downloaded PDFs use a deliberately narrow model-backed substep. Python first records
 link/title/heading context, checks effective-date and archive markers, and probes each
 page as `machine_readable`, `image_only`, `mixed`, or `unknown`. The probe discards
-its extracted text; it exists for routing, logging, and audit only. The original PDF
-bytes are then supplied to a tool-free Gemini ADK agent with a strict response schema.
-The response must contain every page exactly once and rectangular tables; Python
-rejects invalid output and converts accepted blocks, tables, notes, and footnotes to
-the same page-addressable normalized structures used downstream.
+its extracted text; it exists for routing, logging, and audit only.
 
-The default cost-capped sequence is `gemini-3.1-flash-lite`, then
-`gemini-3.5-flash-lite`, then `gemini-3.6-flash`. Transient calls receive bounded
-retries before the next model is tried. Exact results are reusable by PDF SHA-256,
-schema version, prompt version, model, and admission/probe fingerprint.
+A deterministic admission gate then decides whether the document is worth
+transcribing at all, because transcription is the most output-heavy model call in
+the system. `assess_pdf_metadata` in `app/services/pdf_admission.py` reads only
+link metadata — document name, link text and title, origin heading path, nearby
+text, and the URL path — and returns a relevance, a role, and a temporal status:
+
+- any product-relevant term (`loan`, `mortgage`, `credit`, `tariff`, `fee`,
+  `վարկ`, `հիփոթեք`, …) makes the document `relevant`, so a tariff sheet that
+  happens to mention a branch or a contact line stays admissible;
+- a document with no relevant term at all that matches an off-topic marker
+  (privacy policy, annual report, vacancy, sitemap, ATM, …) becomes
+  `irrelevant` and is never sent to the model;
+- anything else stays `ambiguous` and is transcribed, because its content still
+  has to reach source discovery to be judged.
+
+Independently, an explicit effective-date range in the link context, or an
+archive/`previous terms` marker, resolves the document as `current`,
+`historical`, `future`, `time_bounded`, or `unknown`. Unless
+`PDF_EXTRACTION_SKIP_HISTORICAL` is disabled, a `historical` document is skipped
+as well, so superseded tariff sheets are not paid for. A skipped document
+becomes an empty `pdf_skipped` normalized document that keeps its locator and
+admission reason, so the decision stays auditable.
+
+The original PDF bytes of an admitted document are then supplied to a tool-free
+Gemini ADK agent with a strict response schema and thinking disabled. The
+response must contain every page exactly once and rectangular tables; Python
+rejects invalid output and converts accepted blocks, tables, notes, and footnotes
+to the same page-addressable normalized structures used downstream.
+
+This stage has its own model rather than the global `MODEL_NAME`:
+`PDF_EXTRACTION_MODEL_NAME` defaults to `gemini-2.5-flash-lite` with
+`PDF_EXTRACTION_FALLBACK_MODEL_NAMES` defaulting to `gemini-3.1-flash-lite`, and
+`PDF_EXTRACTION_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `1.50`) rejects any
+configured model whose input or output rate exceeds the ceiling before a live
+call. Transient failures receive bounded retries before the next model is tried.
+Exact results are reusable by PDF SHA-256, schema version, prompt version, model,
+and admission/probe fingerprint.
 The demonstration stores this exact cache under `pdf_extraction/cache` and writes a
 checkpoint JSON file immediately after each completed PDF. Restarting after a later
 failure therefore reuses completed model responses instead of charging for them again.
@@ -596,7 +625,7 @@ Each document contains:
   "source_type": "pdf",
   "mime_type": "application/pdf",
   "content_sha256": "...",
-  "extraction_method": "gemini_pdf:gemini-3.1-flash-lite",
+  "extraction_method": "gemini_pdf:gemini-2.5-flash-lite",
   "quality_score": 1.0,
   "blocks": [],
   "tables": [],

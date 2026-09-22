@@ -21,6 +21,12 @@ downloader receives `settings.http` and the PDF extraction service receives
   `artifacts/pipeline-audit`) control the stage-numbered Markdown audit trail
   written by every pipeline run; see `docs/architecture.md`.
 - **Models:** `GEMINI_API_KEY`, `MODEL_NAME`, `EMBEDDING_MODEL_NAME`.
+  `MODEL_NAME` is the default generation model for intent resolution, semantic
+  extraction, the root chat agent, and legacy RAG answering. Two schema-bound
+  stages override it with a cheaper model of their own —
+  `PDF_EXTRACTION_MODEL_NAME` and `SOURCE_DISCOVERY_MODEL_NAME` — and each has
+  its own fallback list and price ceiling. Changing `MODEL_NAME` therefore does
+  not change what those two stages spend.
 - **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`, `ARTIFACT_TEMP_DIR`.
   Application storage must use PostgreSQL; the ADK session URI may also use
   `shared://`.
@@ -109,13 +115,34 @@ downloader receives `settings.http` and the PDF extraction service receives
   apply a decision.
 - **Scheduling:** `SCHEDULE_TIMEZONE`, `SCHEDULE_HOUR`, and
   `SCHEDULE_MINUTE`.
-- **Serving/telemetry:** `LOG_LEVEL`, `LOG_FILE`, `LOG_TIMEZONE`,
-  `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, `OTEL_TO_CLOUD`, and `ALLOW_ORIGINS`.
+- **Logging and serving:** `LOG_LEVEL`, `LOG_FILE`, `LOG_TIMEZONE`,
+  `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, and `ALLOW_ORIGINS`.
   Compose sets a separate `LOG_FILE` for API and worker; `./tariff-chat` writes
   its own `logs/cli.log` through the shared log volume. The other values can be set in
   `.env`. File timestamps use the configured IANA timezone with an explicit UTC offset.
   The default is `Asia/Yerevan`, independently of the EC2 host timezone. Each service
   keeps ten 10 MiB backup files by default under the host `logs/` directory.
+- **Tracing:** `OTEL_ENABLED` (default `false`) turns OpenTelemetry on for all
+  three entry points. With no `OTEL_TRACES_ENDPOINT` set, spans print to the
+  console; with one set they are exported over OTLP/HTTP to that absolute
+  `http(s)` URL, which is validated at startup rather than failing silently in
+  the exporter thread. `OTEL_SERVICE_NAME` (default `tariff-monitor`) names the
+  service and `OTEL_EXPORT_TIMEOUT_SECONDS` (default `10`) bounds one export.
+  `OTEL_TRACE_CONTENT` decides what model content leaves the process: `none`
+  (default) drops prompt/response attributes and switches ADK's own capture off
+  at the source, `mapped` keeps them bounded to 8000 characters and renamed for
+  the trace backend. `mapped` exports text projected from bank source documents,
+  so use it only against a backend you control.
+  Do **not** set `OTEL_EXPORTER_OTLP_ENDPOINT` or
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: ADK would register a second exporter for
+  the same spans and bypass that redaction, so the application refuses to enable
+  tracing when it sees either one. `OTEL_TO_CLOUD` remains the separate ADK
+  switch for Google Cloud Trace in a deployed environment.
+  `LANGFUSE_SALT`, `LANGFUSE_ENCRYPTION_KEY`, and `LANGFUSE_NEXTAUTH_SECRET` are
+  read only by the opt-in `observability` Compose profile, never by the
+  application. Their checked-in defaults are local-only placeholders; generate
+  real values for anything reachable beyond `localhost`. See
+  [observability](observability.md).
 
 Comma-separated values are used for hosts, MIME types, fallback models, and CORS
 origins. Allowlisted sources must be exact DNS hostnames; schemes, paths,

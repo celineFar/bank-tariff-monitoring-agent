@@ -55,9 +55,12 @@ evidence quota before filling the remaining packet, ranks canonical/current-prod
 evidence above generic material, and excludes sibling-product and known variant
 sections from the canonical product packet. Packet fingerprints include this scope
 metadata. Gemini receives only unresolved bounded packets through a tool-free ADK
-agent. Every packet carries the exact Pydantic-derived JSON Schema for each requested
-field. Required documents have their own packet so all current-product webpage and PDF
-document lists can be unioned without losing evidence capacity to other fields.
+agent on the configured `MODEL_NAME`, with thinking set by
+`SEMANTIC_EXTRACTION_THINKING_BUDGET` (default `0`, disabled) because the response
+contract is schema-bound. Every packet carries the exact Pydantic-derived JSON Schema
+for each requested field. Required documents have their own packet so all
+current-product webpage and PDF document lists can be unioned without losing
+evidence capacity to other fields.
 
 After the model responds, Python validates fields independently. Missing, duplicate,
 or extra fields; out-of-batch evidence IDs; non-verbatim quotes; malformed JSON; and
@@ -75,7 +78,11 @@ first passes through a deterministic shape adapter for known serialization varia
 The audit output preserves both the raw and adapted response. Anything still invalid
 receives one bounded repair call containing the original result, exact field schema,
 validation paths, and only the original packet evidence; only that field is replaced,
-and a still-invalid repair enters the review queue. If review items
+and a still-invalid repair enters the review queue. Repairs are additionally capped
+per run by `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `3`), so a batch that
+keeps failing its own contract falls through to human review instead of issuing an
+unbounded number of paid calls; fields left unrepaired because the budget was spent
+are reviewed like any other invalid field. If review items
 remain, the run is `completed_with_review` and no
 full `LoanProduct` is claimed. Total termination is reserved for systemic failures,
 including configuration/input failures and every model batch failing before a usable
