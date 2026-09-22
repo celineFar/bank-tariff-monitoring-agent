@@ -25,6 +25,7 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredUnitEmbeddingRepository,
 )
 from app.services.acquisition import build_acquisition_service
+from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.chat_reviews import ChatReviewService
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
@@ -80,6 +81,7 @@ class ApplicationContainer:
     workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     structured_query_service: StructuredTariffQueryService
+    answer_router: TariffAnswerRouter
     request_resolver: RequestResolver
     current_tariff_service: CurrentTariffService
     tariff_history_service: TariffHistoryService
@@ -221,6 +223,11 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             usage_repository=model_usage,
         ),
     )
+    answer_router = TariffAnswerRouter(
+        structured_query_service,
+        answer_service,
+        settings.tariff_queries.answer_read_model,
+    )
     reviews = PostgresReviewRepository(sessions)
     tariff_pipeline = TariffPipeline(
         catalog=catalog,
@@ -252,6 +259,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         run_service=run_service,
         answer_service=answer_service,
         structured_query_service=structured_query_service,
+        answer_router=answer_router,
         request_resolver=request_resolver,
         current_tariff_service=CurrentTariffService(
             catalog,

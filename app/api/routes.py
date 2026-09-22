@@ -24,6 +24,7 @@ from app.domain.tariff_queries import (
     TariffHistoryResult,
 )
 from app.repositories.contracts import ReviewRepository
+from app.services.answer_read_model import TariffAnswerRouter
 from app.services.chat_reviews import ChatReviewService
 from app.services.intent_resolution import RequestResolver
 from app.services.rag_answer import RagAnswerService
@@ -74,6 +75,10 @@ def get_run_service(request: Request) -> RunServicePort:
 
 def get_answer_service(request: Request) -> RagAnswerService:
     return request.app.state.answer_service
+
+
+def get_answer_router(request: Request) -> TariffAnswerRouter:
+    return request.app.state.answer_router
 
 
 def get_structured_query_service(request: Request) -> StructuredTariffQueryService:
@@ -200,10 +205,11 @@ async def get_run_review_handoff(
 @router.post("/questions", response_model=AnswerResult, tags=["questions"])
 async def answer_question(
     command: QuestionCommand,
-    service: Annotated[RagAnswerService, Depends(get_answer_service)],
+    router_service: Annotated[TariffAnswerRouter, Depends(get_answer_router)],
 ) -> AnswerResult:
+    """Answer through whichever read model the cutover switch selects."""
     try:
-        return await service.answer(command)
+        return await router_service.answer_question(command)
     except Exception as exc:
         raise _failure(
             503,

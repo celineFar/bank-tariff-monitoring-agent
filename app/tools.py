@@ -21,6 +21,7 @@ from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewRespo
 from app.domain.review import ReviewDecision, ReviewDecisionType
 from app.domain.semantic_extraction import ExtractionField
 from app.domain.structured_tariffs import ResolutionPlan
+from app.services.answer_read_model import TariffAnswerRouter
 from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
 from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
@@ -42,6 +43,7 @@ from app.services.tariff_queries import (
 _run_service: RunServicePort | None = None
 _answer_service: RagAnswerService | None = None
 _structured_query_service: StructuredTariffQueryService | None = None
+_answer_router: TariffAnswerRouter | None = None
 _request_resolver: RequestResolver | None = None
 _current_tariff_service: CurrentTariffService | None = None
 _tariff_history_service: TariffHistoryService | None = None
@@ -93,13 +95,15 @@ def configure_services(
     run_wait_service: RunWaitService | None = None,
     chat_review_service: ChatReviewService | None = None,
     structured_query_service: StructuredTariffQueryService | None = None,
+    answer_router: TariffAnswerRouter | None = None,
 ) -> None:
     global _answer_service, _request_resolver, _structured_query_service
     global _current_tariff_service, _tariff_history_service, _run_wait_service
-    global _chat_review_service
+    global _chat_review_service, _answer_router
     configure_run_service(run_service)
     _answer_service = answer_service
     _structured_query_service = structured_query_service
+    _answer_router = answer_router
     _request_resolver = request_resolver
     _current_tariff_service = current_tariff_service
     _tariff_history_service = tariff_history_service
@@ -356,7 +360,7 @@ async def answer_tariff_query(
     query: str, tool_context: ToolContext
 ) -> dict[str, object]:
     """Read only the server-held per-turn scope from resolve_request."""
-    if _structured_query_service is None:
+    if _answer_router is None and _structured_query_service is None:
         return {"status": "unavailable", "reason_code": "query.service_unavailable"}
     raw = tool_context.state.get(_TARIFF_PLAN_KEY)
     if not isinstance(raw, dict):
@@ -378,7 +382,11 @@ async def answer_tariff_query(
         return {"status": "rejected", "reason_code": "query.plan_invalid"}
     tool_context.state[_TARIFF_PLAN_USED_KEY] = True
     tool_context.state[_TARIFF_LAST_USED_TURN_KEY] = plan.turn_id
-    return (await _structured_query_service.answer(plan, query)).model_dump(mode="json")
+    if _answer_router is not None:
+        result = await _answer_router.answer_plan(plan, query)
+    else:
+        result = await _structured_query_service.answer(plan, query)
+    return result.model_dump(mode="json")
 
 
 async def answer_tariff_question(
@@ -733,18 +741,21 @@ async def submit_monitoring_review_input(
     if (
         result.status in {RunStatus.SUCCEEDED, RunStatus.PARTIAL_SUCCESS}
         and isinstance(original_question, str)
-        and _answer_service is not None
+        and (_answer_router is not None or _answer_service is not None)
         and _run_service is not None
     ):
         run = await _run_service.get(run_id)
         if run is not None:
             try:
-                answer = await _answer_service.answer(
-                    QuestionCommand(
-                        query=original_question,
-                        product=run.command.product,
-                        offering_id=run.command.offering_id,
-                    )
+                command = QuestionCommand(
+                    query=original_question,
+                    product=run.command.product,
+                    offering_id=run.command.offering_id,
+                )
+                answer = await (
+                    _answer_router.answer_question(command)
+                    if _answer_router is not None
+                    else _answer_service.answer(command)
                 )
                 output["answer"] = answer.model_dump(mode="json")
             except Exception:

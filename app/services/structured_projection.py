@@ -356,7 +356,10 @@ class StructuredTariffProjector:
         paths = SOURCE_FIELD_PATHS[field]
         for item in extracted.value:
             group = _stable(item)
-            amount = item.value
+            # Loan amounts arrive wrapped in conditions; credit limits do not.
+            conditional = isinstance(item, ConditionalValue)
+            amount = item.value if conditional else item
+            conditions = item.conditions if conditional else ()
             if isinstance(amount, AbsoluteMoneyRange):
                 bounds: MoneyRange = amount.range
                 if bounds.min is not None:
@@ -364,7 +367,7 @@ class StructuredTariffProjector:
                         paths[0],
                         bounds.min,
                         extracted,
-                        conditions=item.conditions,
+                        conditions=conditions,
                         group=group,
                         number=bounds.min,
                         unit="money",
@@ -375,7 +378,7 @@ class StructuredTariffProjector:
                         paths[1],
                         bounds.max,
                         extracted,
-                        conditions=item.conditions,
+                        conditions=conditions,
                         group=group,
                         number=bounds.max,
                         unit="money",
@@ -387,7 +390,7 @@ class StructuredTariffProjector:
                         paths[2],
                         amount.min_multiple,
                         extracted,
-                        conditions=item.conditions,
+                        conditions=conditions,
                         group=group,
                         number=amount.min_multiple,
                         unit="salary_multiple",
@@ -397,7 +400,7 @@ class StructuredTariffProjector:
                         paths[3],
                         amount.max_multiple,
                         extracted,
-                        conditions=item.conditions,
+                        conditions=conditions,
                         group=group,
                         number=amount.max_multiple,
                         unit="salary_multiple",
@@ -408,7 +411,7 @@ class StructuredTariffProjector:
                         paths[4],
                         amount.min_pct,
                         extracted,
-                        conditions=item.conditions,
+                        conditions=conditions,
                         group=group,
                         number=amount.min_pct,
                         unit="percent",
@@ -418,7 +421,7 @@ class StructuredTariffProjector:
                         paths[5],
                         amount.max_pct,
                         extracted,
-                        conditions=item.conditions,
+                        conditions=conditions,
                         group=group,
                         number=amount.max_pct,
                         unit="percent",
@@ -428,7 +431,7 @@ class StructuredTariffProjector:
                     paths[6],
                     amount.expression,
                     extracted,
-                    conditions=item.conditions,
+                    conditions=conditions,
                     group=group,
                     unit="formula",
                 )

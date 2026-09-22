@@ -71,8 +71,16 @@ shell, or SQL tool.
   The existing monitoring/review tools remain separate.
 - `POST /api/v1/tariffs/query`: resolves a query server-side and uses the same
   `StructuredTariffQueryService` as ADK. It rejects caller-supplied scope fields
-  and never triggers acquisition. The previous `/questions` route remains on
-  its legacy answer service until Phase F acceptance and cutover.
+  and never triggers acquisition.
+- `app/services/answer_read_model.py` and `TARIFF_ANSWER_READ_MODEL`: the
+  reversible cutover switch. `structured` (default) answers every ordinary
+  question from typed accepted facts; `legacy` restores the old RAG answer path
+  with no code change while production behaviour is still being observed. The
+  ADK `answer_tariff_query` tool, the post-monitoring answer, and
+  `POST /api/v1/questions` all route through `TariffAnswerRouter`, so both read
+  models stay inside the same authorized scope. After cutover `/questions`
+  builds an equivalent typed plan from its own product/offering scope and
+  returns fact-evidence citations; the model cannot change the switch.
 - `app/services/model_call_usage.py` and `model_call_usage`: redacted, dated paid-tier
   model call/cost ledger shared by direct Gemini adapters and ADK callbacks. The
   read-only `scripts/model_cost_report.py` reports known and unknown costs;
@@ -93,7 +101,8 @@ shell, or SQL tool.
 - `app/services/structured_projection.py`: pure, fail-closed projection of final accepted
   semantic extraction into offering profiles, typed tariff facts, verified citations,
   and clean evidence-backed retrieval units. Accepted projections are published
-  transactionally; the current answer path still reads `knowledge_chunks`.
+  transactionally. Loan amounts arrive wrapped in conditions while overdraft and
+  credit-line credit limits do not, so the amount projector accepts both shapes.
 - `app/repositories/structured_tariff_query.py` and
   `app/services/structured_tariff_query.py`: typed reads of active accepted profiles,
   verified fact evidence, and bounded retrieval units. Single-offering queries use
@@ -102,7 +111,6 @@ shell, or SQL tool.
   reciprocal-rank fusion (`rrf-v1-k60-lex1-vector0.7`) for explanatory units.
   Exact comparisons, rankings, and history use accepted typed facts/changes, never
   generated arithmetic. Historical changes require verified old and new citations.
-  This read service is not yet wired to the current ADK/API answer path (Phase E).
 - `app/services/structured_unit_embeddings.py` and migration `013`: lazily embed
   active accepted retrieval units, with content-addressed reuse and explicit
   model/dimension checks; rejected or superseded units are not embedded.
@@ -115,6 +123,22 @@ shell, or SQL tool.
   `app/services/structured_projection_audit.py` and its script compare typed
   stored facts and verified citations with canonical accepted extraction without
   model calls; failed evidence gates are reported.
+- `app/services/structured_shadow_read.py` and
+  `scripts/shadow_read_report.py`: read-only shadow comparison of the legacy and
+  structured paths over a checked-in set of representative queries. It records
+  statuses, fact/citation counts, latency, and evidence-source overlap, and logs
+  only a question hash, never question text, source text, or generated wording.
+  The structured path runs alone by default; `--with-legacy` additionally spends
+  one embedding and one generation call per case. The cutover gate stays closed
+  until both paths ran, the structured model answered at least one query, and
+  every divergence was audited.
+- `app/services/evidence_retention_audit.py` and
+  `scripts/audit_evidence_retention.py`: prove each active accepted fact carries
+  a self-contained citation (exact quote, locator, retained provenance document
+  with a matching checksum) before the legacy summary/source embeddings are
+  deprecated. An empty structured read model is reported as not ready, never as
+  vacuously safe. Physical cleanup of `knowledge_chunks` remains a separate,
+  unscheduled task.
 - `migrations/011_structured_tariff_read_model.sql`: additive read-model tables
   `offering_profiles`, `tariff_facts`, `fact_evidence`, and `retrieval_units`, plus
   `model_call_usage` for call and cost monitoring. Live new runs populate these

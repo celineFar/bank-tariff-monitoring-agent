@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.routes import router
+from app.config.models import AnswerReadModel
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 from app.domain.monitoring import AnswerFailureCode, AnswerStatus, QuestionCommand
 from app.domain.retrieval import (
@@ -16,6 +17,7 @@ from app.domain.retrieval import (
     RetrievalResult,
     RetrievalStatus,
 )
+from app.services.answer_read_model import TariffAnswerRouter
 from app.services.rag_answer import (
     AnswerDraft,
     AnswerDraftCitation,
@@ -201,6 +203,11 @@ async def test_answer_contains_generator_failure_without_model_prose() -> None:
     assert result.audit_metadata["reason"] == "RuntimeError"
 
 
+class _UnusedStructuredService:
+    async def answer(self, plan, question):  # pragma: no cover - legacy mode
+        raise AssertionError("legacy read model must not call the structured path")
+
+
 @pytest.mark.asyncio
 async def test_http_and_adk_question_adapters_share_answer_service() -> None:
     source = _hit(KnowledgeDocumentKind.SOURCE, "Rate is 13.5%.", "source")
@@ -226,6 +233,9 @@ async def test_http_and_adk_question_adapters_share_answer_service() -> None:
     )
     app = FastAPI()
     app.state.answer_service = service
+    app.state.answer_router = TariffAnswerRouter(
+        _UnusedStructuredService(), service, AnswerReadModel.LEGACY
+    )
     app.include_router(router)
     configure_services(None, service)
     try:

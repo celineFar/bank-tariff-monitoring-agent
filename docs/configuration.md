@@ -50,7 +50,9 @@ downloader receives `settings.http` and the PDF extraction service receives
   not change the configured Gemini model.
 - **Tariff queries:** `TARIFF_FRESHNESS_DAYS`, `TARIFF_RECENT_CHANGE_DAYS`,
   `TARIFF_DEFAULT_HISTORY_DAYS`, and `TARIFF_MAX_HISTORY_RESULTS` bound accepted-data
-  reads. `TARIFF_RUN_WAIT_SECONDS` (at most 120) and `TARIFF_RUN_POLL_SECONDS` bound
+  reads. `TARIFF_ANSWER_READ_MODEL` is the reversible cutover switch: `structured`
+  (default) answers from accepted typed facts, `legacy` restores the old RAG
+  answer path without a code change. `TARIFF_RUN_WAIT_SECONDS` (at most 120) and `TARIFF_RUN_POLL_SECONDS` bound
   chat-side persisted run polling; HTTP submission remains asynchronous.
 - **Source discovery:** `SOURCE_DISCOVERY_POLICY_VERSION`,
   `SOURCE_DISCOVERY_PROMPT_VERSION`, `SOURCE_DISCOVERY_MAX_ITEMS_PER_BATCH`,

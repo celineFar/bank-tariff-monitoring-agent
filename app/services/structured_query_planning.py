@@ -66,7 +66,9 @@ _RULES: tuple[tuple[tuple[str, ...], tuple[FieldPath, ...]], ...] = (
         ),
     ),
     (
-        ("fee", "charge", "tariff", "վճար", "սակագին"),
+        # A tariff sheet is not one fee, so generic tariff words stay on the
+        # core field set instead of narrowing to fee paths.
+        ("fee", "charge", "վճար"),
         (
             FieldPath.FEE_APPLICATION,
             FieldPath.FEE_DISBURSEMENT,
@@ -134,13 +136,24 @@ def select_tariff_query(query: str, resolution: IntentResolution) -> QuerySelect
     """Use only the resolver's family/IDs; never infer a new product ID from text."""
     if resolution.needs_clarification or resolution.product is None:
         raise ValueError("tariff query requires resolved, unambiguous product scope")
-    normalized = normalize_catalog_term(query)
-    ids = resolution.offering_ids or (
-        (resolution.offering_id,) if resolution.offering_id is not None else ()
+    return select_typed_query(
+        query,
+        product=resolution.product,
+        offering_ids=resolution.offering_ids
+        or ((resolution.offering_id,) if resolution.offering_id is not None else ()),
     )
-    if not ids:
-        ids = tuple(item for item in OfferingId if item.product is resolution.product)
-    if any(item.product is not resolution.product for item in ids):
+
+
+def select_typed_query(
+    query: str,
+    *,
+    product: ProductType,
+    offering_ids: tuple[OfferingId, ...] = (),
+) -> QuerySelection:
+    """Derive the same bounded shape from an already-typed caller scope."""
+    normalized = normalize_catalog_term(query)
+    ids = offering_ids or tuple(item for item in OfferingId if item.product is product)
+    if any(item.product is not product for item in ids):
         raise ValueError("query scope exceeds resolved product family")
     if _has(normalized, _HISTORY):
         operation = QueryOperation.HISTORY
@@ -168,7 +181,7 @@ def select_tariff_query(query: str, resolution: IntentResolution) -> QuerySelect
             for field in fields
         )
     )
-    if not selected:
+    if not selected and operation is not QueryOperation.HISTORY:
         selected = _CORE
     if operation is QueryOperation.FAMILY_RANK:
         if _has(normalized, ("fee", "charge", "վճար")):
@@ -188,7 +201,7 @@ def select_tariff_query(query: str, resolution: IntentResolution) -> QuerySelect
     ]
     conditions = {"currency": currencies[0]} if len(currencies) == 1 else {}
     return QuerySelection(
-        product=resolution.product,
+        product=product,
         offering_ids=ids,
         operation=operation,
         fields=selected[:20],
@@ -205,7 +218,42 @@ def issue_resolution_plan(
     turn_id: str,
     issued_at: datetime | None = None,
 ) -> ResolutionPlan:
-    selection = select_tariff_query(query, resolution)
+    return _plan(
+        query,
+        select_tariff_query(query, resolution),
+        session_id=session_id,
+        turn_id=turn_id,
+        issued_at=issued_at,
+    )
+
+
+def issue_typed_resolution_plan(
+    query: str,
+    *,
+    product: ProductType,
+    offering_ids: tuple[OfferingId, ...] = (),
+    session_id: str,
+    turn_id: str,
+    issued_at: datetime | None = None,
+) -> ResolutionPlan:
+    """Build the same authorization plan for a typed API caller without a session."""
+    return _plan(
+        query,
+        select_typed_query(query, product=product, offering_ids=offering_ids),
+        session_id=session_id,
+        turn_id=turn_id,
+        issued_at=issued_at,
+    )
+
+
+def _plan(
+    query: str,
+    selection: QuerySelection,
+    *,
+    session_id: str,
+    turn_id: str,
+    issued_at: datetime | None = None,
+) -> ResolutionPlan:
     current = issued_at or datetime.now(UTC)
     return ResolutionPlan(
         session_id=session_id,

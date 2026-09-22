@@ -64,6 +64,7 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredTariffQueryRepository,
     PostgresStructuredUnitEmbeddingRepository,
 )
+from app.services.evidence_retention_audit import EvidenceRetentionAuditor
 from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
     build_monitoring_app,
@@ -1474,3 +1475,51 @@ async def test_structured_backfill_is_atomic_idempotent_and_flags_legacy_bad_evi
         product=ProductType.CONSUMER_LOAN,
         offering_ids=(OfferingId.CONSUMER_STANDARD,),
     )
+
+
+@pytest.mark.asyncio
+async def test_evidence_retention_audit_gates_legacy_embedding_deprecation(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    runs, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id)
+    # The cited source document must still be retained for the audit to pass.
+    await PostgresOfferingPublicationRepository(monitoring_session_factory).publish(
+        OfferingPublication(
+            offering_execution_id=execution.id,
+            documents=(_document(run.id, document_key="synthetic-page"),),
+            snapshot=snapshot,
+            manifests=(_manifest(run.id, execution.id),),
+        )
+    )
+    await runs.finish(run.id, RunStatus.SUCCEEDED)
+    await StructuredProjectionBackfill(monitoring_session_factory).run_scope(
+        "ameria", "consumer_loan", "consumer_standard", apply=True
+    )
+    auditor = EvidenceRetentionAuditor(monitoring_session_factory)
+
+    clean = await auditor.audit()
+
+    assert clean.active_found_facts > 0
+    assert clean.active_evidence_rows > 0
+    assert clean.facts_without_evidence == 0
+    assert clean.legacy_source_chunks > 0
+    assert clean.legacy_embedded_chunks > 0
+    assert clean.ready_to_deprecate_legacy_embeddings
+    assert clean.gaps == ()
+
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "DELETE FROM fact_evidence WHERE fact_id IN ("
+                "SELECT id FROM tariff_facts WHERE is_active AND status = 'found' "
+                "ORDER BY id LIMIT 1)"
+            )
+        )
+
+    gapped = await auditor.audit()
+
+    assert gapped.facts_without_evidence == 1
+    assert not gapped.ready_to_deprecate_legacy_embeddings
+    assert gapped.gaps[0].kind == "fact_without_evidence"
+    assert gapped.gaps[0].field_path

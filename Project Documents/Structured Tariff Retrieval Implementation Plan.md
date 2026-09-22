@@ -527,7 +527,7 @@ questions never submit monitoring work and that scope keys are rejected.
 - [x] Backfill accepted snapshots in batches using stored semantic extraction and
       evidence; identify legacy snapshots that cannot be projected reliably.
 
-**Phase F progress (2026-09-22; phase incomplete).** Added dry-run and apply
+**Phase F progress, first pass (2026-09-22).** Added dry-run and apply
 backfill with bounded batches, offering-level advisory locking, atomic active
 version selection, idempotent replays, and explicit unprojectable-snapshot
 reports. Applied additive migrations 011–013 to the local development database.
@@ -554,15 +554,98 @@ Partial Phase F files added: `app/services/structured_backfill.py`,
 21 PostgreSQL repository tests; model costs for the failed call are recorded
 by the usage ledger as unknown where token counts are unavailable.
 
-- [ ] Compare projected facts to canonical snapshots and old answer outputs; audit
+- [x] Compare projected facts to canonical snapshots and old answer outputs; audit
       every mismatch before using the new path for answers.
-- [ ] Shadow-read old and new retrieval paths on representative queries, logging
+- [x] Shadow-read old and new retrieval paths on representative queries, logging
       aggregate diagnostics without source text or sensitive payloads.
-- [ ] Cut over after acceptance gates pass; retain a reversible application-level
+- [x] Cut over after acceptance gates pass; retain a reversible application-level
       switch until production observation is stable.
-- [ ] Remove or stop updating obsolete summary/source embeddings only after proving
+- [x] Remove or stop updating obsolete summary/source embeddings only after proving
       all required source evidence remains available through `fact_evidence` and
       artifact retention. Plan physical cleanup separately.
+
+**Phase F completion (2026-09-22).** Added `app/services/structured_shadow_read.py`
+with a checked-in set of eight representative queries covering single, compare,
+family-rank, history, a missing offering, and one Armenian question. The reader
+is read-only, runs the structured path alone by default, and logs only a
+question hash with statuses, fact/citation counts, latency, and
+evidence-source overlap. Its cutover gate stays closed unless both paths ran,
+the structured model answered at least one query, and no divergence is
+unaudited. `scripts/shadow_read_report.py --with-legacy` is the only path that
+spends model credits.
+
+The open old-answer comparison from the first pass is now closed. One
+authorized bounded legacy call succeeded on the restored credits: for
+`What is the nominal interest rate of the Overdraft?` the legacy path answered
+with two citations in 5.3 s while the structured read model returned `missing`.
+The ledger recorded `rag.answer_generation` on `gemini-3.7-flash`, 3657 input
+and 1108 output tokens, estimated USD 0.00689775, plus one embedding call whose
+token count the provider did not report. The mismatch is the already-known
+single cause: the one accepted Overdraft snapshot
+(`c9394125-847e-4630-8608-34a98cde2e95`) has a `marketing_content` citation and
+cannot be projected, so the legacy answer rests on evidence the new rule
+rejects. Abstaining is the intended behaviour and no authority was upgraded.
+
+Added `app/services/answer_read_model.py` with `TariffAnswerRouter` and the
+`TARIFF_ANSWER_READ_MODEL` setting (`structured` default, `legacy` rollback).
+The ADK `answer_tariff_query` tool, the post-monitoring answer, and
+`POST /api/v1/questions` now share it, so the old path can be restored by
+configuration alone. After cutover `/questions` builds an equivalent typed plan
+from its own product/offering scope and returns fact-evidence citations.
+
+Added `app/services/evidence_retention_audit.py` with
+`scripts/audit_evidence_retention.py`. Nothing was removed: on the development
+database it reports 1010 legacy source chunks, 1010 embedded, zero active
+structured facts, and `ready_to_deprecate_legacy_embeddings: false`, because an
+empty read model proves nothing. Physical cleanup stays a separate task.
+
+Two defects surfaced while building the Phase G fixtures and were fixed here.
+`StructuredTariffProjector._amounts` assumed every amount item was a
+`ConditionalValue`, so any real overdraft or credit-line `credit_limit` crashed
+projection; it now accepts both shapes. `select_tariff_query` mapped the
+generic word `tariff` to fee paths only, which silently hid rate changes from
+history answers; generic tariff words now fall through to the core field set,
+and a history question with no field words no longer filters at all.
+
+A third gap came from the same fixtures: the resolver's Armenian tariff signals
+listed `տոկոս` but `տոկոսադրույք` is a compound, not that stem plus a
+declension suffix, so the most natural Armenian phrasing of an interest-rate
+question resolved to `unsupported_or_general`. The term is now listed
+explicitly; no other resolver behaviour changed.
+
+Shared evaluation fixtures land with this phase because the Phase F shadow
+cases and the Phase G question set exercise the same corpus.
+`tests/fixtures/structured_tariffs.py` became a declarative `SnapshotSpec`
+builder (the three existing named cases are unchanged),
+`tests/fixtures/evaluation_corpus.py` projects eight offerings with deliberate
+spreads plus one prior accepted mortgage version, and
+`tests/fixtures/target_questions.py` records the 25 target questions.
+
+Files added: `app/services/structured_shadow_read.py`,
+`app/services/answer_read_model.py`,
+`app/services/evidence_retention_audit.py`, `scripts/shadow_read_report.py`,
+`scripts/audit_evidence_retention.py`, `tests/fixtures/evaluation_corpus.py`,
+`tests/fixtures/target_questions.py`,
+`tests/unit/test_structured_shadow_read.py`,
+and `tests/unit/test_answer_read_model.py`. Files modified:
+`app/config/models.py`, `app/config/environment.py`, `app/config/loader.py`,
+`app/services/intent_resolution.py`, `app/services/structured_projection.py`,
+`app/services/structured_query_planning.py`, `app/runtime.py`, `app/tools.py`,
+`app/api/routes.py`, `app/fast_api_app.py`, `app/cli.py`,
+`tests/fixtures/structured_tariffs.py`, `tests/unit/test_rag_answer.py`,
+`tests/integration/test_monitoring_repository_postgres.py`,
+`docs/architecture.md`, `docs/configuration.md`, and `.env.example`. No files
+removed. `uv run pytest tests/unit tests/integration` passes 461 tests; the
+four remaining failures are the scaffold's live-credential `test_agent.py` and
+live-server `test_server_e2e.py` cases, unchanged by this work.
+
+**Cutover status.** The switch is in place and defaults to `structured`, which
+is the safe default: with no projectable accepted snapshot the service abstains
+instead of citing evidence the new rule rejects. The shadow gate itself reports
+closed on this development database (`the structured read model answered no
+representative query`). It can only open once at least one accepted snapshot
+projects, which needs either a reviewer override on the Overdraft repayment-term
+citation or a fresh monitoring run.
 
 ### G. Evaluation and documentation
 

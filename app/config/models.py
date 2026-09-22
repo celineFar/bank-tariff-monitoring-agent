@@ -22,6 +22,13 @@ _HOST_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _LOG_LEVELS = frozenset(logging.getLevelNamesMapping())
 
 
+class AnswerReadModel(StrEnum):
+    """Which read model answers ordinary tariff questions."""
+
+    STRUCTURED = "structured"
+    LEGACY = "legacy"
+
+
 class Environment(StrEnum):
     DEVELOPMENT = "development"
     TEST = "test"
@@ -246,6 +253,8 @@ class TariffQuerySettings(SettingsGroup):
     max_history_results: int = Field(default=100, ge=1, le=1000)
     run_wait_seconds: float = Field(default=120, gt=0, le=120)
     run_poll_seconds: float = Field(default=0.5, gt=0, le=10)
+    # Reversible cutover switch; `legacy` restores the old RAG answer path.
+    answer_read_model: AnswerReadModel = AnswerReadModel.STRUCTURED
 
 
 class SourceDiscoverySettings(SettingsGroup):

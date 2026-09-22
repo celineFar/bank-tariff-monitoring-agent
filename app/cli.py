@@ -790,6 +790,7 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
         container.run_wait_service,
         container.chat_review_service,
         structured_query_service=container.structured_query_service,
+        answer_router=container.answer_router,
     )
     runner = Runner(
         app=cli_app,
