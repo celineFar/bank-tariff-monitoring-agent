@@ -37,9 +37,13 @@ from app.services.adk_logging import suppress_resource_exhaustion_adk_logs
 from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
 from app.services.failure_mapping import explain_failure_code
 from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
-from app.services.review_decisions import coerce_review_candidate_value
+from app.services.review_input import (
+    ReviewInputError,
+    parse_review_field_text,
+    review_field_format,
+    term_supported_by_passage,
+)
 from app.services.run_service import RunProgressPort
-from app.services.semantic_extraction import validate_review_field_value
 from app.tools import (
     answer_tariff_query,
     configure_services,
@@ -127,7 +131,9 @@ cli_agent = Agent(
         "question from accepted snapshots with answer_tariff_query using the "
         "saved query_plan and exact original user text. On review, "
         "call get_next_monitoring_review, show the field, candidate, and evidence, "
-        "then call request_input with the returned review_id and response_schema. "
+        "and state the returned input_format instruction and examples so the user "
+        "knows what a valid answer looks like, then call request_input with the "
+        "returned review_id and response_schema. "
         "After native input, call submit_monitoring_review_input; repeat until "
         "complete. Route history to get_tariff_history. Never invent tariff values, "
         "evidence, status, or source URLs. Never expose pending candidates as "
@@ -497,62 +503,25 @@ def _show_review(
         )
 
 
-def _term_supported_by_passage(raw: str, excerpt: str) -> bool:
-    if re.fullmatch(r"indefinite\s+term", raw, re.I):
-        return bool(
-            re.search(
-                r"indefinite\s+term\s*\(\s*until\s+requested\s+back\s*\)",
-                excerpt,
-                re.I,
-            )
-        )
-    return raw.casefold() in excerpt.casefold()
-
-
 def _review_value(
     field: ExtractionField, raw: str, *, evidence: tuple[object, ...] = ()
 ) -> object:
-    text = raw.strip()
-    if not text:
-        raise ValueError("Enter a value.")
-    if field is ExtractionField.TERM:
-        if re.fullmatch(r"indefinite\s+term", text, re.I):
-            if not any(
-                _term_supported_by_passage(text, item.excerpt) for item in evidence
-            ):
-                raise ValueError(
-                    "The source must state the end condition. Enter the full term "
-                    "as shown, such as Indefinite term (until requested back)."
-                )
-            value = coerce_review_candidate_value(
-                field, "Indefinite term (until requested back)"
-            )
-        elif match := re.fullmatch(r"(\d+)\s*(?:-\s*(\d+)\s*)?months?", text, re.I):
-            lower = int(match.group(1))
-            upper = int(match.group(2)) if match.group(2) else lower
-            value = [
-                {"value": {"min_months": lower, "max_months": upper}, "conditions": []}
-            ]
-        else:
-            value = coerce_review_candidate_value(field, text)
-    else:
-        try:
-            value = json.loads(text) if text.startswith(("{", "[")) else text
-        except ValueError as exc:
-            raise ValueError("That structured value is not valid JSON.") from exc
-        value = coerce_review_candidate_value(field, value)
+    """Read a reviewer's typed answer with the shared deterministic parser."""
+    return parse_review_field_text(
+        field, raw, excerpts=tuple(item.excerpt for item in evidence)
+    )
+
+
+def _entry_format(issue_scope: str) -> str:
+    """Say what a valid answer looks like before the reviewer types one."""
     try:
-        validate_review_field_value(field, value)
-    except ValueError as exc:
-        if field is ExtractionField.TERM:
-            raise ValueError(
-                "Enter Indefinite term, Indefinite term (until requested back), "
-                "12 months, or 12-24 months."
-            ) from exc
-        raise ValueError(
-            f"The {field.value} value is not valid. Check the field format or choose a candidate."
-        ) from exc
-    return value
+        field_format = review_field_format(ExtractionField(issue_scope))
+    except (KeyError, ValueError):
+        return (
+            "Enter the value as JSON matching this field's stored structure, or "
+            "choose a candidate."
+        )
+    return field_format.help_text
 
 
 async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDecision:
@@ -571,13 +540,8 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
         "You can " + ", ".join(options) + ". Type ? to inspect every passage.",
         tone="yellow",
     )
-    if item.issue_scope == "term" and ReviewDecisionType.OVERRIDE in allowed:
-        _notice(
-            "Accepted term formats: Indefinite term; Indefinite term "
-            "(until requested back); 12 months; 12-24 months. "
-            "An indefinite term needs a matching end condition in the source.",
-            tone="cyan",
-        )
+    if ReviewDecisionType.OVERRIDE in allowed:
+        _notice(_entry_format(item.issue_scope), tone="cyan")
     while True:
         raw = (
             await asyncio.to_thread(
@@ -625,6 +589,9 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
         try:
             field = ExtractionField(item.issue_scope)
             value = _review_value(field, raw, evidence=_relevant_evidence(item))
+        except ReviewInputError as exc:
+            _error(f"Invalid {field.value.replace('_', ' ')}", str(exc))
+            continue
         except ValueError as exc:
             _error("Invalid value", str(exc))
             continue
@@ -644,7 +611,7 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
             )
             continue
         if len(evidence_items) == 1 and (
-            _term_supported_by_passage(raw, evidence_items[0].excerpt)
+            term_supported_by_passage(raw, evidence_items[0].excerpt)
             if field is ExtractionField.TERM
             else raw.casefold() in evidence_items[0].excerpt.casefold()
         ):
@@ -667,7 +634,7 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
                     evidence_items
                 ):
                     selected = evidence_items[int(number_text) - 1]
-                    if field is ExtractionField.TERM and not _term_supported_by_passage(
+                    if field is ExtractionField.TERM and not term_supported_by_passage(
                         raw, selected.excerpt
                     ):
                         _error(

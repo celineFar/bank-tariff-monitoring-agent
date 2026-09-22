@@ -259,7 +259,7 @@ async def test_cli_reopens_pending_business_review_without_starting_new_run(
     output = capsys.readouterr().out
     assert "Continuing here; no new run is needed" in output
     assert "Review completed" in output
-    assert "Accepted term formats" in output
+    assert "Enter the term in months or years" in output
 
 
 def test_cli_evidence_ranks_review_field_passage_first() -> None:
@@ -511,6 +511,103 @@ async def test_cli_native_pause_accepts_plain_term_review(monkeypatch) -> None:
     assert result["override_value"] == [
         {"value": {"indefinite": True, "end_condition": "on_demand"}, "conditions": []}
     ]
+
+
+@pytest.mark.asyncio
+async def test_cli_native_pause_accepts_plain_repayment_review(
+    monkeypatch, capsys
+) -> None:
+    """A structured field must be answerable in the words the passage uses."""
+    from app.cli import PendingInput, _continue_pending
+    from app.domain.review import ReviewDecisionType, ReviewReason
+
+    review_id = uuid4()
+    run_id = uuid4()
+    excerpt = (
+        "METHOD AND FREQUENCY OF PAYMENTS Repayment Interest accrued on overdraft "
+        "is repaid on monthly basis and the utilized amounts are repaid at the end "
+        "of the term."
+    )
+    item = SimpleNamespace(
+        review_id=review_id,
+        offering_id=OfferingId.OVERDRAFT,
+        issue_scope="repayment",
+        reason=ReviewReason.MISSING_REQUIRED_FIELD,
+        guidance="Review the repayment.",
+        allowed_decisions=(ReviewDecisionType.OVERRIDE, ReviewDecisionType.REJECT_ALL),
+        candidates=(),
+        evidence=(
+            SimpleNamespace(
+                evidence_id="repayment-evidence",
+                source_url="https://example.com/overdraft.pdf",
+                page=4,
+                excerpt=excerpt,
+            ),
+        ),
+    )
+    session = SimpleNamespace(
+        events=[],
+        state={
+            "monitoring_active_run_id": str(run_id),
+            "monitoring_review_current_id": str(review_id),
+        },
+    )
+
+    class _Sessions:
+        async def get_session(self, **kwargs):
+            return session
+
+    class _Reviews:
+        async def pending_request(self, saved_id):
+            return SimpleNamespace(reviews=(item,))
+
+    pending = PendingInput(
+        invocation_id="invocation",
+        function_call_id="call",
+        name="adk_request_input",
+        arguments={},
+    )
+    calls = iter((pending, None))
+    captured = {}
+
+    async def fake_resume(runner, **kwargs):
+        captured.update(kwargs)
+
+    answers = iter(["Interest is repaid monthly, the principal at the end", "1"])
+    monkeypatch.setattr("app.cli.pending_input", lambda events: next(calls))
+    monkeypatch.setattr("app.cli._resume", fake_resume)
+    monkeypatch.setattr("builtins.input", lambda prompt: next(answers))
+
+    await _continue_pending(
+        object(),
+        _Sessions(),
+        object(),
+        _Reviews(),
+        user_id="cli-user",
+        session_id="session",
+        poll_seconds=1,
+    )
+
+    result = captured["response"]["result"]
+    assert result["decision_type"] == "override"
+    assert result["evidence_reference"] == "repayment-evidence"
+    assert result["override_value"] == [
+        {
+            "value": {"method": "Interest is repaid monthly, the principal at the end"},
+            "conditions": [],
+        }
+    ]
+    # The accepted format is stated before the reviewer types, not after a rejection.
+    assert "Enter each repayment method" in capsys.readouterr().out
+
+
+def test_cli_states_the_entry_format_for_every_reviewable_field() -> None:
+    from app.cli import _entry_format
+    from app.domain.semantic_extraction import ExtractionField
+
+    for field in ExtractionField:
+        assert "For example" in _entry_format(field.value)
+    assert "JSON" in _entry_format("unknown_scope")
 
 
 def test_cli_agent_disables_sdk_afc_but_retains_adk_tools() -> None:

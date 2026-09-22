@@ -31,6 +31,11 @@ from app.services.monitoring_workflow import (
 )
 from app.services.rag_answer import RagAnswerService
 from app.services.review_decisions import coerce_review_candidate_value
+from app.services.review_input import (
+    ReviewInputError,
+    parse_review_field_text,
+    review_field_format,
+)
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.semantic_extraction import validate_review_field_value
 from app.services.structured_query_planning import issue_resolution_plan
@@ -622,8 +627,36 @@ async def get_next_monitoring_review(
         "completed_reviews": len(choices),
         "total_reviews": len(request.reviews),
         "review": next_item.model_dump(mode="json"),
+        "input_format": _review_input_format(next_item.issue_scope),
         "response_schema": response_schema,
     }
+
+
+def _review_input_format(issue_scope: str) -> dict[str, object]:
+    """Describe a valid answer, so the human is asked for one before typing."""
+    try:
+        field_format = review_field_format(ExtractionField(issue_scope))
+    except (KeyError, ValueError):
+        return {
+            "field": issue_scope,
+            "instruction": "Provide the value as JSON matching the stored field "
+            "structure, or choose a candidate.",
+            "examples": [],
+        }
+    return {
+        "field": issue_scope,
+        "instruction": field_format.instruction,
+        "examples": list(field_format.examples),
+    }
+
+
+def _reviewed_value(field: ExtractionField, value: object, excerpt: str) -> object:
+    """Accept a plain-language override in chat exactly as the CLI accepts one."""
+    if isinstance(value, str):
+        return parse_review_field_text(field, value, excerpts=(excerpt,))
+    coerced = coerce_review_candidate_value(field, value)
+    validate_review_field_value(field, coerced)
+    return coerced
 
 
 def _native_input(tool_context: ToolContext) -> dict[str, object] | None:
@@ -731,12 +764,30 @@ async def submit_monitoring_review_input(
                     ),
                 }
         if decision.decision_type is ReviewDecisionType.OVERRIDE:
+            field = ExtractionField(item.issue_scope)
+            excerpt = next(
+                (
+                    evidence.excerpt
+                    for evidence in item.evidence
+                    if evidence.evidence_id == decision.evidence_reference
+                ),
+                "",
+            )
             try:
-                field = ExtractionField(item.issue_scope)
-                validate_review_field_value(
-                    field,
-                    coerce_review_candidate_value(field, decision.override_value),
+                decision = decision.model_copy(
+                    update={
+                        "override_value": _reviewed_value(
+                            field, decision.override_value, excerpt
+                        )
+                    }
                 )
+            except ReviewInputError as exc:
+                return {
+                    "status": "rejected",
+                    "reason_code": "review.override_value_invalid",
+                    "message": str(exc),
+                    "input_format": _review_input_format(item.issue_scope),
+                }
             except ValueError:
                 return {
                     "status": "rejected",
@@ -745,6 +796,7 @@ async def submit_monitoring_review_input(
                         f"The override does not match the {item.issue_scope} field "
                         "schema. Correct the structured value and try again."
                     ),
+                    "input_format": _review_input_format(item.issue_scope),
                 }
     except ReviewNotReadyError:
         run = await _run_service.get(run_id) if _run_service is not None else None

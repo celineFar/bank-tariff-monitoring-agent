@@ -775,9 +775,35 @@ def _normalize_field_contract(
         value = _decode_value(result)
     except ValueError:
         return result, ()
-    original = value
+    normalized, notes = normalize_extraction_field_value(result.field, value)
+    if normalized == value:
+        return result, ()
+    if not notes:
+        notes = ("adapted model JSON to the field's domain contract",)
+    return (
+        result.model_copy(
+            update={
+                "value_json": json.dumps(
+                    normalized,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                )
+            }
+        ),
+        notes,
+    )
+
+
+def normalize_extraction_field_value(
+    field: ExtractionField, value: Any
+) -> tuple[Any, tuple[str, ...]]:
+    """Adapt a loose value to the field's domain contract, with any notes.
+
+    Shared by model extraction and human review so a reviewer's plain entry and
+    the model's JSON reach the field contract through the same rules.
+    """
     notes: list[str] = []
-    field = result.field
     if field is ExtractionField.LOAN_AMOUNT:
         value = _normalize_conditional_sequence(value, _normalize_loan_amount)
     elif field in {ExtractionField.INTEREST_RATE, ExtractionField.EFFECTIVE_RATE}:
@@ -814,23 +840,7 @@ def _normalize_field_contract(
         ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED,
     }:
         value = _normalize_requirement_policy(value)
-    if value == original:
-        return result, ()
-    if not notes:
-        notes.append("adapted model JSON to the field's domain contract")
-    return (
-        result.model_copy(
-            update={
-                "value_json": json.dumps(
-                    value,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    default=str,
-                )
-            }
-        ),
-        tuple(notes),
-    )
+    return value, tuple(notes)
 
 
 def _normalize_conditional_sequence(value: Any, normalizer: Any) -> Any:

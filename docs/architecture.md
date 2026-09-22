@@ -511,6 +511,15 @@ records its change set, activates candidate documents/chunks, retires replaced a
 versions, and completes the offering. Rejection leaves the previous accepted publication
 active. See `docs/review-quarantine.md` and `docs/native-hitl-review.md`.
 
+`app/services/review_input.py` owns the reviewer-facing side of that contract: for every
+`ExtractionField` it states the accepted entry format and deterministically reads a typed
+answer (`15-21%`, `up to AMD 15 million`, `Annuity; differentiated`) into the field's
+structured value, reusing `normalize_extraction_field_value` so human entry and model
+output reach the contract through the same rules. Both the CLI prompt and
+`get_next_monitoring_review`'s `input_format` show that format before a value is asked
+for, and a rejected value is returned with it, so a reviewer is never told only that a
+value is invalid. The model never interprets reviewer input.
+
 ## Resumable monitoring workflow boundary
 
 `app/services/monitoring_workflow.py` wraps the imperative `TariffPipeline` in a

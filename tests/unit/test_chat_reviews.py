@@ -705,6 +705,85 @@ async def test_on_demand_text_override_can_resume_review() -> None:
     assert len(workflow.calls) == 1
 
 
+@pytest.mark.asyncio
+async def test_chat_review_states_the_entry_format_and_takes_plain_words() -> None:
+    """Chat asks for a repayment the way the passage words it, not as JSON."""
+    run = _run()
+    task = _review(run, "repayment").model_copy(
+        update={"reason": ReviewReason.MISSING_REQUIRED_FIELD, "candidates": ()}
+    )
+    runs = _Runs(run)
+    workflow = _Workflow(status=RunStatus.SUCCEEDED)
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_review_choices": {},
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        prompt = await get_next_monitoring_review(_Context(state))
+        result = await submit_monitoring_review_input(
+            _Context(
+                state,
+                {
+                    "review_id": prompt["review"]["review_id"],
+                    "decision_type": "override",
+                    "override_value": "Monthly annuity",
+                    "reason": "The official source states monthly annuity payments.",
+                    "evidence_reference": "evidence-1",
+                },
+            )
+        )
+    finally:
+        configure_services(None, None)
+
+    assert prompt["input_format"]["field"] == "repayment"
+    assert "repayment method" in prompt["input_format"]["instruction"]
+    assert prompt["input_format"]["examples"]
+    assert result["status"] == "succeeded"
+    decision = workflow.calls[0]["response"].decisions[0].decision
+    assert decision.override_value == [
+        {"value": {"method": "Monthly annuity"}, "conditions": []}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_override_rejection_repeats_the_accepted_format() -> None:
+    run = _run()
+    task = _review(run, "interest_rate").model_copy(
+        update={"reason": ReviewReason.MISSING_REQUIRED_FIELD, "candidates": ()}
+    )
+    runs = _Runs(run)
+    workflow = _Workflow()
+    service = ChatReviewService(runs=runs, reviews=_Reviews((task,)), workflow=workflow)
+    state = {
+        "monitoring_active_run_id": str(run.id),
+        "monitoring_review_choices": {},
+    }
+    configure_services(runs, None, chat_review_service=service)
+    try:
+        prompt = await get_next_monitoring_review(_Context(state))
+        result = await submit_monitoring_review_input(
+            _Context(
+                state,
+                {
+                    "review_id": prompt["review"]["review_id"],
+                    "decision_type": "override",
+                    "override_value": "quite high",
+                    "reason": "The reviewer typed words instead of a rate.",
+                    "evidence_reference": "evidence-1",
+                },
+            )
+        )
+    finally:
+        configure_services(None, None)
+
+    assert result["reason_code"] == "review.override_value_invalid"
+    assert "15-21%" in str(result["message"])
+    assert result["input_format"]["field"] == "interest_rate"
+    assert workflow.calls == []
+
+
 class _MonitoringContext:
     """A chat whose long-running monitoring call is still unanswered."""
 
