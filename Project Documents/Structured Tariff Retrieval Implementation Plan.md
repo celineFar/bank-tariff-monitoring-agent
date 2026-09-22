@@ -315,18 +315,41 @@ review records as well. Keep the existing RAG path active until the Phase F cuto
 
 ### B. Schema and deterministic projection
 
-- [ ] Add forward migrations for the four projections, constraints, and indexes.
-- [ ] Add a durable `model_call_usage` table and indexes for call/attempt identity,
+- [x] Add forward migrations for the four projections, constraints, and indexes.
+- [x] Add a durable `model_call_usage` table and indexes for call/attempt identity,
       run/offering correlation, stage/model/day aggregates, rate version, and cost.
-- [ ] Implement a pure projector from the **final accepted** snapshot and validated
+- [x] Implement a pure projector from the **final accepted** snapshot and validated
       semantic extraction into profile, fact, and evidence records.
-- [ ] Reconnect canonical values to per-field evidence; fail publication/projection if a
+- [x] Reconnect canonical values to per-field evidence; fail publication/projection if a
       non-missing fact loses required evidence or a review override is not reflected.
-- [ ] Add a deterministic, versioned renderer for clean profile and field-detail text.
-- [ ] Add tests for nested conditional values, rate/currency/fee variants, missing
+- [x] Add a deterministic, versioned renderer for clean profile and field-detail text.
+- [x] Add tests for nested conditional values, rate/currency/fee variants, missing
       fields, evidence joins, stable IDs, markup cleanup, and taxonomy round trips.
-- [ ] Require verified locators on every explanatory unit admitted to Gemini's
+- [x] Require verified locators on every explanatory unit admitted to Gemini's
       evidence packet; test that unsupported profile text cannot be cited.
+
+**Phase B implementation summary (2026-09-22).** Added forward migration `011` for
+accepted offering profiles, typed tariff facts, official fact evidence, weighted
+lexical/vector retrieval units, and the model-call usage ledger. Added a pure
+projector that checks the final accepted snapshot against the validated extraction,
+projects typed values and conditions to versioned field paths, verifies each found
+fact's quote and official source locator, and renders evidence-backed profile and
+field-detail units with markup removed. Range bounds share a variant key; monetary
+amounts retain currency and conditions. No live query or publication path uses these
+new tables yet.
+
+Files added: `migrations/011_structured_tariff_read_model.sql`,
+`app/services/structured_projection.py`, and
+`tests/unit/test_structured_projection.py`. Files modified:
+`app/domain/structured_tariffs.py` and this plan. Files removed: none.
+
+Verification: 21 structured-contract/projector unit tests passed; 6 knowledge-store
+PostgreSQL integration tests passed with the new migration applied to the isolated
+test database; Ruff check passed. The reviewed fixture represents a final accepted
+review result, but end-to-end reconstruction from persisted review records remains
+for Phase C integration tests. Projection currently fails closed for missing or
+mismatched evidence and is not yet published. Embeddings and model call ledger rows
+are intentionally unpopulated until Phase C.
 
 ### C. Atomic publication and embedding cost
 

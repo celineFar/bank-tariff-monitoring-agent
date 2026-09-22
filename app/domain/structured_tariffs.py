@@ -263,6 +263,8 @@ class FactEvidence(StructuredTariffModel):
     quote: str = Field(min_length=1)
     source_url: HttpUrl
     source_item_id: str = Field(min_length=1)
+    source_document_key: str | None = None
+    authority: str = Field(min_length=1)
     locator: dict[str, JsonValue]
     document_id: UUID | None = None
     document_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -275,6 +277,7 @@ class FactEvidence(StructuredTariffModel):
 
 
 class TariffFact(StructuredTariffModel):
+    fact_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     snapshot_id: UUID
     offering_id: OfferingId
     field_path: FieldPath
@@ -285,6 +288,7 @@ class TariffFact(StructuredTariffModel):
     unit: str | None = None
     currency: str | None = None
     rate_basis: RateBasis | None = None
+    fee_scope: str | None = None
     conditions: tuple[dict[str, JsonValue], ...] = ()
     evidence: tuple[FactEvidence, ...] = ()
     taxonomy_version: int = FIELD_PATH_VERSION
@@ -314,3 +318,55 @@ class TariffQueryResult(StructuredTariffModel):
     reason: str | None = None
     as_of: datetime | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class RetrievalUnitKind(StrEnum):
+    PROFILE = "profile"
+    FIELD_DETAIL = "field_detail"
+
+
+class OfferingProfile(StructuredTariffModel):
+    snapshot_id: UUID
+    bank: str
+    product: ProductType
+    offering_id: OfferingId
+    display_name: str
+    extracted_name: str | None = None
+    formal_names: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()
+    category: str | None = None
+    purposes: tuple[str, ...] = ()
+    variants: tuple[dict[str, JsonValue], ...] = ()
+    property_market: str | None = None
+    attributes: dict[str, JsonValue] = Field(default_factory=dict)
+    accepted_at: datetime
+    schema_version: int = FIELD_PATH_VERSION
+
+
+class RetrievalUnit(StructuredTariffModel):
+    unit_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    snapshot_id: UUID
+    offering_id: OfferingId
+    kind: RetrievalUnitKind
+    field_paths: tuple[FieldPath, ...]
+    fact_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    language: str = Field(min_length=2)
+    identity_text: str = ""
+    alias_purpose_text: str = ""
+    detail_text: str = ""
+    content: str = Field(min_length=1)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    renderer_version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def require_factual_support(self) -> RetrievalUnit:
+        if not self.fact_ids or not self.evidence_ids:
+            raise ValueError("retrieval unit requires supporting fact and evidence IDs")
+        return self
+
+
+class StructuredProjection(StructuredTariffModel):
+    profile: OfferingProfile
+    facts: tuple[TariffFact, ...]
+    units: tuple[RetrievalUnit, ...]
