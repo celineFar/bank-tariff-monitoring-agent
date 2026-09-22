@@ -129,6 +129,10 @@ shell, or SQL tool.
   the lexical query drops bilingual function words and Armenian intra-word marks
   before building an OR query (`simple-or-v1`). Without both, `simple`
   full-text search matched no natural-language question.
+- `scripts/run_demonstration.py` and `scripts/demonstrations/`: the assignment
+  deliverable demonstrations with machine-checked success criteria. Each
+  scenario drives the real services against a disposable `_test` database and
+  exits non-zero unless every criterion passed; see `docs/demonstrations.md`.
 - `tests/fixtures/target_questions.py`, `tests/eval/structured_metrics.py`,
   `scripts/structured_eval_metrics.py`, `scripts/seed_evaluation_corpus.py`, and
   `scripts/trace_structured_answer.py`: the 25 target questions with their
