@@ -22,6 +22,7 @@ from app.services.artifact_store import FileSystemArtifactStore
 from app.services.browser_renderer import (
     BrowserRenderer,
     BrowserRenderingError,
+    order_network_payloads,
 )
 from app.services.failure_mapping import source_failure_code
 from app.services.html_parser import HtmlArtifactParser, ParsedHtml
@@ -129,7 +130,13 @@ class AcquisitionService:
                         rendered_html = rendered.html
                         final_url = rendered.final_url
                         parsed = rendered_parsed
-                        network_payloads = rendered.network_payloads
+                        # Canonical here too, not only in the renderer: the
+                        # artifact is what every later stage reads, so its
+                        # payload order must not depend on who produced it.
+                        network_payloads = order_network_payloads(
+                            rendered.network_payloads,
+                            limit=self._settings.max_network_payloads,
+                        )
                         mode = AcquisitionMode.BROWSER
                     elif self._is_useful(raw_parsed):
                         warnings.append(
@@ -184,11 +191,14 @@ class AcquisitionService:
         warnings.extend(document_warnings)
         stored.extend(document.artifact for document in documents)
 
-        content_hash = self._content_hash(
+        page_content_hash = self._page_content_hash(
             canonical_url=parsed.canonical_url,
             raw_sha256=retrieved.sha256,
             rendered_html=rendered_html,
             parsed=parsed,
+        )
+        content_hash = self._content_hash(
+            page_content_hash=page_content_hash,
             documents=documents,
             network_payloads=tuple(persisted_payloads),
         )
@@ -213,6 +223,7 @@ class AcquisitionService:
             warnings=tuple(warnings),
             retrieved_at=retrieved.retrieved_at,
             content_hash=content_hash,
+            page_content_hash=page_content_hash,
         )
 
     def _requires_browser(self, html: str, parsed: ParsedHtml) -> bool:
@@ -299,15 +310,14 @@ class AcquisitionService:
         return filename[:1000] or "linked-document.pdf"
 
     @staticmethod
-    def _content_hash(
+    def _page_content_hash(
         *,
         canonical_url: str,
         raw_sha256: str,
         rendered_html: str | None,
         parsed: ParsedHtml,
-        documents: tuple[DocumentArtifact, ...],
-        network_payloads: tuple[NetworkPayload, ...],
     ) -> str:
+        """Identify the page by its own markup, with nothing linked folded in."""
         material = {
             "canonical_url": canonical_url,
             "raw_sha256": raw_sha256,
@@ -324,6 +334,19 @@ class AcquisitionService:
                 control.model_dump(mode="json")
                 for control in parsed.interactive_controls
             ],
+        }
+        return _digest(material)
+
+    @staticmethod
+    def _content_hash(
+        *,
+        page_content_hash: str,
+        documents: tuple[DocumentArtifact, ...],
+        network_payloads: tuple[NetworkPayload, ...],
+    ) -> str:
+        """Identify the whole acquisition: the page and everything reached from it."""
+        material = {
+            "page_content_hash": page_content_hash,
             "documents": [
                 {
                     "sha256": document.sha256,
@@ -336,12 +359,18 @@ class AcquisitionService:
                 }
                 for document in documents
             ],
-            "network_payloads": [payload.sha256 for payload in network_payloads],
+            # Sorted, because the capture order of concurrent responses is a
+            # race; the set of payloads is the fact, their arrival order is not.
+            "network_payloads": sorted(payload.sha256 for payload in network_payloads),
         }
-        encoded = json.dumps(
-            material, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
+        return _digest(material)
+
+
+def _digest(material: dict[str, object]) -> str:
+    encoded = json.dumps(
+        material, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def build_file_system_artifact_store(path: str) -> FileSystemArtifactStore:

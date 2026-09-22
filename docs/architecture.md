@@ -289,9 +289,24 @@ The output is an immutable `PageArtifact` containing raw/rendered HTML, Markdown
 structural blocks, span-aware tables, linked FAQ questions and answers, inline links
 with their original `href` and fragment targets,
 image/control metadata, downloaded PDFs, bounded textual XHR/fetch payloads, source
-locators, timestamps, and a deterministic content hash. Raw bytes are stored
+locators, timestamps, and two deterministic content hashes. Raw bytes are stored
 under SHA-256-derived paths; source-controlled strings never become filesystem paths.
 See `docs/acquisition.md` for the complete contract.
+
+The artifact carries two hashes because they answer different questions.
+`content_hash` covers the whole acquisition -- the page plus every document and
+XHR payload reached from it -- and is what change detection compares.
+`page_content_hash` covers only the page's own markup, and is what names the page
+document downstream. Keeping them apart means a revised sibling PDF does not rename
+the page or the evidence quoted from it.
+
+Captured XHR payloads are ordered by `(url, digest)` and deduplicated, never by the
+order in which their bodies finished downloading, and normalized document ids are
+addressed by content (`api:<digest>`, `document:<digest>`) rather than by list
+position. Both rules exist for the same reason: every evidence id, and therefore
+every semantic-extraction cache key, hashes the document id alongside the text it
+quotes, so an identity that drifts over unchanged content silently costs a full
+re-extraction.
 
 Acquisition, parsing, PDF, model, and validation exceptions are translated at the
 pipeline boundary into stable source failure codes while retaining only exception type

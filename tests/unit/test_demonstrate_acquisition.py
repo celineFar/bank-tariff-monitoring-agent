@@ -46,6 +46,7 @@ def test_writes_manual_inspection_bundle_under_one_output_directory(tmp_path) ->
         network_payloads=(),
         retrieved_at=datetime(2026, 9, 18, tzinfo=UTC),
         content_hash="a" * 64,
+        page_content_hash="b" * 64,
     )
     inspection_directory = tmp_path / ".temp" / "acuisition_test"
 

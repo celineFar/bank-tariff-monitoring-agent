@@ -58,12 +58,12 @@ class StructuralNormalizationService:
 
         documents: list[NormalizedDocument] = [
             NormalizedDocument(
-                id=f"page:{artifact.content_hash[:16]}",
+                id=f"page:{artifact.page_content_hash[:16]}",
                 name=artifact.title or str(artifact.canonical_url),
                 source_url=artifact.canonical_url,
                 source_type=SourceType.PAGE,
                 mime_type="text/html",
-                content_sha256=artifact.content_hash,
+                content_sha256=artifact.page_content_hash,
                 extraction_method=artifact.acquisition_mode.value,
                 quality_score=1.0,
                 blocks=tuple(blocks),
@@ -91,8 +91,16 @@ class StructuralNormalizationService:
             )
         ]
 
-        for index, source_document in enumerate(artifact.downloadable_documents):
-            document_id = f"document:{index}:{source_document.sha256[:12]}"
+        # Document ids are content-addressed, never positional: a new link
+        # appearing earlier on the page must not rename the documents after it,
+        # because every evidence id -- and so every extraction-cache key --
+        # hashes the document id alongside the text it quotes.
+        seen_document_ids: set[str] = set()
+        for source_document in artifact.downloadable_documents:
+            document_id = f"document:{source_document.sha256[:12]}"
+            if document_id in seen_document_ids:
+                continue
+            seen_document_ids.add(document_id)
             if self._artifact_reader is None:
                 documents.append(self._empty_pdf_document(source_document, document_id))
                 warnings.append(
@@ -141,8 +149,11 @@ class StructuralNormalizationService:
                 continue
             documents.append(outcome.normalized_document)
 
-        for index, payload in enumerate(artifact.network_payloads):
-            document, payload_warnings = normalize_network_payload(payload, index=index)
+        for payload in artifact.network_payloads:
+            document, payload_warnings = normalize_network_payload(payload)
+            if document.id in seen_document_ids:
+                continue
+            seen_document_ids.add(document.id)
             documents.append(document)
             warnings.extend(payload_warnings)
 

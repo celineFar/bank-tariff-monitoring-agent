@@ -217,9 +217,15 @@ class PageArtifact(AcquisitionModel):
     stored_artifacts: tuple[StoredArtifact, ...] = ()
     warnings: tuple[str, ...] = ()
     retrieved_at: datetime
+    # `content_hash` identifies the whole acquisition -- the page plus the
+    # documents and API payloads reached from it -- and is what change
+    # detection compares. `page_content_hash` identifies only the page's own
+    # markup, and is what names the page document downstream: a sibling PDF
+    # being revised must not rename the page or the evidence quoted from it.
     content_hash: str
+    page_content_hash: str
 
-    @field_validator("content_hash")
+    @field_validator("content_hash", "page_content_hash")
     @classmethod
     def validate_content_hash(cls, value: str) -> str:
         normalized = value.lower()

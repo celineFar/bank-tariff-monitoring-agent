@@ -81,6 +81,7 @@ async def test_service_preserves_table_and_link_relationships() -> None:
         network_payloads=(),
         retrieved_at=datetime.now(UTC),
         content_hash="a" * 64,
+        page_content_hash="b" * 64,
     )
 
     bundle = await StructuralNormalizationService().normalize(artifact)

@@ -17,9 +17,13 @@ from app.services.scalar_normalizer import extract_scalar_candidates
 
 
 def normalize_network_payload(
-    payload: NetworkPayload, *, index: int
+    payload: NetworkPayload,
 ) -> tuple[NormalizedDocument, tuple[NormalizationWarning, ...]]:
-    document_id = f"api:{index}:{payload.sha256[:12]}"
+    # The id is content-addressed, never positional. A captured payload's index
+    # depends on which sibling responses the page happened to make, so an index
+    # in the id renamed unchanged documents whenever the capture set shifted,
+    # and every evidence id hashed from that document id changed with it.
+    document_id = f"api:{payload.sha256[:12]}"
     warnings: list[NormalizationWarning] = []
     blocks: list[NormalizedBlock] = []
     is_json = "json" in payload.mime_type.lower()

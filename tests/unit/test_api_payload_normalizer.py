@@ -22,7 +22,7 @@ def _payload(body: str, mime_type: str = "application/json") -> NetworkPayload:
 
 def test_json_payload_is_flattened_with_json_path_evidence() -> None:
     document, warnings = normalize_network_payload(
-        _payload('{"rates":[{"currency":"AMD","value":"13%"}]}'), index=0
+        _payload('{"rates":[{"currency":"AMD","value":"13%"}]}')
     )
 
     assert warnings == ()
@@ -38,7 +38,7 @@ def test_json_payload_is_flattened_with_json_path_evidence() -> None:
 
 
 def test_invalid_json_is_retained_as_raw_text_with_warning() -> None:
-    document, warnings = normalize_network_payload(_payload("{broken"), index=0)
+    document, warnings = normalize_network_payload(_payload("{broken"))
 
     assert document.blocks[0].text == "{broken"
     assert len(warnings) == 1

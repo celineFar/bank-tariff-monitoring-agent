@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -10,6 +11,28 @@ from typing import Protocol
 from app.config import AcquisitionSettings, HttpSettings
 from app.domain.acquisition import NetworkPayload, SourceLocator, SourceType
 from app.security.urls import DisallowedSourceUrl, validate_source_url
+
+
+def order_network_payloads(
+    captured: Sequence[NetworkPayload], *, limit: int
+) -> tuple[NetworkPayload, ...]:
+    """Order captures by content rather than by whichever body downloaded first.
+
+    Playwright delivers each response on its own task, so the append order of
+    `captured` is a race between concurrent body downloads. Every identity
+    downstream is positional -- the acquisition content hash folds the payload
+    digests in order, `api:` document ids carry the list index, and evidence ids
+    hash the document id -- so an arrival-ordered list makes two acquisitions of
+    byte-identical content disagree and miss every content-addressed cache.
+    Sorting by (url, digest) makes the same set of responses produce the same
+    list on every run. Duplicate captures of one endpoint collapse, because a
+    repeated body is one document, not several.
+    """
+    unique: dict[tuple[str, str], NetworkPayload] = {}
+    for payload in captured:
+        unique.setdefault((str(payload.url), payload.sha256), payload)
+    ordered = sorted(unique.values(), key=lambda item: (str(item.url), item.sha256))
+    return tuple(ordered[:limit])
 
 
 class BrowserRenderingFailure(StrEnum):
@@ -441,8 +464,8 @@ class PlaywrightBrowserRenderer:
                     title=title,
                     visible_text=visible_text,
                     interactions=interactions,
-                    network_payloads=tuple(
-                        captured[: self._settings.max_network_payloads]
+                    network_payloads=order_network_payloads(
+                        captured, limit=self._settings.max_network_payloads
                     ),
                 )
             finally:
