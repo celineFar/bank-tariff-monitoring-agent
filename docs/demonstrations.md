@@ -75,7 +75,7 @@ statements are true; ask it to monitor that offering to publish one.
 |---|---|---|
 | `extraction` | 9 — normal tariff extraction | every quote the model cited is found verbatim in the captured source text; the extraction clears deterministic admission with no review signal; the question is answered from stored data; both requested rate fields returned; every value cited; each citation has an exact quote and locator; the stored as-of time is reported |
 | `change-detection` | 10 — tariff change detection | the rate change between two accepted runs is detected; only that field is reported changed; two snapshots with equal disclosed values raise no alert; a history question answers; each change carries both previous and current evidence |
-| `document-processing` | 11 — digital PDF and scanned fallback | at least one real bank PDF is probed; PDFs with a text layer classify as `machine_readable` or `mixed`; a page with no text layer classifies as `image_only`; the prober reports zero characters rather than guessing |
+| `document-processing` | 11 — digital PDF and scanned OCR fallback | a real bank PDF ships as a committed fixture; a PDF with a text layer classifies as `machine_readable` or `mixed`; a page with no text layer classifies as `image_only`; the prober reports zero characters rather than guessing; **with an engine present**: OCR transcribes the image-only page, the recovered text contains values rendered into the page image, and a mean confidence is reported |
 | `hitl` | 12 — human-in-the-loop | a jump past the threshold raises a signal without the model; the candidate is stored `review_required`, never auto-accepted; the reviewer gets candidate value, previous value and an evidence link; answers during review still show the older accepted value; the decision records its reviewer; the queue clears |
 | `failures` | 13 — controlled failures | an off-domain URL is refused before any request; a 404 maps to `source.not_found`; a client error is not retried; a timeout maps to `source.timeout`; retries stop at `max_attempts`; an unexpected content type is refused; a question with no accepted data abstains; **every failure path returns zero tariff values** |
 
@@ -84,12 +84,12 @@ half-written scenario cannot report a pass.
 
 ## Known limits of these demonstrations
 
-- **No OCR engine.** This project has no tesseract stage. Scanned pages are
-  transcribed by Gemini's multimodal PDF reading; the deterministic prober is
-  what detects a page with no text layer and routes it there. `.env.example` no
-  longer carries `OCR_*` variables — no code ever read them — so delete them
-  from an older local `.env` rather than tuning them. The `document-processing`
-  scenario proves the detection and routing, not a local OCR engine.
+- **The OCR leg needs a local engine.** The four probe criteria run anywhere.
+  The OCR criteria run only when the optional `ocr` extra and a tesseract binary
+  with the configured language data are both present; otherwise the scenario
+  prints a `SKIPPED` note and evaluates only the four deterministic criteria. A
+  skip is never reported as a pass. `OCR_*` in `.env.example` is live
+  configuration now — see [configuration.md](configuration.md).
 - **Transport failures are scripted** through `httpx.MockTransport` so the run
   is reproducible offline. The retriever, allowlist, retry policy, and failure
   mapping are the production code paths; only the socket is simulated.

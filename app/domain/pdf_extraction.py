@@ -66,6 +66,65 @@ class PdfInputProbe(PdfExtractionModel):
     pages: tuple[PdfPageProbe, ...] = ()
 
 
+class PdfTranscriptionSource(StrEnum):
+    """Which engine produced the content of one PDF page."""
+
+    GEMINI = "gemini"
+    OCR = "ocr"
+    NONE = "none"
+
+
+class OcrPageOutcome(StrEnum):
+    TRANSCRIBED = "transcribed"
+    LOW_CONFIDENCE = "low_confidence"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+class OcrPageResult(PdfExtractionModel):
+    page_number: int = Field(ge=1)
+    outcome: OcrPageOutcome
+    text: str = ""
+    mean_confidence: float = Field(default=0.0, ge=0, le=100)
+    word_count: int = Field(default=0, ge=0)
+    detail: str = ""
+
+    @model_validator(mode="after")
+    def only_transcribed_carries_text(self) -> OcrPageResult:
+        """A page that did not clear the floor must not smuggle text downstream."""
+        if self.outcome is not OcrPageOutcome.TRANSCRIBED and self.text:
+            raise ValueError("only a transcribed OCR page may carry text")
+        return self
+
+
+class OcrDocumentResult(PdfExtractionModel):
+    engine_version: str
+    languages: str
+    pages: tuple[OcrPageResult, ...] = ()
+
+    @property
+    def transcribed_pages(self) -> tuple[int, ...]:
+        return tuple(
+            page.page_number
+            for page in self.pages
+            if page.outcome is OcrPageOutcome.TRANSCRIBED
+        )
+
+
+# One spelling of the OCR provenance marker, shared by the producer of OCR
+# blocks and by every consumer that has to recognise one. Evidence keeps only a
+# `source_item_id`, so the id itself carries the provenance downstream.
+OCR_SOURCE_ITEM_MARKER = ":ocr:"
+
+
+def ocr_block_id(document_id: str, page_number: int) -> str:
+    return f"{document_id}:page:{page_number}{OCR_SOURCE_ITEM_MARKER}0"
+
+
+def is_ocr_source_item(source_item_id: str | None) -> bool:
+    return bool(source_item_id) and OCR_SOURCE_ITEM_MARKER in str(source_item_id)
+
+
 class PdfExtractedBlockType(StrEnum):
     HEADING = "heading"
     PARAGRAPH = "paragraph"

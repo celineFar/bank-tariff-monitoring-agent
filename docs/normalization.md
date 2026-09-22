@@ -101,6 +101,60 @@ Scalar parsing is deliberately semantic-free. For example, `13%-15%`,
 but the later evidence-bound extraction component decides which tariff field—if
 any—each candidate represents.
 
+## The OCR fallback
+
+`System Description.md` §5.4 requires two document paths, and the deterministic
+input probe is what chooses between them. Every page is classified before any
+model call:
+
+| Probe result | Meaning | Path |
+|---|---|---|
+| `machine_readable` | a text layer above the threshold | direct: Gemini transcribes the native PDF |
+| `mixed` | text layer plus images | direct |
+| `image_only` | images, no usable text layer | direct first, then OCR if that produced nothing |
+| `unknown` | neither | direct |
+
+OCR is a **fallback**, not a second primary. Gemini's multimodal reading stays
+the first attempt for every admitted PDF, because it is what produces the
+structured blocks, tables, and heading paths that semantic extraction consumes.
+The OCR stage runs on exactly two deterministic conditions, neither of which the
+model decides:
+
+1. **Coverage.** A page the probe called `image_only` for which normalization
+   produced zero blocks *and* zero tables. Both halves matter: a
+   `machine_readable` page that came back empty is not an OCR problem, and
+   re-reading it would only add a weaker second opinion of the same glyphs.
+2. **Engine unavailable.** Every configured Gemini model failed. Rather than
+   losing the document entirely, the stage transcribes it with OCR and records
+   `ocr:tesseract:<version>` as the document's extraction method, so the
+   degraded path is never mistaken for the model path.
+
+Both conditions are evaluated only after PDF admission has accepted the
+document, so an irrelevant or historical PDF never pays for rendering.
+
+### What it refuses to do
+
+The stage degrades rather than guesses. If the optional `ocr` extra is not
+installed, if the tesseract binary or a requested traineddata file is missing,
+if a page exceeds the pixel budget, if OCR times out, or if the mean word
+confidence falls below `OCR_MIN_CONFIDENCE`, the page produces **no blocks at
+all**. Nothing emits placeholder text. A misrecognised digit that silently
+became an accepted interest rate would be worse than a missing value, which the
+system already represents explicitly.
+
+Availability is resolved once, at construction, so a run never discovers a
+missing engine halfway through.
+
+### Provenance
+
+Each transcribed page yields one block whose id carries an `:ocr:` marker and
+whose `extraction_method` names the engine and version. The extraction outcome
+also carries `page_sources`, one `gemini` / `ocr` / `none` entry per page, so
+"which engine read page 3" is answerable from stored data alone. Because
+`extraction_method` is persisted on knowledge documents and chunks, the split
+between the two paths is queryable —
+`run_metrics_report.py --section transcription_sources`.
+
 ## Inspection
 
 Normalize an existing acquisition case with:
@@ -737,15 +791,23 @@ Possible values include:
 - `browser`: block came from the rendered browser DOM.
 - `gemini_pdf:<model>`: page structure was transcribed from the native PDF by the
   named Gemini model and passed deterministic schema/page-coverage validation.
+- `ocr:tesseract:<version>`: the page had no text layer and Gemini returned
+  nothing for it, so the page image was rendered and read by the local OCR
+  engine. The block cleared the configured confidence floor.
 - `json`: block came from a successfully parsed JSON payload.
 - `text`: payload was retained as ordinary text.
 
-The extraction method helps later verification assess evidence quality.
+The extraction method helps later verification assess evidence quality, and the
+OCR prefix is load-bearing rather than informational: a value read off a page
+image is routed to human review before it can be accepted. See
+[review-quarantine.md](review-quarantine.md).
 
 ### `quality_score`
 
 PDF documents contain a quality score between `0` and `1`. It is the fraction of
 pages for which the accepted model response supplied at least one block or table.
+A page recovered by the OCR fallback counts toward the score, because the page
+did in the end produce evidence.
 
 Examples:
 

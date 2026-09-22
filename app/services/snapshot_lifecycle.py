@@ -16,6 +16,7 @@ from app.domain.monitoring import (
     SnapshotChangeSet,
     SnapshotStatus,
 )
+from app.domain.pdf_extraction import is_ocr_source_item
 from app.domain.semantic_extraction import (
     EvidenceItem,
     ExtractionField,
@@ -217,6 +218,38 @@ def detect_review_signals(
     evidence_by_id = {item.evidence_id: item for item in result.evidence_catalog}
     signals: list[dict[str, JsonValue]] = []
     for field in result.validated_fields:
+        if field.status is ExtractionStatus.FOUND:
+            ocr_citations = [
+                item
+                for item in field.evidence
+                if is_ocr_source_item(item.source_item_id)
+            ]
+            if ocr_citations:
+                # A value read off a page image is not the same evidence as one
+                # read from a text layer. A misrecognised digit must not become
+                # an accepted interest rate without a human looking at it.
+                signals.append(
+                    {
+                        "reason": "ocr_evidence",
+                        "issue_scope": field.field.value,
+                        "field": field.field.value,
+                        "evidence_references": [
+                            item.evidence_id for item in ocr_citations
+                        ],
+                        "candidates": [
+                            {
+                                "candidate_id": item.evidence_id,
+                                "value": item.quote,
+                                "evidence_references": [item.evidence_id],
+                                "source_type": item.source_type.value,
+                                "quote": item.quote,
+                                "pdf_page": item.locator.pdf_page,
+                                "conditions": [],
+                            }
+                            for item in ocr_citations
+                        ],
+                    }
+                )
         if field.status is ExtractionStatus.FOUND and any(
             item.authority not in _OFFICIAL_EVIDENCE_AUTHORITIES
             or evidence_by_id.get(item.evidence_id) is None

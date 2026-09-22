@@ -490,6 +490,18 @@ def _review_policy(
             "Select one captured official-source candidate, reject all candidates, "
             "or provide a structured override tied to captured evidence.",
         )
+    if reason is ReviewReason.OCR_EVIDENCE:
+        return (
+            (
+                ReviewDecisionType.APPROVE,
+                ReviewDecisionType.REJECT_ALL,
+                ReviewDecisionType.OVERRIDE,
+            ),
+            "This value was read off a scanned page by OCR, not from a text "
+            "layer. Check the quoted text against the cited page, then approve "
+            "it, reject the candidate snapshot, or provide an evidence-linked "
+            "structured override.",
+        )
     return (
         (ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE),
         "Reject the candidate snapshot or provide a structured value with a reason "

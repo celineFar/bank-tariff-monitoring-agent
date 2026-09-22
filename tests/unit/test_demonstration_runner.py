@@ -9,7 +9,7 @@ import pytest
 from app.domain.pdf_extraction import PdfInputMode
 from app.services.pdf_input_probe import probe_pdf_input
 from scripts.demonstrations import Criterion, ScenarioResult, render
-from scripts.demonstrations.document_processing import image_only_pdf
+from scripts.demonstrations.document_processing import DIGITAL, SCANNED
 from scripts.demonstrations.support import (
     DemonstrationError,
     demonstration_database_url,
@@ -62,13 +62,23 @@ def test_check_coerces_truthiness_to_a_real_boolean() -> None:
     )
 
 
-def test_synthetic_scanned_page_has_an_image_and_no_text_layer() -> None:
-    probe = probe_pdf_input(image_only_pdf())
+def test_committed_scanned_fixture_has_an_image_and_no_text_layer() -> None:
+    """The fixture ships in the repository, so a clean clone can run deliverable 11."""
+    assert SCANNED.exists()
+    probe = probe_pdf_input(SCANNED.read_bytes())
 
     assert probe.page_count == 1
     assert probe.document_mode is PdfInputMode.IMAGE_ONLY
     assert probe.pages[0].native_text_characters == 0
     assert probe.pages[0].images_detected
+
+
+def test_committed_digital_fixture_has_a_text_layer() -> None:
+    assert DIGITAL.exists()
+    probe = probe_pdf_input(DIGITAL.read_bytes())
+
+    assert probe.document_mode in (PdfInputMode.MACHINE_READABLE, PdfInputMode.MIXED)
+    assert probe.pages[0].native_text_characters > 0
 
 
 def test_demonstrations_refuse_a_database_that_is_not_disposable(monkeypatch) -> None:

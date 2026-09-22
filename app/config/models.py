@@ -238,6 +238,41 @@ class PdfExtractionSettings(SettingsGroup):
         return self
 
 
+class OcrSettings(SettingsGroup):
+    """Local OCR fallback for PDF pages that carry no text layer."""
+
+    enabled: bool = True
+    languages: str = "hye+eng"
+    render_dpi: int = Field(default=200, ge=72, le=600)
+    max_pages: int = Field(default=20, ge=1, le=500)
+    max_pixels_per_page: int = Field(default=40_000_000, ge=10_000, le=500_000_000)
+    min_confidence: float = Field(default=60.0, ge=0, le=100)
+    timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    tesseract_cmd: str | None = None
+
+    @field_validator("languages")
+    @classmethod
+    def validate_languages(cls, value: str) -> str:
+        """Accept `+`, `,`, or whitespace separators; emit tesseract's `+` form.
+
+        Older local `.env` files wrote `hye,eng`, so both spellings are tolerated
+        rather than failing startup on a separator.
+        """
+        parts = [part for part in re.split(r"[+,\s]+", value.strip()) if part]
+        if not parts or len(parts) > 10:
+            raise ValueError("OCR_LANGUAGES must name between one and ten codes")
+        if any(not re.fullmatch(r"[a-z]{3}(_[A-Za-z]+)?", part) for part in parts):
+            raise ValueError("OCR_LANGUAGES codes must be three-letter tesseract codes")
+        return "+".join(parts)
+
+    @field_validator("tesseract_cmd", mode="before")
+    @classmethod
+    def empty_command_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+
 class RagSettings(SettingsGroup):
     chunk_size_chars: int = Field(default=1500, ge=200, le=20_000)
     chunk_overlap_chars: int = Field(default=150, ge=0)
@@ -440,6 +475,7 @@ class Settings(SettingsGroup):
     http: HttpSettings
     acquisition: AcquisitionSettings
     pdf_extraction: PdfExtractionSettings
+    ocr: OcrSettings
     rag: RagSettings
     intent_resolution: IntentResolutionSettings
     tariff_queries: TariffQuerySettings

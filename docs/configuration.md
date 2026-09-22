@@ -61,6 +61,28 @@ downloader receives `settings.http` and the PDF extraction service receives
   superseded tariff sheets are never sent to the model. Documents whose metadata
   carries no product-relevant term and matches an off-topic marker are admitted
   as irrelevant and skipped regardless of this setting.
+  `PDF_EXTRACTION_PROBE_TEXT_THRESHOLD` is also what routes a page to the OCR
+  fallback below: a page under the threshold with an image on it is
+  `image_only`.
+- **OCR fallback:** `OCR_ENABLED` (default `true`) is the master switch;
+  `false` restores the behavior the project had before the fallback existed.
+  `OCR_LANGUAGES` (default `hye+eng`) is the tesseract language string —
+  `+`, `,`, and whitespace are all accepted as separators, so an older
+  `hye,eng` keeps working. `OCR_RENDER_DPI` (72–600), `OCR_MAX_PAGES`, and
+  `OCR_MAX_PIXELS_PER_PAGE` bound rasterization; a page over the pixel budget is
+  skipped and recorded rather than quietly downsampled. `OCR_MIN_CONFIDENCE`
+  (0–100, default `60`) is the mean word-confidence floor: a page below it
+  produces **no blocks at all**, because a misread digit must not be able to
+  become an accepted interest rate. `OCR_TIMEOUT_SECONDS` bounds one page.
+  `OCR_TESSERACT_CMD` names the binary on a host where it is not on `PATH`,
+  which is the usual case on Windows.
+
+  The stage needs the optional extra (`uv sync --extra ocr`) *and* a tesseract
+  binary carrying every language in `OCR_LANGUAGES`. If either is missing the
+  transcriber reports itself unavailable once at startup and scanned pages stay
+  empty. The container installs `tesseract-ocr`, `tesseract-ocr-hye`, and
+  `tesseract-ocr-eng`; a local Windows install additionally needs
+  `hye.traineddata` dropped into its `tessdata` directory.
 - **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
 - **Intent resolution:** `INTENT_FUZZY_MIN_SCORE`, `INTENT_FUZZY_MIN_GAP`,

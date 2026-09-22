@@ -105,6 +105,7 @@ class SourceFailureCode(StrEnum):
     SIGNATURE_REJECTED = "source.signature_rejected"
     PARSING_FAILED = "source.parsing_failed"
     PDF_EXTRACTION_FAILED = "source.pdf_extraction_failed"
+    OCR_FAILED = "source.ocr_failed"
     MODEL_FAILED = "source.model_failed"
     MALFORMED_STRUCTURED_OUTPUT = "source.malformed_structured_output"
     VALIDATION_FAILED = "source.validation_failed"
