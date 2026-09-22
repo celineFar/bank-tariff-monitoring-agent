@@ -221,6 +221,9 @@ class RunSubmissionResult(MonitoringModel):
 class ClaimedRun(MonitoringModel):
     run: MonitoringRun
     worker_id: str = Field(min_length=1, max_length=200)
+    # W3C traceparent recorded when the run was submitted, so the worker can
+    # continue the triggering process's trace. Absent when tracing is off.
+    trace_parent: str | None = Field(default=None, max_length=55)
 
 
 class OfferingExecution(MonitoringModel):

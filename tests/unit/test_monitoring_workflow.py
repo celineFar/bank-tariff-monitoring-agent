@@ -94,10 +94,16 @@ class _Reviews:
         return ()
 
     async def attach_workflow(
-        self, review_id: UUID, correlation: ReviewCorrelation
+        self,
+        review_id: UUID,
+        correlation: ReviewCorrelation,
+        *,
+        trace_parent: str | None = None,
     ) -> ReviewTask:
         assert review_id == self.task.id
-        self.task = self.task.model_copy(update={"correlation": correlation})
+        self.task = self.task.model_copy(
+            update={"correlation": correlation, "trace_parent": trace_parent}
+        )
         return self.task
 
 

@@ -199,7 +199,11 @@ class ReviewRepository(Protocol):
         offset: int = 0,
     ) -> tuple[ReviewTask, ...]: ...
     async def attach_workflow(
-        self, review_id: UUID, correlation: ReviewCorrelation
+        self,
+        review_id: UUID,
+        correlation: ReviewCorrelation,
+        *,
+        trace_parent: str | None = None,
     ) -> ReviewTask: ...
     async def approve(
         self,

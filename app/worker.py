@@ -24,8 +24,14 @@ from app.repositories.contracts import RunRepository
 from app.runtime import build_application_container
 from app.services.logging_setup import configure_application_logging
 from app.services.run_service import RunServicePort
+from app.services.telemetry import (
+    configure_telemetry,
+    extract_trace_context,
+    get_tracer,
+)
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer()
 PRODUCTS = (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
 
 
@@ -89,7 +95,20 @@ class MonitoringWorker:
             claimed.run.command.offering_id,
         )
         try:
-            result = await self._workflow.start(claimed.run)
+            # Continue the trace started where the run was submitted, so the
+            # HTTP request, scheduler tick, or CLI turn and this execution read
+            # as one trace instead of two unrelated ones.
+            with tracer.start_as_current_span(
+                "execute_run",
+                context=extract_trace_context(claimed.trace_parent),
+            ) as span:
+                span.set_attribute("tariff.run_id", str(claimed.run.id))
+                span.set_attribute(
+                    "tariff.product", claimed.run.command.product.value
+                )
+                span.set_attribute("tariff.worker_id", self._worker_id)
+                result = await self._workflow.start(claimed.run)
+                span.set_attribute("tariff.run_status", result.status.value)
             logger.info(
                 "monitoring run completed run_id=%s status=%s review_count=%s",
                 claimed.run.id,
@@ -132,6 +151,7 @@ class MonitoringWorker:
 async def main() -> None:
     settings = get_settings()
     configure_application_logging(settings.observability)
+    configure_telemetry(settings.observability, component="worker")
     container = build_application_container(settings)
     await adk_services.ensure_session_service_ready()
     worker = MonitoringWorker(

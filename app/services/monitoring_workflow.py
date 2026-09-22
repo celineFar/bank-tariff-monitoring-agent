@@ -36,6 +36,7 @@ from app.domain.review import (
 )
 from app.repositories.contracts import ReviewRepository, RunRepository
 from app.services.contracts import TariffPipeline
+from app.services.telemetry import inject_trace_context
 
 MONITORING_WORKFLOW_APP_NAME = "tariff_monitoring_workflow"
 
@@ -98,9 +99,14 @@ def build_monitoring_workflow(
             invocation_id=str(ctx.invocation_id),
             interrupt_id=interrupt_id,
         )
+        # The decision is served by a different process; storing the context
+        # here lets that process continue this run's trace on resume.
+        paused_trace_parent = inject_trace_context()
         attached = tuple(
             [
-                await reviews.attach_workflow(review.id, correlation)
+                await reviews.attach_workflow(
+                    review.id, correlation, trace_parent=paused_trace_parent
+                )
                 for review in pending
             ]
         )

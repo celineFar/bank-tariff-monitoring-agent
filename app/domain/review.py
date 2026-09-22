@@ -104,6 +104,9 @@ class ReviewTask(ReviewModel):
     evidence: dict[str, JsonValue] = Field(default_factory=dict)
     status: ReviewStatus = ReviewStatus.PENDING
     correlation: ReviewCorrelation | None = None
+    # W3C traceparent captured when the workflow paused here, so the
+    # process that serves the decision continues the run's trace.
+    trace_parent: str | None = Field(default=None, max_length=55)
     reviewer: str | None = Field(default=None, min_length=1, max_length=200)
     decision: ReviewDecision | None = None
     comment: str | None = Field(default=None, max_length=2000)

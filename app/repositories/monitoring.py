@@ -38,6 +38,7 @@ from app.repositories.knowledge_store import (
     PostgresKnowledgeStore,
 )
 from app.repositories.structured_projection import publish_structured_projection
+from app.services.telemetry import inject_trace_context
 
 _RUN_COLUMNS = """
     id,
@@ -265,6 +266,7 @@ class PostgresRunRepository:
                             query,
                             status,
                             idempotency_key,
+                            trace_parent,
                             queued_at,
                             created_at,
                             updated_at
@@ -277,6 +279,7 @@ class PostgresRunRepository:
                             :query,
                             'queued',
                             :idempotency_key,
+                            :trace_parent,
                             now(),
                             now(),
                             now()
@@ -286,6 +289,9 @@ class PostgresRunRepository:
                     ),
                     {
                         "id": run_id,
+                        # Captured in the triggering process so the worker can
+                        # continue this run's trace rather than start a new one.
+                        "trace_parent": inject_trace_context(),
                         "trigger_type": command.trigger.value,
                         "product": command.product.value,
                         "offering_id": (
@@ -368,7 +374,8 @@ class PostgresRunRepository:
                             updated_at = now()
                         FROM candidate
                         WHERE run.id = candidate.id
-                        RETURNING {_RUN_COLUMNS.replace("id,", "run.id,", 1)}
+                        RETURNING {_RUN_COLUMNS.replace("id,", "run.id,", 1)},
+                            run.trace_parent
                         """
                     ),
                     {"worker_id": normalized_worker},
@@ -376,7 +383,11 @@ class PostgresRunRepository:
             ).first()
         if row is None:
             return None
-        return ClaimedRun(run=_run_from_row(row), worker_id=normalized_worker)
+        return ClaimedRun(
+            run=_run_from_row(row),
+            worker_id=normalized_worker,
+            trace_parent=row.trace_parent,
+        )
 
     async def recover_abandoned(self, *, before: datetime) -> int:
         if before.tzinfo is None or before.utcoffset() is None:

@@ -25,6 +25,9 @@ from app.services.monitoring_workflow import (
 )
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.semantic_extraction import validate_review_field_value
+from app.services.telemetry import extract_trace_context, get_tracer
+
+tracer = get_tracer()
 
 
 class ReviewResumePort(Protocol):
@@ -92,13 +95,23 @@ class ChatReviewService:
                 "review_ids": [str(item.review_id) for item in response.decisions],
             },
         )
-        return await self._workflow.resume(
-            user_id=correlation.user_id,
-            session_id=correlation.session_id,
-            interrupt_id=correlation.interrupt_id,
-            response=response,
-            run_id=run_id,
-        )
+        # Rejoin the trace the worker opened before it paused, so the whole
+        # run -- trigger, pipeline, review, resume -- stays one trace.
+        with tracer.start_as_current_span(
+            "resume_run",
+            context=extract_trace_context(
+                next((task.trace_parent for task in tasks if task.trace_parent), None)
+            ),
+        ) as span:
+            span.set_attribute("tariff.run_id", str(run_id))
+            span.set_attribute("tariff.review_count", len(response.decisions))
+            return await self._workflow.resume(
+                user_id=correlation.user_id,
+                session_id=correlation.session_id,
+                interrupt_id=correlation.interrupt_id,
+                response=response,
+                run_id=run_id,
+            )
 
     async def abort_all(self) -> dict[str, object]:
         """Reject every ready paused run through ADK, leaving failed runs visible."""

@@ -55,6 +55,8 @@ def _review_from_row(row: object) -> ReviewTask:
         else None
     )
     return ReviewTask(
+        # Older rows predate the column; absent context starts a new trace.
+        trace_parent=values.get("trace_parent"),
         id=values["id"],
         idempotency_key=values["idempotency_key"],
         run_id=values["run_id"],
@@ -255,6 +257,8 @@ class PostgresReviewRepository:
         self,
         review_id: UUID,
         correlation: ReviewCorrelation,
+        *,
+        trace_parent: str | None = None,
     ) -> ReviewTask:
         async with self._session_factory() as session, session.begin():
             row = (
@@ -267,12 +271,17 @@ class PostgresReviewRepository:
                             workflow_session_id = :session_id,
                             workflow_invocation_id = :invocation_id,
                             workflow_interrupt_id = :interrupt_id,
+                            trace_parent = :trace_parent,
                             updated_at = now()
                         WHERE id = :id AND status = 'pending'
                         RETURNING *
                         """
                     ),
-                    {"id": review_id, **correlation.model_dump()},
+                    {
+                        "id": review_id,
+                        "trace_parent": trace_parent,
+                        **correlation.model_dump(),
+                    },
                 )
             ).first()
         if row is None:
