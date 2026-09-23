@@ -4,20 +4,25 @@
 
 # Ameria Tariff Monitor
 
-An evidence-backed Google ADK prototype for monitoring Ameria Bank consumer-loan
-and mortgage tariffs. Gemini handles intent resolution, bounded cache-aware source
-classification, native PDF structure transcription, and evidence-bound extraction;
-security controls, ingestion, validation, persistence, comparison, scheduling, and
-HITL routing are deterministic.
+An evidence-backed Google ADK prototype for monitoring Ameria Bank consumer-loan and mortgage tariffs.
 
-The repository contains deterministic acquisition, structural normalization,
-cache-aware source discovery, secure PDF retrieval, bounded Gemini PDF extraction and
-semantic extraction, dual source/summary knowledge projections, a transactional
-PostgreSQL/pgvector store, hybrid retrieval, durable monitoring runs and snapshots,
-change detection, and human-in-the-loop review. Ordinary tariff questions are
-answered from accepted typed facts with per-value citations; the older chunk-RAG
-answer path remains available behind `TARIFF_ANSWER_READ_MODEL=legacy`. Claim
-generation and semantic claim verification are intentionally deferred.
+Gemini is used for intent resolution, bounded cache-aware source classification, native PDF structure transcription, and evidence-grounded extraction. Security controls, ingestion, validation, persistence, comparison, scheduling, and Human-in-the-Loop (HITL) routing remain deterministic.
+
+The system includes:
+
+* deterministic source acquisition and structural normalization;
+* cache-aware source discovery and secure PDF retrieval;
+* bounded Gemini-based PDF and semantic extraction;
+* dual source and summary knowledge projections;
+* transactional PostgreSQL/pgvector persistence;
+* hybrid retrieval;
+* durable monitoring runs and snapshots;
+* tariff change detection; and
+* Human-in-the-Loop review workflows.
+
+Standard tariff questions are answered from accepted, typed facts with per-value citations.
+
+
 
 ## Runtime
 
@@ -26,6 +31,57 @@ generation and semantic claim verification are intentionally deferred.
 - Daily worker at 06:00 `Asia/Yerevan`
 - PostgreSQL 17 with pgvector
 - Docker Compose for a single AWS compute instance
+
+
+
+## Demonstrations
+
+
+
+### Data Extraction Pipeline
+
+A step-by-step demonstration of the extraction pipeline is available in:
+
+`artifacts/demonstrations/extraction_pipeline_demonstration`
+
+The pipeline has four stages: **acquisition**, **normalization**, **source discovery**, and **semantic extraction**. Each numbered PDF visualizes the changes and decisions made at that stage.
+
+1. [`1_acquired_content.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/1_acquired_content.pdf)  
+   — **Acquisition.** The source page as retrieved, captured as Markdown with links, menus, and other rendered content intact.
+
+2. [`2_acquired_content_normalized.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/2_acquired_content_normalized.pdf)  
+   — **Normalization.** The acquired content after deterministic cleanup, with removals and additions shown as an annotated diff.
+
+3. [`3_source_discovery.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/3_source_discovery.pdf)  
+   — **Source discovery.** Each content block is classified and visually marked to show whether it is selected, uncertain, historical, future, or excluded.
+
+4. [`4_semantic_extraction.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/4_semantic_extraction.pdf)  
+   — **Semantic extraction.** Extracted field values and outcomes are shown alongside the exact source text cited as evidence.
+
+### Agent Bot QA
+
+Video demonstrations are available here:
+
+[Google Drive — Agent Bot QA Demonstrations](https://drive.google.com/drive/folders/1n5gXFmCIvQ1T_ivSHAaV5l4NEwLNY44I?usp=sharing)
+
+The folder currently includes a demonstration of how question answering with the bot works.
+
+### Script-based Demonstrations
+
+The corresponding demonstration scripts are available in:
+
+`scripts/demonstrations`
+
+They cover the following scenarios:
+
+- **Question answering** — demonstrates the bot's standard question-answering workflow.
+- **Tariff-change detection** — demonstrates how tariff changes are identified and surfaced.
+- **Controlled failure scenarios** — demonstrates expected failure modes and how the system handles them.
+- **Human-in-the-Loop (HITL)** — demonstrates a scenario in which human review or intervention is required.
+
+
+
+
 
 ## Documentation
 
@@ -74,37 +130,6 @@ The ADK playground can be started with `agents-cli playground` after dependencie
 installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured
 model credentials and an indexed local corpus.
 
-## Demonstrations
-
-Recorded demonstrations live under [`artifacts/demonstrations/`](artifacts/demonstrations/).
-Numbered `run_NNN/` directories hold the markdown transcripts written by
-`scripts/run_demonstration.py` — one file per deliverable scenario, each claiming a
-fresh directory so an earlier run is never overwritten. How to reproduce them is
-described in [demonstrations](docs/demonstrations.md).
-
-[`artifacts/demonstrations/extraction_pipeline_demonstration/`](artifacts/demonstrations/extraction_pipeline_demonstration/)
-is the printable walkthrough of one real page as it moves through the four extraction
-stages. Each PDF shows the same document again, so the stages can be read side by side
-and the effect of each one is visible rather than described:
-
-1. [`1_acquired_content.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/1_acquired_content.pdf)
-   — **acquisition**. The bank page exactly as it was retrieved: the rendered content
-   captured as markdown, links and menus included, before anything is cleaned up.
-2. [`2_acquired_content_normalized.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/2_acquired_content_normalized.pdf)
-   — **normalization**. The same page after deterministic structural normalization,
-   with the transformations annotated in place: removed source content in red
-   strikethrough, added normalized content on a green highlight.
-3. [`3_source_discovery.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/3_source_discovery.pdf)
-   — **source discovery**. The normalized document in its original order under a
-   selection overlay, one labelled band per block: green for selected current
-   material, orange for selected-with-uncertainty, gray for historical and blue for
-   future material kept only for audit, white for content that was not selected. Each
-   band carries the block id, its classification and the reason for the decision.
-4. [`4_semantic_extraction.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/4_semantic_extraction.pdf)
-   — **semantic extraction**. Every requested field with its outcome — extracted, not
-   stated, or not sent to the model — its JSON value, and the document overlay
-   underneath in which only the exact quotations the model cited are highlighted, so
-   each accepted value can be traced back to the text it came from.
 
 ## Local logs
 
