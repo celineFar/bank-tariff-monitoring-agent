@@ -32,13 +32,27 @@ Plan: `fix-plans/demonstration-recording-plan.md`. Deliverables:
    docker compose up -d
    ```
 
-4. **Confirm the trust wiring** before rolling:
+4. **Restart the mirror after any branch switch or variant rebuild.** The mirror
+   bind-mounts `demo/mirror/<variant>`. Checking out another branch, or
+   rebuilding the variants, deletes and recreates that directory, and the
+   container keeps the old inode and serves 404 for everything. A run then fails
+   instantly with `source.not_found`, which looks like a real failure and is not
+   one:
+
+   ```bash
+   ./demo/bin/mirror-variant.sh unchanged
+   curl -sk https://tariff-mirror.demo/overdraft -o /dev/null -w '%{http_code}\n'
+   ```
+
+   Expect `200`. This bit during preparation, so check it before every take.
+
+5. **Confirm the trust wiring** before rolling:
 
    ```bash
    docker compose logs api | grep 'demo: trusted'
    ```
 
-5. **Capture the baseline** if there is not one already:
+6. **Capture the baseline** if there is not one already:
 
    ```bash
    ./demo/bin/baseline.sh capture
