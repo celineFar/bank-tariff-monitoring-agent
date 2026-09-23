@@ -189,8 +189,6 @@ Operating it is covered by [run lifecycle](docs/run-lifecycle.md),
 [native ADK review](docs/native-hitl-review.md),
 [review quarantine](docs/review-quarantine.md), [failure behavior](docs/failure-behavior.md),
 [observability](docs/observability.md), and [demonstrations](docs/demonstrations.md).
-The generated ADK integration surface is described in
-[.agents-cli-spec.md](.agents-cli-spec.md).
 
 
 ## Local logs
