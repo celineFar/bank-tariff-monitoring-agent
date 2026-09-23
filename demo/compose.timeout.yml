@@ -1,0 +1,15 @@
+# Failure leg a: source.timeout.
+#
+# Resolves the mirror host to TEST-NET-1 (RFC 5737), which is routable nowhere.
+# Connections hang instead of being refused, so the run spends its bounded
+# retries and the CLI heartbeat keeps printing elapsed time while it does.
+# /etc/hosts wins over Docker's embedded DNS, so the network alias still exists
+# but is never reached.
+#
+# Layer it after docker-compose.demo.yml:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml:demo/compose.timeout.yml
+services:
+  api:
+    extra_hosts: ["tariff-mirror.demo:192.0.2.1"]
+  worker:
+    extra_hosts: ["tariff-mirror.demo:192.0.2.1"]

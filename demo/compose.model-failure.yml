@@ -1,0 +1,20 @@
+# Failure leg c: source.model_failed.
+#
+# Points source discovery at a model the provider has retired. This reproduces a
+# failure that genuinely happened to this system on 2026-09-22, recorded in
+# fix-plans/cli-monitoring-progress-and-crash.md: gemini-2.5-flash-lite now
+# answers "404 ... no longer available to new users".
+#
+# Demonstration-only, and deliberately not in demo/.env.demo: no other shot may
+# pick it up. The shipped .env keeps gemini-3.1-flash-lite.
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml:demo/compose.model-failure.yml
+services:
+  api:
+    environment:
+      SOURCE_DISCOVERY_MODEL_NAME: gemini-2.5-flash-lite
+      SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES: ""
+  worker:
+    environment:
+      SOURCE_DISCOVERY_MODEL_NAME: gemini-2.5-flash-lite
+      SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES: ""
