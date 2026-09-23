@@ -196,14 +196,24 @@ class ReviewDecisionService:
                 "review_items": remaining_items,
             }
         )
-        if not extraction_is_acceptable(updated_extraction):
-            raise ValueError(
-                "review decision does not produce a complete valid snapshot"
-            )
+        # One extraction can raise several field reviews, and they are decided
+        # one at a time. Resolving one of them leaves its siblings open, so the
+        # extraction is not yet acceptable -- that is the normal intermediate
+        # state of a multi-review batch, not a reviewer error. Treating it as
+        # one made every such run impossible to approve: the first decision
+        # raised, nothing was recorded, and the reviewer was asked again.
+        #
+        # The publication gate lives in the repository, which holds the snapshot
+        # at review_required until a decision arrives ready_for_activation with
+        # no unresolved review left, so the last decision of the batch is the one
+        # that publishes and an incomplete batch still publishes nothing.
         validation = _without_review_signal(snapshot.validation, task.issue_scope)
         validation.update(
             {
-                "accepted": not validation["review_signals"],
+                "accepted": (
+                    extraction_is_acceptable(updated_extraction)
+                    and not validation["review_signals"]
+                ),
                 "review_count": len(remaining_items),
                 "validated_field_count": len(fields),
             }
