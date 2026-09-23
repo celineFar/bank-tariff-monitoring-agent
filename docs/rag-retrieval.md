@@ -4,6 +4,12 @@ The retrieval component returns a small, typed, evidence-bearing chunk set for
 structured tariff extraction. It is a deterministic application service and is not
 exposed to Gemini as a database or SQL tool.
 
+This document describes the **legacy chunk retrieval** used by monitoring and by
+the rollback answer path (`TARIFF_ANSWER_READ_MODEL=legacy`). Ordinary questions
+are answered from the structured read model; see
+[Structured retrieval units](#structured-retrieval-units) below and
+`docs/tariff-query-services.md`.
+
 ## Query contract
 
 `RetrievalRequest` requires a bank, product, natural-language query, and at least one
@@ -52,3 +58,81 @@ section, language, retrieval time, extraction method, and quality. If no candida
 passes the threshold, the result status is explicitly `INSUFFICIENT_EVIDENCE` with
 an empty hit tuple and reason; downstream extraction must stop rather than infer.
 
+
+
+## Structured retrieval units
+
+Ordinary tariff questions no longer rank source chunks. `retrieval_units` holds
+deterministic, versioned text rendered from accepted typed facts, and each unit
+must name the facts and verified citations that support it. Units with no
+verified locator can aid internal routing but never reach Gemini's evidence
+packet or an answer citation.
+
+**Renderer version 2** writes a human field label next to the canonical path, so
+a field-detail line reads `minimum nominal interest rate (rate.nominal.minimum):
+14 AMD (percent)`. The labels come from the checked-in bilingual
+`FIELD_LABELS` registry in `app/domain/structured_tariffs.py`, which must cover
+every `FieldPath`. They are our own canonical vocabulary, not a translation of
+source wording; the Armenian label is written into the unit's weight-`B` search
+text only, never into the text handed to the model. Version 1 rendered the bare
+path, which full-text search could not match against natural wording. Publishing
+re-renders any unit still at a lower renderer version and clears its stale
+embedding so the vector is recomputed for the new text.
+
+### Lexical baseline
+
+The lexical branch is weighted PostgreSQL full-text search over the `simple`
+configuration: `setweight` puts identity text at `A`, aliases and the Armenian
+field label at `B`, and clean detail text at `C`, ranked with `ts_rank_cd` inside
+the authorized offering scope.
+
+`simple` has no stopword list and `websearch_to_tsquery` joins bare terms with
+AND, so passing a question through verbatim required every filler word to appear
+in a unit and matched nothing. `lexical_search_terms` (version
+`simple-or-v1`) therefore builds the query deterministically: casefold, strip the
+Armenian intra-word question, exclamation, and emphasis marks so `որքա՞ն`
+normalizes to the stopword `որքան`, split on non-word characters, drop a
+checked-in bilingual function-word list and single characters, keep the first
+twelve distinct terms, and join them with `or`. `ts_rank_cd` then supplies
+precision, and the service still admits only units whose facts and evidence are
+within the answered scope.
+
+### Vector supplement
+
+Vector search runs only when lexical recall is sparse (fewer than four hits),
+uses the same hard scope, active-state, and evidence predicates, and is fused
+with the lexical ranking as `rrf-v1-k60-lex1-vector0.7`. Over the 25 target
+questions it fired on 1 of 15 single-offering questions, so those fusion weights
+have not been tuned; see `tests/eval/RESULTS.md`.
+
+### Tracing
+
+Set `RETRIEVAL_TRACE_LEVEL=steps` to have every stage of every retrieval write
+one correlated line to the `tariff.retrieval` logger, in call order:
+
+```text
+trace=1f9f step=2  stage=plan.authorized   offerings=['overdraft'] fields=[...] conditions={}
+trace=1f9f step=3  stage=profiles.loaded   requested=1 active=1 snapshots=['c68e2d4c']
+trace=1f9f step=4  stage=facts.loaded      loaded=5 after_conditions=5 evidence_backed=5 citations=5
+trace=1f9f step=5  stage=branch.selected   branch=single
+trace=1f9f step=6  stage=lexical.query     version=simple-or-v1 terms=4 limit=8
+trace=1f9f step=7  stage=lexical.result    hits=8 top=[('0941b09c', 1.6), ...]
+trace=1f9f step=8  stage=vector.skipped    reason=lexical recall sufficient
+trace=1f9f step=9  stage=fusion.ranked     version=rrf-v1-k60-lex1-vector0.7 candidates=8
+trace=1f9f step=10 stage=units.admitted    candidates=8 supported=5 rejected_unsupported=3 selected=5
+trace=1f9f steps=10 elapsed_ms=80.08 status=answered facts=5 units=5
+```
+
+`summary` keeps only the closing line, `off` disables it, and `verbose` adds
+`lexical.terms` (the derived `tsquery`) and one `unit.content` line per admitted
+unit. A trace always closes, including on an exception, where the summary
+carries `outcome=error` and the error type. `RETRIEVAL_LOG_FILE` routes the
+logger to its own rotating file. At `steps` and below, neither the question text
+nor any unit text is written; the question stays correlatable through the
+`question_sha12` prefix.
+
+`uv run python -m scripts.trace_structured_answer "<question>" --no-vector`
+prints resolution, the issued authorization plan, the typed facts with their
+verified citations, the admitted explanatory units, and the ranking version,
+without any model call. `scripts/trace_rag_answer.py` still traces the legacy
+chunk path for rollback comparison.

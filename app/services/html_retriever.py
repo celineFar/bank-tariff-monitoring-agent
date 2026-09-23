@@ -1,64 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import random
-import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
-from urllib.parse import urldefrag, urljoin, urlsplit
+from urllib.parse import urldefrag, urljoin
 
 import httpx
-from bs4 import BeautifulSoup
-from bs4.element import Tag
 
 from app.config import HttpSettings
-from app.domain.web import (
-    HtmlCandidate,
-    HtmlHeading,
-    HtmlLink,
-    HtmlLinkKind,
-    HtmlProvenanceHeaders,
-    HtmlTable,
-    HtmlTableRow,
-    RetrievedHtmlPage,
-)
 from app.security.urls import DisallowedSourceUrl, validate_source_url
-from app.services.restricted_http import (
-    Clock,
-    RandomValue,
-    RestrictedHttpError,
-    RestrictedHttpFailure,
-    RestrictedHttpResponse,
-    RestrictedHttpTransport,
-    Sleep,
-)
 
-_HTML_MIME_TYPE = "text/html"
-_ARMENIAN = re.compile(r"[\u0530-\u058f]")
-_SPACE = re.compile(r"[ \t\f\v]+")
-_BOILERPLATE_MARKERS = frozenset(
-    {
-        "breadcrumb",
-        "chatbot",
-        "cookie",
-        "footer",
-        "modal",
-        "navbar",
-        "navigation",
-        "newsletter",
-        "popup",
-        "share",
-        "sidebar",
-        "social",
-        "topbar",
-    }
-)
-_BLOCKED_MARKERS = (
-    "access denied",
-    "captcha",
-    "cf-chl-",
-    "cloudflare ray id",
-    "verify you are human",
-)
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+Sleep = Callable[[float], Awaitable[None]]
+Clock = Callable[[], datetime]
+RandomValue = Callable[[], float]
 
 
 class HtmlRetrievalFailure(StrEnum):
@@ -72,14 +33,10 @@ class HtmlRetrievalFailure(StrEnum):
     INVALID_CONTENT_LENGTH = "INVALID_CONTENT_LENGTH"
     PAGE_TOO_LARGE = "PAGE_TOO_LARGE"
     UNSUPPORTED_MIME_TYPE = "UNSUPPORTED_MIME_TYPE"
-    PROTECTED_OR_BLOCKED = "PROTECTED_OR_BLOCKED"
-    NO_USABLE_CONTENT = "NO_USABLE_CONTENT"
-    RENDER_FAILED = "RENDER_FAILED"
+    INVALID_ENCODING = "INVALID_ENCODING"
 
 
 class HtmlRetrievalError(RuntimeError):
-    """Controlled HTML retrieval failure without raw page leakage."""
-
     def __init__(
         self,
         reason: HtmlRetrievalFailure,
@@ -92,303 +49,184 @@ class HtmlRetrievalError(RuntimeError):
         self.status_code = status_code
 
 
+@dataclass(frozen=True, slots=True)
+class RetrievedHtml:
+    source_url: str
+    final_url: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    retrieval_started_at: datetime
+    retrieved_at: datetime
+    html: str = field(repr=False)
+
+
 class HtmlRetriever:
-    """Fetch and clean allowlisted public HTML without executing page code."""
+    """Retrieve allowlisted HTML with bounded redirects, retries, and bytes."""
 
     def __init__(
         self,
         client: httpx.AsyncClient,
         settings: HttpSettings,
         *,
-        sleep: Sleep | None = None,
+        sleep: Sleep = asyncio.sleep,
         clock: Clock | None = None,
-        random_value: RandomValue | None = None,
+        random_value: RandomValue = random.random,
     ) -> None:
-        self._transport = RestrictedHttpTransport(
-            client,
-            settings,
-            sleep=sleep or asyncio.sleep,
-            clock=clock,
-            random_value=random_value or random.random,
-        )
+        self._client = client
         self._settings = settings
+        self._sleep = sleep
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._random_value = random_value
 
-    async def retrieve(self, candidate: HtmlCandidate) -> RetrievedHtmlPage:
-        try:
-            response = await self._transport.fetch(
-                candidate.url,
-                accepted_mime_types={_HTML_MIME_TYPE},
-                accept_header="text/html,application/xhtml+xml;q=0.9",
-                max_bytes=self._settings.max_html_bytes,
-            )
-        except RestrictedHttpError as exc:
-            raise HtmlRetrievalError(
-                _html_failure(exc.reason),
-                str(exc),
-                status_code=exc.status_code,
-            ) from exc
+    async def retrieve(self, url: str) -> RetrievedHtml:
+        started_at = self._clock()
+        source_url = self._validated_url(url)
+        current_url = source_url
+        visited: set[str] = set()
+        redirects = 0
 
-        return self.parse_response(response)
-
-    def parse_response(self, response: RestrictedHttpResponse) -> RetrievedHtmlPage:
-        """Parse an already policy-approved static or rendered HTML response."""
-
-        soup = BeautifulSoup(response.content, "html.parser")
-        title = (
-            _clean_text(soup.title.get_text(" ", strip=True)) if soup.title else None
-        )
-        canonical_url = _canonical_url(
-            soup,
-            final_url=response.final_url,
-            allowed_hosts=self._settings.allowed_source_hosts,
-        )
-        language_hint = _language_hint(
-            soup,
-            final_url=response.final_url,
-            content_language=response.provenance_headers.content_language,
-        )
-        _remove_untrusted_and_boilerplate(soup)
-        root = _content_root(soup)
-        main_text = _main_text(root)
-        raw_lower = response.content[:100_000].lower()
-        if len(main_text) < 500 and any(
-            marker.encode() in raw_lower for marker in _BLOCKED_MARKERS
-        ):
-            raise HtmlRetrievalError(
-                HtmlRetrievalFailure.PROTECTED_OR_BLOCKED,
-                "HTML page appears to be protected or blocked",
-            )
-        if not main_text:
-            raise HtmlRetrievalError(
-                HtmlRetrievalFailure.NO_USABLE_CONTENT,
-                "HTML page did not contain usable public content",
-            )
-
-        headings = _headings(root)
-        if title is None and headings:
-            title = headings[0].text
-
-        return RetrievedHtmlPage(
-            source_url=response.source_url,
-            final_url=response.final_url,
-            canonical_url=canonical_url,
-            title=title,
-            headings=headings,
-            main_text=main_text,
-            tables=_tables(root),
-            links=_links(
-                root,
-                base_url=response.final_url,
-                allowed_hosts=self._settings.allowed_source_hosts,
-            ),
-            language_hint=language_hint,
-            mime_type=response.mime_type,
-            encoding=soup.original_encoding,
-            size_bytes=response.size_bytes,
-            sha256=response.sha256,
-            retrieval_started_at=response.retrieval_started_at,
-            retrieved_at=response.retrieved_at,
-            retry_count=response.retry_count,
-            provenance_headers=HtmlProvenanceHeaders(
-                etag=response.provenance_headers.etag,
-                last_modified=response.provenance_headers.last_modified,
-                content_language=response.provenance_headers.content_language,
-            ),
-            raw_html=response.content,
-        )
-
-
-def _html_failure(reason: RestrictedHttpFailure) -> HtmlRetrievalFailure:
-    if reason is RestrictedHttpFailure.RESPONSE_TOO_LARGE:
-        return HtmlRetrievalFailure.PAGE_TOO_LARGE
-    return HtmlRetrievalFailure(reason.value)
-
-
-def _clean_text(value: str) -> str:
-    lines = []
-    for raw_line in value.replace("\r", "\n").split("\n"):
-        line = _SPACE.sub(" ", raw_line).strip()
-        if line:
-            lines.append(line)
-    return " ".join(lines)
-
-
-def _canonical_url(
-    soup: BeautifulSoup, *, final_url: str, allowed_hosts: tuple[str, ...]
-) -> str:
-    element = soup.find("link", rel="canonical")
-    href = element.get("href") if isinstance(element, Tag) else None
-    if not isinstance(href, str) or not href.strip():
-        return final_url
-    try:
-        canonical = validate_source_url(urljoin(final_url, href), allowed_hosts)
-    except DisallowedSourceUrl:
-        return final_url
-    return urldefrag(canonical).url
-
-
-def _language_hint(
-    soup: BeautifulSoup, *, final_url: str, content_language: str | None
-) -> str | None:
-    html = soup.find("html")
-    declared = html.get("lang") if isinstance(html, Tag) else None
-    candidate = declared if isinstance(declared, str) else content_language
-    if candidate:
-        normalized = candidate.split(",", 1)[0].split("-", 1)[0].strip().lower()
-        if 2 <= len(normalized) <= 3 and normalized.isalpha():
-            return normalized
-    if urlsplit(final_url).path.lower().startswith("/en/"):
-        return "en"
-    visible_text = soup.get_text(" ", strip=True)
-    if _ARMENIAN.search(visible_text):
-        return "hy"
-    return None
-
-
-def _remove_untrusted_and_boilerplate(soup: BeautifulSoup) -> None:
-    for element in soup.find_all(
-        [
-            "script",
-            "style",
-            "noscript",
-            "iframe",
-            "svg",
-            "canvas",
-            "template",
-            "input",
-            "button",
-            "nav",
-            "footer",
-            "header",
-            "aside",
-        ]
-    ):
-        element.decompose()
-
-    # ASP.NET/DNN sites commonly wrap the complete public page in one form.
-    # Remove form semantics without discarding the product content inside it.
-    for form in soup.find_all("form"):
-        form.unwrap()
-
-    for element in list(soup.find_all(True)):
-        if element.attrs is None:
-            continue
-        markers = " ".join(
-            (
-                str(element.attrs.get("id", "")),
-                " ".join(element.attrs.get("class", ())),
-                str(element.attrs.get("role", "")),
-            )
-        ).lower()
-        marker_tokens = set(re.findall(r"[a-z]+", markers))
-        if marker_tokens & _BOILERPLATE_MARKERS:
-            element.decompose()
-
-
-def _content_root(soup: BeautifulSoup) -> Tag:
-    for selector in (
-        "main",
-        "article",
-        "[role='main']",
-        "#wsc_main_content",
-        "#main-content",
-        ".main-content",
-        "#content",
-        ".content",
-    ):
-        candidate = soup.select_one(selector)
-        if isinstance(candidate, Tag) and _clean_text(
-            candidate.get_text(" ", strip=True)
-        ):
-            return candidate
-    if soup.body is not None:
-        return soup.body
-    return soup
-
-
-def _main_text(root: Tag) -> str:
-    seen: set[str] = set()
-    lines: list[str] = []
-    for raw_line in root.get_text("\n", strip=True).splitlines():
-        line = _clean_text(raw_line)
-        if not line:
-            continue
-        key = line.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        lines.append(line)
-    return "\n".join(lines)
-
-
-def _headings(root: Tag) -> tuple[HtmlHeading, ...]:
-    result: list[HtmlHeading] = []
-    for heading in root.find_all(re.compile(r"^h[1-6]$")):
-        text = _clean_text(heading.get_text(" ", strip=True))
-        if text:
-            result.append(HtmlHeading(level=int(heading.name[1]), text=text))
-    return tuple(result)
-
-
-def _tables(root: Tag) -> tuple[HtmlTable, ...]:
-    result: list[HtmlTable] = []
-    for table in root.find_all("table"):
-        caption_element = table.find("caption")
-        caption = (
-            _clean_text(caption_element.get_text(" ", strip=True))
-            if caption_element
-            else None
-        )
-        rows: list[HtmlTableRow] = []
-        for row in table.find_all("tr"):
-            cells = row.find_all(["th", "td"], recursive=False)
-            values = tuple(
-                value
-                for cell in cells
-                if (value := _clean_text(cell.get_text(" ", strip=True)))
-            )
-            if values:
-                rows.append(
-                    HtmlTableRow(
-                        cells=values,
-                        is_header=any(cell.name == "th" for cell in cells),
-                    )
+        while True:
+            if current_url in visited:
+                raise HtmlRetrievalError(
+                    HtmlRetrievalFailure.REDIRECT_LOOP,
+                    "HTML retrieval stopped because a redirect loop was detected",
                 )
-        if rows:
-            result.append(HtmlTable(caption=caption, rows=tuple(rows)))
-    return tuple(result)
+            visited.add(current_url)
+            response = await self._request_with_retries(current_url)
 
+            if response.status_code in _REDIRECT_STATUSES:
+                location = response.headers.get("location")
+                await response.aclose()
+                if not location:
+                    raise HtmlRetrievalError(
+                        HtmlRetrievalFailure.REDIRECT_WITHOUT_LOCATION,
+                        "HTML redirect did not include a Location header",
+                    )
+                redirects += 1
+                if redirects > self._settings.max_redirects:
+                    raise HtmlRetrievalError(
+                        HtmlRetrievalFailure.REDIRECT_LIMIT_EXCEEDED,
+                        "HTML retrieval exceeded the configured redirect limit",
+                    )
+                current_url = self._validated_url(urljoin(current_url, location))
+                continue
 
-def _links(
-    root: Tag, *, base_url: str, allowed_hosts: tuple[str, ...]
-) -> tuple[HtmlLink, ...]:
-    result: list[HtmlLink] = []
-    seen: set[str] = set()
-    for anchor in root.find_all("a", href=True):
-        href = anchor.get("href")
-        if not isinstance(href, str) or not href.strip():
-            continue
+            try:
+                content, mime_type = await self._read_response(response)
+            finally:
+                await response.aclose()
+            try:
+                html = content.decode(response.encoding or "utf-8", errors="strict")
+            except (LookupError, UnicodeDecodeError) as exc:
+                raise HtmlRetrievalError(
+                    HtmlRetrievalFailure.INVALID_ENCODING,
+                    "HTML response could not be decoded safely",
+                ) from exc
+            return RetrievedHtml(
+                source_url=source_url,
+                final_url=current_url,
+                mime_type=mime_type,
+                size_bytes=len(content),
+                sha256=hashlib.sha256(content).hexdigest(),
+                retrieval_started_at=started_at,
+                retrieved_at=self._clock(),
+                html=html,
+            )
+
+    async def _request_with_retries(self, url: str) -> httpx.Response:
+        last_error: Exception | None = None
+        for attempt in range(1, self._settings.max_attempts + 1):
+            request = self._client.build_request(
+                "GET", url, headers={"User-Agent": self._settings.user_agent}
+            )
+            try:
+                response = await self._client.send(request, stream=True)
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                if attempt == self._settings.max_attempts:
+                    raise HtmlRetrievalError(
+                        HtmlRetrievalFailure.TIMEOUT,
+                        "HTML retrieval timed out after bounded retries",
+                    ) from exc
+                await self._sleep(self._retry_delay(attempt))
+                continue
+            except httpx.TransportError as exc:
+                last_error = exc
+                if attempt == self._settings.max_attempts:
+                    raise HtmlRetrievalError(
+                        HtmlRetrievalFailure.TRANSPORT,
+                        "HTML retrieval failed after bounded retries",
+                    ) from exc
+                await self._sleep(self._retry_delay(attempt))
+                continue
+
+            if response.status_code in _RETRYABLE_STATUSES:
+                await response.aclose()
+                if attempt < self._settings.max_attempts:
+                    await self._sleep(self._retry_delay(attempt))
+                    continue
+            if response.status_code < 200 or response.status_code >= 400:
+                status_code = response.status_code
+                await response.aclose()
+                raise HtmlRetrievalError(
+                    HtmlRetrievalFailure.HTTP_STATUS,
+                    f"HTML retrieval returned HTTP {status_code}",
+                    status_code=status_code,
+                )
+            return response
+
+        raise HtmlRetrievalError(
+            HtmlRetrievalFailure.TRANSPORT,
+            "HTML retrieval failed",
+        ) from last_error
+
+    async def _read_response(self, response: httpx.Response) -> tuple[bytes, str]:
+        raw_length = response.headers.get("content-length")
+        if raw_length:
+            try:
+                content_length = int(raw_length)
+            except ValueError as exc:
+                raise HtmlRetrievalError(
+                    HtmlRetrievalFailure.INVALID_CONTENT_LENGTH,
+                    "HTML response had an invalid Content-Length",
+                ) from exc
+            if content_length > self._settings.max_download_bytes:
+                raise HtmlRetrievalError(
+                    HtmlRetrievalFailure.PAGE_TOO_LARGE,
+                    "HTML response exceeds the configured byte limit",
+                )
+
+        mime_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+        if mime_type != "text/html":
+            raise HtmlRetrievalError(
+                HtmlRetrievalFailure.UNSUPPORTED_MIME_TYPE,
+                "HTML response did not use the text/html MIME type",
+            )
+
+        chunks: list[bytes] = []
+        size = 0
+        async for chunk in response.aiter_bytes():
+            size += len(chunk)
+            if size > self._settings.max_download_bytes:
+                raise HtmlRetrievalError(
+                    HtmlRetrievalFailure.PAGE_TOO_LARGE,
+                    "HTML response exceeds the configured byte limit",
+                )
+            chunks.append(chunk)
+        return b"".join(chunks), mime_type
+
+    def _validated_url(self, url: str) -> str:
         try:
-            validated = validate_source_url(urljoin(base_url, href), allowed_hosts)
-        except DisallowedSourceUrl:
-            continue
-        url = urldefrag(validated).url
-        if url in seen:
-            continue
-        seen.add(url)
-        text = _clean_text(anchor.get_text(" ", strip=True)) or None
-        context_parent = anchor.find_parent(["p", "li", "td", "th"])
-        context = (
-            _clean_text(context_parent.get_text(" ", strip=True))[:500] or None
-            if context_parent
-            else None
-        )
-        path = urlsplit(url).path.lower()
-        if path.endswith(".pdf"):
-            kind = HtmlLinkKind.PDF
-        elif not path.rsplit("/", 1)[-1] or "." not in path.rsplit("/", 1)[-1]:
-            kind = HtmlLinkKind.HTML
-        else:
-            kind = HtmlLinkKind.OTHER
-        result.append(HtmlLink(url=url, text=text, context=context, kind=kind))
-    return tuple(result)
+            validated = validate_source_url(url, self._settings.allowed_source_hosts)
+        except DisallowedSourceUrl as exc:
+            raise HtmlRetrievalError(
+                HtmlRetrievalFailure.DISALLOWED_URL,
+                f"HTML retrieval rejected an unsafe source URL: {exc}",
+            ) from exc
+        return urldefrag(validated).url
+
+    def _retry_delay(self, attempt: int) -> float:
+        base = self._settings.backoff_base_seconds * (2 ** (attempt - 1))
+        jitter = base * self._settings.retry_jitter_ratio * self._random_value()
+        return min(base + jitter, self._settings.max_retry_delay_seconds)

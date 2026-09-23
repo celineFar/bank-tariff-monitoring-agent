@@ -195,6 +195,7 @@ Thumbs.db
 .adk/
 
 # Agent CLI specific
+/artifacts/
 .persist_vector_store
 tests/load_test/.results/*.html
 tests/load_test/.results/*.csv
@@ -204,6 +205,7 @@ my_env.tfvars
 .env
 .google-agents-cli/
 .tmp/
+.temp/
 data/
 
 # A2A Inspector
@@ -213,3 +215,10 @@ tools/a2a-inspector/
 *.pem
 *-key.json
 credentials*.json
+scripts/build_extraction_review_bundle.py
+tests/unit/test_build_extraction_review_bundle.py
+end-to-end/
+# Local container log archive
+/logs/
+# Internal fix/debug plans (not part of the deliverable)
+/fix-plans/

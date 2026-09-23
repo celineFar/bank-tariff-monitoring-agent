@@ -4,6 +4,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.config import Environment, get_settings, load_settings
+from app.services.model_pricing import enforce_model_price_cap
 
 
 def test_defaults_match_the_approved_architecture() -> None:
@@ -15,23 +16,45 @@ def test_defaults_match_the_approved_architecture() -> None:
         "www.ameriabank.am",
     )
     assert settings.scheduler.timezone == "Asia/Yerevan"
+    assert settings.observability.log_timezone == "Asia/Yerevan"
     assert (settings.scheduler.hour, settings.scheduler.minute) == (6, 0)
     assert settings.http.retry_jitter_ratio == 0.25
     assert settings.http.max_retry_delay_seconds == 120
-    assert settings.http.crawl_max_concurrent_requests == 4
-    assert settings.http.crawl_requests_per_second == 2
-    assert settings.http.crawl_max_supporting_depth == 1
-    assert settings.http.crawl_render_dynamic_pages is True
-    assert settings.http.crawl_render_timeout_seconds == 15
-    assert settings.http.crawl_max_concurrent_renders == 2
-    assert settings.application.artifact_storage_dir == Path("data/artifacts")
-    assert settings.http.discovery_sitemap_urls == (
-        "https://ameriabank.am/Portals/0/sitemap.xml",
-    )
-    assert settings.http.discovery_max_sitemaps == 8
-    assert settings.http.discovery_max_sitemap_entries == 5000
-    assert settings.http.discovery_max_candidates_per_product == 250
+    assert settings.acquisition.browser_enabled is True
+    assert settings.acquisition.max_interactions == 100
+    # Transcription and discovery default to the cheapest capable models still
+    # served, and the price ceilings are tight enough to reject a premium model
+    # rather than admit it. `gemini-2.5-flash-lite` was cheaper and held both
+    # slots until the provider stopped serving it to new users.
+    assert settings.pdf_extraction.model_name == "gemini-3.1-flash-lite"
+    assert settings.pdf_extraction.fallback_model_names == ()
+    assert settings.pdf_extraction.max_price_per_million_tokens_usd == 1.5
+    assert settings.pdf_extraction.skip_historical is True
+    assert settings.source_discovery.max_items_per_batch == 8
+    assert settings.source_discovery.max_chars_per_item == 3000
+    assert settings.source_discovery.max_chars_per_batch == 18_000
+    assert settings.source_discovery.classifier_max_attempts == 3
+    assert settings.source_discovery.classifier_backoff_base_seconds == 5.0
+    assert settings.source_discovery.model_name == "gemini-3.1-flash-lite"
+    assert settings.source_discovery.fallback_model_names == ()
+    assert settings.semantic_extraction.fallback_model_names == ()
+    assert settings.source_discovery.max_price_per_million_tokens_usd == 1.5
+    assert settings.semantic_extraction.thinking_budget == 0
+    assert settings.semantic_extraction.max_repairs_per_run == 3
+    assert settings.intent_resolution.fuzzy_min_score == 0.82
+    assert settings.intent_resolution.fuzzy_min_gap == 0.08
+    assert settings.intent_resolution.max_candidates == 5
+    assert settings.intent_resolution.classifier_max_attempts == 2
+    assert settings.tariff_queries.freshness_days == 7
+    assert settings.tariff_queries.recent_change_days == 60
+    assert settings.tariff_queries.default_history_days == 30
+    assert settings.tariff_queries.run_wait_seconds == 120
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
+
+
+def test_log_timezone_requires_valid_iana_name() -> None:
+    with pytest.raises(ValidationError, match="unknown IANA timezone"):
+        load_settings(_env_file=None, log_timezone="Mars/Olympus")
 
 
 def test_csv_configuration_is_normalized_and_deduplicated() -> None:
@@ -39,8 +62,9 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         _env_file=None,
         allowed_source_hosts="AMERIABANK.AM., www.ameriabank.am, ameriabank.am",
         allowed_download_mime_types="application/pdf, text/html,application/pdf",
-        ocr_languages="HYE,eng,hye",
+        pdf_extraction_fallback_model_names=("gemini-3.5-flash-lite,gemini-3.6-flash"),
         allow_origins="http://localhost:3000, https://review.example",
+        source_discovery_fallback_model_names="gemini-3.5-flash-lite,gemini-3.1-flash-lite",
     )
 
     assert settings.http.allowed_source_hosts == (
@@ -51,10 +75,17 @@ def test_csv_configuration_is_normalized_and_deduplicated() -> None:
         "application/pdf",
         "text/html",
     )
-    assert settings.ocr.languages == ("hye", "eng")
+    assert settings.pdf_extraction.fallback_model_names == (
+        "gemini-3.5-flash-lite",
+        "gemini-3.6-flash",
+    )
     assert settings.http.allow_origins == (
         "http://localhost:3000",
         "https://review.example",
+    )
+    assert settings.source_discovery.fallback_model_names == (
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
     )
 
 
@@ -103,14 +134,6 @@ def test_non_postgresql_database_fails_startup() -> None:
         load_settings(_env_file=None, database_url="sqlite:///local.db")
 
 
-def test_sitemap_url_must_use_an_allowlisted_host() -> None:
-    with pytest.raises(ValidationError, match="allowlisted source host"):
-        load_settings(
-            _env_file=None,
-            discovery_sitemap_urls="https://evil.example/sitemap.xml",
-        )
-
-
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -146,23 +169,30 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("http_max_retry_delay_seconds", 0),
         ("max_redirects", 11),
         ("max_download_bytes", 0),
-        ("max_html_bytes", 0),
-        ("crawl_max_concurrent_requests", 0),
-        ("crawl_requests_per_second", 0),
-        ("crawl_max_supporting_depth", 2),
-        ("crawl_render_timeout_seconds", 0),
-        ("crawl_max_concurrent_renders", 0),
-        ("discovery_max_sitemaps", 51),
-        ("discovery_max_sitemap_entries", 0),
-        ("discovery_max_candidates_per_product", 0),
-        ("ocr_min_text_chars_per_page", -1),
-        ("ocr_dpi", 149),
-        ("ocr_max_pages", 0),
-        ("ocr_timeout_seconds", 601),
+        ("acquisition_min_static_text_chars", -1),
+        ("acquisition_browser_navigation_timeout_seconds", 0),
+        ("acquisition_browser_settle_milliseconds", 10_001),
+        ("acquisition_max_interactions", 101),
+        ("acquisition_max_network_payloads", 201),
+        ("acquisition_max_network_payload_bytes", 0),
+        ("acquisition_max_linked_documents", 51),
+        ("pdf_extraction_probe_text_threshold", -1),
+        ("pdf_extraction_max_attempts", 0),
+        ("pdf_extraction_backoff_base_seconds", -1),
+        ("pdf_extraction_max_price_per_million_tokens_usd", 0),
         ("chunk_size_chars", 199),
         ("chunk_overlap_chars", -1),
         ("retrieval_top_k", 0),
         ("retrieval_min_score", 1.1),
+        ("intent_fuzzy_min_score", 1.1),
+        ("intent_fuzzy_min_gap", 1.1),
+        ("intent_max_candidates", 1),
+        ("intent_classifier_max_attempts", 0),
+        ("source_discovery_max_items_per_batch", 0),
+        ("source_discovery_max_chars_per_item", 499),
+        ("source_discovery_max_chars_per_batch", 999),
+        ("source_discovery_classifier_max_attempts", 0),
+        ("source_discovery_classifier_retry_jitter_ratio", 1.1),
         ("hitl_document_rank_gap", 1.1),
         ("hitl_large_rate_change_percentage_points", 0),
         ("schedule_hour", 24),
@@ -196,6 +226,15 @@ def test_production_requires_api_key_and_masks_it() -> None:
     assert "super-secret-value" not in repr(settings)
 
 
+def test_source_discovery_item_limit_cannot_exceed_batch_limit() -> None:
+    with pytest.raises(ValidationError, match="item character limit"):
+        load_settings(
+            _env_file=None,
+            source_discovery_max_chars_per_item=2000,
+            source_discovery_max_chars_per_batch=1000,
+        )
+
+
 def test_settings_factory_is_process_cached() -> None:
     get_settings.cache_clear()
     try:
@@ -215,3 +254,17 @@ def test_example_environment_contains_no_api_key() -> None:
     lines = Path(".env.example").read_text(encoding="utf-8").splitlines()
     api_key_line = next(line for line in lines if line.startswith("GEMINI_API_KEY="))
     assert api_key_line == "GEMINI_API_KEY="
+
+
+def test_default_model_chains_satisfy_their_own_price_ceilings() -> None:
+    """A ceiling below its own fallback chain would fail every run at construction."""
+    settings = load_settings(_env_file=None)
+    for group, default_model in (
+        (settings.pdf_extraction, settings.pdf_extraction.model_name),
+        (settings.source_discovery, settings.source_discovery.model_name),
+    ):
+        assert default_model is not None
+        enforce_model_price_cap(
+            tuple(dict.fromkeys((default_model, *group.fallback_model_names))),
+            max_price_per_million_tokens_usd=group.max_price_per_million_tokens_usd,
+        )

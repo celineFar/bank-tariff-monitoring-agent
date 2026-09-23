@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from google.genai import errors
 
 from app.domain.knowledge import (
     DocumentVersionSummary,
@@ -194,3 +195,89 @@ async def test_gemini_query_embedding_adapter_uses_query_task() -> None:
     config = models.arguments["config"]
     assert config.task_type == "RETRIEVAL_QUERY"
     assert config.output_dimensionality == 3
+
+
+@pytest.mark.asyncio
+async def test_document_embedding_batches_large_chunk_sets() -> None:
+    class FakeModels:
+        def __init__(self) -> None:
+            self.batch_sizes: list[int] = []
+
+        async def embed_content(self, **arguments: object) -> object:
+            contents = arguments["contents"]
+            assert isinstance(contents, list)
+            self.batch_sizes.append(len(contents))
+            return SimpleNamespace(
+                embeddings=[SimpleNamespace(values=[0.1, 0.2, 0.3]) for _ in contents]
+            )
+
+    models = FakeModels()
+    provider = GeminiEmbeddingProvider(
+        SimpleNamespace(aio=SimpleNamespace(models=models)),
+        "gemini-embedding-001",
+        dimensions=3,
+    )
+
+    result = await provider.embed_documents(["tariff evidence"] * 21)
+
+    assert len(result) == 21
+    assert models.batch_sizes == [20, 1]
+
+
+@pytest.mark.asyncio
+async def test_embedding_provider_reports_non_retryable_api_status(caplog) -> None:
+    class FakeModels:
+        async def embed_content(self, **arguments: object) -> object:
+            raise errors.ClientError(
+                400, {"error": {"status": "INVALID_ARGUMENT", "message": "bad input"}}
+            )
+
+    provider = GeminiEmbeddingProvider(
+        SimpleNamespace(aio=SimpleNamespace(models=FakeModels())),
+        "gemini-embedding-001",
+        dimensions=3,
+    )
+
+    with pytest.raises(EmbeddingError, match="400 INVALID_ARGUMENT"):
+        await provider.embed_documents(["tariff evidence"])
+
+    assert "code=400 status=INVALID_ARGUMENT" in caplog.text
+    assert "tariff evidence" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_indexer_reuses_content_model_dimension_and_task_cache() -> None:
+    class Provider:
+        dimensions = 3
+        model_name = "test-embedding-model"
+
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        async def embed_documents(self, contents):
+            self.calls.append(list(contents))
+            return [[0.1, 0.2, 0.3] for _ in contents]
+
+    class Cache:
+        def __init__(self):
+            self.values: dict[str, tuple[float, ...]] = {}
+            self.keys: list[tuple[str, int, str]] = []
+
+        async def get_many(self, model_id, dimensions, task_type, hashes):
+            self.keys.append((model_id, dimensions, task_type))
+            return {key: self.values[key] for key in hashes if key in self.values}
+
+        async def put_many(self, model_id, dimensions, task_type, values):
+            self.values.update(values)
+
+    provider = Provider()
+    cache = Cache()
+    indexer = KnowledgeIndexer(provider, _FakeKnowledgeStore(), cache)
+    first = await indexer.embed(_document())
+    second = await indexer.embed(_document(checksum="b" * 64))
+    assert first.chunks[0].embedding == second.chunks[0].embedding
+    assert provider.calls == [["Nominal interest rate: 13.5%"]]
+    assert cache.keys == [
+        ("test-embedding-model", 3, "RETRIEVAL_DOCUMENT"),
+        ("test-embedding-model", 3, "RETRIEVAL_DOCUMENT"),
+    ]

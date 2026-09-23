@@ -14,9 +14,13 @@
 
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir uv==0.8.13
+# Tesseract with Armenian and English data backs the scanned-PDF OCR fallback.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-hye tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN pip install --no-cache-dir uv==0.8.13
 
 WORKDIR /code
 
@@ -24,20 +28,13 @@ COPY ./pyproject.toml ./README.md ./uv.lock* ./
 
 COPY ./app ./app
 COPY ./migrations ./migrations
-COPY ./scripts ./scripts
 
-RUN uv sync --frozen
-RUN uv run playwright install --with-deps chromium \
-    && chmod -R a+rX /ms-playwright
-
-RUN mkdir -p /code/data/artifacts \
-    && useradd --create-home --uid 10001 appuser \
-    && chown -R appuser:appuser /code/data/artifacts
-USER appuser
+RUN uv sync --frozen --extra ocr
+RUN uv run playwright install --with-deps chromium
 
 ARG AGENT_VERSION=0.0.0
 ENV AGENT_VERSION=${AGENT_VERSION}
 
 EXPOSE 8080
 
-CMD ["uv", "run", "--no-sync", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uv", "run", "uvicorn", "app.fast_api_app:app", "--host", "0.0.0.0", "--port", "8080"]

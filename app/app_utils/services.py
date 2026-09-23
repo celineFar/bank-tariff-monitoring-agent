@@ -27,6 +27,11 @@ import os
 from google.adk.artifacts import GcsArtifactService, InMemoryArtifactService
 from google.adk.cli.service_registry import get_service_registry
 from google.adk.cli.utils.service_factory import create_session_service_from_options
+from google.adk.sessions import DatabaseSessionService
+from google.adk.sessions.base_session_service import BaseSessionService
+from sqlalchemy import text
+
+from app.config import get_settings
 
 SESSION_SERVICE_URI = "shared://session"
 ARTIFACT_SERVICE_URI = "shared://artifact"
@@ -39,9 +44,13 @@ _AGENT_DIR = os.path.dirname(
 @functools.cache
 def get_session_service():
     """Process-wide session service shared across every serving surface."""
-    if uri := os.environ.get("SESSION_SERVICE_URI"):
+    uri = os.environ.get("SESSION_SERVICE_URI")
+    if uri is None:
+        uri = get_settings().database.session_service_uri.get_secret_value()
+    if uri and not uri.startswith("shared://"):
         return create_session_service_from_options(
-            base_dir=_AGENT_DIR, session_service_uri=uri
+            base_dir=_AGENT_DIR,
+            session_service_uri=uri,
         )
     if agent_engine_id := os.environ.get("GOOGLE_CLOUD_AGENT_ENGINE_ID"):
         from google.adk.sessions.vertex_ai_session_service import VertexAiSessionService
@@ -57,6 +66,31 @@ def get_session_service():
     from google.adk.sessions.in_memory_session_service import InMemorySessionService
 
     return InMemorySessionService()
+
+
+async def ensure_session_service_ready(
+    service: BaseSessionService | None = None,
+    *,
+    require_persistent: bool = True,
+) -> BaseSessionService:
+    """Create/check the ADK 2.9.2 schema before accepting workflow traffic."""
+    selected = service or get_session_service()
+    if not isinstance(selected, DatabaseSessionService):
+        if require_persistent:
+            raise RuntimeError(
+                "durable monitoring requires a PostgreSQL ADK session service"
+            )
+        return selected
+    await selected.prepare_tables()
+    async with selected.db_engine.connect() as connection:
+        version = await connection.scalar(
+            text("SELECT value FROM adk_internal_metadata WHERE key = 'schema_version'")
+        )
+    if version != "1":
+        raise RuntimeError(
+            "unsupported ADK session schema; migrate to ADK 2.9.2 schema version 1"
+        )
+    return selected
 
 
 @functools.cache

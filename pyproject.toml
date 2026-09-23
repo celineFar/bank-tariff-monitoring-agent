@@ -8,7 +8,7 @@ authors = [
 
 
 dependencies = [
-    "google-adk[gcp,otel-gcp]>=2.6.0,<3.0.0",
+    "google-adk[gcp,otel-gcp]>=2.9.2,<3.0.0",
     "opentelemetry-resourcedetector-gcp<=1.12.0a0",
     "gcsfs>=2024.11.0",
     "a2a-sdk[http-server]>=1.0,<2",
@@ -24,6 +24,8 @@ dependencies = [
     "pypdf>=6.0.0,<7.0.0",
     "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
     "tenacity>=9.1.0,<10.0.0",
+    "pyyaml>=6.0.2,<7.0.0",
+    "rich>=14.0,<15.0",
 ]
 requires-python = ">=3.11,<3.14"
 
@@ -37,8 +39,13 @@ dev = [
 
 [project.optional-dependencies]
 eval = [
-    "google-adk[eval]>=2.6.0,<3.0.0",
+    "google-adk[eval]>=2.9.2,<3.0.0",
     "google-cloud-aiplatform[evaluation]>=1.156.0,<2.0.0"
+]
+ocr = [
+    "pypdfium2>=4.30.0,<6.0.0",
+    "pytesseract>=0.3.13,<1.0.0",
+    "pillow>=10.0.0,<13.0.0",
 ]
 lint = [
     "ruff>=0.4.6,<1.0.0",
@@ -79,6 +86,14 @@ exclude = [".venv/**"]
 [tool.ty.rules]
 # Ignore common issues with third-party libraries and dynamic code patterns
 unresolved-import = "ignore"
+# Kept off deliberately: ~97 sites still trip it, almost all of them ADK session,
+# event, and review objects that this codebase passes around as `object`, plus
+# `Session | None` narrowing after `get_session`. The application-service
+# boundaries the CLI calls through are now typed against real protocols
+# (`RunProgressPort`, `ChatReviewService`, `BaseSessionService`), which is what
+# let a missing `RunService.list_offering_executions` reach production once.
+# Turning this rule back on needs the remaining `object` annotations replaced
+# first; until then it would be pure noise.
 unresolved-attribute = "ignore"
 invalid-argument-type = "ignore"
 invalid-assignment = "ignore"
@@ -88,8 +103,8 @@ not-subscriptable = "ignore"
 deprecated = "ignore"
 
 [tool.codespell]
-ignore-words-list = "rouge"
-skip = "./locust_env/*,uv.lock,.venv,./frontend,**/package-lock.json"
+ignore-words-list = "rouge,expres,constrution,whats"
+skip = "./locust_env/*,uv.lock,.venv,./frontend,**/package-lock.json,./data/*,./end-to-end/*,./artifacts/*"
 
 
 [build-system]
@@ -100,7 +115,6 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 pythonpath = "."
 asyncio_default_fixture_loop_scope = "session"
-asyncio_default_test_loop_scope = "session"
 markers = [
     "live: requires external services or model credentials",
     "postgres: requires TEST_DATABASE_URL pointing to an isolated PostgreSQL test database",

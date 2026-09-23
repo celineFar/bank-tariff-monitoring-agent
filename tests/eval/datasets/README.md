@@ -115,3 +115,54 @@ Once you have a baseline, the eval surface has a few more commands worth knowing
 - `agents-cli eval optimize` — auto-tune your agent's prompts using eval data.
 
 See the [Evaluation Guide](https://google.github.io/agents-cli/guide/evaluation/) for the full surface and metric reference.
+
+## Project suites and acceptance bar
+
+- `basic-dataset.json`: two core cases—Armenian bounded clarification and an
+  accepted-only current-data read.
+- `structured-tariff-questions.json`: the two starter cases of the structured
+  retrieval loop—an answered single-offering rate and a must-abstain offering
+  with no accepted projection.
+- `structured-tariff-held-out.json`: eight held-out cases covering Armenian
+  phrasing, currency narrowing, explicit comparison, family ranking, an
+  incomparable fee ranking, mortgage down payment, a fee inventory, and accepted
+  change history. These were written after the starter loop and graded once.
+- `../../fixtures/target_questions.py`: all 25 target questions with their
+  expected typed route and structured outcome, asserted by
+  `tests/unit/test_target_questions.py` without any model call.
+- `../../../scripts/seed_evaluation_corpus.py`: loads the synthetic structured
+  corpus into a database whose name ends in `_test`. Run it instead of
+  `fixtures.sql` for the structured suites.
+- `expanded-intent-safety.json`: 22 cases spanning every configured offering,
+  bilingual/fuzzy resolution, stale/history behavior, unsupported requests,
+  and tool-routing safety.
+- `../fixtures.sql`: evaluation-only accepted/stale/history/review-pending rows.
+  It starts with `TRUNCATE ... CASCADE`; apply it only to a disposable database
+  whose name ends in `_test`.
+- `../RESULTS.md`: model/config versions, acceptance threshold, aggregate
+  scores, failure analysis, and the ADK state-seeding limitation.
+
+Start the isolated database, wait for it to become healthy, stream all
+migrations into it, then seed it:
+
+```bash
+docker compose --profile test up -d db-test
+for migration in migrations/*.sql; do
+  docker compose exec -T db-test psql -v ON_ERROR_STOP=1 \
+    -U tariff -d tariff_monitor_test < "$migration"
+done
+docker compose exec -T db-test psql -v ON_ERROR_STOP=1 \
+  -U tariff -d tariff_monitor_test < tests/eval/fixtures.sql
+```
+
+Run the core or expanded suite with host-reachable test database URLs. A short
+wait keeps the explicit monitoring case bounded because no worker is started:
+
+```bash
+DATABASE_URL=postgresql+asyncpg://tariff:tariff@127.0.0.1:5433/tariff_monitor_test \
+SESSION_SERVICE_URI=postgresql+asyncpg://tariff:tariff@127.0.0.1:5433/tariff_monitor_test \
+TARIFF_RUN_WAIT_SECONDS=0.2 TARIFF_RUN_POLL_SECONDS=0.05 \
+agents-cli eval run \
+  --dataset tests/eval/datasets/expanded-intent-safety.json \
+  --config tests/eval/eval_config.yaml --qps 2
+```

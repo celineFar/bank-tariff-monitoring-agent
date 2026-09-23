@@ -1,0 +1,1048 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import shutil
+import sys
+from pathlib import Path
+from typing import Any, TypeVar
+from uuid import uuid4
+
+import httpx
+from pydantic import BaseModel, ValidationError
+
+from app.config import Settings, load_seed_catalog, load_settings
+from app.domain.acquisition import PageArtifact, SourceType
+from app.domain.models import ProductType
+from app.domain.normalization import NormalizedDocument, NormalizedSourceBundle
+from app.domain.semantic_extraction import (
+    SemanticExtractionPlan,
+    SemanticExtractionResult,
+)
+from app.domain.source_discovery import (
+    DecisionSource,
+    DiscoveryScope,
+    Relevance,
+    SourceDiscoveryPlan,
+    SourceDiscoveryResult,
+    TemporalStatus,
+)
+from app.repositories.file_pdf_extraction import FileSystemPdfExtractionRepository
+from app.repositories.file_semantic_extraction import (
+    FileSystemSemanticExtractionRepository,
+)
+from app.repositories.file_source_discovery import FileSystemSourceDiscoveryRepository
+from app.services.acquisition import build_acquisition_service
+from app.services.artifact_store import FileSystemArtifactStore
+from app.services.discovery_classifier import (
+    AdkSourceDiscoveryClassifier,
+    is_model_fallback_error,
+)
+from app.services.model_pricing import enforce_model_price_cap, model_sequence
+from app.services.normalization import StructuralNormalizationService
+from app.services.pdf_extraction import GeminiPdfExtractionService
+from app.services.pipeline_audit import (
+    human_filename,
+    render_diff_markdown,
+    render_document_markdown,
+    render_pdf_response_markdown,
+    render_pre_validation,
+    render_review_queue,
+    render_semantic_extraction,
+    render_source_selection,
+    render_source_selection_diff,
+    render_unparsed_pre_validation,
+)
+from app.services.pipeline_audit_archive import (
+    AuditContext,
+    FileSystemPipelineAuditArchive,
+)
+from app.services.semantic_extraction import (
+    AdkSemanticExtractor,
+    SemanticExtractionService,
+)
+from app.services.source_discovery import SourceDiscoveryService
+from app.services.source_selection import build_selected_source_bundle
+from scripts.demonstrations.runs import RUN_DIRECTORY, next_run_directory
+
+DEFAULT_OUTPUT_DIRECTORY = Path("end-to-end")
+
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+class EndToEndStageError(RuntimeError):
+    def __init__(self, stage: str, error: Exception) -> None:
+        super().__init__(str(error))
+        self.stage = stage
+        self.error = error
+
+
+class ModelSequenceError(RuntimeError):
+    def __init__(
+        self,
+        error: Exception,
+        *,
+        plan: SourceDiscoveryPlan | SemanticExtractionPlan,
+        attempts: list[dict[str, Any]],
+        raw_responses: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(str(error))
+        self.error = error
+        self.plan = plan
+        self.attempts = attempts
+        self.raw_responses = raw_responses or {}
+
+
+async def demonstrate(
+    source_url: str,
+    *,
+    output_directory: Path = DEFAULT_OUTPUT_DIRECTORY,
+    product: ProductType | None = None,
+) -> Path:
+    output = next_run_directory(output_directory)
+    (output / "source_url.txt").write_text(source_url.strip() + "\n", encoding="utf-8")
+
+    acquisition_directory = output / "acquisition"
+    source_files = acquisition_directory / "source files"
+    documents_directory = acquisition_directory / "documents"
+    source_files.mkdir(parents=True)
+    documents_directory.mkdir(parents=True)
+
+    settings = load_settings(artifact_temp_dir=source_files / "artifacts")
+    print("[1/4] Acquiring webpage and linked documents...", flush=True)
+    artifact = await _acquire(source_url, settings)
+    _write_acquisition_artifacts(artifact, source_files)
+    acquired_page_markdown = artifact.markdown or _fallback_page_markdown(artifact)
+    (acquisition_directory / "acquired_content.md").write_text(
+        acquired_page_markdown, encoding="utf-8"
+    )
+
+    selected_product = product or _infer_product(source_url)
+    audit, audit_context = _pipeline_audit(source_url, settings)
+    api_key = (
+        settings.models.api_key.get_secret_value()
+        if settings.models.api_key is not None
+        else None
+    )
+    if api_key is None:
+        raise EndToEndStageError(
+            "configuration",
+            RuntimeError("GEMINI_API_KEY is required for the full end-to-end run"),
+        )
+
+    artifact_store = FileSystemArtifactStore(source_files / "artifacts")
+    shared_cache = output.parent / ".cache"
+    pdf_repository = FileSystemPdfExtractionRepository(shared_cache / "pdf-extraction")
+    discovery_repository = FileSystemSourceDiscoveryRepository(
+        shared_cache / "source-discovery"
+    )
+    semantic_repository = FileSystemSemanticExtractionRepository(
+        shared_cache / "semantic-extraction"
+    )
+    imported = await _import_previous_run_caches(
+        output.parent,
+        current_run=output,
+        pdf_cache=shared_cache / "pdf-extraction",
+        discovery_repository=discovery_repository,
+        semantic_repository=semantic_repository,
+    )
+    if any(imported.values()):
+        print(
+            "  imported prior run caches: "
+            + ", ".join(f"{name}={count}" for name, count in imported.items()),
+            flush=True,
+        )
+    pdf_service = GeminiPdfExtractionService(
+        settings.pdf_extraction,
+        pdf_repository,
+        api_key=api_key,
+    )
+
+    print("[2/4] Parsing PDFs with Gemini and normalizing all sources...", flush=True)
+    normalizer = StructuralNormalizationService(
+        artifact_reader=artifact_store,
+        pdf_extractor=pdf_service,
+    )
+    bundle = await normalizer.normalize(artifact)
+    normalization_directory = output / "normalization"
+    normalization_directory.mkdir()
+    _write_json(normalization_directory / "normalized_bundle.json", bundle)
+    await _write_document_artifacts(
+        artifact,
+        bundle,
+        artifact_store=artifact_store,
+        pdf_service=pdf_service,
+        pdf_repository=pdf_repository,
+        documents_directory=documents_directory,
+        source_files=source_files,
+        normalization_directory=normalization_directory,
+    )
+    _write_normalization_reports(
+        artifact,
+        bundle,
+        acquired_page_markdown=acquired_page_markdown,
+        documents_directory=documents_directory,
+        normalization_directory=normalization_directory,
+    )
+    if audit is not None and audit_context is not None:
+        await audit.record_normalization(audit_context, artifact, bundle)
+
+    discovery_directory = output / "source-discovery"
+    discovery_directory.mkdir()
+    print(
+        f"[3/4] Discovering sources for product={selected_product.value}...",
+        flush=True,
+    )
+    try:
+        discovery_plan, discovery_result, discovery_attempts = await _run_discovery(
+            bundle,
+            selected_product,
+            settings,
+            api_key,
+            repository=discovery_repository,
+        )
+    except Exception as exc:
+        failure = exc.error if isinstance(exc, ModelSequenceError) else exc
+        if isinstance(exc, ModelSequenceError):
+            _write_json(discovery_directory / "plan.json", exc.plan)
+            _write_json(discovery_directory / "model_attempts.json", exc.attempts)
+        _write_source_discovery_reports(
+            discovery_directory,
+            bundle,
+            None,
+            error=failure,
+        )
+        _write_json(
+            discovery_directory / "failure.json",
+            {
+                "stage": "source-discovery",
+                "type": type(failure).__name__,
+                "message": str(failure),
+            },
+        )
+        if audit is not None and audit_context is not None:
+            await audit.record_source_discovery(
+                audit_context, bundle, None, error=failure
+            )
+        raise EndToEndStageError("source-discovery", failure) from None
+    _write_json(discovery_directory / "plan.json", discovery_plan)
+    _write_json(discovery_directory / "result.json", discovery_result)
+    _write_json(discovery_directory / "model_attempts.json", discovery_attempts)
+    if audit is not None and audit_context is not None:
+        await audit.record_source_discovery(audit_context, bundle, discovery_result)
+    selected_bundle = _write_source_discovery_reports(
+        discovery_directory,
+        bundle,
+        discovery_result,
+    )
+    assert selected_bundle is not None
+
+    semantic_directory = output / "semantic-extraction"
+    semantic_directory.mkdir()
+    print("[4/4] Extracting and validating tariff fields...", flush=True)
+    semantic_plan: SemanticExtractionPlan | None = None
+    try:
+        (
+            semantic_plan,
+            semantic_result,
+            semantic_attempts,
+        ) = await _run_semantic_extraction(
+            selected_bundle,
+            discovery_result,
+            settings,
+            api_key,
+            repository=semantic_repository,
+            retrieved_at=artifact.retrieved_at,
+        )
+    except Exception as exc:
+        failure = exc.error if isinstance(exc, ModelSequenceError) else exc
+        if isinstance(exc, ModelSequenceError):
+            semantic_plan = exc.plan
+            _write_json(semantic_directory / "model_attempts.json", exc.attempts)
+            _write_json(semantic_directory / "pre_validation.json", exc.raw_responses)
+            (semantic_directory / "pre_validation.md").write_text(
+                render_unparsed_pre_validation(exc.raw_responses, failure),
+                encoding="utf-8",
+            )
+        elif semantic_plan is None:
+            semantic_plan = await _build_semantic_plan(
+                selected_bundle,
+                discovery_result,
+                settings,
+                repository=semantic_repository,
+            )
+        _write_json(semantic_directory / "plan.json", semantic_plan)
+        (semantic_directory / "extraction.md").write_text(
+            render_semantic_extraction(
+                selected_bundle, discovery_result, semantic_plan, None, error=failure
+            ),
+            encoding="utf-8",
+        )
+        _write_json(
+            semantic_directory / "failure.json",
+            {
+                "stage": "semantic-extraction",
+                "type": type(failure).__name__,
+                "message": str(failure),
+            },
+        )
+        if audit is not None and audit_context is not None:
+            await audit.record_semantic_extraction(
+                audit_context,
+                bundle,
+                discovery_result,
+                semantic_plan,
+                None,
+                error=failure,
+            )
+        raise EndToEndStageError("semantic-extraction", failure) from None
+    _write_json(semantic_directory / "plan.json", semantic_plan)
+    _write_json(semantic_directory / "result.json", semantic_result)
+    _write_json(
+        semantic_directory / "pre_validation.json",
+        semantic_result.raw_batch_outputs,
+    )
+    (semantic_directory / "pre_validation.md").write_text(
+        render_pre_validation(semantic_result), encoding="utf-8"
+    )
+    _write_json(semantic_directory / "review_queue.json", semantic_result.review_items)
+    (semantic_directory / "review.md").write_text(
+        render_review_queue(semantic_result.review_items), encoding="utf-8"
+    )
+    _write_json(
+        semantic_directory / "partial_result.json",
+        semantic_result.partial_product,
+    )
+    if semantic_result.loan_product is not None:
+        _write_json(
+            semantic_directory / "loan_product.json", semantic_result.loan_product
+        )
+    _write_json(semantic_directory / "model_attempts.json", semantic_attempts)
+    (semantic_directory / "extraction.md").write_text(
+        render_semantic_extraction(
+            selected_bundle, discovery_result, semantic_plan, semantic_result
+        ),
+        encoding="utf-8",
+    )
+    if audit is not None and audit_context is not None:
+        await audit.record_semantic_extraction(
+            audit_context, bundle, discovery_result, semantic_plan, semantic_result
+        )
+        print(f"  pipeline audit archive: {audit.directory(audit_context)}", flush=True)
+    if semantic_result.review_items:
+        print(
+            "  semantic extraction completed with "
+            f"{len(semantic_result.review_items)} human-review item(s)",
+            flush=True,
+        )
+
+    _write_json(
+        source_files / "run_metadata.json",
+        {
+            "source_url": source_url,
+            "canonical_url": str(artifact.canonical_url),
+            "product": selected_product.value,
+            "acquisition_content_hash": artifact.content_hash,
+            "pdf_model_sequence": list(
+                dict.fromkeys(
+                    (
+                        settings.pdf_extraction.model_name,
+                        *settings.pdf_extraction.fallback_model_names,
+                    )
+                )
+            ),
+            "source_discovery_model": discovery_result.model_name,
+            "semantic_extraction_model": semantic_result.model_name,
+            "semantic_extraction_status": semantic_result.status.value,
+            "semantic_review_item_count": len(semantic_result.review_items),
+            "shared_cache_directory": str(shared_cache),
+        },
+    )
+    print(f"End-to-end audit trail written to {output.resolve()}", flush=True)
+    return output
+
+
+async def _acquire(url: str, settings: Settings) -> PageArtifact:
+    timeout = httpx.Timeout(settings.http.timeout_seconds)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        return await build_acquisition_service(client, settings).acquire(url)
+
+
+async def _write_document_artifacts(
+    artifact: PageArtifact,
+    bundle: NormalizedSourceBundle,
+    *,
+    artifact_store: FileSystemArtifactStore,
+    pdf_service: GeminiPdfExtractionService,
+    pdf_repository: FileSystemPdfExtractionRepository,
+    documents_directory: Path,
+    source_files: Path,
+    normalization_directory: Path,
+) -> None:
+    normalized_by_id = {document.id: document for document in bundle.documents}
+    response_directory = source_files / "pdf_responses"
+    response_directory.mkdir(exist_ok=True)
+    normalized_documents_directory = normalization_directory / "documents"
+    normalized_documents_directory.mkdir(exist_ok=True)
+
+    manifest: list[dict[str, Any]] = []
+    for index, document in enumerate(artifact.downloadable_documents):
+        content = await artifact_store.read(document.artifact)
+        extension = (
+            ".pdf"
+            if document.mime_type == "application/pdf"
+            else _url_extension(str(document.final_url))
+        )
+        original_name = human_filename(
+            document.document_name, index=index, extension=extension
+        )
+        original_path = documents_directory / original_name
+        original_path.write_bytes(content)
+
+        document_id = f"document:{index}:{document.sha256[:12]}"
+        normalized = normalized_by_id.get(document_id)
+        reconstructed_name = original_path.with_suffix("").name + ".reconstructed.md"
+        reconstructed_path = documents_directory / reconstructed_name
+        normalized_name = original_path.with_suffix("").name + ".normalized.md"
+        normalized_path = normalized_documents_directory / normalized_name
+        response = None
+        model_name = None
+        if normalized is not None and normalized.extraction_method.startswith(
+            "gemini_pdf:"
+        ):
+            model_name = normalized.extraction_method.split(":", 1)[1]
+            plan = pdf_service.plan(document, content, document_id=document_id)
+            response = await pdf_repository.get_exact(
+                document_sha256=document.sha256,
+                schema_version=plan.schema_version,
+                prompt_version=plan.prompt_version,
+                model_name=model_name,
+                content_fingerprint=plan.content_fingerprint,
+            )
+        if response is not None:
+            reconstructed = render_pdf_response_markdown(
+                document.document_name, str(document.final_url), response
+            )
+            _write_json(
+                response_directory / (original_path.with_suffix("").name + ".json"),
+                response,
+            )
+        else:
+            method = normalized.extraction_method if normalized else "unavailable"
+            reconstructed = (
+                f"# {document.document_name}\n\n"
+                f"Source: <{document.final_url}>\n\n"
+                f"**No Gemini reconstruction was available.** Method: `{method}`.\n"
+            )
+        reconstructed_path.write_text(reconstructed, encoding="utf-8")
+        if normalized is not None:
+            normalized_path.write_text(
+                render_document_markdown(normalized), encoding="utf-8"
+            )
+        manifest.append(
+            {
+                "document_id": document_id,
+                "source_url": str(document.source_url),
+                "original_file": original_path.name,
+                "reconstructed_markdown": reconstructed_path.name,
+                "normalized_markdown": str(
+                    normalized_path.relative_to(normalization_directory)
+                ),
+                "sha256": document.sha256,
+                "model": model_name,
+            }
+        )
+    _write_json(source_files / "document_manifest.json", manifest)
+
+
+def _write_normalization_reports(
+    artifact: PageArtifact,
+    bundle: NormalizedSourceBundle,
+    *,
+    acquired_page_markdown: str,
+    documents_directory: Path,
+    normalization_directory: Path,
+) -> None:
+    page = next(
+        (
+            document
+            for document in bundle.documents
+            if document.source_type is SourceType.PAGE
+        ),
+        None,
+    )
+    normalized_page = render_document_markdown(page) if page else ""
+    (normalization_directory / "normalized_webpage.md").write_text(
+        normalized_page, encoding="utf-8"
+    )
+    (normalization_directory / "webpage_diff.md").write_text(
+        render_diff_markdown(
+            "Webpage normalization diff",
+            (
+                (
+                    artifact.title or str(artifact.canonical_url),
+                    acquired_page_markdown,
+                    normalized_page,
+                ),
+            ),
+        ),
+        encoding="utf-8",
+    )
+
+    comparisons: list[tuple[str, str, str]] = []
+    normalized_documents_directory = normalization_directory / "documents"
+    for reconstructed_path in sorted(documents_directory.glob("*.reconstructed.md")):
+        normalized_path = (
+            normalized_documents_directory
+            / reconstructed_path.name.replace(".reconstructed.md", ".normalized.md")
+        )
+        normalized = (
+            normalized_path.read_text(encoding="utf-8")
+            if normalized_path.is_file()
+            else ""
+        )
+        comparisons.append(
+            (
+                reconstructed_path.stem.removesuffix(".reconstructed"),
+                reconstructed_path.read_text(encoding="utf-8"),
+                normalized,
+            )
+        )
+    (normalization_directory / "documents_diff.md").write_text(
+        render_diff_markdown("Document normalization diffs", tuple(comparisons)),
+        encoding="utf-8",
+    )
+
+
+def _write_source_discovery_reports(
+    directory: Path,
+    bundle: NormalizedSourceBundle,
+    result: SourceDiscoveryResult | None,
+    *,
+    error: Exception | None = None,
+) -> NormalizedSourceBundle | None:
+    page_documents = tuple(
+        document
+        for document in bundle.documents
+        if document.source_type is SourceType.PAGE
+    )
+    page_bundle = _document_bundle(bundle, page_documents or bundle.documents[:1])
+    (directory / "selection_decisions.md").write_text(
+        render_source_selection(page_bundle, result, error=error), encoding="utf-8"
+    )
+    (directory / "selection_diff.md").write_text(
+        render_source_selection_diff(page_bundle, result, error=error),
+        encoding="utf-8",
+    )
+    selected_bundle = (
+        build_selected_source_bundle(bundle, result) if result is not None else None
+    )
+    selected_by_id = (
+        {document.id: document for document in selected_bundle.documents}
+        if selected_bundle is not None
+        else {}
+    )
+    if selected_bundle is not None:
+        _write_json(directory / "selected_sources.json", selected_bundle)
+        selected_page = next(
+            (
+                document
+                for document in selected_bundle.documents
+                if document.source_type is SourceType.PAGE
+            ),
+            None,
+        )
+        if selected_page is not None:
+            (directory / "selected_webpage.md").write_text(
+                render_document_markdown(selected_page), encoding="utf-8"
+            )
+
+    documents_directory = directory / "documents"
+    documents_directory.mkdir()
+    index_lines = [
+        "# Source-discovery document index",
+        "",
+        "Each linked document remains independent. Its normalized content and "
+        "source-discovery decisions are rendered in dedicated Markdown files.",
+        "",
+        "| # | Type | Decision | Document | Reports | Selected content |",
+        "|---:|---|---|---|---|---|",
+    ]
+    linked_documents = tuple(
+        document
+        for document in bundle.documents
+        if document.source_type is not SourceType.PAGE
+    )
+    for index, document in enumerate(linked_documents):
+        group = "pdfs" if document.source_type is SourceType.PDF else "api"
+        target_directory = documents_directory / group
+        target_directory.mkdir(exist_ok=True)
+        stem = human_filename(document.name, index=index, extension=".md").removesuffix(
+            ".md"
+        )
+        decisions_name = f"{stem}.selection_decisions.md"
+        diff_name = f"{stem}.selection_diff.md"
+        selected_name = f"selected_{stem}.md"
+        document_bundle = _document_bundle(bundle, (document,))
+        (target_directory / decisions_name).write_text(
+            render_source_selection(document_bundle, result, error=error),
+            encoding="utf-8",
+        )
+        (target_directory / diff_name).write_text(
+            render_source_selection_diff(document_bundle, result, error=error),
+            encoding="utf-8",
+        )
+        decision = _document_selection_decision(document, result)
+        selected_document = selected_by_id.get(document.id)
+        if selected_document is not None:
+            (target_directory / selected_name).write_text(
+                render_document_markdown(selected_document), encoding="utf-8"
+            )
+        relative = target_directory.relative_to(documents_directory).as_posix()
+        selected_link = (
+            f"[selected]({relative}/{selected_name})"
+            if selected_document is not None
+            else "—"
+        )
+        index_lines.append(
+            f"| {index + 1} | `{document.source_type.value}` | **{decision}** | "
+            f"[{_markdown_cell(document.name)}]({relative}/{decisions_name}) | "
+            f"[decisions]({relative}/{decisions_name}) · "
+            f"[diff]({relative}/{diff_name}) | {selected_link} |"
+        )
+    index_lines.append("")
+    (documents_directory / "index.md").write_text(
+        "\n".join(index_lines), encoding="utf-8"
+    )
+    return selected_bundle
+
+
+def _document_bundle(
+    bundle: NormalizedSourceBundle,
+    documents: tuple[NormalizedDocument, ...],
+) -> NormalizedSourceBundle:
+    return bundle.model_copy(update={"documents": documents})
+
+
+def _document_selection_decision(
+    document: NormalizedDocument,
+    result: SourceDiscoveryResult | None,
+) -> str:
+    if result is None:
+        return "UNASSESSED"
+    assessment = next(
+        (
+            item
+            for item in result.assessments
+            if item.document_id == document.id
+            and item.source_id == f"document::{document.id}"
+            and item.scope in {DiscoveryScope.DOCUMENT, DiscoveryScope.API_PAYLOAD}
+        ),
+        None,
+    )
+    if assessment is None:
+        return "UNASSESSED"
+    if assessment.relevance is Relevance.IRRELEVANT:
+        return "NOT SELECTED"
+    if assessment.temporal_status is TemporalStatus.POSSIBLY_STALE:
+        return "HISTORICAL — NOT SELECTED"
+    if assessment.temporal_status is TemporalStatus.FUTURE:
+        return "FUTURE — NOT SELECTED"
+    if (
+        assessment.relevance is Relevance.POSSIBLY_RELEVANT
+        or assessment.temporal_status
+        in {TemporalStatus.UNKNOWN, TemporalStatus.TIME_BOUNDED}
+    ):
+        return "SELECTED WITH UNCERTAINTY"
+    return "SELECTED"
+
+
+def _markdown_cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+async def _run_discovery(
+    bundle: NormalizedSourceBundle,
+    product: ProductType,
+    settings: Settings,
+    api_key: str,
+    *,
+    repository: FileSystemSourceDiscoveryRepository,
+) -> tuple[SourceDiscoveryPlan, SourceDiscoveryResult, list[dict[str, Any]]]:
+    models = model_sequence(
+        settings.source_discovery.model_name or settings.models.generation_model,
+        settings.source_discovery.fallback_model_names,
+    )
+    enforce_model_price_cap(
+        models,
+        max_price_per_million_tokens_usd=settings.source_discovery.max_price_per_million_tokens_usd,
+    )
+    attempts: list[dict[str, Any]] = []
+    for index, model_name in enumerate(models):
+        classifier = AdkSourceDiscoveryClassifier(
+            model_name,
+            api_key=api_key,
+            max_attempts=settings.source_discovery.classifier_max_attempts,
+            backoff_base_seconds=settings.source_discovery.classifier_backoff_base_seconds,
+            max_backoff_seconds=settings.source_discovery.classifier_max_backoff_seconds,
+            retry_jitter_ratio=settings.source_discovery.classifier_retry_jitter_ratio,
+        )
+        service = SourceDiscoveryService(
+            classifier=classifier,
+            repository=repository,
+            settings=settings.source_discovery,
+            model_name=model_name,
+        )
+        plan = await service.plan(bundle, product)
+        print(
+            f"  source-discovery model {index + 1}/{len(models)}: {model_name}",
+            flush=True,
+        )
+        print(
+            f"  source-discovery plan: {len(plan.cache_hits)} cached, "
+            f"{len(plan.deterministic_assessments)} deterministic, "
+            f"{len(plan.batches)} LLM batch(es)",
+            flush=True,
+        )
+        try:
+            result = await service.discover(bundle, product)
+        except Exception as exc:
+            attempts.append(_model_attempt(model_name, classifier.usage, exc))
+            if is_model_fallback_error(exc) and index + 1 < len(models):
+                print(f"  falling back to {models[index + 1]}", flush=True)
+                continue
+            raise ModelSequenceError(exc, plan=plan, attempts=attempts) from exc
+        attempts.append(_model_attempt(model_name, classifier.usage, None))
+        return plan, result, attempts
+    raise AssertionError("source-discovery model sequence exhausted")
+
+
+async def _build_semantic_plan(
+    bundle: NormalizedSourceBundle,
+    discovery: SourceDiscoveryResult,
+    settings: Settings,
+    *,
+    repository: FileSystemSemanticExtractionRepository,
+) -> SemanticExtractionPlan:
+    service = SemanticExtractionService(
+        extractor=None,
+        repository=repository,
+        settings=settings.semantic_extraction,
+        model_name=settings.models.generation_model,
+    )
+    return await service.plan(bundle, discovery)
+
+
+async def _run_semantic_extraction(
+    bundle: NormalizedSourceBundle,
+    discovery: SourceDiscoveryResult,
+    settings: Settings,
+    api_key: str,
+    *,
+    repository: FileSystemSemanticExtractionRepository,
+    retrieved_at,
+) -> tuple[SemanticExtractionPlan, SemanticExtractionResult, list[dict[str, Any]]]:
+    # Extraction runs on the configured generation model, as it does in
+    # app.runtime. The source-discovery price ceiling governs that stage only.
+    models = model_sequence(
+        settings.models.generation_model,
+        settings.source_discovery.fallback_model_names,
+    )
+    attempts: list[dict[str, Any]] = []
+    for index, model_name in enumerate(models):
+        extractor = AdkSemanticExtractor(
+            model_name,
+            api_key=api_key,
+            max_attempts=settings.source_discovery.classifier_max_attempts,
+            backoff_base_seconds=settings.source_discovery.classifier_backoff_base_seconds,
+            max_backoff_seconds=settings.source_discovery.classifier_max_backoff_seconds,
+            retry_jitter_ratio=settings.source_discovery.classifier_retry_jitter_ratio,
+        )
+        service = SemanticExtractionService(
+            extractor=extractor,
+            repository=repository,
+            settings=settings.semantic_extraction,
+            model_name=model_name,
+        )
+        plan = await service.plan(bundle, discovery)
+        print(f"  semantic model {index + 1}/{len(models)}: {model_name}", flush=True)
+        print(
+            f"  semantic plan: {len(plan.cache_hits)} cached batch(es), "
+            f"{len(plan.batches)} LLM batch(es)",
+            flush=True,
+        )
+        try:
+            result = await service.extract(bundle, discovery, retrieved_at=retrieved_at)
+        except Exception as exc:
+            attempts.append(_model_attempt(model_name, extractor.usage, exc))
+            if is_model_fallback_error(exc) and index + 1 < len(models):
+                print(f"  falling back to {models[index + 1]}", flush=True)
+                continue
+            raise ModelSequenceError(
+                exc,
+                plan=plan,
+                attempts=attempts,
+                raw_responses=dict(extractor.raw_responses),
+            ) from exc
+        attempts.append(_model_attempt(model_name, extractor.usage, None))
+        return plan, result, attempts
+    raise AssertionError("semantic-extraction model sequence exhausted")
+
+
+def _write_acquisition_artifacts(artifact: PageArtifact, directory: Path) -> None:
+    _write_json(directory / "page_artifact.json", artifact)
+    for name, values in (
+        ("blocks.json", artifact.blocks),
+        ("tables.json", artifact.tables),
+        ("links.json", artifact.links),
+        ("documents.json", artifact.downloadable_documents),
+        ("images.json", artifact.images),
+        ("interactive_controls.json", artifact.interactive_controls),
+        ("network_payloads.json", artifact.network_payloads),
+    ):
+        _write_json(directory / name, values)
+    if artifact.raw_html is not None:
+        (directory / "raw.html").write_text(artifact.raw_html, encoding="utf-8")
+    if artifact.rendered_html is not None:
+        (directory / "rendered.html").write_text(
+            artifact.rendered_html, encoding="utf-8"
+        )
+
+
+def _model_attempt(model_name: str, usage, error: Exception | None) -> dict[str, Any]:
+    return {
+        "model": model_name,
+        "status": "failed" if error else "succeeded",
+        "request_attempts": usage.request_attempts,
+        "application_retries": usage.application_retries,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "thinking_tokens": usage.thinking_tokens,
+        "total_tokens": usage.total_tokens,
+        "error_type": type(error).__name__ if error else None,
+        "message": str(error) if error else None,
+    }
+
+
+def _fallback_page_markdown(artifact: PageArtifact) -> str:
+    title = artifact.title or str(artifact.canonical_url)
+    return (
+        "\n\n".join(
+            (f"# {title}", *(block.markdown or block.text for block in artifact.blocks))
+        )
+        + "\n"
+    )
+
+
+def _infer_product(url: str) -> ProductType:
+    return (
+        ProductType.MORTGAGE
+        if "mortgage" in url.casefold()
+        else ProductType.CONSUMER_LOAN
+    )
+
+
+def _url_extension(url: str) -> str:
+    suffix = Path(url.split("?", 1)[0]).suffix
+    return suffix if suffix and len(suffix) <= 10 else ".bin"
+
+
+async def _import_previous_run_caches(
+    root: Path,
+    *,
+    current_run: Path,
+    pdf_cache: Path,
+    discovery_repository: FileSystemSourceDiscoveryRepository,
+    semantic_repository: FileSystemSemanticExtractionRepository,
+) -> dict[str, int]:
+    counts = {
+        "pdf": 0,
+        "source_discovery": 0,
+        "semantic_extraction": 0,
+        "incompatible": 0,
+    }
+    previous_runs = sorted(
+        child
+        for child in root.iterdir()
+        if child.is_dir()
+        and child != current_run
+        and RUN_DIRECTORY.fullmatch(child.name)
+    )
+    # The root itself supports the original, pre-run_NNN demonstration layout.
+    for run in (root, *previous_runs):
+        legacy_pdf_cache = run / "acquisition" / "source files" / "pdf_cache"
+        if legacy_pdf_cache.is_dir():
+            for source in legacy_pdf_cache.rglob("*.json"):
+                destination = pdf_cache / source.relative_to(legacy_pdf_cache)
+                if destination.is_file():
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                counts["pdf"] += 1
+
+        discovery_path = run / "source-discovery" / "result.json"
+        discovery = (
+            _load_recording(discovery_path, SourceDiscoveryResult, counts)
+            if discovery_path.is_file()
+            else None
+        )
+        if discovery is not None:
+            reusable = tuple(
+                assessment
+                for assessment in discovery.assessments
+                if assessment.decision_source
+                in {DecisionSource.LLM, DecisionSource.CACHE}
+            )
+            if reusable:
+                await discovery_repository.save(
+                    product=discovery.product,
+                    policy_version=discovery.policy_version,
+                    prompt_version=discovery.prompt_version,
+                    model_name=discovery.model_name,
+                    assessments=reusable,
+                )
+                counts["source_discovery"] += len(reusable)
+
+        semantic_plan_path = run / "semantic-extraction" / "plan.json"
+        semantic_result_path = run / "semantic-extraction" / "result.json"
+        if semantic_plan_path.is_file() and semantic_result_path.is_file():
+            plan = _load_recording(semantic_plan_path, SemanticExtractionPlan, counts)
+            result = _load_recording(
+                semantic_result_path, SemanticExtractionResult, counts
+            )
+            if (
+                plan is not None
+                and result is not None
+                and result.status.value == "completed"
+                and not plan.cache_hits
+                and len(plan.batches) == len(result.batch_results)
+            ):
+                values = tuple(
+                    (batch.content_fingerprint, response)
+                    for batch, response in zip(
+                        plan.batches, result.batch_results, strict=True
+                    )
+                )
+                await semantic_repository.save(
+                    product=plan.product,
+                    schema_version=plan.schema_version,
+                    prompt_version=plan.prompt_version,
+                    model_name=result.model_name,
+                    values=values,
+                )
+                counts["semantic_extraction"] += len(values)
+    return counts
+
+
+def _pipeline_audit(
+    source_url: str, settings: Settings
+) -> tuple[FileSystemPipelineAuditArchive | None, AuditContext | None]:
+    """Archive this run's overlays where API and worker runs archive theirs.
+
+    The archive is keyed by catalog offering, so a URL that is not a seed URL
+    has nowhere to file its reports; that run still writes its own tree.
+    """
+    offering = load_seed_catalog().find_by_seed_url(source_url)
+    if offering is None:
+        print(
+            f"  {source_url} is not a catalog seed URL; writing this run's tree "
+            "only, with no pipeline audit archive",
+            flush=True,
+        )
+        return None, None
+    return (
+        FileSystemPipelineAuditArchive(settings.application.pipeline_audit_dir),
+        AuditContext(
+            run_id=uuid4(),
+            offering_execution_id=uuid4(),
+            product=offering.product,
+            offering_id=offering.offering_id,
+            seed_url=str(offering.seed_url),
+        ),
+    )
+
+
+def _load_recording(
+    path: Path, model: type[ModelT], counts: dict[str, int]
+) -> ModelT | None:
+    """Skip a recording written before the schema it is validated against.
+
+    Earlier runs stay on disk as the audit trail. A schema change makes their
+    JSON unreadable, and that must not stop a fresh run from importing the
+    caches it can still use.
+    """
+    try:
+        return model.model_validate_json(path.read_text(encoding="utf-8"))
+    except ValidationError:
+        counts["incompatible"] += 1
+        return None
+
+
+def _write_json(path: Path, value: Any) -> None:
+    if isinstance(value, BaseModel):
+        serialized = value.model_dump(mode="json")
+    elif isinstance(value, tuple):
+        serialized = [
+            item.model_dump(mode="json") if isinstance(item, BaseModel) else item
+            for item in value
+        ]
+    else:
+        serialized = value
+    path.write_text(
+        json.dumps(serialized, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the complete tariff pipeline and write a human-readable audit trail."
+    )
+    parser.add_argument("source_url", help="Official HTTPS loan or mortgage page URL")
+    parser.add_argument(
+        "--product",
+        choices=[
+            ProductType.CONSUMER_LOAN.value,
+            ProductType.MORTGAGE.value,
+        ],
+        help="Override product inference (mortgage when URL contains 'mortgage'; otherwise consumer_loan)",
+    )
+    parser.add_argument(
+        "--output-directory",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIRECTORY,
+        help="Run container; creates run_NNN inside it (default: end-to-end)",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    args = _parse_args()
+    try:
+        asyncio.run(
+            demonstrate(
+                args.source_url,
+                output_directory=args.output_directory,
+                product=ProductType(args.product) if args.product else None,
+            )
+        )
+    except EndToEndStageError as exc:
+        print(
+            f"End-to-end demonstration stopped at {exc.stage}: "
+            f"{type(exc.error).__name__}: {exc.error}",
+            file=sys.stderr,
+        )
+        return 1
+    except Exception as exc:
+        print(
+            f"End-to-end demonstration failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,520 @@
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from enum import StrEnum
+from typing import Annotated, Any, Generic, Literal, TypeVar
+
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+
+from app.domain.acquisition import SourceLocator, SourceType
+from app.domain.models import ProductType
+from app.domain.source_discovery import (
+    Authority,
+    EffectivePeriod,
+    InformationRole,
+    ProductAssociation,
+    TemporalStatus,
+)
+
+T = TypeVar("T")
+PercentagePoint = Annotated[Decimal, Field(ge=0, le=100)]
+
+
+class ExtractionModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class ExtractionStatus(StrEnum):
+    FOUND = "found"
+    NOT_STATED = "not_stated"
+    AMBIGUOUS = "ambiguous"
+    CONFLICTING = "conflicting"
+
+
+class SemanticExtractionRunStatus(StrEnum):
+    COMPLETED = "completed"
+    COMPLETED_WITH_REVIEW = "completed_with_review"
+
+
+class LoanCategory(StrEnum):
+    CONSUMER_LOAN = "consumer_loan"
+    OVERDRAFT = "overdraft"
+    CREDIT_LINE = "credit_line"
+    MORTGAGE = "mortgage"
+
+
+class RateType(StrEnum):
+    FIXED = "fixed"
+    VARIABLE = "variable"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
+class RateBasis(StrEnum):
+    ANNUAL = "annual"
+    MONTHLY = "monthly"
+
+
+class PropertyMarket(StrEnum):
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
+    COMMERCIAL = "commercial"
+    CONSTRUCTION = "construction"
+    RENOVATION = "renovation"
+    MIXED = "mixed"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class Condition(ExtractionModel):
+    dimension: str = Field(min_length=1, max_length=200)
+    operator: str | None = Field(default=None, max_length=50)
+    value: str = Field(min_length=1, max_length=1000)
+
+
+class ConditionalValue(ExtractionModel, Generic[T]):
+    value: T
+    conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
+
+
+class MoneyRange(ExtractionModel):
+    min: Decimal | None = Field(default=None, ge=0)
+    max: Decimal | None = Field(default=None, ge=0)
+    currency: Literal["AMD", "USD", "EUR"] | None = None
+
+    @model_validator(mode="after")
+    def validate_range(self) -> MoneyRange:
+        if self.min is not None and self.max is not None and self.min > self.max:
+            raise ValueError("money minimum must not exceed maximum")
+        if self.min is None and self.max is None:
+            raise ValueError("money range requires a minimum or maximum")
+        return self
+
+
+class AbsoluteMoneyRange(ExtractionModel):
+    type: Literal["absolute"] = "absolute"
+    range: MoneyRange
+
+
+class SalaryMultiple(ExtractionModel):
+    type: Literal["salary_multiple"] = "salary_multiple"
+    min_multiple: Decimal | None = Field(default=None, ge=0)
+    max_multiple: Decimal | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> SalaryMultiple:
+        if self.min_multiple is None and self.max_multiple is None:
+            raise ValueError("salary multiple requires a minimum or maximum")
+        if (
+            self.min_multiple is not None
+            and self.max_multiple is not None
+            and self.min_multiple > self.max_multiple
+        ):
+            raise ValueError("salary multiple minimum must not exceed maximum")
+        return self
+
+
+class PropertyValuePercentage(ExtractionModel):
+    type: Literal["property_value_percentage"] = "property_value_percentage"
+    min_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    max_pct: Decimal | None = Field(default=None, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> PropertyValuePercentage:
+        if self.min_pct is None and self.max_pct is None:
+            raise ValueError("property percentage requires a minimum or maximum")
+        if (
+            self.min_pct is not None
+            and self.max_pct is not None
+            and self.min_pct > self.max_pct
+        ):
+            raise ValueError("property percentage minimum must not exceed maximum")
+        return self
+
+
+class OtherAmountFormula(ExtractionModel):
+    type: Literal["other_formula"] = "other_formula"
+    expression: str = Field(min_length=1, max_length=2000)
+
+
+LoanAmount = Annotated[
+    AbsoluteMoneyRange | SalaryMultiple | PropertyValuePercentage | OtherAmountFormula,
+    Field(discriminator="type"),
+]
+
+
+class Rate(ExtractionModel):
+    min: Decimal | None = Field(default=None, ge=0)
+    max: Decimal | None = Field(default=None, ge=0)
+    rate_type: RateType = RateType.UNKNOWN
+    basis: RateBasis = RateBasis.ANNUAL
+    formula: str | None = Field(default=None, min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> Rate:
+        if self.min is None and self.max is None and self.formula is None:
+            raise ValueError("rate requires a minimum, maximum, or formula")
+        if self.min is not None and self.max is not None and self.min > self.max:
+            raise ValueError("rate minimum must not exceed maximum")
+        return self
+
+
+class FeeScope(StrEnum):
+    PRODUCT = "product"
+    GENERAL_LOAN_SERVICE = "general_loan_service"
+    UNKNOWN = "unknown"
+
+
+class LoanFee(ExtractionModel):
+    description: str = Field(min_length=1, max_length=2000)
+    scope: FeeScope
+    amount: Decimal | None = Field(default=None, ge=0)
+    currency: Literal["AMD", "USD", "EUR"] | None = None
+    rate_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
+
+
+class RequirementPolicy(ExtractionModel):
+    default_required: bool | None = None
+    exceptions: tuple[ConditionalValue[bool], ...] = Field(default=(), max_length=30)
+
+    @model_validator(mode="after")
+    def validate_policy(self) -> RequirementPolicy:
+        if self.default_required is None and not self.exceptions:
+            raise ValueError("requirement policy needs a default or an exception")
+        return self
+
+
+class TermRange(ExtractionModel):
+    min_months: int | None = Field(default=None, gt=0)
+    max_months: int | None = Field(default=None, gt=0)
+    indefinite: bool = False
+    end_condition: Literal["on_demand"] | None = None
+
+    @model_validator(mode="after")
+    def validate_range(self) -> TermRange:
+        if self.indefinite:
+            if self.min_months is not None or self.max_months is not None:
+                raise ValueError("indefinite term cannot have month bounds")
+            if self.end_condition is None:
+                raise ValueError("indefinite term requires an end condition")
+            return self
+        if self.end_condition is not None:
+            raise ValueError("bounded term cannot have an open-ended condition")
+        if self.min_months is None and self.max_months is None:
+            raise ValueError("term requires a minimum or maximum")
+        if (
+            self.min_months is not None
+            and self.max_months is not None
+            and self.min_months > self.max_months
+        ):
+            raise ValueError("term minimum must not exceed maximum")
+        return self
+
+
+class ProductVariant(ExtractionModel):
+    variant_id: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+    name: str = Field(min_length=1, max_length=500)
+    purpose: str | None = Field(default=None, max_length=2000)
+
+
+class RequiredDocument(ExtractionModel):
+    name: str = Field(min_length=1, max_length=2000)
+    requirement: Literal["required", "upon_request", "conditional", "unknown"] = (
+        "required"
+    )
+
+
+class RepaymentMethod(ExtractionModel):
+    method: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class ApplicationChannel(ExtractionModel):
+    channel: str = Field(min_length=1, max_length=1000)
+    available: bool = True
+
+
+class AgeRange(ExtractionModel):
+    min_age: int | None = Field(default=None, ge=0, le=120)
+    max_age: int | None = Field(default=None, ge=0, le=120)
+    measured_at: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_range(self) -> AgeRange:
+        if self.min_age is None and self.max_age is None:
+            raise ValueError("age range requires a minimum or maximum")
+        if (
+            self.min_age is not None
+            and self.max_age is not None
+            and self.min_age > self.max_age
+        ):
+            raise ValueError("minimum age must not exceed maximum age")
+        return self
+
+
+class CollateralTerm(ExtractionModel):
+    description: str | None = Field(default=None, max_length=2000)
+    applicable: bool = True
+
+    @model_validator(mode="after")
+    def validate_description(self) -> CollateralTerm:
+        if self.applicable and not self.description:
+            raise ValueError("applicable collateral requires a description")
+        return self
+
+
+class EvidenceCitation(ExtractionModel):
+    evidence_id: str = Field(pattern=r"^ev_[0-9a-f]{24}$")
+    source_item_id: str = Field(min_length=1, max_length=200)
+    source_url: HttpUrl
+    source_type: SourceType
+    quote: str = Field(min_length=1, max_length=1500)
+    section: str | None = Field(default=None, max_length=1000)
+    locator: SourceLocator
+    authority: Authority
+
+
+class ExtractedValue(ExtractionModel, Generic[T]):
+    value: T | None = None
+    evidence: tuple[EvidenceCitation, ...] = Field(default=(), max_length=100)
+    status: ExtractionStatus
+    explanation: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_state(self) -> ExtractedValue[T]:
+        if self.status is ExtractionStatus.FOUND:
+            if self.value is None or not self.evidence:
+                raise ValueError("found value requires value and evidence")
+        elif self.status is ExtractionStatus.NOT_STATED:
+            if self.value is not None or self.evidence:
+                raise ValueError("not_stated requires no value or evidence")
+        elif not self.evidence:
+            raise ValueError("ambiguous/conflicting value requires evidence")
+        return self
+
+
+class ConsumerLoanDetails(ExtractionModel):
+    type: Literal["consumer_loan"] = "consumer_loan"
+    collateral: ExtractedValue[tuple[ConditionalValue[CollateralTerm], ...]]
+    income_verification_required: ExtractedValue[RequirementPolicy]
+    creditworthiness_assessment_required: ExtractedValue[RequirementPolicy]
+
+
+class MortgageDetails(ExtractionModel):
+    type: Literal["mortgage"] = "mortgage"
+    property_market: ExtractedValue[PropertyMarket]
+    down_payment_pct: ExtractedValue[tuple[ConditionalValue[PercentagePoint], ...]]
+    ltv_pct: ExtractedValue[tuple[ConditionalValue[PercentagePoint], ...]]
+    collateral: ExtractedValue[tuple[ConditionalValue[CollateralTerm], ...]]
+    income_verification_required: ExtractedValue[RequirementPolicy]
+    creditworthiness_assessment_required: ExtractedValue[RequirementPolicy]
+    property_requirements: ExtractedValue[tuple[str, ...]]
+
+
+class OverdraftDetails(ExtractionModel):
+    type: Literal["overdraft"] = "overdraft"
+    credit_limit: ExtractedValue[tuple[LoanAmount, ...]]
+    grace_period_days: ExtractedValue[int]
+    revolving: ExtractedValue[bool]
+    linked_account_or_card: ExtractedValue[str]
+
+
+class CreditLineDetails(ExtractionModel):
+    type: Literal["credit_line"] = "credit_line"
+    credit_limit: ExtractedValue[tuple[LoanAmount, ...]]
+    grace_period_days: ExtractedValue[int]
+    revolving: ExtractedValue[bool]
+
+
+LoanDetails = Annotated[
+    ConsumerLoanDetails | MortgageDetails | OverdraftDetails | CreditLineDetails,
+    Field(discriminator="type"),
+]
+
+
+class LoanProduct(ExtractionModel):
+    product_name: ExtractedValue[str]
+    formal_terms_names: ExtractedValue[tuple[str, ...]]
+    variants: ExtractedValue[tuple[ProductVariant, ...]]
+    category: LoanCategory
+    purpose: ExtractedValue[tuple[str, ...]]
+    loan_amount: ExtractedValue[tuple[ConditionalValue[LoanAmount], ...]]
+    interest_rate: ExtractedValue[tuple[ConditionalValue[Rate], ...]]
+    effective_rate: ExtractedValue[tuple[ConditionalValue[Rate], ...]]
+    term: ExtractedValue[tuple[ConditionalValue[TermRange], ...]]
+    fees: ExtractedValue[tuple[LoanFee, ...]]
+    repayment: ExtractedValue[tuple[ConditionalValue[RepaymentMethod], ...]]
+    eligibility: ExtractedValue[tuple[str, ...]]
+    residency_requirements: ExtractedValue[tuple[str, ...]]
+    age_requirements: ExtractedValue[tuple[ConditionalValue[AgeRange], ...]]
+    application_channel: ExtractedValue[
+        tuple[ConditionalValue[ApplicationChannel], ...]
+    ]
+    required_documents: ExtractedValue[tuple[ConditionalValue[RequiredDocument], ...]]
+    special_conditions: ExtractedValue[tuple[str, ...]]
+    details: LoanDetails
+    canonical_url: HttpUrl
+    retrieved_at: datetime
+
+
+class ExtractionField(StrEnum):
+    PRODUCT_NAME = "product_name"
+    FORMAL_TERMS_NAMES = "formal_terms_names"
+    VARIANTS = "variants"
+    CATEGORY = "category"
+    PURPOSE = "purpose"
+    LOAN_AMOUNT = "loan_amount"
+    INTEREST_RATE = "interest_rate"
+    EFFECTIVE_RATE = "effective_rate"
+    TERM = "term"
+    FEES = "fees"
+    REPAYMENT = "repayment"
+    ELIGIBILITY = "eligibility"
+    RESIDENCY_REQUIREMENTS = "residency_requirements"
+    AGE_REQUIREMENTS = "age_requirements"
+    APPLICATION_CHANNEL = "application_channel"
+    REQUIRED_DOCUMENTS = "required_documents"
+    SPECIAL_CONDITIONS = "special_conditions"
+    COLLATERAL = "collateral"
+    INCOME_VERIFICATION_REQUIRED = "income_verification_required"
+    CREDITWORTHINESS_ASSESSMENT_REQUIRED = "creditworthiness_assessment_required"
+    PROPERTY_MARKET = "property_market"
+    DOWN_PAYMENT_PCT = "down_payment_pct"
+    LTV_PCT = "ltv_pct"
+    PROPERTY_REQUIREMENTS = "property_requirements"
+    CREDIT_LIMIT = "credit_limit"
+    GRACE_PERIOD_DAYS = "grace_period_days"
+    REVOLVING = "revolving"
+    LINKED_ACCOUNT_OR_CARD = "linked_account_or_card"
+
+
+class EvidenceItem(ExtractionModel):
+    evidence_id: str = Field(pattern=r"^ev_[0-9a-f]{24}$")
+    document_id: str
+    source_item_id: str
+    content: str = Field(min_length=1)
+    section: str | None = None
+    role: InformationRole
+    authority: Authority
+    temporal_status: TemporalStatus
+    precedence: int = Field(ge=1)
+    product_association: ProductAssociation = ProductAssociation.UNKNOWN
+    effective_periods: tuple[EffectivePeriod, ...] = ()
+    conditions: tuple[str, ...] = ()
+    locator: SourceLocator
+
+
+class ModelCitation(ExtractionModel):
+    evidence_id: str = Field(pattern=r"^ev_[0-9a-f]{24}$")
+    quote: str = Field(min_length=1, max_length=1500)
+
+
+class ModelFieldResult(ExtractionModel):
+    field: ExtractionField
+    status: ExtractionStatus
+    value_json: str | None = Field(default=None, max_length=50_000)
+    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=20)
+    explanation: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_state(self) -> ModelFieldResult:
+        if self.status is ExtractionStatus.FOUND:
+            if self.value_json is None or not self.evidence:
+                raise ValueError("found model result requires value and evidence")
+        elif self.status is ExtractionStatus.NOT_STATED:
+            if self.value_json is not None or self.evidence:
+                raise ValueError(
+                    "not_stated model result requires no value or evidence"
+                )
+        elif not self.evidence:
+            raise ValueError("ambiguous/conflicting model result requires evidence")
+        return self
+
+
+class ExtractionBatch(ExtractionModel):
+    id: str
+    product: ProductType
+    group: str
+    fields: tuple[ExtractionField, ...] = Field(min_length=1)
+    evidence: tuple[EvidenceItem, ...] = Field(min_length=1)
+    content_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    canonical_url: HttpUrl | None = None
+    target_scope: tuple[str, ...] = ()
+    repair_context_json: str | None = Field(default=None, max_length=100_000)
+
+
+class ExtractionBatchResponse(ExtractionModel):
+    results: tuple[ModelFieldResult, ...] = Field(min_length=1)
+
+
+class ValidationIssue(ExtractionModel):
+    location: tuple[str | int, ...] = ()
+    message: str
+    error_type: str
+    input_value: str | None = None
+
+
+class ValidatedFieldResult(ExtractionModel):
+    field: ExtractionField
+    status: ExtractionStatus
+    value: Any = None
+    evidence: tuple[EvidenceCitation, ...] = ()
+    explanation: str | None = None
+    batch_id: str
+
+
+class ExtractionReviewItem(ExtractionModel):
+    review_id: str = Field(pattern=r"^review_[0-9a-f]{24}$")
+    batch_id: str
+    field: ExtractionField
+    model_name: str
+    raw_result: ModelFieldResult | None = None
+    raw_response: str | None = None
+    validation_issues: tuple[ValidationIssue, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = ()
+
+
+class PartialLoanProduct(ExtractionModel):
+    canonical_url: HttpUrl
+    retrieved_at: datetime
+    category: LoanCategory | None = None
+    fields: tuple[ValidatedFieldResult, ...] = ()
+
+
+class RawBatchOutput(ExtractionModel):
+    batch_id: str
+    group: str
+    model_name: str
+    raw_response: str
+    parsed_response: ExtractionBatchResponse | None = None
+    normalized_response: ExtractionBatchResponse | None = None
+    normalization_notes: tuple[str, ...] = ()
+    error: str | None = None
+
+
+class SemanticExtractionPlan(ExtractionModel):
+    product: ProductType
+    canonical_url: HttpUrl
+    input_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    schema_version: str
+    prompt_version: str
+    model_name: str
+    evidence_catalog: tuple[EvidenceItem, ...]
+    batches: tuple[ExtractionBatch, ...]
+    cached_batches: tuple[ExtractionBatch, ...] = ()
+    cache_hits: tuple[ExtractionBatchResponse, ...] = ()
+
+
+class SemanticExtractionResult(ExtractionModel):
+    product: ProductType
+    model_name: str
+    status: SemanticExtractionRunStatus = SemanticExtractionRunStatus.COMPLETED
+    loan_product: LoanProduct | None = None
+    partial_product: PartialLoanProduct | None = None
+    evidence_catalog: tuple[EvidenceItem, ...]
+    batch_results: tuple[ExtractionBatchResponse, ...]
+    raw_batch_outputs: tuple[RawBatchOutput, ...] = ()
+    validated_fields: tuple[ValidatedFieldResult, ...] = ()
+    review_items: tuple[ExtractionReviewItem, ...] = ()
+    reused_batch_count: int = Field(ge=0)

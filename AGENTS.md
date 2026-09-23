@@ -3,8 +3,9 @@
 ## Project Architecture
 
 - This is a modular-monolith ADK application for Ameria Bank consumer loans and mortgages.
-- Keep Gemini limited to intent resolution and evidence-bound structured extraction.
-- Keep discovery constraints, downloads, parsing/OCR routing, normalization, validation,
+- Keep Gemini limited to intent resolution, bounded PDF structure transcription, and
+  evidence-bound structured extraction.
+- Keep discovery constraints, downloads, PDF admission/input probing, normalization, validation,
   persistence, change detection, HITL routing, scheduling, and reporting deterministic.
 - Never expose raw network, filesystem, shell, database, or SQL tools to the model.
 - Both FastAPI and `app.worker` must call the same `TariffPipeline` application service.

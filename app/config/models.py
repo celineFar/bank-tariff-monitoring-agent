@@ -22,6 +22,22 @@ _HOST_LABEL = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)$")
 _LOG_LEVELS = frozenset(logging.getLevelNamesMapping())
 
 
+class RetrievalTraceLevel(StrEnum):
+    """How much of one retrieval to write to the `tariff.retrieval` logger."""
+
+    OFF = "off"
+    SUMMARY = "summary"
+    STEPS = "steps"
+    VERBOSE = "verbose"
+
+
+class AnswerReadModel(StrEnum):
+    """Which read model answers ordinary tariff questions."""
+
+    STRUCTURED = "structured"
+    LEGACY = "legacy"
+
+
 class Environment(StrEnum):
     DEVELOPMENT = "development"
     TEST = "test"
@@ -35,7 +51,9 @@ class SettingsGroup(BaseModel):
 class ApplicationSettings(SettingsGroup):
     name: str = "ameria-tariff-monitor"
     environment: Environment = Environment.DEVELOPMENT
-    artifact_storage_dir: Path = Path("data/artifacts")
+    artifact_temp_dir: Path = Path("data/artifacts")
+    pipeline_audit_enabled: bool = True
+    pipeline_audit_dir: Path = Path("artifacts/pipeline-audit")
 
     @field_validator("name")
     @classmethod
@@ -99,14 +117,7 @@ class DatabaseSettings(SettingsGroup):
 
 class HttpSettings(SettingsGroup):
     allowed_source_hosts: tuple[str, ...] = ("ameriabank.am", "www.ameriabank.am")
-    allowed_download_mime_types: tuple[str, ...] = (
-        "application/pdf",
-        "text/html",
-        "application/msword",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    allowed_download_mime_types: tuple[str, ...] = ("application/pdf", "text/html")
     user_agent: str = "ameria-tariff-monitor/0.1"
     timeout_seconds: float = Field(default=20, gt=0, le=120)
     max_attempts: int = Field(default=3, ge=1, le=5)
@@ -115,19 +126,6 @@ class HttpSettings(SettingsGroup):
     max_retry_delay_seconds: float = Field(default=120, gt=0, le=3600)
     max_redirects: int = Field(default=5, ge=0, le=10)
     max_download_bytes: int = Field(default=25 * 1024 * 1024, gt=0)
-    max_html_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
-    crawl_max_concurrent_requests: int = Field(default=4, ge=1, le=20)
-    crawl_requests_per_second: float = Field(default=2, gt=0, le=20)
-    crawl_max_supporting_depth: int = Field(default=1, ge=0, le=1)
-    crawl_render_dynamic_pages: bool = True
-    crawl_render_timeout_seconds: float = Field(default=15, gt=0, le=60)
-    crawl_max_concurrent_renders: int = Field(default=2, ge=1, le=4)
-    discovery_sitemap_urls: tuple[str, ...] = (
-        "https://ameriabank.am/Portals/0/sitemap.xml",
-    )
-    discovery_max_sitemaps: int = Field(default=8, ge=0, le=50)
-    discovery_max_sitemap_entries: int = Field(default=5000, ge=1, le=100_000)
-    discovery_max_candidates_per_product: int = Field(default=250, ge=1, le=5000)
     allow_origins: tuple[str, ...] = ("http://localhost:3000",)
 
     @field_validator("user_agent")
@@ -161,34 +159,6 @@ class HttpSettings(SettingsGroup):
         if not normalized:
             raise ValueError("at least one source host is required")
         return tuple(normalized)
-
-    @field_validator("discovery_sitemap_urls")
-    @classmethod
-    def validate_sitemap_urls(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        normalized: list[str] = []
-        for value in values:
-            parsed = urlsplit(value.strip())
-            if (
-                parsed.scheme != "https"
-                or not parsed.hostname
-                or parsed.username
-                or parsed.password
-                or parsed.fragment
-            ):
-                raise ValueError(f"invalid sitemap URL: {value!r}")
-            clean = parsed.geturl()
-            if clean not in normalized:
-                normalized.append(clean)
-        return tuple(normalized)
-
-    @model_validator(mode="after")
-    def require_allowlisted_sitemap_hosts(self) -> HttpSettings:
-        allowed = set(self.allowed_source_hosts)
-        for value in self.discovery_sitemap_urls:
-            host = (urlsplit(value).hostname or "").lower().rstrip(".")
-            if host not in allowed:
-                raise ValueError("sitemap URLs must use an allowlisted source host")
-        return self
 
     @field_validator("allowed_download_mime_types")
     @classmethod
@@ -224,20 +194,83 @@ class HttpSettings(SettingsGroup):
         return tuple(normalized)
 
 
+class AcquisitionSettings(SettingsGroup):
+    browser_enabled: bool = True
+    min_static_text_chars: int = Field(default=500, ge=0, le=100_000)
+    browser_navigation_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    browser_settle_milliseconds: int = Field(default=750, ge=0, le=10_000)
+    max_interactions: int = Field(default=100, ge=0, le=100)
+    max_network_payloads: int = Field(default=25, ge=0, le=200)
+    max_network_payload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
+    max_linked_documents: int = Field(default=10, ge=0, le=50)
+    # How long an acquisition stays usable. Within the window a run reuses the
+    # stored page artifact instead of fetching the bank again; 0 disables reuse
+    # and every run re-acquires. Only acquisition is skipped -- normalization
+    # onward still execute, and hit their own content-addressed caches.
+    freshness_hours: float = Field(default=1.0, ge=0, le=720)
+
+
+class PdfExtractionSettings(SettingsGroup):
+    schema_version: str = Field(default="2", min_length=1, max_length=50)
+    prompt_version: str = Field(default="2", min_length=1, max_length=50)
+    model_name: str = "gemini-3.1-flash-lite"
+    fallback_model_names: tuple[str, ...] = ()
+    max_price_per_million_tokens_usd: float = Field(default=1.5, gt=0, le=100)
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
+    max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
+    retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    probe_text_threshold: int = Field(default=20, ge=0, le=10_000)
+    skip_historical: bool = True
+
+    @field_validator("fallback_model_names")
+    @classmethod
+    def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if len(normalized) > 5 or len(set(normalized)) != len(normalized):
+            raise ValueError("PDF fallback models must be unique and at most five")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_retry_limits(self) -> PdfExtractionSettings:
+        if self.backoff_base_seconds > self.max_backoff_seconds:
+            raise ValueError("PDF extraction base backoff must not exceed maximum")
+        return self
+
+
 class OcrSettings(SettingsGroup):
-    languages: tuple[str, ...] = ("hye", "eng")
-    min_text_chars_per_page: int = Field(default=80, ge=0)
-    dpi: int = Field(default=300, ge=150, le=600)
-    max_pages: int = Field(default=50, ge=1, le=500)
-    timeout_seconds: float = Field(default=60, gt=0, le=600)
+    """Local OCR fallback for PDF pages that carry no text layer."""
+
+    enabled: bool = True
+    languages: str = "hye+eng"
+    render_dpi: int = Field(default=200, ge=72, le=600)
+    max_pages: int = Field(default=20, ge=1, le=500)
+    max_pixels_per_page: int = Field(default=40_000_000, ge=10_000, le=500_000_000)
+    min_confidence: float = Field(default=60.0, ge=0, le=100)
+    timeout_seconds: float = Field(default=60.0, gt=0, le=600)
+    tesseract_cmd: str | None = None
 
     @field_validator("languages")
     @classmethod
-    def validate_languages(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        normalized = tuple(dict.fromkeys(value.lower() for value in values))
-        if not normalized:
-            raise ValueError("at least one OCR language is required")
-        return normalized
+    def validate_languages(cls, value: str) -> str:
+        """Accept `+`, `,`, or whitespace separators; emit tesseract's `+` form.
+
+        Older local `.env` files wrote `hye,eng`, so both spellings are tolerated
+        rather than failing startup on a separator.
+        """
+        parts = [part for part in re.split(r"[+,\s]+", value.strip()) if part]
+        if not parts or len(parts) > 10:
+            raise ValueError("OCR_LANGUAGES must name between one and ten codes")
+        if any(not re.fullmatch(r"[a-z]{3}(_[A-Za-z]+)?", part) for part in parts):
+            raise ValueError("OCR_LANGUAGES codes must be three-letter tesseract codes")
+        return "+".join(parts)
+
+    @field_validator("tesseract_cmd", mode="before")
+    @classmethod
+    def empty_command_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class RagSettings(SettingsGroup):
@@ -255,9 +288,105 @@ class RagSettings(SettingsGroup):
         return self
 
 
+class IntentResolutionSettings(SettingsGroup):
+    fuzzy_min_score: float = Field(default=0.82, ge=0, le=1)
+    fuzzy_min_gap: float = Field(default=0.08, ge=0, le=1)
+    max_candidates: int = Field(default=5, ge=2, le=20)
+    classifier_max_attempts: int = Field(default=2, ge=1, le=5)
+
+
+class TariffQuerySettings(SettingsGroup):
+    freshness_days: int = Field(default=7, ge=1, le=365)
+    recent_change_days: int = Field(default=60, ge=1, le=3650)
+    default_history_days: int = Field(default=30, ge=1, le=3650)
+    max_history_results: int = Field(default=100, ge=1, le=1000)
+    run_wait_seconds: float = Field(default=120, gt=0, le=120)
+    run_poll_seconds: float = Field(default=0.5, gt=0, le=10)
+    # Reversible cutover switch; `legacy` restores the old RAG answer path.
+    answer_read_model: AnswerReadModel = AnswerReadModel.STRUCTURED
+    # `verbose` writes text projected from source documents; keep it local.
+    retrieval_trace_level: RetrievalTraceLevel = RetrievalTraceLevel.SUMMARY
+    retrieval_log_file: Path | None = None
+
+
+class SourceDiscoverySettings(SettingsGroup):
+    policy_version: str = Field(default="1", min_length=1, max_length=50)
+    prompt_version: str = Field(default="1", min_length=1, max_length=50)
+    max_items_per_batch: int = Field(default=8, ge=1, le=50)
+    max_chars_per_item: int = Field(default=3000, ge=500, le=12_000)
+    max_chars_per_batch: int = Field(default=18_000, ge=1000, le=100_000)
+    estimated_chars_per_input_token: float = Field(default=4.0, gt=0, le=20)
+    estimated_output_tokens_per_item: int = Field(default=160, ge=0, le=10_000)
+    classifier_max_attempts: int = Field(default=3, ge=1, le=10)
+    classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
+    classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
+    classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    model_name: str | None = "gemini-3.1-flash-lite"
+    fallback_model_names: tuple[str, ...] = ()
+    max_price_per_million_tokens_usd: float = Field(default=1.5, gt=0, le=100)
+
+    @field_validator("fallback_model_names")
+    @classmethod
+    def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if len(normalized) > 5:
+            raise ValueError(
+                "at most five source discovery fallback models are allowed"
+            )
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("source discovery fallback models must be unique")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_batch_limits(self) -> SourceDiscoverySettings:
+        if self.max_chars_per_item > self.max_chars_per_batch:
+            raise ValueError(
+                "source discovery item character limit must not exceed batch limit"
+            )
+        if self.classifier_backoff_base_seconds > self.classifier_max_backoff_seconds:
+            raise ValueError(
+                "source discovery classifier base backoff must not exceed maximum"
+            )
+        return self
+
+
+class SemanticExtractionSettings(SettingsGroup):
+    # Empty by default: the successor to a retired extraction model is an
+    # operational choice, so it is configured rather than assumed here.
+    fallback_model_names: tuple[str, ...] = ()
+    schema_version: str = Field(default="4", min_length=1, max_length=50)
+    prompt_version: str = Field(default="4", min_length=1, max_length=50)
+    max_evidence_chars_per_item: int = Field(default=5000, ge=500, le=20_000)
+    max_chars_per_batch: int = Field(default=20_000, ge=1000, le=100_000)
+    max_items_per_batch: int = Field(default=20, ge=1, le=100)
+    thinking_budget: int = Field(default=0, ge=-1, le=24_576)
+    max_repairs_per_run: int = Field(default=3, ge=0, le=50)
+
+    @field_validator("fallback_model_names")
+    @classmethod
+    def validate_fallback_models(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value if item.strip())
+        if len(normalized) > 5:
+            raise ValueError(
+                "at most five semantic extraction fallback models are allowed"
+            )
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("semantic extraction fallback models must be unique")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_batch_limits(self) -> SemanticExtractionSettings:
+        if self.max_evidence_chars_per_item > self.max_chars_per_batch:
+            raise ValueError(
+                "semantic extraction item character limit must not exceed batch limit"
+            )
+        return self
+
+
 class HitlSettings(SettingsGroup):
     document_rank_gap: float = Field(default=0.05, ge=0, le=1)
     large_rate_change_percentage_points: float = Field(default=3, gt=0)
+    review_admin_token: SecretStr | None = None
 
 
 class SchedulerSettings(SettingsGroup):
@@ -275,9 +404,60 @@ class SchedulerSettings(SettingsGroup):
         return value
 
 
+class TraceContentMode(StrEnum):
+    """How much model content a exported span may carry.
+
+    `NONE` keeps prompts and responses out of exported spans entirely. `MAPPED`
+    keeps them, but only after the exporter has rewritten ADK's vendor-specific
+    attributes into the names a trace backend reads, so the content that leaves
+    the process is exactly what the exporter chose to emit.
+    """
+
+    NONE = "none"
+    MAPPED = "mapped"
+
+
 class ObservabilitySettings(SettingsGroup):
     log_level: str = "INFO"
+    log_file: Path | None = None
+    log_timezone: str = "Asia/Yerevan"
+    log_max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    log_backup_count: int = Field(default=10, ge=1)
     otel_to_cloud: bool = False
+    otel_enabled: bool = False
+    otel_traces_endpoint: str | None = None
+    otel_service_name: str = "tariff-monitor"
+    otel_trace_content: TraceContentMode = TraceContentMode.NONE
+    otel_export_timeout_seconds: float = Field(default=10.0, gt=0)
+
+    @field_validator("otel_traces_endpoint")
+    @classmethod
+    def validate_traces_endpoint(cls, value: str | None) -> str | None:
+        """Reject anything that is not an absolute http(s) OTLP URL.
+
+        A malformed endpoint otherwise fails silently inside the batch
+        exporter's background thread, which looks identical to "tracing is off".
+        """
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            return None
+        parts = urlsplit(candidate)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise ValueError(
+                f"otel_traces_endpoint must be an absolute http(s) URL: {value}"
+            )
+        return candidate
+
+    @field_validator("log_timezone")
+    @classmethod
+    def validate_log_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"unknown IANA timezone: {value}") from exc
+        return value
 
     @field_validator("log_level")
     @classmethod
@@ -293,8 +473,14 @@ class Settings(SettingsGroup):
     models: ModelSettings
     database: DatabaseSettings
     http: HttpSettings
+    acquisition: AcquisitionSettings
+    pdf_extraction: PdfExtractionSettings
     ocr: OcrSettings
     rag: RagSettings
+    intent_resolution: IntentResolutionSettings
+    tariff_queries: TariffQuerySettings
+    source_discovery: SourceDiscoverySettings
+    semantic_extraction: SemanticExtractionSettings
     hitl: HitlSettings
     scheduler: SchedulerSettings
     observability: ObservabilitySettings

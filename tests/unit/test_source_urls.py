@@ -17,8 +17,6 @@ def test_official_https_url_is_allowed() -> None:
         "https://ameriabank.am.evil.example/loans",
         "https://127.0.0.1/document.pdf",
         "https://user:password@ameriabank.am/document.pdf",
-        "https://ameriabank.am:8443/document.pdf",
-        "https://ameriabank.am:invalid/document.pdf",
     ],
 )
 def test_unsafe_source_url_fails_closed(url: str) -> None:

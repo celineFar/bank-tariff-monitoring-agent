@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.domain.models import ProductType
+from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 
 EMBEDDING_DIMENSIONS = 768
 _KNOWLEDGE_NAMESPACE = UUID("8f7205ab-684c-4f2e-a183-e1f14c3bd3ec")
@@ -74,6 +74,8 @@ class KnowledgeDocument(KnowledgeModel):
     run_id: UUID
     bank: str = Field(default="ameria", min_length=1, max_length=100)
     product: ProductType
+    offering_id: OfferingId | None = None
+    document_kind: KnowledgeDocumentKind = KnowledgeDocumentKind.SOURCE
     document_key: str = Field(min_length=1, max_length=500)
     document_name: str = Field(min_length=1, max_length=1000)
     source_url: HttpUrl
@@ -149,6 +151,8 @@ def document_version_id(document: KnowledgeDocument) -> UUID:
         (
             document.bank.lower(),
             document.product.value,
+            document.offering_id.value if document.offering_id else "",
+            document.document_kind.value,
             document.document_key,
             document.content_sha256,
         )
@@ -162,6 +166,8 @@ def chunk_id(document: KnowledgeDocument, chunk: KnowledgeChunk) -> str:
             "bank": document.bank.lower(),
             "checksum": document.content_sha256,
             "document_key": document.document_key,
+            "document_kind": document.document_kind.value,
+            "offering_id": document.offering_id.value if document.offering_id else None,
             "ordinal": chunk.ordinal,
             "page_start": chunk.page_start,
             "page_end": chunk.page_end,

@@ -1,24 +1,7 @@
-from typing import Any, Protocol
+from typing import Protocol
 
-from app.domain.discovery import StoredArtifact
-from app.domain.models import ProductType
+from app.domain.monitoring import MonitoringRun
 
 
 class TariffPipeline(Protocol):
-    async def run(
-        self, product: ProductType, trigger: str, query: str | None
-    ) -> str: ...
-
-
-class ArtifactStore(Protocol):
-    async def put(
-        self,
-        *,
-        content: bytes,
-        sha256: str,
-        mime_type: str,
-    ) -> StoredArtifact: ...
-
-    async def read(self, storage_key: str) -> bytes: ...
-
-    async def write_manifest(self, run_id: str, payload: dict[str, Any]) -> str: ...
+    async def execute(self, run: MonitoringRun) -> MonitoringRun: ...

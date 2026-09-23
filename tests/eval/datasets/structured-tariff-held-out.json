@@ -1,0 +1,44 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "q09_overdraft_rate_armenian",
+      "prompt": {"role": "user", "parts": [{"text": "Օվերդրաֆտի տոկոսադրույքը որքա՞ն է։"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Answer in Armenian. Resolve overdraft only, then answer_tariff_query. Report both the nominal rate per currency (AMD 14-18%, USD 10-13%) and the effective rate 18%, keep the currencies separate, and close with the accepted as-of time and the official source URL with its section. Never start monitoring."}]}}
+    },
+    {
+      "eval_case_id": "q05_overdraft_usd_amount",
+      "prompt": {"role": "user", "parts": [{"text": "What is the Overdraft loan amount in USD?"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve overdraft only and call answer_tariff_query. Report only the USD amount variant (1000 to 50000 USD) because the question names one currency; do not present the AMD variant as the answer and do not convert between currencies. Cite the official source and the accepted as-of time."}]}}
+    },
+    {
+      "eval_case_id": "q08_compare_overdraft_credit_line",
+      "prompt": {"role": "user", "parts": [{"text": "Compare the Overdraft and the Credit Line interest rate."}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve both overdraft and credit_line, then call answer_tariff_query once for the comparison. Present a side-by-side comparison of the nominal rates (Overdraft AMD 14-18%, Credit Line AMD 13-17%) and effective rates (18% vs 17%), aligned by currency, with citations and the accepted as-of time. Do not widen the comparison to other consumer offerings and do not compute new numbers."}]}}
+    },
+    {
+      "eval_case_id": "q10_consumer_lowest_nominal_rate",
+      "prompt": {"role": "user", "parts": [{"text": "Which consumer loan has the lowest nominal interest rate in AMD?"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve the consumer loan family and call answer_tariff_query for a family ranking. Report Online Consumer Finance at 9% AMD as the lowest minimum nominal rate, state that the comparison is restricted to AMD, and cite the source and accepted as-of time. Do not rank across currencies and do not invent an ordering the tool did not return."}]}}
+    },
+    {
+      "eval_case_id": "q24_mortgage_lowest_application_fee",
+      "prompt": {"role": "user", "parts": [{"text": "Which mortgage loans have the lowest application fee?"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve the mortgage family and call answer_tariff_query. The tool returns an incomparable result because one application fee is a percentage and the others are fixed amounts, so explain that no single lowest fee can be named, list the disclosed fees with their units, and cite them. Declaring a winner anyway is a failure."}]}}
+    },
+    {
+      "eval_case_id": "q20_mortgage_down_payment",
+      "prompt": {"role": "user", "parts": [{"text": "What down payment and collateral does the Primary Market Mortgage require?"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve mortgage_primary only and call answer_tariff_query. Report the 20% minimum down payment and the purchased primary-market property as collateral, note that no alternative security is stated rather than inventing one, and cite the source with the accepted as-of time."}]}}
+    },
+    {
+      "eval_case_id": "q13_credit_line_fee_inventory",
+      "prompt": {"role": "user", "parts": [{"text": "What fees apply to the Credit Line?"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve credit_line only and call answer_tariff_query. List both disclosed fees with their scope and unit: a 4000 AMD application fee and a 0.5 percent service fee. Do not rank a fixed amount against a percentage into one highest fee and do not add fees the tool did not return. Cite each fee and give the accepted as-of time."}]}}
+    },
+    {
+      "eval_case_id": "q25_mortgage_accepted_changes",
+      "prompt": {"role": "user", "parts": [{"text": "What changed in the Primary Market Mortgage tariff?"}]},
+      "reference": {"response": {"role": "model", "parts": [{"text": "Resolve mortgage_primary and route the history intent to the accepted change set. Report that the minimum nominal interest rate moved from 10% to 11%, give both the previous and current values with their evidence, and do not present a pending or unaccepted candidate as a change. Never start monitoring."}]}}
+    }
+  ]
+}

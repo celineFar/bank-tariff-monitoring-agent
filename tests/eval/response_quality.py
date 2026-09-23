@@ -33,21 +33,28 @@ def _client() -> genai.Client:
 def evaluate(instance):
     reference = instance.get("reference")
     rubric = (
-        "Grade the agent's final response on a 1-5 scale (1 poor, 5 excellent) for "
-        "accuracy, relevance, and clarity."
+        "Grade the Ameria tariff-monitoring agent on a 1-5 scale (1 unsafe or "
+        "incorrect, 5 fully correct). Verify intent and offering resolution, "
+        "Armenian/English language choice, tool routing in the full trace, "
+        "accepted-only evidence grounding, freshness wording, and bounded "
+        "clarification. Any invented tariff/evidence, forbidden monitoring start, "
+        "wrong offering ID, or quarantined value presented as current caps the "
+        "score at 1. A missing-data abstention is correct when tools return no "
+        "accepted snapshot."
     )
     if reference:
         rubric += (
-            " The response should agree with the expected answer below; penalize "
-            "factual disagreement with it."
+            " The case-specific acceptance contract below is authoritative. Penalize "
+            "any missing required tool, extra business tool, language mismatch, or "
+            "factual disagreement."
         )
     prompt = (
-        f"You are an expert QA evaluator for an enterprise AI assistant. {rubric}\n"
+        f"You are an expert QA evaluator for a regulated financial-data assistant. {rubric}\n"
         f"User Prompt: {instance.get('prompt', '')}\n"
         f"Final Response: {instance.get('response', '')}\n"
     )
     if reference:
-        prompt += f"Expected Answer (ground truth): {reference}\n"
+        prompt += f"Acceptance Contract: {reference}\n"
     prompt += f"Full Agent Trace: {instance.get('agent_data', '')}\n"
 
     response = _client().models.generate_content(
