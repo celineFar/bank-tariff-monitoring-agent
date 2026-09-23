@@ -23,15 +23,92 @@ The system includes:
 Standard tariff questions are answered from accepted, typed facts with per-value citations.
 
 
+## Setup
 
-## Runtime
+Everything runs in Docker. You need only:
 
-- ADK agent and standard ADK/A2A FastAPI surface
-- Project API under `/api/v1`
-- Daily worker at 06:00 `Asia/Yerevan`
-- PostgreSQL 17 with pgvector
-- Docker Compose for a single AWS compute instance
+- Docker Engine with Compose v2 (`docker compose version`)
+- A Gemini API key
 
+No Python, `uv`, Playwright, or Tesseract installation on the host — the image
+carries them.
+
+### 1. Configure the environment
+
+```bash
+cp .env.example .env
+```
+
+Set `GEMINI_API_KEY` in `.env`. Every other value has a working default for local
+use; the defaults already point `DATABASE_URL` and `SESSION_SERVICE_URI` at the
+Compose `db` service.
+
+### 2. Start the stack
+
+```bash
+docker compose up --build -d
+```
+
+This builds the image and starts three containers: `db` (PostgreSQL 17 with
+pgvector), `api` (FastAPI and the ADK surface on `http://localhost:8080`), and
+`worker` (the daily 06:00 `Asia/Yerevan` trigger). The SQL files in
+[migrations/](migrations/) are applied automatically the first time the database
+volume is created.
+
+Wait for the database to report healthy before continuing:
+
+```bash
+docker compose ps
+```
+
+### 3. Prepare the ADK session schema
+
+The conversation is durable, so ADK needs its session tables:
+
+```bash
+docker compose exec api uv run python scripts/check_adk_session_schema.py
+```
+
+It prints `ADK session schema is ready` and is safe to re-run.
+
+## Talking to the agent
+
+Start a conversation:
+
+```bash
+./tariff-chat
+```
+
+The script runs the ADK CLI inside the `api` container, so the agent shares the
+same database, configuration, and monitoring runs as the rest of the stack.
+
+From there you can ask tariff questions in plain language, trigger a monitoring
+run, and answer human-review prompts when the agent pauses for one. While a run
+is in progress the CLI prints each monitoring stage as it completes.
+
+The session is durable. On start the CLI prints a session ID; reconnect to the
+same conversation — including a run still waiting on your review — with:
+
+```bash
+./tariff-chat --session-id <id>
+```
+
+Optional flags: `--user-id <name>` to separate conversations, `--poll-seconds <n>`
+to change how often the CLI checks a running monitoring job.
+
+If `tariff-chat` reports that the container does not have this CLI version, the
+image is older than your checkout:
+
+```bash
+docker compose up --build -d api
+```
+
+### Stopping
+
+```bash
+docker compose down        # stop containers, keep the database
+docker compose down -v     # also discard the database and re-run migrations next start
+```
 
 
 ## Demonstrations
@@ -106,56 +183,50 @@ Operating it is covered by [run lifecycle](docs/run-lifecycle.md),
 The generated ADK integration surface is described in
 [.agents-cli-spec.md](.agents-cli-spec.md).
 
-## Local setup
-
-1. Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
-2. Install dependencies: `agents-cli install`.
-3. Install the local acquisition browser: `uv run playwright install chromium`.
-   For the scanned-PDF OCR fallback, also install the optional extra and a
-   tesseract engine: `uv sync --extra ocr`, plus `tesseract-ocr`,
-   `tesseract-ocr-hye`, and `tesseract-ocr-eng` (Linux), or the Tesseract
-   installer with `hye.traineddata` and `OCR_TESSERACT_CMD` set (Windows). The
-   pipeline runs without it; scanned pages simply stay empty rather than being
-   guessed.
-4. Verify/create the ADK session schema: `uv run python scripts/check_adk_session_schema.py`.
-5. Run deterministic tests: `uv run pytest tests/unit`.
-6. Start the full stack: `docker compose up --build`.
-7. Open API documentation at `http://localhost:8080/docs`.
-
-For a durable terminal conversation, run `./tariff-chat` after the Compose
-stack is up. It shows monitoring stages while the worker runs and prints a
-session ID. Reconnect with `./tariff-chat --session-id <id>`.
-
-The ADK playground can be started with `agents-cli playground` after dependencies are
-installed. Behavioral evaluation uses `agents-cli eval run`; it requires configured
-model credentials and an indexed local corpus.
-
 
 ## Local logs
 
-`docker compose logs -f --tail=200 worker api` shows live console output. Compose also
-writes rotating, persistent host files under `logs/api.log` and `logs/worker.log`;
-numbered files such as `worker.log.1` hold older entries across container recreation.
-Use `rg '<run-id>' logs/` to inspect a past run. Each file entry has an ISO 8601 timestamp
-with an explicit offset, defaulting to `Asia/Yerevan`. `LOG_TIMEZONE`, `LOG_LEVEL`,
-`LOG_MAX_BYTES`, and `LOG_BACKUP_COUNT` are configurable in `.env`. Logs stay on the EC2
-host disk and must be copied or shipped separately to survive host replacement.
+View live application logs with:
+
+```bash
+docker compose logs -f --tail=200 worker api
+```
+
+Persistent logs are also written to:
+
+```text
+logs/api.log
+logs/worker.log
+```
+
+To inspect logs for a specific monitoring run:
+
+```bash
+rg '<run-id>' logs/
+```
 
 ## Tracing and metrics
 
-Tracing is off by default. Set `OTEL_ENABLED=true` to print spans to the console,
-which is enough to see a whole run end to end. For a UI, start the opt-in profile
-with `docker compose --profile observability up -d` and point `OTEL_TRACES_ENDPOINT`
-at Langfuse on `http://localhost:3001`.
+Tracing is disabled by default. Enable it with:
 
-One monitoring run is one trace even though it crosses processes: the trigger, the
-worker that claims it, and the process that resolves a human review all contribute
-spans. Prompts and model responses are kept out of exported spans unless
-`OTEL_TRACE_CONTENT=mapped` is set explicitly.
+```env
+OTEL_ENABLED=true
+```
 
-`uv run python scripts/run_metrics_report.py --days 30` reports run duration,
-failure taxonomies, per-field extraction completeness, evidence coverage, and HITL
-rate from the audit tables. See [observability](docs/observability.md).
+To start the optional observability stack:
+
+```bash
+docker compose --profile observability up -d
+```
+
+Generate a monitoring metrics report with:
+
+```bash
+uv run python scripts/run_metrics_report.py --days 30
+```
+
+For tracing configuration, metrics definitions, and operational details, see [Observability](docs/observability.md).
+
 
 ## Main layout
 
