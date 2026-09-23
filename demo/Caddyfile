@@ -1,0 +1,12 @@
+# Demonstration mirror. Serves prepared copies of an official page over the
+# HTTPS that app/security/urls.py requires, so a republished tariff can be
+# filmed without waiting on the bank. Demonstration-only.
+{
+	admin off
+}
+
+https://tariff-mirror.demo {
+	tls /certs/tariff-mirror.demo.pem /certs/tariff-mirror.demo-key.pem
+	root * /srv
+	file_server browse
+}

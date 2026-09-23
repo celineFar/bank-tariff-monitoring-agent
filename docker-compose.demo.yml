@@ -1,0 +1,55 @@
+# Demonstration-only overlay. Nothing here changes the application: it adds a
+# local HTTPS mirror, trusts its certificate inside api and worker, and points
+# one catalog entry at it so a republished tariff page can be recorded.
+#
+# Use it by exporting COMPOSE_FILE so ./tariff-chat keeps working unchanged:
+#
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml
+#
+# With the overlay absent, the stack is exactly the shipped one.
+services:
+  mirror:
+    image: caddy:2-alpine
+    volumes:
+      - ./demo/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./demo/certs:/certs:ro
+      - ${DEMO_MIRROR_ROOT:-./demo/mirror/unchanged}:/srv:ro
+    networks:
+      default:
+        aliases: ["tariff-mirror.demo"]
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
+    # A distinct tag, so the demo image never overwrites the base it extends.
+    image: bank-tariff-monitoring-agent-demo
+    env_file:
+      - .env
+      - demo/.env.demo
+    volumes:
+      - ./logs:/var/log/tariff-monitor
+      - ./artifacts/pipeline-audit:/code/artifacts/pipeline-audit
+      - ./demo/ca:/demo/ca:ro
+      - ./demo/seed_catalog.demo.yaml:/code/app/config/seed_catalog.yaml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
+    image: bank-tariff-monitoring-agent-demo
+    env_file:
+      - .env
+      - demo/.env.demo
+    volumes:
+      - ./logs:/var/log/tariff-monitor
+      - ./artifacts/pipeline-audit:/code/artifacts/pipeline-audit
+      - ./demo/ca:/demo/ca:ro
+      - ./demo/seed_catalog.demo.yaml:/code/app/config/seed_catalog.yaml:ro
+    depends_on:
+      db:
+        condition: service_healthy

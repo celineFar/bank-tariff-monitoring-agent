@@ -222,3 +222,10 @@ end-to-end/
 /logs/
 # Internal fix/debug plans (not part of the deliverable)
 /fix-plans/
+
+# Demonstration certificate material. Generated locally by demo/bin/make-certs.sh;
+# a private key is never committed, not even for a demo-only root.
+/demo/ca/
+/demo/certs/
+# Generated oversized fixture for the source.size_rejected demonstration.
+/demo/mirror/oversized/
