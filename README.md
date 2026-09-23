@@ -186,6 +186,11 @@ The generated ADK integration surface is described in
 
 ## Local logs
 
+Logging is the Python standard library `logging` module, configured once in
+`app/services/logging_setup.py`: a console handler plus a `RotatingFileHandler`
+(10 MB per file, 10 backups) and a formatter that stamps every record in
+`Asia/Yerevan` rather than UTC. No logging framework is layered on top.
+
 View live application logs with:
 
 ```bash
@@ -207,6 +212,19 @@ rg '<run-id>' logs/
 
 ## Tracing and metrics
 
+Tracing is **OpenTelemetry**. The SDK is set up in `app/services/telemetry.py`,
+which exports over **OTLP/HTTP** when `OTEL_TRACES_ENDPOINT` is set and falls
+back to the console exporter when it is not. Spans come from ADK's own
+instrumentation (`invoke_workflow`, `invoke_agent`, `call_llm`, `execute_tool`),
+the `google-genai` instrumentation library, and a span per offering and per
+stage opened by the pipeline. Trace context is carried across the HTTP, worker,
+and CLI process boundaries through PostgreSQL, so one run is one trace.
+
+The trace backend is **Langfuse 4**, shipped as an opt-in Compose profile
+(Langfuse plus its PostgreSQL, ClickHouse, Redis, and MinIO dependencies — six
+containers next to the three-container application, which is why it is not in
+the default stack).
+
 Tracing is disabled by default. Enable it with:
 
 ```env
@@ -219,7 +237,20 @@ To start the optional observability stack:
 docker compose --profile observability up -d
 ```
 
-Generate a monitoring metrics report with:
+The Langfuse UI is then at `http://localhost:3001`, and `OTEL_TRACES_ENDPOINT`
+points at its OTLP receiver:
+
+```env
+OTEL_TRACES_ENDPOINT=http://langfuse:3000/api/public/otel/v1/traces
+```
+
+`OTEL_TRACE_CONTENT` controls whether prompts and model responses leave the
+process at all; it defaults to `none`.
+
+Metrics are **not** an OpenTelemetry metrics pipeline. They are SQL aggregates
+computed on demand over the durable audit tables (`monitoring_runs`,
+`offering_executions`, `tariff_facts`, `human_reviews`, `model_call_usage`, and
+others), so they have no retention window. Generate a report with:
 
 ```bash
 uv run python scripts/run_metrics_report.py --days 30
