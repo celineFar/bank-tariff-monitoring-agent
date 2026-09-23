@@ -229,3 +229,5 @@ end-to-end/
 /demo/certs/
 # Generated oversized fixture for the source.size_rejected demonstration.
 /demo/mirror/oversized/
+# Local database restore point for retakes; recreate with demo/bin/baseline.sh capture.
+/demo/baseline/
