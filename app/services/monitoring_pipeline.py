@@ -50,6 +50,7 @@ from app.services.failure_mapping import (
     describe_failure,
     source_failure_code,
 )
+from app.services.knowledge_index import EmbeddingQuotaExhausted
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
 from app.services.snapshot_lifecycle import (
@@ -297,10 +298,10 @@ class IndexingPipeline:
                     language=offering.language or artifact.language or "en",
                 ),
             )
-        embedded = await stage(
+        embedded, index_deferred = await stage(
             "embedding",
             "indexing.embedding_failed",
-            self._embed_all(documents),
+            self._embed_all_or_defer(documents),
         )
         selected = {document.document_key: document for document in embedded}
         manifest_items = tuple(
@@ -320,7 +321,10 @@ class IndexingPipeline:
             selected_count=sum(item.selected for item in manifest_items),
             document_count=len(embedded),
             chunk_count=sum(len(document.chunks) for document in embedded),
-            warning_codes=tuple(warning.code.value for warning in bundle.warnings),
+            warning_codes=(
+                *(warning.code.value for warning in bundle.warnings),
+                *(("indexing.embedding_deferred",) if index_deferred else ()),
+            ),
             timings=tuple(timings),
         )
         provenance_changed = evidence_changed(previous, snapshot)
@@ -365,6 +369,33 @@ class IndexingPipeline:
                 exc_info=True,
             )
             return None
+
+    async def _embed_all_or_defer(
+        self, documents: Sequence[KnowledgeDocument]
+    ) -> tuple[tuple[EmbeddedKnowledgeDocument, ...], bool]:
+        """Embed the corpus, or defer it when the provider is out of quota.
+
+        A quota refusal says the request was well-formed and the window has
+        moved, so losing a run that was acquired, extracted, validated and
+        human-reviewed is the wrong trade. The snapshot, its facts and its
+        retrieval units are projected from the snapshot itself and never needed
+        these vectors, and the answer path falls back to lexical recall, so
+        publishing without the source-faithful corpus degrades retrieval rather
+        than discarding the tariff data.
+
+        Publishing no documents supersedes nothing, so the previous corpus stays
+        searchable until the next run rebuilds it from the content-addressed
+        caches. Every other embedding failure still raises: a malformed response
+        or a dimension mismatch is a defect, not a window to wait out.
+        """
+        try:
+            return await self._embed_all(documents), False
+        except EmbeddingQuotaExhausted:
+            logger.warning(
+                "embedding deferred for lack of provider quota; publishing the "
+                "snapshot without the source corpus"
+            )
+            return (), True
 
     async def _embed_all(
         self, documents: Sequence[KnowledgeDocument]

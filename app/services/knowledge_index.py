@@ -31,9 +31,25 @@ class EmbeddingError(RuntimeError):
     pass
 
 
+class EmbeddingQuotaExhausted(EmbeddingError):
+    """The provider refused the batch for quota, not because anything is wrong.
+
+    Kept distinct from every other embedding failure because only this one is
+    safe to defer: the request was well-formed and the model is healthy, so the
+    same call will succeed once the quota window moves. A malformed response or
+    a dimension mismatch is a defect and must still fail the offering.
+    """
+
+
 logger = logging.getLogger(__name__)
 _EMBED_BATCH_SIZE = 20
-_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+_QUOTA_STATUS_CODE = 429
+_TRANSIENT_STATUS_CODES = frozenset({500, 502, 503, 504})
+
+
+def _retry_delay(base_seconds: float, attempt: int) -> float:
+    """Linear backoff, matching the schedule this loop has always used."""
+    return base_seconds * (attempt + 1)
 
 
 class EmbeddingProvider(Protocol):
@@ -62,11 +78,19 @@ class GeminiEmbeddingProvider:
         *,
         dimensions: int = EMBEDDING_DIMENSIONS,
         usage_repository: PostgresModelCallUsageRepository | None = None,
+        max_attempts: int = 3,
+        backoff_base_seconds: float = 10.0,
+        quota_max_attempts: int = 4,
+        quota_backoff_base_seconds: float = 30.0,
     ) -> None:
         self._usage_repository = usage_repository
         self._client = client
         self._model_name = model_name
         self._dimensions = dimensions
+        self._max_attempts = max_attempts
+        self._backoff_base_seconds = backoff_base_seconds
+        self._quota_max_attempts = quota_max_attempts
+        self._quota_backoff_base_seconds = quota_backoff_base_seconds
 
     @property
     def dimensions(self) -> int:
@@ -85,7 +109,8 @@ class GeminiEmbeddingProvider:
         for offset in range(0, len(contents), _EMBED_BATCH_SIZE):
             batch = list(contents[offset : offset + _EMBED_BATCH_SIZE])
             call_id = str(uuid4())
-            for attempt in range(3):
+            attempt = 0
+            while True:
                 try:
                     response = await observe_model_call(
                         lambda batch=batch: self._client.aio.models.embed_content(
@@ -114,11 +139,23 @@ class GeminiEmbeddingProvider:
                         len(batch),
                         attempt + 1,
                     )
-                    if exc.code not in _RETRYABLE_STATUS_CODES or attempt == 2:
-                        raise EmbeddingError(
-                            f"embedding provider error {exc.code} {exc.status}"
-                        ) from exc
-                    await asyncio.sleep(10 * (attempt + 1))
+                    quota = exc.code == _QUOTA_STATUS_CODE
+                    if quota:
+                        attempts = self._quota_max_attempts
+                        base = self._quota_backoff_base_seconds
+                    elif exc.code in _TRANSIENT_STATUS_CODES:
+                        attempts = self._max_attempts
+                        base = self._backoff_base_seconds
+                    else:
+                        attempts = 1
+                        base = 0.0
+                    if attempt + 1 >= attempts:
+                        detail = f"embedding provider error {exc.code} {exc.status}"
+                        if quota:
+                            raise EmbeddingQuotaExhausted(detail) from exc
+                        raise EmbeddingError(detail) from exc
+                    await asyncio.sleep(_retry_delay(base, attempt))
+                    attempt += 1
             embeddings = response.embeddings or []
             if len(embeddings) != len(batch) or any(
                 embedding.values is None for embedding in embeddings

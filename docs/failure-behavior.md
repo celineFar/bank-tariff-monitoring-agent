@@ -55,3 +55,36 @@ cannot activate knowledge documents, a failed review resume cannot fabricate a d
 and reconciliation never invents reviewer input. Deterministic fixtures cover the stable
 codes; the native-review demonstration separately covers valid reviewer choices backed by
 captured evidence.
+
+
+## A provider quota defers the index rather than losing the run
+
+An embedding refusal with HTTP 429 is the one failure in this document that does
+not fail the offering. It says the request was well-formed and the model is
+healthy; only the quota window has moved. Failing on it would discard a run that
+had already been acquired, normalized, discovered, extracted, validated and, in
+many cases, corrected by a human reviewer.
+
+Retries are therefore split by what the refusal means. A 5xx follows
+`EMBEDDING_MAX_ATTEMPTS` and `EMBEDDING_BACKOFF_BASE_SECONDS`; a 429 follows
+`EMBEDDING_QUOTA_*`, whose budget is larger because a provider quota clears on a
+different timescale. That budget still stays within minutes: a run must not hold
+a worker and a waiting chat session for a daily quota window.
+
+When the quota budget is spent, indexing is **deferred**:
+
+- the snapshot publishes, so the tariff data, its facts and its retrieval units
+  land exactly as they would have — those are projected from the snapshot
+  itself and never needed the vectors;
+- no knowledge documents are written, and because publishing no documents
+  supersedes none, the previous source corpus stays searchable;
+- the manifest records `indexing.embedding_deferred`, so the deferral is
+  auditable rather than silent;
+- the offering reports `succeeded`, because the tariff data is complete; and
+- answering falls back to lexical recall, and the next successful run rebuilds
+  the corpus from the content-addressed caches.
+
+Only a quota refusal defers. A malformed response, a dimension mismatch or any
+other embedding error still fails the offering with `indexing.embedding_failed`:
+those are defects, not windows to wait out, and hiding one behind a deferral
+would be the fabricated-success mistake this document exists to prevent.
