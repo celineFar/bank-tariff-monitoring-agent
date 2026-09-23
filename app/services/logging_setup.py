@@ -8,6 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from app.config.models import ObservabilitySettings
+from app.services.model_call_usage import MODEL_USAGE_LOGGER_NAME
 from app.services.retrieval_trace import RETRIEVAL_LOGGER_NAME
 
 
@@ -68,6 +69,18 @@ def configure_application_logging(
             if archive not in logger.handlers:
                 logger.addHandler(archive)
 
+    # Model usage gets its own file beside the application log. It answers "what
+    # has this cost, and which model is running out" without reading a whole
+    # run's log, and it is derived rather than configured so it is never off by
+    # accident -- the question it answers only gets asked once spending has
+    # already happened.
+    configure_model_usage_logging(
+        settings.log_file.parent / "model_usage.log",
+        timezone=settings.log_timezone,
+        max_bytes=settings.log_max_bytes,
+        backup_count=settings.log_backup_count,
+    )
+
 
 def configure_retrieval_logging(
     log_file: Path | None, *, timezone: str, max_bytes: int, backup_count: int
@@ -94,3 +107,31 @@ def configure_retrieval_logging(
     )
     handler.setFormatter(ZonedFormatter(timezone))
     retrieval.addHandler(handler)
+
+
+def configure_model_usage_logging(
+    log_file: Path | None, *, timezone: str, max_bytes: int, backup_count: int
+) -> None:
+    """Give model calls their own rotating file, separate from the app log.
+
+    The `tariff.model_usage` logger keeps propagating to the root handlers, so
+    each call still reaches the console and the application log; the extra file
+    simply isolates the ledger for auditing spend and quota. Calling this twice
+    with the same path adds no second handler.
+    """
+    usage = logging.getLogger(MODEL_USAGE_LOGGER_NAME)
+    usage.setLevel(logging.INFO)
+    if log_file is None:
+        return
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    resolved = str(log_file.resolve())
+    if any(
+        isinstance(handler, RotatingFileHandler) and handler.baseFilename == resolved
+        for handler in usage.handlers
+    ):
+        return
+    handler = RotatingFileHandler(
+        resolved, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+    )
+    handler.setFormatter(ZonedFormatter(timezone))
+    usage.addHandler(handler)
