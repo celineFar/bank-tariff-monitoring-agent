@@ -277,10 +277,48 @@ tests/eval/           agent/RAG evaluation scaffold
 
 ## Security notes
 
-Only exact configured HTTPS hosts are accepted. Redirect targets must be checked with
-the same validator when retrieval is implemented. The model is not given filesystem,
-shell, arbitrary network, or SQL access. Production deployments should inject secrets
-through AWS Secrets Manager and put authenticated HTTPS ingress in front of FastAPI.
+**Egress is allowlisted.** `app/security/urls.py` accepts only HTTPS URLs whose host
+is an exact match for a configured entry (`ameriabank.am`, `www.ameriabank.am` by
+default) — no subdomain wildcards. IP-literal hosts and URLs carrying credentials are
+rejected outright, which closes the usual SSRF paths to link-local and private
+addresses.
+
+**Every redirect hop is re-validated.** Both fetchers set `follow_redirects=False` and
+walk the chain themselves, passing each `Location` target back through the same
+validator before the next request, so a redirect cannot leave the allowlist. Hops are
+capped (`max_redirects`, default 5), already-visited URLs abort as a loop, and a
+redirect without a `Location` header is an error rather than a silent stop.
+
+**Retrieval is bounded.** Responses are streamed and abandoned once they exceed
+`max_download_bytes` (25 MB default), so an oversized or endless body cannot exhaust
+memory. Requests carry a fixed timeout, a non-empty identifying user agent, and
+bounded jittered retries. HTML must arrive as `text/html` and decode strictly.
+
+**The headless browser is confined.** The Playwright renderer intercepts every
+request: non-`GET`/`HEAD` methods, images, media, and fonts are aborted, and each
+subresource URL goes through the same allowlist validator as the top-level fetch.
+Downloads and service workers are disabled.
+
+**The model has no privileged surface.** Gemini is reachable only through the typed
+tools in `app/tools.py`; it is never given filesystem, shell, arbitrary network, or
+SQL access, and it cannot choose a URL to fetch — discovery picks from candidates the
+deterministic crawler already validated. Document text reaches the model as data to
+extract from, never as instructions to follow, and every accepted non-missing value
+must carry source evidence, so an injected instruction in a bank PDF cannot forge an
+unsupported fact.
+
+**Trace content is off by default.** `OTEL_TRACE_CONTENT` defaults to `none`, and the
+exporter strips prompts and model responses from ADK's spans before they leave the
+process. Setting `OTEL_EXPORTER_OTLP_ENDPOINT` directly is refused, because ADK would
+attach its own unredacted exporter alongside.
+
+**Admin operations are token-gated.** `POST /api/v1/reviews/abort-pending` requires
+`X-Review-Admin-Token`, compared with `compare_digest`, and returns 503 rather than
+running when no token is configured. The rest of `/api/v1` is unauthenticated and
+assumes a trusted network.
+
+**Deployment expectations.** Production deployments should inject secrets through AWS
+Secrets Manager and put authenticated HTTPS ingress in front of FastAPI.
 
 ## AI-assisted development disclosure
 
