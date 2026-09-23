@@ -277,48 +277,33 @@ tests/eval/           agent/RAG evaluation scaffold
 
 ## Security notes
 
-**Egress is allowlisted.** `app/security/urls.py` accepts only HTTPS URLs whose host
-is an exact match for a configured entry (`ameriabank.am`, `www.ameriabank.am` by
-default) — no subdomain wildcards. IP-literal hosts and URLs carrying credentials are
-rejected outright, which closes the usual SSRF paths to link-local and private
-addresses.
+The prototype applies several safeguards around network access, retrieval, model usage, tracing, and administrative actions.
 
-**Every redirect hop is re-validated.** Both fetchers set `follow_redirects=False` and
-walk the chain themselves, passing each `Location` target back through the same
-validator before the next request, so a redirect cannot leave the allowlist. Hops are
-capped (`max_redirects`, default 5), already-visited URLs abort as a loop, and a
-redirect without a `Location` header is an error rather than a silent stop.
+**Outbound access is allowlisted.**  
+`app/security/urls.py` only accepts HTTPS URLs whose host exactly matches a configured allowlist entry, such as `ameriabank.am` or `www.ameriabank.am`. Subdomain wildcards are not allowed, and URLs containing credentials or IP-literal hosts are rejected.
 
-**Retrieval is bounded.** Responses are streamed and abandoned once they exceed
-`max_download_bytes` (25 MB default), so an oversized or endless body cannot exhaust
-memory. Requests carry a fixed timeout, a non-empty identifying user agent, and
-bounded jittered retries. HTML must arrive as `text/html` and decode strictly.
+**Redirects are validated explicitly.**  
+Fetchers disable automatic redirects and validate every `Location` target before following it. Redirect chains are bounded by `max_redirects` (default: 5), loops are detected, and malformed redirects are treated as errors.
 
-**The headless browser is confined.** The Playwright renderer intercepts every
-request: non-`GET`/`HEAD` methods, images, media, and fonts are aborted, and each
-subresource URL goes through the same allowlist validator as the top-level fetch.
-Downloads and service workers are disabled.
+**Retrieval is bounded and validated.**  
+Responses are streamed and stopped when they exceed `max_download_bytes` (default: 25 MB). Requests use fixed timeouts, an identifying user agent, and bounded jittered retries. HTML responses must use the expected content type and decode successfully.
 
-**The model has no privileged surface.** Gemini is reachable only through the typed
-tools in `app/tools.py`; it is never given filesystem, shell, arbitrary network, or
-SQL access, and it cannot choose a URL to fetch — discovery picks from candidates the
-deterministic crawler already validated. Document text reaches the model as data to
-extract from, never as instructions to follow, and every accepted non-missing value
-must carry source evidence, so an injected instruction in a bank PDF cannot forge an
-unsupported fact.
+**Browser rendering is restricted.**  
+The Playwright renderer blocks non-`GET`/`HEAD` requests, images, media, fonts, downloads, and service workers. Every subresource URL is validated against the same outbound allowlist as the top-level page.
 
-**Trace content is off by default.** `OTEL_TRACE_CONTENT` defaults to `none`, and the
-exporter strips prompts and model responses from ADK's spans before they leave the
-process. Setting `OTEL_EXPORTER_OTLP_ENDPOINT` directly is refused, because ADK would
-attach its own unredacted exporter alongside.
+**Model access is constrained.**  
+Gemini is exposed only through the typed tools in `app/tools.py`. It has no filesystem, shell, arbitrary network, or direct SQL access, and it cannot independently choose URLs to retrieve. Source discovery operates only on candidates already validated by the deterministic crawler.
 
-**Admin operations are token-gated.** `POST /api/v1/reviews/abort-pending` requires
-`X-Review-Admin-Token`, compared with `compare_digest`, and returns 503 rather than
-running when no token is configured. The rest of `/api/v1` is unauthenticated and
-assumes a trusted network.
+Document content is treated as data rather than instructions, and accepted extracted values must include supporting source evidence.
 
-**Deployment expectations.** Production deployments should inject secrets through AWS
-Secrets Manager and put authenticated HTTPS ingress in front of FastAPI.
+**Trace content is disabled by default.**  
+`OTEL_TRACE_CONTENT` defaults to `none`, preventing prompts and model responses from being exported unless explicitly enabled. Direct use of `OTEL_EXPORTER_OTLP_ENDPOINT` is rejected to avoid creating an additional unredacted exporter.
+
+**Administrative operations are token-protected.**  
+`POST /api/v1/reviews/abort-pending` requires an `X-Review-Admin-Token`, validated with `compare_digest`. If no token is configured, the operation is unavailable. Other `/api/v1` endpoints currently assume deployment within a trusted network.
+
+**Production deployment.**  
+Production environments should provide secrets through AWS Secrets Manager and place authenticated HTTPS ingress in front of the FastAPI service.
 
 ## AI-assisted development disclosure
 
