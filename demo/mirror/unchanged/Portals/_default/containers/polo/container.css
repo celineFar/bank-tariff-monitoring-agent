@@ -1,0 +1,34 @@
+/* CSS Document */
+
+.c_head{padding:0; margin-bottom:20px;text-align:left;}
+
+/*---------- To align the Actions, Icon and Title ---------*/
+.c_actions, .head_title h1{float:left;}
+.c_icon img { float:left; padding-right:10px; }
+.head_title h1{margin:0; margin-bottom: 20px; padding:0;}
+.icn img{margin-right:5px;}
+
+.head_title{margin:0;width:100%;}
+.title_vis{margin:0; float:right;}
+
+.c_content{clear:both;}
+.c_contentpane{padding:8px 0 0 0; text-align:left; *padding-top: 0px; *zoom: 1;}
+.c_footer {clear:both;margin-bottom:0px;padding:0; text-align:right;}
+
+/*---------- default style for head & normal -----------*/
+.Normal p{margin-top:0px;}
+
+/*---------- For the inline edit icons -----------*/
+.eipbackimg {background-color:#DAE7F2;border:solid 1px #4F839F;}
+.c_content .eipbackimg {margin-top:0;margin-left:-20px;}
+
+/*-----------Custom-------------*/
+
+/*.c_title,
+.c_head.no_title_container  {padding-top: 15px;}*/
+
+/*-----------IE7 Fix-------------*/
+.wsc_top_section_wrapper .c_content 
+{
+    zoom: 1;
+}

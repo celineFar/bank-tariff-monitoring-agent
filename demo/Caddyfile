@@ -8,5 +8,16 @@
 https://tariff-mirror.demo {
 	tls /certs/tariff-mirror.demo.pem /certs/tariff-mirror.demo-key.pem
 	root * /srv
-	file_server browse
+
+	# Real sites compress, and a compressed response carries no Content-Length.
+	# That matters for the size_rejected demonstration: the retriever then has to
+	# stop mid-stream on decoded bytes rather than trust a header.
+	encode gzip
+
+	# Resolve /overdraft internally rather than redirecting to /overdraft/, so
+	# the seed URL the catalog carries is fetched in one hop.
+	route {
+		try_files {path} {path}/index.html
+		file_server
+	}
 }
