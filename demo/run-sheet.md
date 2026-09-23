@@ -109,12 +109,25 @@ without citations, locators or as-of, and the deliverable needs all three.
 
 | # | Step | Expect |
 |---|---|---|
-| 1 | `Run monitoring for the card overdraft now.` | stage lines, then a published snapshot — this is the mirror baseline |
+| 1 | `Run monitoring for the card overdraft now.` | stage lines, then a published snapshot. If it raised reviews, answer them — this run is not yet a usable baseline |
+| 1b | `Run monitoring for the card overdraft now.` | run again until one completes **without** review. Only then is the extraction fully cached, and only then does an identical re-run report nothing |
 | 2 | `Run monitoring for the card overdraft now.` | a second run over identical content; **no change reported** |
 | 3 | `./demo/bin/mirror-variant.sh republished` in a second terminal | mirror now serves the raised band |
 | 4 | `Run monitoring for the card overdraft now.` | `large_rate_change`, the run pauses for review |
 | 5 | answer every review in the queue (see below) | decisions recorded, snapshot published |
 | 6 | `What changed in the card overdraft tariffs?` | previous and current value with evidence for both |
+
+**Why step 1b exists.** A batch that raises a review is not cached, so the next
+run re-calls the model for it, and the model varies on free-text shape —
+`["Payments", "cash withdrawal"]` one run, `["Payments, cash withdrawal"]` the
+next. Change detection reports that variance. Only a run whose extraction was
+fully cached re-runs byte-identically, so the baseline has to be a review-free
+run. Confirmed in the log as `Reusing 6 cached semantic-extraction batch(es)`.
+
+**Quota.** Each publishing run spends Gemini embedding quota, and clip 10 needs
+three of them. Exhausting it fails the run at the embedding stage with
+`indexing.embedding_failed`. Check quota before a session, and film clip 10
+early rather than after a dozen retakes.
 
 Step 2 is the point of the clip as much as step 4: equal content must raise no
 alert.
