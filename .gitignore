@@ -220,3 +220,5 @@ tests/unit/test_build_extraction_review_bundle.py
 end-to-end/
 # Local container log archive
 /logs/
+# Internal fix/debug plans (not part of the deliverable)
+/fix-plans/

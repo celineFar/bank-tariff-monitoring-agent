@@ -119,20 +119,20 @@ docker compose down -v     # also discard the database and re-run migrations nex
 
 A step-by-step demonstration of the extraction pipeline is available in:
 
-`artifacts/demonstrations/extraction_pipeline_demonstration`
+`docs/assets/demonstrations/extraction_pipeline`
 
 The pipeline has four stages: **acquisition**, **normalization**, **source discovery**, and **semantic extraction**. Each numbered PDF visualizes the changes and decisions made at that stage.
 
-1. [`1_acquired_content.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/1_acquired_content.pdf)  
+1. [`1_acquired_content.pdf`](docs/assets/demonstrations/extraction_pipeline/1_acquired_content.pdf)  
    — **Acquisition.** The source page as retrieved, captured as Markdown with links, menus, and other rendered content intact.
 
-2. [`2_acquired_content_normalized.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/2_acquired_content_normalized.pdf)  
+2. [`2_acquired_content_normalized.pdf`](docs/assets/demonstrations/extraction_pipeline/2_acquired_content_normalized.pdf)  
    — **Normalization.** The acquired content after deterministic cleanup, with removals and additions shown as an annotated diff.
 
-3. [`3_source_discovery.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/3_source_discovery.pdf)  
+3. [`3_source_discovery.pdf`](docs/assets/demonstrations/extraction_pipeline/3_source_discovery.pdf)  
    — **Source discovery.** Each content block is classified and visually marked to show whether it is selected, uncertain, historical, future, or excluded.
 
-4. [`4_semantic_extraction.pdf`](artifacts/demonstrations/extraction_pipeline_demonstration/4_semantic_extraction.pdf)  
+4. [`4_semantic_extraction.pdf`](docs/assets/demonstrations/extraction_pipeline/4_semantic_extraction.pdf)  
    — **Semantic extraction.** Extracted field values and outcomes are shown alongside the exact source text cited as evidence.
 
 ### Agent Bot QA
@@ -155,6 +155,15 @@ They cover the following scenarios:
 - **Tariff-change detection** — demonstrates how tariff changes are identified and surfaced.
 - **Controlled failure scenarios** — demonstrates expected failure modes and how the system handles them.
 - **Human-in-the-Loop (HITL)** — demonstrates a scenario in which human review or intervention is required.
+
+Each run writes a markdown transcript. A captured set is committed in
+[`docs/assets/demonstrations/run_001`](docs/assets/demonstrations/run_001) —
+[document processing](docs/assets/demonstrations/run_001/document-processing.md),
+[extraction](docs/assets/demonstrations/run_001/extraction.md),
+[change detection](docs/assets/demonstrations/run_001/change-detection.md),
+[failures](docs/assets/demonstrations/run_001/failures.md), and
+[HITL](docs/assets/demonstrations/run_001/hitl.md) — so the output is readable
+without running the scripts. See [demonstrations](docs/demonstrations.md) for setup.
 
 
 
