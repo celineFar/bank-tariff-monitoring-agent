@@ -455,3 +455,156 @@ def test_status_transition_is_a_meaningful_change() -> None:
     assert changes is not None
     assert len(changes.changes) == 1
     assert changes.changes[0].field == "interest_rate"
+
+
+# The rate guard, against the two ways it failed on real Overdraft runs.
+
+
+def _rate_entry(low: str, high: str, *conditions: tuple[str, str]) -> dict:
+    return {
+        "value": {"min": low, "max": high},
+        "conditions": [
+            {"dimension": dimension, "operator": "=", "value": value}
+            for dimension, value in conditions
+        ],
+    }
+
+
+_ARCA = "Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital"
+_GOLD = "Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital"
+
+
+def test_reworded_and_reordered_entries_are_not_a_rate_change() -> None:
+    """Identical rates must not alarm because the extractor reworded a condition.
+
+    Taken from two runs over the same page. The scoring entry's wording changed,
+    which moved it to the front of the sorted list, and the dimension names
+    changed too. Pairing by position compared Arca's 23.13 with the scoring
+    entry's 16.06 and reported a 7.07-point change on rates that had not moved.
+    """
+    previous = {
+        "effective_rate": {
+            "value": [
+                _rate_entry("23.13", "23.13", ("card_type", _ARCA)),
+                _rate_entry("21.92", "21.92", ("card_type", _GOLD)),
+                _rate_entry(
+                    "16.06",
+                    "23.13",
+                    ("program", "scoring-based loans or specific industries"),
+                ),
+            ]
+        }
+    }
+    current = {
+        "effective_rate": {
+            "value": [
+                _rate_entry(
+                    "16.06",
+                    "23.13",
+                    (
+                        "application_type",
+                        "scoring-based loans or loans to workers of specific industries",
+                    ),
+                    ("currency", "AMD"),
+                ),
+                _rate_entry(
+                    "23.13", "23.13", ("card_tier", _ARCA), ("currency", "AMD")
+                ),
+                _rate_entry(
+                    "21.92", "21.92", ("card_tier", _GOLD), ("currency", "AMD")
+                ),
+            ]
+        }
+    }
+
+    assert detect_large_rate_changes(previous, current) == ()
+
+
+def test_a_real_jump_is_found_on_the_entry_it_belongs_to() -> None:
+    previous = {
+        "interest_rate": {
+            "value": [
+                _rate_entry("21", "21", ("card_type", _ARCA)),
+                _rate_entry("15", "21", ("program", "scoring-based loans")),
+            ]
+        }
+    }
+    current = {
+        "interest_rate": {
+            "value": [
+                _rate_entry("19", "25", ("program", "scoring-based loans")),
+                _rate_entry("21", "21", ("card_tier", _ARCA)),
+            ]
+        }
+    }
+
+    signals = detect_large_rate_changes(previous, current)
+
+    assert len(signals) == 1
+    assert signals[0]["field"] == "interest_rate"
+    assert signals[0]["absolute_percentage_point_change"] == "4"
+    # Both ends moved four points. On a tie the first key in sorted order is
+    # reported, so the signal is the same on every run -- the old positional
+    # code iterated a set, and which tied change it reported could vary.
+    assert (signals[0]["previous"], signals[0]["current"]) == ("21", "25")
+
+
+def test_an_entry_without_a_counterpart_is_not_a_rate_change() -> None:
+    """A dropped or added tier is structural; change detection reports it."""
+    previous = {
+        "interest_rate": {"value": [_rate_entry("21", "21", ("card_type", _ARCA))]}
+    }
+    current = {
+        "interest_rate": {"value": [_rate_entry("30", "30", ("card_type", _GOLD))]}
+    }
+
+    assert detect_large_rate_changes(previous, current) == ()
+
+
+def test_a_rate_jump_is_guarded_even_when_a_field_review_is_also_needed() -> None:
+    """The run that is already irregular is the one that most needs the guard.
+
+    Gating the check on an otherwise-clean extraction meant a reviewer answering
+    an unrelated field review would activate a snapshot whose rate had jumped,
+    without ever being shown the jump.
+    """
+    result = _result(review=True)
+    rate = ValidatedFieldResult(
+        field=ExtractionField.INTEREST_RATE,
+        status=ExtractionStatus.FOUND,
+        value=[_rate_entry("19", "25", ("program", "scoring-based loans"))],
+        evidence=result.validated_fields[0].evidence,
+        batch_id="rates",
+    )
+    partial = result.partial_product.model_copy(
+        update={"fields": (*result.partial_product.fields, rate)}
+    )
+    result = result.model_copy(
+        update={
+            "partial_product": partial,
+            "validated_fields": (*result.validated_fields, rate),
+        }
+    )
+    previous = _snapshot(
+        {
+            "interest_rate": {
+                "status": "found",
+                "value": [_rate_entry("15", "21", ("program", "scoring-based loans"))],
+            }
+        }
+    )
+
+    snapshot = build_snapshot_attempt(
+        run_id=uuid4(),
+        offering_execution_id=uuid4(),
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        result=result,
+        previous_accepted_snapshot_id=previous.id,
+        previous_accepted_snapshot=previous,
+    )
+
+    reasons = [signal["reason"] for signal in snapshot.validation["review_signals"]]
+    assert "large_rate_change" in reasons
+    assert snapshot.status is SnapshotStatus.REVIEW_REQUIRED
+    assert snapshot.validation["accepted"] is False

@@ -124,14 +124,22 @@ def build_snapshot_attempt(
     else:
         source_value = {}
     payload = canonical_tariff_payload(source_value)
-    if accepted and previous_accepted_snapshot is not None:
+    # The rate guard runs on every candidate that has something to compare
+    # against, not only on otherwise-clean ones. Gating it on `accepted` meant
+    # that a run needing any field review skipped it entirely: the reviewer
+    # answered, say, `repayment`, the snapshot activated, and a rate jump went
+    # live that nobody had been shown. That is the run that most needs the guard,
+    # and on offerings whose extraction often needs a field review it rarely ran
+    # at all. Each signal becomes its own review, and activation already waits
+    # for every one of them.
+    if previous_accepted_snapshot is not None:
         rate_signals = detect_large_rate_changes(
             previous_accepted_snapshot.normalized_tariff,
             payload,
             threshold=large_rate_change_percentage_points,
         )
         review_signals = (*review_signals, *rate_signals)
-        accepted = not review_signals
+        accepted = accepted and not rate_signals
     created_at = (
         result.loan_product.retrieved_at
         if result.loan_product is not None
@@ -331,22 +339,21 @@ def detect_large_rate_changes(
         raise ValueError("large rate change threshold must be positive")
     signals: list[dict[str, JsonValue]] = []
     for field in sorted(_RATE_FIELDS):
-        prior_values = dict(_rate_values(previous.get(field)))
-        current_values = dict(_rate_values(current.get(field)))
-        common_paths = prior_values.keys() & current_values.keys()
-        if not common_paths:
-            continue
-        largest = max(
+        deltas = [
             (
-                (
-                    abs(current_values[path] - prior_values[path]),
-                    prior_values[path],
-                    current_values[path],
-                )
-                for path in common_paths
-            ),
-            key=lambda item: item[0],
-        )
+                abs(current_rates[key] - prior_rates[key]),
+                prior_rates[key],
+                current_rates[key],
+            )
+            for prior_rates, current_rates in _paired_rate_entries(
+                _rate_entries(previous.get(field)),
+                _rate_entries(current.get(field)),
+            )
+            for key in sorted(prior_rates.keys() & current_rates.keys())
+        ]
+        if not deltas:
+            continue
+        largest = max(deltas, key=lambda item: item[0])
         if largest[0] >= threshold:
             signals.append(
                 {
@@ -382,6 +389,74 @@ def _conflict_candidates(field, evidence_by_id: dict[str, EvidenceItem]):
             }
         )
     return candidates
+
+
+# Rate entries are paired by what they describe, never by list position. The
+# canonical payload sorts every list by its full content, and the extractor's
+# condition wording varies between runs over identical pages ("scoring-based
+# loans or specific industries" one run, "... or loans to workers of specific
+# industries" the next), which moves an entry to a different index. Pairing by
+# position then compared one card tier's rate with another's and raised a large
+# change on rates that had not moved at all.
+#
+# Dimension names vary too (`card_type` one run, `card_tier` the next), so an
+# entry's identity is the set of words in its condition values alone. An entry
+# pairs only with its mutual best match, and only above a floor. Measured on real
+# Overdraft snapshots on 2026-09-24: correct pairs scored 0.60 to 0.88 and wrong
+# pairs 0.00 to 0.15, so the floor sits well inside that gap. An entry with no
+# counterpart is not a rate change; change detection reports it structurally.
+_CONDITION_WORD = re.compile(r"[a-z0-9]+")
+_RATE_ENTRY_MATCH_FLOOR = 0.3
+
+
+def _rate_entries(
+    value: JsonValue,
+) -> list[tuple[frozenset[str], dict[str, Decimal]]]:
+    items = value.get("value") if isinstance(value, dict) else value
+    if not isinstance(items, list):
+        items = [] if value is None else [value]
+    entries: list[tuple[frozenset[str], dict[str, Decimal]]] = []
+    for item in items:
+        rates = dict(_rate_values(item))
+        if not rates:
+            continue
+        conditions = item.get("conditions") if isinstance(item, dict) else None
+        words = frozenset(
+            word
+            for condition in (conditions if isinstance(conditions, list) else ())
+            if isinstance(condition, dict)
+            for word in _CONDITION_WORD.findall(str(condition.get("value", "")).lower())
+        )
+        entries.append((words, rates))
+    return entries
+
+
+def _condition_similarity(left: frozenset[str], right: frozenset[str]) -> float:
+    union = left | right
+    return len(left & right) / len(union) if union else 1.0
+
+
+def _paired_rate_entries(
+    previous: list[tuple[frozenset[str], dict[str, Decimal]]],
+    current: list[tuple[frozenset[str], dict[str, Decimal]]],
+) -> list[tuple[dict[str, Decimal], dict[str, Decimal]]]:
+    """Pair each entry with its mutual best match, lowest index on a tie."""
+    pairs: list[tuple[dict[str, Decimal], dict[str, Decimal]]] = []
+    if not previous or not current:
+        return pairs
+    for index, (words, rates) in enumerate(previous):
+        scores = [_condition_similarity(words, other) for other, _ in current]
+        best = max(range(len(current)), key=lambda k: (scores[k], -k))
+        back = max(
+            range(len(previous)),
+            key=lambda k: (
+                _condition_similarity(previous[k][0], current[best][0]),
+                -k,
+            ),
+        )
+        if back == index and scores[best] >= _RATE_ENTRY_MATCH_FLOOR:
+            pairs.append((rates, current[best][1]))
+    return pairs
 
 
 def _rate_values(value: JsonValue) -> tuple[tuple[str, Decimal], ...]:

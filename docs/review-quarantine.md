@@ -33,10 +33,27 @@ when captured evidence remains usable; a model execution failure without a valid
 fails the offering without creating a human task. A `found` empty or inapplicable value
 with official evidence is distinct from unsupported `not_stated` output.
 
-Nominal and effective rate endpoints are compared by their canonical conditional paths.
-An absolute change of at least the configured three percentage points quarantines the
-otherwise valid candidate. Multiple agreeing official citations remain attached to the
-accepted value and do not create a review signal.
+Nominal and effective rate endpoints are compared entry by entry, and an absolute change
+of at least the configured three percentage points quarantines the candidate. Multiple
+agreeing official citations remain attached to the accepted value and do not create a
+review signal.
+
+The check runs on **every** candidate that has a previous accepted snapshot, including
+one that already needs a field review. It used to run only on otherwise-clean
+candidates, so a reviewer answering an unrelated field review could activate a snapshot
+whose rate had jumped without ever being shown the jump. Each signal is its own review
+and activation waits for all of them, so the rate change is now always put in front of
+someone.
+
+Entries are paired by what they describe, not by where they sit in the sorted list. The
+extractor rewords conditions between runs over the same page, and even renames their
+dimensions (`card_type` one run, `card_tier` the next), which moves entries to different
+positions. Pairing by position compared one card tier's rate with another's and raised
+large changes on rates that had not moved. An entry's identity is therefore the set of
+words in its condition values; it pairs with its mutual best match above a similarity
+floor, which sits well inside the gap measured on real Overdraft snapshots (correct pairs
+0.60–0.88, wrong pairs 0.00–0.15). An entry with no counterpart is a structural change,
+reported by change detection rather than as a rate jump.
 
 ## OCR evidence
 
