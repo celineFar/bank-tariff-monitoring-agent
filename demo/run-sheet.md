@@ -114,31 +114,28 @@ without citations, locators or as-of, and the deliverable needs all three.
 
 | # | Step | Expect |
 |---|---|---|
-| 1 | `Run monitoring for the card overdraft now.` | stage lines, then a published snapshot. If it raised reviews, answer them — this run is not yet a usable baseline |
-| 1b | `Run monitoring for the card overdraft now.` | run again until one completes **without** review. Only then is the extraction fully cached, and only then does an identical re-run report nothing |
-| 2 | `Run monitoring for the card overdraft now.` | a second run over identical content; **no change reported** |
+| 1 | `Run monitoring for the card overdraft now.` | stage lines, then published. This is the mirror baseline, compared against the bank capture, so it reports incidental wording changes and **no rate signal** |
+| 2 | `Run monitoring for the card overdraft now.` | identical content, every batch reused: **no change reported** |
 | 3 | `./demo/bin/mirror-variant.sh republished` in a second terminal | mirror now serves the raised band |
-| 4 | `Run monitoring for the card overdraft now.` | `large_rate_change`, the run pauses for review |
-| 5 | answer every review in the queue (see below) | decisions recorded, snapshot published |
-| 6 | `What changed in the card overdraft tariffs?` | previous and current value with evidence for both |
+| 4 | `Run monitoring for the card overdraft now.` | the run pauses with **two** reviews: `interest_rate (large_rate_change)` and `repayment (missing_required_field)` |
+| 5 | answer both reviews (see below) | both recorded, snapshot published |
+| 6 | `What changed in the card overdraft tariffs?` | the interest-rate change with its evidence |
 
-**Why step 1b exists.** A batch that raises a review is not cached, so the next
-run re-calls the model for it, and the model varies on free-text shape —
-`["Payments", "cash withdrawal"]` one run, `["Payments, cash withdrawal"]` the
-next. Change detection reports that variance. Only a run whose extraction was
-fully cached re-runs byte-identically, so the baseline has to be a review-free
-run. Confirmed in the log as `Reusing 6 cached semantic-extraction batch(es)`.
-
-**Quota.** Each publishing run spends Gemini embedding quota, and clip 10 needs
-three of them. Exhausting it fails the run at the embedding stage with
-`indexing.embedding_failed`. Check quota before a session, and film clip 10
-early rather than after a dozen retakes.
+**What the rate review looks like.** Its first line states the jump:
+*"Previous accepted value 21.0, candidate 25.0: a change of 4.0 percentage
+points."* Confirm it with the approve option. Then answer `repayment` from its
+passages as for any field review. Both belong to one batch, so neither publishes
+until both are answered.
 
 Step 2 is the point of the clip as much as step 4: equal content must raise no
-alert.
+alert. If step 1 raised a field review, answer it and run once more before step
+2 — only a run that needed no review leaves every batch cached.
 
 Use the exact wording in step 1. "Check for changes" resolves to the history
 intent and no run starts.
+
+Measured on 2026-09-24 over HTTP: step 1 $0, step 2 $0, step 4 $0.026. The chat
+adds its own cost on top, mostly for the review turns.
 
 ---
 
@@ -306,7 +303,31 @@ One take. Accept stumbles; do not edit.
 3. Republish the overdraft copy, run again, take the review, and read the
    detected change.
 
-Budget for a retake: step 2 spends model credits and depends on the bank's site.
+Budget for a retake: step 2 depends on the bank's site. Its first-ever run was
+dry-run on 2026-09-24; a restore keeps the caches, so a take re-reads the same
+bank content for close to nothing unless the bank has changed it.
+
+---
+
+## Cost of a take
+
+Measured during the dry runs, pipeline only. The chat agent is extra: it
+re-sends the whole durable session on every turn, and review turns are the
+largest, because a review panel lists every captured passage.
+
+| Clip | First run | Retake from cache |
+|---|---|---|
+| 9 | $0 — reads the stored snapshot | $0 |
+| 10 | ≈ $0.03 | ≈ $0.03 — the batch that raised the field review is never cached |
+| 11 part one | ≈ $0.12 — a changed document re-runs every batch | ≈ $0 |
+| 11 part two | $0 — deterministic scenario | $0 |
+| 13 b, c, d | $0 — each fails before or at its first model call | $0 |
+| 15 mortgage leg | see the C6 record in the plan | ≈ $0 if the bank is unchanged |
+
+`demo/bin/baseline.sh restore` keeps every cache and the spend ledger, so a
+retake never re-pays for content that has not changed. Check what a session
+actually spent with `logs/model_usage.log` or
+`uv run python scripts/model_cost_report.py --days 1`.
 
 ---
 

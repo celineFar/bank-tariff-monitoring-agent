@@ -121,6 +121,35 @@ docker compose down -v     # also discard the database and re-run migrations nex
 
 
 
+### Recorded demonstrations
+
+One recording per deliverable in `Project Documents/System Description.md`
+section 7, each driven from `./tariff-chat`:
+
+<!-- TODO: add the link to the recordings folder once uploaded. -->
+
+| Recording | Deliverable | What it shows | Staged |
+|---|---|---|---|
+| `09-extraction-and-evidence` | 9 | the Overdraft tariff with per-value citations, the bank's own source URLs, and the snapshot's as-of time | nothing |
+| `10-change-detection` | 10, 12 | an unchanged page raising no alert, then a republished page raising a large-rate-change review that states the jump | the republished page |
+| `11-ocr-fallback` | 11 | a scanned leaflet detected as image-only, then the OCR fallback reading it | the scanned leaflet |
+| `12-hitl-review` | 12 | a review answered with a value and the passage that supports it | as clip 10 |
+| `13-controlled-failures` | 13 | timeout, oversized page and retired model, each with its exact code and no tariff value | the failure conditions |
+| `15-full-session-uncut` | 8, 9, 15 | one unbroken session across both products | as above |
+
+**What was staged, and how.** Ameriabank cannot be made to republish a tariff on
+cue, so recordings 10, 11 and 13 point the Overdraft offering at a local HTTPS
+mirror serving a copy of the bank's own page. The republished variant raises the
+nominal rate band by four points and changes nothing else; the scanned variant is
+the bank's own leaflet rendered to page images with the text layer removed, not
+retyped. Everything after the fetch is the real pipeline. Each staged recording
+says so on screen before it runs.
+
+The mirror is a demonstration-only Compose overlay. Nothing under `app/` changes,
+no security control is relaxed, and with the overlay absent the stack is exactly
+the shipped one. Its setup, fixtures and the exact lines for each recording are
+in [`demo/run-sheet.md`](demo/run-sheet.md).
+
 ### Data Extraction Pipeline
 
 A step-by-step demonstration of the extraction pipeline is available in:
