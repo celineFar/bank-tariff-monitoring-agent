@@ -419,8 +419,23 @@ def build_review_request(
     )
 
 
+def _with_rate_change(guidance: str, change: object) -> str:
+    """Lead with the jump itself, so the reviewer knows what they are confirming."""
+    if not isinstance(change, dict):
+        return guidance
+    previous, current = change.get("previous"), change.get("current")
+    if previous is None or current is None:
+        return guidance
+    delta = change.get("absolute_percentage_point_change")
+    size = f": a change of {delta} percentage points" if delta else ""
+    return (
+        f"Previous accepted value {previous}, candidate {current}{size}. {guidance}"
+    )[:2000]
+
+
 def _review_prompt(task: ReviewTask) -> ReviewPromptView:
     allowed, guidance = _review_policy(task.reason)
+    guidance = _with_rate_change(guidance, task.evidence.get("rate_change"))
     raw_items = task.evidence.get("items", [])
     raw_items = raw_items if isinstance(raw_items, list) else []
     candidate_references = {

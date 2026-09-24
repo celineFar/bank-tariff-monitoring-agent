@@ -608,6 +608,19 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
                         },
                     )
                 )
+        evidence: dict[str, object] = {"items": list(snapshot.evidence)}
+        # A rate signal carries the jump it detected, and nothing else on the
+        # review does: it has no candidates, and its evidence is the whole
+        # snapshot's. Without this the reviewer is asked to confirm a change
+        # without being told its size.
+        if all(key in raw_signal for key in ("previous", "current")):
+            evidence["rate_change"] = {
+                "previous": str(raw_signal["previous"]),
+                "current": str(raw_signal["current"]),
+                "absolute_percentage_point_change": str(
+                    raw_signal.get("absolute_percentage_point_change", "")
+                ),
+            }
         key = f"{snapshot.id}:{reason.value}:{issue_scope}"
         tasks.append(
             ReviewTask(
@@ -621,7 +634,7 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
                 reason=reason,
                 issue_scope=issue_scope,
                 candidates=tuple(candidates),
-                evidence={"items": list(snapshot.evidence)},
+                evidence=evidence,
                 status=ReviewStatus.PENDING,
                 created_at=snapshot.created_at,
                 updated_at=snapshot.created_at,
