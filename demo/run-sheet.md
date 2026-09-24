@@ -41,8 +41,13 @@ Plan: `fix-plans/demonstration-recording-plan.md`. Deliverables:
 
    ```bash
    ./demo/bin/mirror-variant.sh unchanged
-   curl -sk https://tariff-mirror.demo/overdraft -o /dev/null -w '%{http_code}\n'
+   docker compose exec -T api uv run python -c \
+     "import httpx; print(httpx.get('https://tariff-mirror.demo/overdraft').status_code)"
    ```
+
+   The check runs inside `api` on purpose: the mirror is only on the Compose
+   network, so a `curl` from the host cannot reach it and proves nothing. Going
+   through the container also proves the demo root is trusted.
 
    Expect `200`. This bit during preparation, so check it before every take.
 
@@ -173,33 +178,42 @@ shows the reviewer being given what they need to decide.
 
 ## Clip 11 — OCR fallback
 
-**Deliverable 11 and 12. The scanned document is staged.**
+**Deliverable 11. The scanned document is staged.**
+
+Two halves, both real. The live pipeline shows the scan being *detected*; the
+scenario shows OCR *taking over*. OCR does not run in the live pipeline here,
+and the clip should say why rather than hide it: a page goes to OCR only when
+the probe calls it image-only **and Gemini returned nothing for it**. Gemini is
+multimodal and reads the scan, so the fallback correctly has nothing to catch.
 
 > **Disclosure.** "The mirror now links a scanned version of the bank's own
 > Overdraft information guide: the real document rendered to page images, with
-> the text layer removed. Nothing in it was retyped. The pipeline has to read it
-> the way it would read a scan."
+> the text layer removed. Nothing in it was retyped."
+
+**Part one — detection in the live pipeline.**
 
 ```bash
-./demo/bin/baseline.sh restore
 ./demo/bin/mirror-variant.sh scanned
-./tariff-chat
+./demo/bin/run-offering.sh consumer_loan overdraft
+docker compose logs worker | grep "classified as image_only"
 ```
 
-| # | Type this | Expect |
-|---|---|---|
-| 1 | `Run monitoring for the card overdraft now.` | the document probes `image_only`, OCR transcribes it |
-| 2 | answer any review the OCR evidence raises | decision recorded |
+Expect `classified as image_only (image_only=2)` for the scanned document, beside
+`classified as mixed` for the bank's digital leaflets.
 
-Measured while preparing the fixture: the original leaflet probes `mixed` with
-1404/1998/1584 native characters per page; the fixture probes `image_only` with
-zero on every page; OCR returns `transcribed` at 90.64 mean confidence and
-recovers `21%`, `20%`, `15%`, `23.13` and `Annual percentage rate`.
+**Part two — the OCR fallback, deterministic and free.**
 
-Fallback: if the OCR evidence does not reach a review reliably, record
-`uv run python scripts/run_demonstration.py --scenario document-processing`
-instead. Section 5.4 asks for a rendered or scanned sample page, not for a
-review.
+```bash
+docker compose exec api uv run python scripts/run_demonstration.py \
+  --scenario document-processing --no-audit
+```
+
+Expect `RESULT: PASS (7/7 criteria)`, OCR `outcome=transcribed`, recovered
+tokens `13.5`, `14.2`, `AMD`, `300,000`, and a mean confidence near 92.6. It runs
+inside `api` because that is where Tesseract is installed.
+
+Cost: part one ≈ $0.12 the first time (every extraction batch re-runs when a
+document changes) and near $0 on a retake, from cache. Part two is free.
 
 ---
 

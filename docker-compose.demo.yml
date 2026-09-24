@@ -33,6 +33,11 @@ services:
       - ./artifacts/pipeline-audit:/code/artifacts/pipeline-audit
       - ./demo/ca:/demo/ca:ro
       - ./demo/seed_catalog.demo.yaml:/code/app/config/seed_catalog.yaml:ro
+      # The image ships app/ only. Clip 11 runs the document-processing
+      # scenario where Tesseract is installed, which is this container, so the
+      # scenario and its committed PDF fixtures are mounted read-only here.
+      - ./scripts:/code/scripts:ro
+      - ./tests:/code/tests:ro
     depends_on:
       db:
         condition: service_healthy
