@@ -47,9 +47,6 @@ _READ_INTENTS = frozenset(
         RequestIntent.GET_CHANGE_HISTORY,
     }
 )
-# Chat-visible state from the pre-redesign review protocol (removed in Phase 4).
-_LEGACY_ACTIVE_RUN_KEY = "monitoring_active_run_id"
-_LEGACY_CHAT_RUN_IDS_KEY = "monitoring_chat_run_ids"
 
 
 async def resolve_request(
@@ -175,12 +172,6 @@ async def resolve_request(
     pending = await _pending_review_counts()
     if pending:
         result["pending_reviews"] = pending
-    active_run_id = tool_context.state.get(_LEGACY_ACTIVE_RUN_KEY)
-    if isinstance(active_run_id, str):
-        result["active_monitoring_run_id"] = active_run_id
-    chat_run_ids = tool_context.state.get(_LEGACY_CHAT_RUN_IDS_KEY)
-    if isinstance(chat_run_ids, list):
-        result["chat_monitoring_run_ids"] = chat_run_ids
     if not state.introduction_shown:
         result["catalog_intro"] = services.request_resolver.catalog_payload(
             resolution.language,
