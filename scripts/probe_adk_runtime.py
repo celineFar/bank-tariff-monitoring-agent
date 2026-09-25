@@ -54,7 +54,12 @@ async def monitoring(ctx, offering: str, block: bool = False):
     resume = dict(ctx.resume_inputs or {})
     if not resume:
         for stage in ("acquisition", "normalization", "semantic_extraction"):
-            yield Event(message=f"stage {stage}", partial=True)  # E1
+            yield Event(  # E1: streamed to the caller, never persisted
+                content=types.Content(
+                    role="model", parts=[types.Part(text=f"stage {stage}")]
+                ),
+                partial=True,
+            )
             try:
                 await asyncio.sleep(10 if block else 0.01)
             except asyncio.CancelledError:

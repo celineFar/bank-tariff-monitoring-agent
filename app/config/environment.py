@@ -103,9 +103,7 @@ class EnvironmentSettings(BaseSettings):
     source_discovery_classifier_max_backoff_seconds: float = 60.0
     source_discovery_classifier_retry_jitter_ratio: float = 0.25
     source_discovery_model_name: str | None = "gemini-3.1-flash-lite"
-    source_discovery_fallback_model_names: Annotated[
-        tuple[str, ...], NoDecode
-    ] = ()
+    source_discovery_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
     source_discovery_max_price_per_million_tokens_usd: float = 1.5
     semantic_extraction_schema_version: str = "5"
     semantic_extraction_prompt_version: str = "5"

@@ -25,6 +25,7 @@ from google.adk.agents.context import Context
 from google.adk.events.event import Event
 from google.adk.events.request_input import RequestInput
 from google.adk.workflow import FunctionNode
+from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from app.domain.models import OfferingId, ProductType
@@ -403,7 +404,9 @@ def _progress_event(item: PipelineProgress) -> Event:
     the text, which is only a fallback label.
     """
     return Event(
-        message=progress_label(item),
+        content=types.Content(
+            role="model", parts=[types.Part(text=progress_label(item))]
+        ),
         partial=True,
         custom_metadata={
             "kind": PROGRESS_KIND,

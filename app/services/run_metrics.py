@@ -37,9 +37,7 @@ class RunMetricsRepository:
         self, sql: str, start: datetime, end: datetime
     ) -> list[dict[str, object]]:
         async with self.session_factory() as session:
-            return _rows(
-                await session.execute(text(sql), {"start": start, "end": end})
-            )
+            return _rows(await session.execute(text(sql), {"start": start, "end": end}))
 
     async def run_outcomes(self, start: datetime, end: datetime):
         """Run counts and wall-clock duration, net of review wait."""

@@ -13,7 +13,7 @@ import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Protocol, TypeVar, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -142,7 +142,7 @@ class ProgressStream(Generic[T]):
                 item = await queue.get()
                 if item is _DONE:
                     break
-                yield item  # type: ignore[misc]
+                yield cast(PipelineProgress, item)
             self._result = await task
             self._finished = True
         except BaseException:

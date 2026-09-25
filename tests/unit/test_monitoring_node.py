@@ -91,7 +91,9 @@ async def test_a_pause_is_a_native_request_input_and_the_model_is_not_called() -
     events = await harness.turn(text("monitor overdraft"))
 
     ((interrupt_id, payload),) = interrupts(events)
-    run_id, review_id, attempt = parse_review_interrupt_id(interrupt_id)
+    parsed = parse_review_interrupt_id(interrupt_id)
+    assert parsed is not None
+    run_id, review_id, attempt = parsed
     assert harness.runs.runs[run_id].status is RunStatus.AWAITING_REVIEW
     assert attempt == 1
     assert payload["kind"] == "tariff_review"

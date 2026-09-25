@@ -153,7 +153,9 @@ async def test_a_grant_from_another_turn_or_session_is_rejected(wired) -> None:
 async def test_an_expired_grant_is_rejected(wired) -> None:
     context = _Context()
     await _resolve(context, "current Express Mortgage rate")
-    plan = dict(context.state["tariff_resolution_plan"])
+    raw = context.state["tariff_resolution_plan"]
+    assert isinstance(raw, dict)
+    plan = dict(raw)
     plan["issued_at"] = (NOW - timedelta(days=2)).isoformat()
     plan["expires_at"] = (NOW - timedelta(days=1)).isoformat()
     context.state["tariff_resolution_plan"] = plan
@@ -304,18 +306,20 @@ async def test_monitoring_runs_the_node_only_for_the_granted_scope(wired) -> Non
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("args", "turn"),
+    ("offering_id", "turn"),
     [
-        (("mortgage", "mortgage_primary"), "turn-1"),  # model argues with resolver
-        (("mortgage", None), "turn-1"),  # model widens to the family
-        (("mortgage", "mortgage_express"), "turn-2"),  # grant from another turn
+        ("mortgage_primary", "turn-1"),  # model argues with resolver
+        (None, "turn-1"),  # model widens to the family
+        ("mortgage_express", "turn-2"),  # grant from another turn
     ],
 )
-async def test_monitoring_outside_the_grant_is_rejected(wired, args, turn) -> None:
+async def test_monitoring_outside_the_grant_is_rejected(
+    wired, offering_id, turn
+) -> None:
     context = _authorized()
     context.invocation_id = turn
 
-    result = await run_tariff_monitoring(*args, context)
+    result = await run_tariff_monitoring("mortgage", offering_id, context)
 
     assert result["reason_code"] == "run.intent_not_authorized"
     assert context.node_inputs == []

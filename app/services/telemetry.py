@@ -168,9 +168,7 @@ def _build_exporter(settings: ObservabilitySettings) -> SpanExporter:
     )
 
 
-def configure_telemetry(
-    settings: ObservabilitySettings, *, component: str
-) -> bool:
+def configure_telemetry(settings: ObservabilitySettings, *, component: str) -> bool:
     """Install the tracer provider for one process. Safe to call once per entry point.
 
     Returns whether tracing was installed, so a caller can log the decision.
@@ -257,9 +255,7 @@ def extract_trace_context(traceparent: str | None) -> Context | None:
     """Rebuild a stored span context so later spans join the original trace."""
     if not traceparent:
         return None
-    return TraceContextTextMapPropagator().extract(
-        {TRACEPARENT_HEADER: traceparent}
-    )
+    return TraceContextTextMapPropagator().extract({TRACEPARENT_HEADER: traceparent})
 
 
 def current_trace_id() -> str | None:

@@ -885,6 +885,7 @@ async def test_cancellation_marks_run_and_in_flight_offering_cancelled() -> None
     with pytest.raises(asyncio.CancelledError):
         await task
 
+    assert runs.finished is not None
     status, finished = runs.finished
     assert status is RunStatus.FAILED
     assert finished["failure_code"] == "run.cancelled"

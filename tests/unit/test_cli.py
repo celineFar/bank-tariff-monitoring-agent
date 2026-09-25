@@ -14,6 +14,7 @@ from uuid import uuid4
 import pytest
 from google.adk.events import Event, EventActions
 from google.adk.sessions import InMemorySessionService
+from google.genai import types
 
 from app import cli
 from app.domain.models import OfferingId
@@ -116,7 +117,9 @@ def test_renderer_reads_only_structured_metadata(capsys) -> None:
     renderer = cli.ProgressRenderer()
     renderer.render(
         Event(
-            message="Totally different text",
+            content=types.Content(
+                role="model", parts=[types.Part(text="Totally different text")]
+            ),
             partial=True,
             custom_metadata={
                 "kind": "monitoring_progress",

@@ -69,7 +69,9 @@ class TracedRepository:
 
 
 class TracedRetriever:
-    def __init__(self, retriever: RagRetriever, *, top_k: int, min_score: float) -> None:
+    def __init__(
+        self, retriever: RagRetriever, *, top_k: int, min_score: float
+    ) -> None:
         self.retriever = retriever
         self.top_k = top_k
         self.min_score = min_score
@@ -107,13 +109,18 @@ class TracedGenerator:
     async def generate(self, prompt: str) -> AnswerDraft:
         self.attempt += 1
         print(f"\n[4] Generation attempt {self.attempt}", flush=True)
-        print(f"Model: {self.generator._model_name}\nEvidence prompt:\n{prompt}", flush=True)
+        print(
+            f"Model: {self.generator._model_name}\nEvidence prompt:\n{prompt}",
+            flush=True,
+        )
         draft = await self.generator.generate(prompt)
         print(f"Structured draft:\n{draft.model_dump_json(indent=2)}", flush=True)
         return draft
 
 
-async def trace(query: str, product: ProductType, offering_id: OfferingId | None) -> None:
+async def trace(
+    query: str, product: ProductType, offering_id: OfferingId | None
+) -> None:
     settings = load_settings()
     command = QuestionCommand(query=query, product=product, offering_id=offering_id)
     print(
@@ -133,7 +140,9 @@ async def trace(query: str, product: ProductType, offering_id: OfferingId | None
         retriever = TracedRetriever(
             RagRetriever(
                 TracedEmbeddingProvider(
-                    GeminiQueryEmbeddingProvider(client, settings.models.embedding_model)
+                    GeminiQueryEmbeddingProvider(
+                        client, settings.models.embedding_model
+                    )
                 ),
                 TracedRepository(PostgresRagRetrievalRepository(sessions)),
                 settings.rag,
@@ -143,7 +152,9 @@ async def trace(query: str, product: ProductType, offering_id: OfferingId | None
         )
         service = RagAnswerService(
             retriever,
-            TracedGenerator(GeminiAnswerGenerator(client, settings.models.generation_model)),
+            TracedGenerator(
+                GeminiAnswerGenerator(client, settings.models.generation_model)
+            ),
         )
         result = await service.answer(command)
         print("\n[5] Citation validation and final answer", flush=True)
@@ -155,7 +166,9 @@ async def trace(query: str, product: ProductType, offering_id: OfferingId | None
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("query", help="Question to answer from active RAG chunks")
-    parser.add_argument("--product", required=True, choices=[p.value for p in ProductType])
+    parser.add_argument(
+        "--product", required=True, choices=[p.value for p in ProductType]
+    )
     parser.add_argument("--offering-id", choices=[o.value for o in OfferingId])
     args = parser.parse_args()
     asyncio.run(

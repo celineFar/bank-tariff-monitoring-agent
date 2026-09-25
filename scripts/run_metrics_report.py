@@ -45,7 +45,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.days < 1:
         parser.error("--days must be positive")
-    print(json.dumps(asyncio.run(_report(args.days, args.section)), default=str, indent=2))
+    print(
+        json.dumps(asyncio.run(_report(args.days, args.section)), default=str, indent=2)
+    )
 
 
 if __name__ == "__main__":
