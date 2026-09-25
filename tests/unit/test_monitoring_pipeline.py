@@ -61,6 +61,7 @@ from app.domain.source_discovery import (
     SourceDiscoveryResult,
     TemporalStatus,
 )
+from app.services.knowledge_index import EmbeddingQuotaExhausted
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.monitoring_pipeline import (
     IndexingPipeline,
@@ -306,12 +307,15 @@ class _Extraction:
 
 
 class _Embedder:
-    def __init__(self, events, *, fail=False):
+    def __init__(self, events, *, fail=False, out_of_quota=False):
         self.events = events
         self.fail = fail
+        self.out_of_quota = out_of_quota
 
     async def embed(self, document):
         self.events.append(("embed", document.document_kind.value))
+        if self.out_of_quota:
+            raise EmbeddingQuotaExhausted("embedding provider error 429")
         if self.fail:
             raise RuntimeError("embedding unavailable")
         return EmbeddedKnowledgeDocument(
@@ -344,7 +348,7 @@ class _Publications:
         )
 
 
-def _indexing(*, fail_embedding=False, audit_archive=None):
+def _indexing(*, fail_embedding=False, out_of_quota=False, audit_archive=None):
     events = []
     publications = _Publications()
     service = IndexingPipeline(
@@ -353,7 +357,7 @@ def _indexing(*, fail_embedding=False, audit_archive=None):
         discovery=_Discovery(events),
         extraction=_Extraction(events),
         projection=KnowledgeProjectionService(),
-        embedder=_Embedder(events, fail=fail_embedding),
+        embedder=_Embedder(events, fail=fail_embedding, out_of_quota=out_of_quota),
         snapshots=_Snapshots(),
         publications=publications,
         audit_archive=audit_archive,
@@ -403,6 +407,39 @@ async def test_indexing_failure_before_publication_leaves_state_untouched() -> N
 
     assert captured.value.stage == "embedding"
     assert captured.value.failure_code == "indexing.embedding_failed"
+    assert publications.values == []
+
+
+@pytest.mark.asyncio
+async def test_a_quota_refusal_publishes_the_snapshot_without_the_corpus() -> None:
+    """A validated, reviewed run must survive a provider quota window.
+
+    The snapshot, its facts and its retrieval units are projected from the
+    snapshot itself, and the answer path falls back to lexical recall, so
+    publishing without the source corpus degrades retrieval instead of
+    discarding the tariff data.
+    """
+    service, _, publications = _indexing(out_of_quota=True)
+
+    result = await service.refresh(_offering(), uuid4(), uuid4())
+
+    published = publications.values[-1]
+    assert published.snapshot is result.snapshot
+    # No corpus was written, so nothing supersedes the last good one.
+    assert published.documents == ()
+    # And the deferral is auditable rather than silent.
+    assert "indexing.embedding_deferred" in result.manifest.warning_codes
+    assert result.manifest.document_count == 0
+
+
+@pytest.mark.asyncio
+async def test_only_a_quota_refusal_is_deferred() -> None:
+    """A malformed response is a defect, not a window to wait out."""
+    service, _, publications = _indexing(fail_embedding=True)
+
+    with pytest.raises(OfferingPipelineError):
+        await service.refresh(_offering(), uuid4(), uuid4())
+
     assert publications.values == []
 
 

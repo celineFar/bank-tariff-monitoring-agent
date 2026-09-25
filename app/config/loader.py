@@ -102,6 +102,12 @@ def load_settings(
             chunk_overlap_chars=raw.chunk_overlap_chars,
             retrieval_top_k=raw.retrieval_top_k,
             retrieval_min_score=raw.retrieval_min_score,
+            embedding_max_attempts=raw.embedding_max_attempts,
+            embedding_backoff_base_seconds=raw.embedding_backoff_base_seconds,
+            embedding_quota_max_attempts=raw.embedding_quota_max_attempts,
+            embedding_quota_backoff_base_seconds=(
+                raw.embedding_quota_backoff_base_seconds
+            ),
         ),
         intent_resolution=IntentResolutionSettings(
             fuzzy_min_score=raw.intent_fuzzy_min_score,

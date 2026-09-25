@@ -71,6 +71,34 @@ def estimate_cost(usage: ModelCallUsage) -> CostEstimate:
     return CostEstimate(version, input_rate, output_rate, cost, None)
 
 
+# Every model call is written here as well as to the ledger. Spend alone hides
+# the models that cost nothing and run out anyway: an embedding model refused
+# for quota bills $0.00, so a cost-shaped view shows silence while the resource
+# drains. The line therefore always carries the call, its outcome and its
+# provider status, and carries cost only when there is one.
+MODEL_USAGE_LOGGER_NAME = "tariff.model_usage"
+_usage_logger = logging.getLogger(MODEL_USAGE_LOGGER_NAME)
+
+
+def provider_error_class(error: BaseException | None) -> str | None:
+    """Name the failure precisely enough to tell a quota wall from a bad request.
+
+    `ClientError` alone cannot separate 429 RESOURCE_EXHAUSTED from 400 or 403,
+    and that is the distinction an operator needs: one means wait, the others
+    mean fix something. The status token comes from the transport, never from a
+    response body, so no provider message or content is stored or logged.
+    """
+    if error is None:
+        return None
+    name = type(error).__name__
+    code = getattr(error, "code", None)
+    status = getattr(error, "status", None)
+    if code is None and status is None:
+        return name
+    token = str(status or "unknown").replace(" ", "_")[:40]
+    return f"{name}:http_{code}_{token}"[:200]
+
+
 def response_tokens(response: Any) -> tuple[int | None, int | None]:
     """Read SDK usage metadata without touching prompt or response content."""
     metadata = getattr(response, "usage_metadata", None)
@@ -87,12 +115,41 @@ def response_tokens(response: Any) -> tuple[int | None, int | None]:
     return input_tokens, output_tokens
 
 
+def log_model_call(usage: ModelCallUsage, estimate: CostEstimate) -> None:
+    """Write one bounded line per model call to the usage log.
+
+    Counts come first and cost last, deliberately. A call that was refused for
+    quota, or one to a model with no published price, still has to be visible;
+    only its cost is missing.
+    """
+    cost = "-" if estimate.cost is None else f"{estimate.cost:.6f}"
+    _usage_logger.info(
+        "model call stage=%s operation=%s model=%s outcome=%s attempt=%s "
+        "error=%s in_tokens=%s out_tokens=%s inputs=%s cost_usd=%s "
+        "cost_unknown=%s latency_ms=%s run_id=%s",
+        usage.stage,
+        usage.operation,
+        usage.model_id,
+        usage.outcome,
+        usage.attempt,
+        usage.error_class or "-",
+        usage.input_tokens if usage.input_tokens is not None else "-",
+        usage.output_tokens if usage.output_tokens is not None else "-",
+        usage.input_count if usage.input_count is not None else "-",
+        cost,
+        estimate.unknown_reason or "-",
+        usage.latency_ms,
+        usage.run_id or "-",
+    )
+
+
 class PostgresModelCallUsageRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
     async def record(self, usage: ModelCallUsage) -> None:
         estimate = estimate_cost(usage)
+        log_model_call(usage, estimate)
         async with self._sessions() as session, session.begin():
             await session.execute(
                 text(
@@ -133,6 +190,9 @@ class PostgresModelCallUsageRepository:
                             """SELECT date_trunc('day', called_at) AS day, stage,
                             model_id, count(*) AS calls,
                             count(*) FILTER (WHERE outcome = 'failed') AS failures,
+                            count(*) FILTER (
+                                WHERE error_class LIKE '%http_429%'
+                            ) AS rate_limited,
                             count(*) FILTER (WHERE outcome = 'cache_hit') AS cache_hits,
                             sum(input_tokens) AS input_tokens,
                             sum(output_tokens) AS output_tokens,
@@ -261,7 +321,7 @@ async def observe_model_call(
             request_id=request_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            error_class=type(error).__name__ if error else None,
+            error_class=provider_error_class(error),
         )
         try:
             await repository.record(usage)
@@ -307,7 +367,7 @@ def adk_usage_callbacks(
             run_id=None,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            error_class=type(error).__name__ if error else None,
+            error_class=provider_error_class(error),
         )
         try:
             await repository.record(usage)

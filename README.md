@@ -215,6 +215,31 @@ Persistent logs are also written to:
 ```text
 logs/api.log
 logs/worker.log
+logs/model_usage.log
+```
+
+`model_usage.log` is one line per Gemini call, written beside whichever
+application log the process uses. It records the call before it records the
+cost, because the two are not the same question: an embedding model refused for
+quota bills `$0.00`, so a spend-shaped view stays silent while the resource
+drains.
+
+```text
+model call stage=indexing.embedding operation=embed model=gemini-embedding-001
+  outcome=failed attempt=1 error=ClientError:http_429_RESOURCE_EXHAUSTED
+  in_tokens=- out_tokens=- inputs=1 cost_usd=- cost_unknown=missing_input_usage
+  latency_ms=204 run_id=-
+```
+
+A provider refusal keeps its HTTP status, so a quota wall (`http_429`) is
+distinguishable from a bad request or a permission error. No prompt, response or
+provider message is logged.
+
+For totals rather than individual calls, including calls, failures, quota
+refusals and cost per stage and model:
+
+```bash
+uv run python scripts/model_cost_report.py --days 7 --budget-usd 10
 ```
 
 To inspect logs for a specific monitoring run:

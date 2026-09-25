@@ -278,6 +278,16 @@ class RagSettings(SettingsGroup):
     chunk_overlap_chars: int = Field(default=150, ge=0)
     retrieval_top_k: int = Field(default=8, ge=1, le=50)
     retrieval_min_score: float = Field(default=0.25, ge=0, le=1)
+    # Embedding retries are split by what the refusal means. A 5xx is transient
+    # and clears in seconds; a 429 is a provider quota and clears on its own
+    # schedule, so giving up on it after 30 seconds discards a whole run for a
+    # blip. The quota wait stays in minutes all the same: a run must not hold a
+    # worker and a waiting chat session for a daily quota window, which is what
+    # deferring the index is for.
+    embedding_max_attempts: int = Field(default=3, ge=1, le=10)
+    embedding_backoff_base_seconds: float = Field(default=10.0, ge=0, le=300)
+    embedding_quota_max_attempts: int = Field(default=4, ge=1, le=10)
+    embedding_quota_backoff_base_seconds: float = Field(default=30.0, ge=0, le=600)
 
     @model_validator(mode="after")
     def validate_chunk_sizes(self) -> RagSettings:

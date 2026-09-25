@@ -448,6 +448,20 @@ def terminal_review_status(
     return RunStatus.FAILED
 
 
+def _with_rate_change(guidance: str, change: object) -> str:
+    """Lead with the jump itself, so the reviewer knows what they are confirming."""
+    if not isinstance(change, dict):
+        return guidance
+    previous, current = change.get("previous"), change.get("current")
+    if previous is None or current is None:
+        return guidance
+    delta = change.get("absolute_percentage_point_change")
+    size = f": a change of {delta} percentage points" if delta else ""
+    return (
+        f"Previous accepted value {previous}, candidate {current}{size}. {guidance}"
+    )[:2000]
+
+
 def build_review_view(task: ReviewTask) -> ReviewPromptView:
     """The bounded, reason-specific view a reviewer decides from.
 
@@ -455,6 +469,7 @@ def build_review_view(task: ReviewTask) -> ReviewPromptView:
     name the field, before the 20-passage limit applies.
     """
     allowed, guidance = review_policy(task.reason)
+    guidance = _with_rate_change(guidance, task.evidence.get("rate_change"))
     raw_items = task.evidence.get("items", [])
     raw_items = raw_items if isinstance(raw_items, list) else []
     candidate_references = {

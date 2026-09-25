@@ -215,6 +215,12 @@ def build_application_container(
             embedding_client,
             settings.models.embedding_model,
             usage_repository=model_usage,
+            max_attempts=settings.rag.embedding_max_attempts,
+            backoff_base_seconds=settings.rag.embedding_backoff_base_seconds,
+            quota_max_attempts=settings.rag.embedding_quota_max_attempts,
+            quota_backoff_base_seconds=(
+                settings.rag.embedding_quota_backoff_base_seconds
+            ),
         ),
         PostgresKnowledgeStore(sessions),
         PostgresEmbeddingCache(sessions),
@@ -272,6 +278,12 @@ def build_application_container(
                 embedding_client,
                 settings.models.embedding_model,
                 usage_repository=model_usage,
+                max_attempts=settings.rag.embedding_max_attempts,
+                backoff_base_seconds=settings.rag.embedding_backoff_base_seconds,
+                quota_max_attempts=settings.rag.embedding_quota_max_attempts,
+                quota_backoff_base_seconds=(
+                    settings.rag.embedding_quota_backoff_base_seconds
+                ),
             ),
             GeminiQueryEmbeddingProvider(
                 embedding_client,
