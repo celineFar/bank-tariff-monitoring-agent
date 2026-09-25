@@ -18,7 +18,6 @@ from app.domain.monitoring import (
     RunSubmissionResult,
     RunTrigger,
 )
-from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.domain.review import ReviewReason, ReviewStatus, ReviewTask
 from app.worker import MonitoringWorker, run_scheduled_monitoring
 
@@ -114,8 +113,8 @@ async def test_http_submit_and_status_use_shared_run_service() -> None:
     assert response.json()["status_url"] == (
         f"/api/v1/runs/{response.json()['run']['id']}"
     )
-    assert response.json()["review_handoff_url"] == (
-        f"/api/v1/runs/{response.json()['run']['id']}/review-handoff"
+    assert response.json()["reviews_url"] == (
+        f"/api/v1/reviews?run_id={response.json()['run']['id']}"
     )
     assert fetched.status_code == 200
     command, key = service.commands[0]
@@ -156,11 +155,14 @@ async def test_review_routes_are_diagnostic_and_read_only() -> None:
             f"/api/v1/reviews/{review.id}/decision",
             json={"decision_type": "approve"},
         )
+        handoff = await client.get(f"/api/v1/runs/{review.run_id}/review-handoff")
 
     assert listed.status_code == 200
     assert fetched.status_code == 200
     assert fetched.json()["id"] == str(review.id)
     assert decision.status_code in {404, 405}
+    # The ADK-Web handoff route is gone: reviews are taken in the chat CLI.
+    assert handoff.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -208,15 +210,6 @@ async def test_http_persistence_failures_use_stable_bounded_envelopes() -> None:
     assert "database" not in fetched.text.lower()
 
 
-
-
-
-
-
-
-
-
-
 @pytest.mark.asyncio
 async def test_scheduler_submits_each_family_through_the_shared_service() -> None:
     service = _RunService()
@@ -253,13 +246,26 @@ class _WorkerRuns:
         raise AssertionError("successful pipeline owns the terminal transition")
 
 
-class _Workflow:
+class _Pipeline:
     def __init__(self) -> None:
         self.runs: list[MonitoringRun] = []
+        self.progress = []
 
-    async def start(self, run: MonitoringRun):
+    async def execute(self, run: MonitoringRun, *, progress=None) -> MonitoringRun:
         self.runs.append(run)
-        return MonitoringWorkflowResult(run_id=run.id, status=run.status, paused=False)
+        self.progress.append(progress)
+        return run.model_copy(
+            update={"status": RunStatus.SUCCEEDED, "completed_at": run.started_at}
+        )
+
+
+class _Resolution:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete_runs_without_pending_reviews(self, *, limit: int = 100):
+        self.calls += 1
+        return 0
 
 
 @pytest.mark.asyncio
@@ -269,16 +275,37 @@ async def test_worker_claims_queue_and_invokes_shared_pipeline() -> None:
         status=RunStatus.RUNNING,
     )
     runs = _WorkerRuns(run)
-    workflow = _Workflow()
+    pipeline = _Pipeline()
+    resolution = _Resolution()
     worker = MonitoringWorker(
         runs=runs,
-        workflow=workflow,
+        pipeline=pipeline,
+        resolution=resolution,
         worker_id="worker-1",
         abandoned_after=timedelta(minutes=15),
     )
 
-    assert await worker.recover_abandoned() == 1
+    await worker.startup_checks()
     assert await worker.process_next() is True
     assert await worker.process_next() is False
-    assert workflow.runs == [run]
+    # The worker calls the pipeline directly: no ADK app, no ADK session.
+    assert pipeline.runs == [run]
+    assert type(pipeline.progress[0]).__name__ == "LogProgressSink"
     assert runs.recovery_before is not None
+    assert resolution.calls == 1
+
+
+def test_the_worker_imports_nothing_from_google_adk() -> None:
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path("app/worker.py").read_text(encoding="utf-8"))
+    imported = {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not any(name.startswith("google.adk") for name in imported)

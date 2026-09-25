@@ -9,20 +9,19 @@ from typing import Protocol
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.app_utils import services as adk_services
 from app.config import get_settings
 from app.domain.models import ProductType
 from app.domain.monitoring import (
-    MonitoringRun,
     RunCommand,
     RunFailureCode,
     RunStatus,
     RunTrigger,
 )
-from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.repositories.contracts import RunRepository
 from app.runtime import build_application_container
+from app.services.contracts import TariffPipeline
 from app.services.logging_setup import configure_application_logging
+from app.services.monitoring_progress import LogProgressSink
 from app.services.run_service import RunServicePort
 from app.services.telemetry import (
     configure_telemetry,
@@ -35,12 +34,10 @@ tracer = get_tracer()
 PRODUCTS = (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
 
 
-class MonitoringWorkflowPort(Protocol):
-    async def start(self, run: MonitoringRun) -> MonitoringWorkflowResult: ...
-
-
-class ReconciliationPort(Protocol):
-    async def reconcile(self): ...
+class ReviewCompletionPort(Protocol):
+    async def complete_runs_without_pending_reviews(
+        self, *, limit: int = 100
+    ) -> int: ...
 
 
 async def run_scheduled_monitoring(service: RunServicePort) -> None:
@@ -59,19 +56,26 @@ async def run_scheduled_monitoring(service: RunServicePort) -> None:
 
 
 class MonitoringWorker:
+    """Queue consumer for unattended runs (scheduler and API).
+
+    Executes the same `TariffPipeline` the chat node does, with progress going
+    to the log. It owns no ADK app or session: a run that pauses for review is
+    reviewed later from the CLI (`review_pending_candidates`).
+    """
+
     def __init__(
         self,
         *,
         runs: RunRepository,
-        workflow: MonitoringWorkflowPort,
-        reconciliation: ReconciliationPort | None = None,
+        pipeline: TariffPipeline,
+        resolution: ReviewCompletionPort | None = None,
         worker_id: str,
         abandoned_after: timedelta = timedelta(minutes=30),
         poll_interval_seconds: float = 2.0,
     ) -> None:
         self._runs = runs
-        self._workflow = workflow
-        self._reconciliation = reconciliation
+        self._pipeline = pipeline
+        self._resolution = resolution
         self._worker_id = worker_id
         self._abandoned_after = abandoned_after
         self._poll_interval_seconds = poll_interval_seconds
@@ -103,17 +107,17 @@ class MonitoringWorker:
                 context=extract_trace_context(claimed.trace_parent),
             ) as span:
                 span.set_attribute("tariff.run_id", str(claimed.run.id))
-                span.set_attribute(
-                    "tariff.product", claimed.run.command.product.value
-                )
+                span.set_attribute("tariff.product", claimed.run.command.product.value)
                 span.set_attribute("tariff.worker_id", self._worker_id)
-                result = await self._workflow.start(claimed.run)
+                result = await self._pipeline.execute(
+                    claimed.run, progress=LogProgressSink(logger)
+                )
                 span.set_attribute("tariff.run_status", result.status.value)
             logger.info(
                 "monitoring run completed run_id=%s status=%s review_count=%s",
                 claimed.run.id,
                 result.status.value,
-                len(result.review_ids),
+                len(result.summary.get("review_ids", []) or []),
             )
         except Exception as exc:
             logger.exception(
@@ -127,15 +131,18 @@ class MonitoringWorker:
             )
         return True
 
-    async def run_forever(self, stop: asyncio.Event) -> None:
-        if self._reconciliation is not None:
-            report = await self._reconciliation.reconcile()
-            if report.items:
-                logger.warning(
-                    "reconciled %s monitoring workflow linkage issue(s)",
-                    len(report.items),
-                )
+    async def startup_checks(self) -> None:
+        """Close what a previous process left open; nothing needs correlating."""
         await self.recover_abandoned()
+        if self._resolution is not None:
+            completed = await self._resolution.complete_runs_without_pending_reviews()
+            if completed:
+                logger.warning(
+                    "completed %s reviewed run(s) left awaiting review", completed
+                )
+
+    async def run_forever(self, stop: asyncio.Event) -> None:
+        await self.startup_checks()
         while not stop.is_set():
             if await self.process_next():
                 continue
@@ -153,11 +160,10 @@ async def main() -> None:
     configure_application_logging(settings.observability)
     configure_telemetry(settings.observability, component="worker")
     container = build_application_container(settings)
-    await adk_services.ensure_session_service_ready()
     worker = MonitoringWorker(
         runs=container.runs,
-        workflow=container.monitoring_workflow_runner,
-        reconciliation=container.workflow_reconciliation,
+        pipeline=container.tariff_pipeline,
+        resolution=container.review_resolution,
         worker_id=f"{socket.gethostname()}:{id(container)}",
     )
     scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)

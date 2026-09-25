@@ -9,8 +9,11 @@ from zoneinfo import ZoneInfo
 import asyncpg
 import pytest
 import pytest_asyncio
-from google.adk.artifacts import InMemoryArtifactService
+from google.adk.agents import Agent
+from google.adk.apps import App, ResumabilityConfig
+from google.adk.runners import Runner
 from google.adk.sessions import DatabaseSessionService
+from google.adk.tools import ToolContext
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
@@ -42,10 +45,6 @@ from app.domain.monitoring import (
     SnapshotStatus,
     SourceManifestItem,
 )
-from app.domain.monitoring_workflow import (
-    MonitoringReviewResponse,
-    ReviewResponseItem,
-)
 from app.domain.review import (
     ReviewCandidate,
     ReviewDecision,
@@ -68,19 +67,27 @@ from app.repositories.structured_tariff_query import (
 )
 from app.services.evidence_retention_audit import EvidenceRetentionAuditor
 from app.services.intent_resolution import RequestResolver
-from app.services.monitoring_workflow import (
-    MonitoringWorkflowRunner,
-    build_monitoring_app,
-    build_monitoring_workflow,
-    workflow_identity,
+from app.services.monitoring_node import (
+    build_monitoring_node,
+    parse_review_interrupt_id,
 )
 from app.services.review_decisions import ReviewDecisionService
+from app.services.review_resolution import ReviewResolutionService
+from app.services.run_service import RunService
 from app.services.structured_backfill import StructuredProjectionBackfill
 from app.services.structured_projection import RENDERER_VERSION
 from app.services.structured_projection_audit import StructuredProjectionAuditor
 from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.fixtures.evaluation_corpus import CORPUS_SPECS, PREVIOUS_MORTGAGE_SPEC
+from tests.fixtures.monitoring_node import (
+    ScriptedModel,
+    call,
+    function_responses,
+    interrupts,
+    reply,
+)
+from tests.fixtures.monitoring_node import text as user_text
 from tests.fixtures.structured_tariffs import accepted_snapshot, build_snapshot
 from tests.fixtures.target_questions import TARGET_QUESTIONS
 
@@ -925,33 +932,45 @@ async def test_newer_same_scope_review_supersedes_pending_review(
 
 
 @pytest.mark.asyncio
-async def test_postgres_session_restart_resumes_same_workflow_invocation(
+async def test_a_paused_chat_review_resumes_in_a_fresh_runner_over_postgres(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    runs, running, execution = await _running_offering(monitoring_session_factory)
+    """The durability claim for reviews across CLI restarts (plan §14).
+
+    The monitoring node pauses the chat invocation on a real review; a new
+    Runner over a new DatabaseSessionService (a restarted CLI) answers it, and
+    the same tool call completes without executing the pipeline again.
+    """
+    runs = PostgresRunRepository(monitoring_session_factory)
     snapshots = PostgresSnapshotRepository(monitoring_session_factory)
-    snapshot = _snapshot(running.id, execution.id).model_copy(
-        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
-    )
-    await snapshots.save_attempt(snapshot)
     reviews = PostgresReviewRepository(monitoring_session_factory)
-    review = await reviews.create(
-        _review_task(
-            running.id,
-            execution.id,
-            snapshot.id,
-            idempotency_key=f"restart:{running.id}",
-            created_at=snapshot.created_at,
-        ).model_copy(
-            update={"reason": ReviewReason.LARGE_RATE_CHANGE, "candidates": ()}
-        )
-    )
+    created: dict[str, object] = {}
 
     class _Pipeline:
         calls = 0
 
-        async def execute(self, run):
+        async def execute(self, run, *, progress=None):
             self.calls += 1
+            execution = await runs.create_offering_execution(
+                run.id, ProductType.CONSUMER_LOAN, OfferingId.CONSUMER_STANDARD
+            )
+            execution = await runs.start_offering_execution(execution.id)
+            snapshot = _snapshot(run.id, execution.id).model_copy(
+                update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+            )
+            await snapshots.save_attempt(snapshot)
+            review = await reviews.create(
+                _review_task(
+                    run.id,
+                    execution.id,
+                    snapshot.id,
+                    idempotency_key=f"restart:{run.id}",
+                    created_at=snapshot.created_at,
+                ).model_copy(
+                    update={"reason": ReviewReason.LARGE_RATE_CHANGE, "candidates": ()}
+                )
+            )
+            created.update(snapshot=snapshot, review=review)
             return await runs.pause_for_review(
                 run.id,
                 summary={
@@ -962,61 +981,76 @@ async def test_postgres_session_restart_resumes_same_workflow_invocation(
             )
 
     pipeline = _Pipeline()
-    workflow = build_monitoring_workflow(
+    node = build_monitoring_node(
         runs=runs,
+        run_service=RunService(runs),
         pipeline=pipeline,
-        reviews=reviews,
-        decisions=ReviewDecisionService(reviews, snapshots),
-    )
-    first_sessions = DatabaseSessionService(db_url=_test_database_url())
-    await first_sessions.prepare_tables()
-    first_runner = MonitoringWorkflowRunner(
-        app=build_monitoring_app(workflow),
-        session_service=first_sessions,
-        artifact_service=InMemoryArtifactService(),
+        resolution=ReviewResolutionService(
+            runs=runs,
+            reviews=reviews,
+            decisions=ReviewDecisionService(reviews, snapshots),
+        ),
+        answer_router=None,
+        owner="cli:test-host:1:restart",
+        poll_seconds=0.01,
     )
 
-    paused = await first_runner.start(running)
-    attached = await reviews.get(review.id)
-    assert paused.status is RunStatus.AWAITING_REVIEW
-    assert attached is not None and attached.correlation is not None
-    correlation = attached.correlation
+    async def run_tariff_monitoring(tool_context: ToolContext) -> dict:
+        """Monitor the standard consumer loan."""
+        return await tool_context.run_node(
+            node, {"product": "consumer_loan", "offering_id": "consumer_standard"}
+        )
+
+    def runner(sessions: DatabaseSessionService, model: ScriptedModel) -> Runner:
+        app = App(
+            name="restart_test",
+            root_agent=Agent(name="root", model=model, tools=[run_tariff_monitoring]),
+            resumability_config=ResumabilityConfig(is_resumable=True),
+        )
+        return Runner(app=app, session_service=sessions, auto_create_session=True)
+
+    first_sessions = DatabaseSessionService(db_url=_test_database_url())
+    await first_sessions.prepare_tables()
+    first_model = ScriptedModel(model="scripted")
+    first_model.play(call("run_tariff_monitoring"))
+    first = [
+        event
+        async for event in runner(first_sessions, first_model).run_async(
+            user_id="cli-user", session_id="restart", new_message=user_text("monitor")
+        )
+    ]
+    ((interrupt_id, payload),) = interrupts(first)
+    review = created["review"]
+    assert payload["view"]["review_id"] == str(review.id)
+    paused_run_id = parse_review_interrupt_id(interrupt_id)[0]
+    paused = await runs.get(paused_run_id)
+    assert paused is not None and paused.status is RunStatus.AWAITING_REVIEW
     await first_sessions.db_engine.dispose()
 
     second_sessions = DatabaseSessionService(db_url=_test_database_url())
     await second_sessions.prepare_tables()
-    second_runner = MonitoringWorkflowRunner(
-        app=build_monitoring_app(workflow),
-        session_service=second_sessions,
-        artifact_service=InMemoryArtifactService(),
-    )
-    user_id, session_id = workflow_identity(running)
+    resumed = [
+        event
+        async for event in runner(
+            second_sessions, ScriptedModel(model="scripted")
+        ).run_async(
+            user_id="cli-user",
+            session_id="restart",
+            new_message=reply(interrupt_id, {"decision_type": "approve"}),
+        )
+    ]
 
-    completed = await second_runner.resume(
-        user_id=user_id,
-        session_id=session_id,
-        interrupt_id=correlation.interrupt_id,
-        response=MonitoringReviewResponse(
-            decisions=(
-                ReviewResponseItem(
-                    review_id=review.id,
-                    decision=ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
-                ),
-            )
-        ),
-        run_id=running.id,
-    )
-
-    assert completed.status is RunStatus.SUCCEEDED
+    result = function_responses(resumed, "run_tariff_monitoring")[0]
+    assert result["status"] == "succeeded"
     assert pipeline.calls == 1
-    persisted = await runs.get(running.id)
+    persisted = await runs.get(paused_run_id)
     assert persisted is not None and persisted.status is RunStatus.SUCCEEDED
     async with monitoring_session_factory() as session:
         active_projection = await session.scalar(
             text(
                 "SELECT count(*) FROM offering_profiles WHERE snapshot_id = :id AND is_active"
             ),
-            {"id": snapshot.id},
+            {"id": created["snapshot"].id},
         )
     assert active_projection == 1
     await second_sessions.db_engine.dispose()

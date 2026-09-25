@@ -902,8 +902,6 @@ async def chat(
         container.request_resolver,
         container.current_tariff_service,
         container.tariff_history_service,
-        None,
-        None,
         structured_query_service=container.structured_query_service,
         answer_router=container.answer_router,
         monitoring_node=container.monitoring_node,

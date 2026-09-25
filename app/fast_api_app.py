@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ADK Web (the /dev-ui served here) is a development surface; the CLI
+# (`./tariff-chat`) is the product and the review console. A monitoring request
+# made in ADK Web runs the same monitoring node in-process in this API worker,
+# which is acceptable for a dev UI (plan §16, residual risks).
+
 import contextlib
 import os
 from collections.abc import AsyncIterator
@@ -25,9 +30,8 @@ from google.adk.runners import Runner
 from app.api.routes import router as project_router
 from app.app_utils import services
 from app.app_utils.a2a import attach_a2a_routes
-from app.app_utils.agent_loader import RuntimeAgentLoader
 from app.config import get_settings
-from app.runtime import build_application_container
+from app.runtime import build_application_container, process_owner
 from app.services.logging_setup import configure_application_logging
 from app.services.telemetry import configure_telemetry
 from app.tools import configure_services
@@ -39,7 +43,6 @@ allow_origins = list(settings.http.allow_origins) or None
 otel_to_cloud = settings.observability.otel_to_cloud
 
 AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-agent_loader = RuntimeAgentLoader(AGENT_DIR)
 
 
 @contextlib.asynccontextmanager
@@ -47,20 +50,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.agent import app as adk_app
     from app.agent import root_agent
 
-    container = build_application_container(settings)
-    await services.ensure_session_service_ready()
-    agent_loader.register(
-        container.monitoring_workflow_app.name,
-        container.monitoring_workflow_app,
+    container = build_application_container(
+        settings, monitoring_owner=process_owner("api")
     )
+    await services.ensure_session_service_ready()
     configure_services(
         container.run_service,
         container.answer_service,
         container.request_resolver,
         container.current_tariff_service,
         container.tariff_history_service,
-        container.run_wait_service,
-        container.chat_review_service,
         structured_query_service=container.structured_query_service,
         answer_router=container.answer_router,
         monitoring_node=container.monitoring_node,
@@ -85,8 +84,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.current_tariff_service = container.current_tariff_service
     app.state.tariff_history_service = container.tariff_history_service
     app.state.review_repository = container.reviews
-    app.state.run_wait_service = container.run_wait_service
-    app.state.chat_review_service = container.chat_review_service
     app.state.review_resolution = container.review_resolution
     await attach_a2a_routes(
         app,
@@ -98,14 +95,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        agent_loader.unregister(container.monitoring_workflow_app.name)
-        configure_services(None, None, None, None, None, None, None)
+        configure_services(None, None)
         await container.close()
 
 
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
-    agent_loader=agent_loader,
     web=True,
     artifact_service_uri=services.ARTIFACT_SERVICE_URI,
     allow_origins=allow_origins,

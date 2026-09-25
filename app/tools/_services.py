@@ -19,8 +19,6 @@ class ToolServices:
     request_resolver: Any = None
     current_tariff_service: Any = None
     tariff_history_service: Any = None
-    run_wait_service: Any = None
-    chat_review_service: Any = None
     # ADK-native runtime (plan Phase 3): the node the monitoring tools run, and
     # the read-only repositories the status tool summarises.
     monitoring_node: Any = None
@@ -42,8 +40,6 @@ def configure_services(
     request_resolver: Any = None,
     current_tariff_service: Any = None,
     tariff_history_service: Any = None,
-    run_wait_service: Any = None,
-    chat_review_service: Any = None,
     structured_query_service: Any = None,
     answer_router: Any = None,
     *,
@@ -59,8 +55,6 @@ def configure_services(
     services.request_resolver = request_resolver
     services.current_tariff_service = current_tariff_service
     services.tariff_history_service = tariff_history_service
-    services.run_wait_service = run_wait_service
-    services.chat_review_service = chat_review_service
     services.monitoring_node = monitoring_node
     services.runs = runs
     services.reviews = reviews

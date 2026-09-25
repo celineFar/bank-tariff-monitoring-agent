@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 import httpx
 from google import genai
-from google.adk.apps import App
 from google.adk.workflow import FunctionNode
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
@@ -34,7 +33,6 @@ from app.services.acquisition import build_acquisition_service
 from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
-from app.services.chat_reviews import ChatReviewService
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
 from app.services.intent_resolution import AdkIntentClassifier, RequestResolver
 from app.services.knowledge_index import (
@@ -50,11 +48,6 @@ from app.services.model_call_usage import (
 from app.services.model_pricing import enforce_model_price_cap, model_sequence
 from app.services.monitoring_node import build_monitoring_node
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
-from app.services.monitoring_workflow import (
-    MonitoringWorkflowRunner,
-    build_monitoring_app,
-    build_monitoring_workflow,
-)
 from app.services.normalization import StructuralNormalizationService
 from app.services.ocr_transcriber import TesseractOcrTranscriber
 from app.services.pdf_extraction import GeminiPdfExtractionService
@@ -78,10 +71,8 @@ from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.structured_unit_embeddings import StructuredUnitEmbeddingService
 from app.services.tariff_queries import (
     CurrentTariffService,
-    RunWaitService,
     TariffHistoryService,
 )
-from app.services.workflow_reconciliation import WorkflowReconciliationService
 
 
 @dataclass
@@ -92,22 +83,17 @@ class ApplicationContainer:
     reviews: PostgresReviewRepository
     run_service: RunService
     tariff_pipeline: TariffPipeline
-    monitoring_workflow_runner: MonitoringWorkflowRunner
-    monitoring_workflow_app: App
-    chat_review_service: ChatReviewService
     review_resolution: ReviewResolutionService
     # The ADK-native monitoring node (plan Phase 3); `monitoring_owner` is the
     # `claimed_by` value this process writes when it executes a chat run.
     monitoring_node: FunctionNode
     monitoring_owner: str
-    workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     structured_query_service: StructuredTariffQueryService
     answer_router: TariffAnswerRouter
     request_resolver: RequestResolver
     current_tariff_service: CurrentTariffService
     tariff_history_service: TariffHistoryService
-    run_wait_service: RunWaitService
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -307,15 +293,10 @@ def build_application_container(
         runs=runs,
         reviews=reviews,
     )
-    review_decisions = ReviewDecisionService(reviews, snapshots)
     review_resolution = ReviewResolutionService(
-        runs=runs, reviews=reviews, decisions=review_decisions
-    )
-    monitoring_workflow = build_monitoring_workflow(
         runs=runs,
-        pipeline=tariff_pipeline,
         reviews=reviews,
-        decisions=review_decisions,
+        decisions=ReviewDecisionService(reviews, snapshots),
     )
     owner = monitoring_owner or process_owner("api")
     monitoring_node = build_monitoring_node(
@@ -326,15 +307,6 @@ def build_application_container(
         answer_router=answer_router,
         owner=owner,
         poll_seconds=settings.tariff_queries.run_poll_seconds,
-    )
-    from app.app_utils import services as adk_services
-
-    session_service = adk_services.get_session_service()
-    monitoring_workflow_app = build_monitoring_app(monitoring_workflow)
-    monitoring_workflow_runner = MonitoringWorkflowRunner(
-        app=monitoring_workflow_app,
-        session_service=session_service,
-        artifact_service=adk_services.get_artifact_service(),
     )
 
     return ApplicationContainer(
@@ -359,21 +331,5 @@ def build_application_container(
         review_resolution=review_resolution,
         monitoring_node=monitoring_node,
         monitoring_owner=owner,
-        chat_review_service=ChatReviewService(
-            runs=runs, reviews=reviews, workflow=monitoring_workflow_runner
-        ),
-        run_wait_service=RunWaitService(
-            run_service,
-            settings.tariff_queries,
-            reviews=reviews,
-        ),
         tariff_pipeline=tariff_pipeline,
-        monitoring_workflow_runner=monitoring_workflow_runner,
-        monitoring_workflow_app=monitoring_workflow_app,
-        workflow_reconciliation=WorkflowReconciliationService(
-            runs=runs,
-            reviews=reviews,
-            sessions=session_service,
-            workflow=monitoring_workflow_runner,
-        ),
     )

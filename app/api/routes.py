@@ -20,7 +20,6 @@ from app.domain.review import ReviewStatus, ReviewTask
 from app.domain.structured_tariffs import TariffQueryResult
 from app.domain.tariff_queries import (
     CurrentTariffResult,
-    ReviewHandoff,
     TariffHistoryResult,
 )
 from app.repositories.contracts import ReviewRepository
@@ -33,7 +32,6 @@ from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.tariff_queries import (
     CurrentTariffService,
-    RunWaitService,
     TariffHistoryService,
 )
 
@@ -60,7 +58,8 @@ class RunRequest(BaseModel):
 
 class RunSubmissionResponse(RunSubmissionResult):
     status_url: str
-    review_handoff_url: str
+    # Read-only diagnostics; review decisions are taken in the chat CLI.
+    reviews_url: str
     request_satisfied: bool
 
 
@@ -99,10 +98,6 @@ def get_tariff_history_service(request: Request) -> TariffHistoryService:
 
 def get_review_repository(request: Request) -> ReviewRepository:
     return request.app.state.review_repository
-
-
-def get_run_wait_service(request: Request) -> RunWaitService:
-    return request.app.state.run_wait_service
 
 
 @router.post(
@@ -157,7 +152,7 @@ async def create_run(
         created=result.created,
         reused_reason=result.reused_reason,
         status_url=f"/api/v1/runs/{result.run.id}",
-        review_handoff_url=f"/api/v1/runs/{result.run.id}/review-handoff",
+        reviews_url=f"/api/v1/reviews?run_id={result.run.id}",
         request_satisfied=True,
     )
 
@@ -176,30 +171,6 @@ async def get_run(
     if run is None:
         raise _failure(404, "run.not_found", "Run not found")
     return run
-
-
-@router.get(
-    "/runs/{run_id}/review-handoff",
-    response_model=ReviewHandoff,
-    tags=["reviews"],
-)
-async def get_run_review_handoff(
-    run_id: UUID,
-    service: Annotated[RunWaitService, Depends(get_run_wait_service)],
-) -> ReviewHandoff:
-    try:
-        handoff = await service.review_handoff(run_id)
-    except LookupError as exc:
-        raise _failure(404, "run.not_found", "Run not found") from exc
-    except Exception as exc:
-        raise _failure(
-            503,
-            "review.persistence_failed",
-            "Review handoff is temporarily unavailable.",
-        ) from exc
-    if handoff is None:
-        raise _failure(409, "review.not_pending", "Run is not awaiting review")
-    return handoff
 
 
 @router.post("/questions", response_model=AnswerResult, tags=["questions"])
