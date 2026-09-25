@@ -23,7 +23,7 @@ from app.services.rag_answer import (
     AnswerDraftCitation,
     RagAnswerService,
 )
-from app.tools import answer_tariff_question, configure_services
+from app.tools import configure_services
 
 NOW = datetime(2026, 9, 19, tzinfo=UTC)
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
@@ -246,13 +246,11 @@ async def test_http_and_adk_question_adapters_share_answer_service() -> None:
                 "/api/v1/questions",
                 json={"query": "Rate?", "product": "consumer_loan"},
             )
-        tool_result = await answer_tariff_question("Rate?", "consumer_loan")
     finally:
         configure_services(None, None)
 
     assert response.status_code == 200
     assert response.json()["status"] == "answered"
-    assert tool_result["status"] == "answered"
 
 
 @pytest.mark.asyncio

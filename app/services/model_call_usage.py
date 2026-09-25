@@ -294,11 +294,6 @@ def adk_usage_callbacks(
         if not stack:
             starts.pop(key, None)
         input_tokens, output_tokens = response_tokens(response)
-        raw_run_id = callback_context.state.get("monitoring_active_run_id")
-        try:
-            run_id = UUID(str(raw_run_id)) if raw_run_id else None
-        except ValueError:
-            run_id = None
         usage = new_usage(
             stage=stage,
             operation="generate_content",
@@ -306,8 +301,10 @@ def adk_usage_callbacks(
             outcome="failed" if error else "succeeded",
             latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
             call_id=call_id,
+            # A chat model call belongs to its turn (the invocation id above),
+            # not to a monitoring run; pipeline model calls record their run.
             request_id=key[:100],
-            run_id=run_id,
+            run_id=None,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             error_class=type(error).__name__ if error else None,

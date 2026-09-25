@@ -21,8 +21,8 @@ from app.services.telemetry import configure_telemetry  # noqa: E402
 
 _settings = get_settings()
 configure_application_logging(_settings.observability, console_output=False)
-# A review decision taken here resumes the worker's paused workflow in this
-# process, so the CLI has to export spans for that half of the run to appear.
+# Chat-initiated monitoring runs execute in this process (the ADK-native
+# monitoring node), so the CLI exports spans for the whole turn.
 configure_telemetry(_settings.observability, component="cli")
 
 from app.cli import main  # noqa: E402

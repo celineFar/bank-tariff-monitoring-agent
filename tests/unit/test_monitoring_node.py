@@ -38,7 +38,7 @@ SELECT = {"decision_type": "select_candidate", "candidate_id": "candidate-1"}
 
 def _monitor(**args):
     return call(
-        "monitor",
+        "run_tariff_monitoring",
         **{"product": PRODUCT, "offering_id": OFFERING, "question": QUESTION, **args},
     )
 
@@ -63,7 +63,7 @@ async def test_progress_streams_as_partial_events_that_are_never_persisted() -> 
     assert all(event.partial for event in streamed)
     persisted = await harness.persisted()
     assert not progress_events(persisted)
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["status"] == "succeeded"
     assert harness.pipeline.executed == 1
     assert harness.runs.claims[0][1] == "cli:test-host:1"
@@ -76,7 +76,7 @@ async def test_successful_run_answers_the_original_question_in_the_same_turn() -
 
     events = await harness.turn(text("monitor overdraft"))
 
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["answer_status"] == "answered"
     assert result["answer"]["status"] == "insufficient_evidence"
     assert harness.answers.questions == [QUESTION]
@@ -100,7 +100,7 @@ async def test_a_pause_is_a_native_request_input_and_the_model_is_not_called() -
     assert payload["input_format"]["field"] == "interest_rate"
     assert (payload["position"], payload["total"]) == (1, 1)
     assert harness.model.calls == 1
-    assert function_responses(events, "monitor") == []
+    assert function_responses(events, "run_tariff_monitoring") == []
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,7 @@ async def test_resume_replays_the_tool_applies_the_decision_and_answers() -> Non
 
     events = await harness.turn(reply(interrupt_id, SELECT))
 
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["status"] == "succeeded"
     assert result["reviews_applied"] == 1
     assert result["answer"]["status"] == "insufficient_evidence"
@@ -136,8 +136,10 @@ async def test_two_reviews_pause_twice_in_one_tool_call() -> None:
     assert (first_payload["position"], first_payload["total"]) == (1, 2)
     assert (second_payload["position"], second_payload["total"]) == (2, 2)
     assert first != second
-    assert function_responses(second_events, "monitor") == []
-    assert function_responses(final, "monitor")[0]["status"] == "succeeded"
+    assert function_responses(second_events, "run_tariff_monitoring") == []
+    assert (
+        function_responses(final, "run_tariff_monitoring")[0]["status"] == "succeeded"
+    )
     assert len(harness.decisions.applied) == 2
     assert harness.pipeline.executed == 1
     assert harness.model.calls == 2
@@ -159,7 +161,9 @@ async def test_a_rejected_reply_is_asked_again_under_a_new_interrupt() -> None:
     assert harness.decisions.applied == []  # nothing was written
 
     final = await harness.turn(reply(again, SELECT))
-    assert function_responses(final, "monitor")[0]["status"] == "succeeded"
+    assert (
+        function_responses(final, "run_tariff_monitoring")[0]["status"] == "succeeded"
+    )
 
 
 @pytest.mark.asyncio
@@ -170,7 +174,7 @@ async def test_reject_all_supersedes_the_rest_and_fails_the_run() -> None:
 
     events = await harness.turn(reply(interrupt_id, {"decision_type": "reject_all"}))
 
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["status"] == "failed"
     assert "answer" not in result or result["answer"] is None
     statuses = sorted(task.status.value for task in harness.reviews.tasks.values())
@@ -191,7 +195,7 @@ async def test_a_run_closed_elsewhere_while_paused_is_reported_not_restarted() -
 
     events = await harness.turn(reply(interrupt_id, SELECT))
 
-    assert function_responses(events, "monitor")[0]["status"] == "failed"
+    assert function_responses(events, "run_tariff_monitoring")[0]["status"] == "failed"
     assert len(harness.runs.submits) == 1
     assert harness.pipeline.executed == 1
 
@@ -248,7 +252,7 @@ async def test_a_run_owned_by_another_process_is_followed_not_executed() -> None
     assert ("stage_started", "acquisition") in [
         (item["kind"], item["stage"]) for item in progress
     ]
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["status"] == "succeeded"
     assert result["followed"] is True
     assert harness.pipeline.executed == 0
@@ -269,12 +273,14 @@ async def test_review_only_never_submits_or_claims() -> None:
 
     task = review_task(paused, OfferingId.OVERDRAFT, "interest_rate")
     harness.reviews.tasks[task.id] = task
-    harness.model.play(call("monitor", review_only=True))
+    harness.model.play(call("run_tariff_monitoring", review_only=True))
 
     ((interrupt_id, _),) = interrupts(await harness.turn(text("review them")))
     events = await harness.turn(reply(interrupt_id, SELECT))
 
-    assert function_responses(events, "monitor")[0]["status"] == "succeeded"
+    assert (
+        function_responses(events, "run_tariff_monitoring")[0]["status"] == "succeeded"
+    )
     assert harness.runs.submits == []
     assert harness.runs.claims == []
 
@@ -282,11 +288,14 @@ async def test_review_only_never_submits_or_claims() -> None:
 @pytest.mark.asyncio
 async def test_review_only_without_a_paused_run_says_so() -> None:
     harness = await build()
-    harness.model.play(call("monitor", review_only=True))
+    harness.model.play(call("run_tariff_monitoring", review_only=True))
 
     events = await harness.turn(text("review them"))
 
-    assert function_responses(events, "monitor")[0]["status"] == "no_pending_reviews"
+    assert (
+        function_responses(events, "run_tariff_monitoring")[0]["status"]
+        == "no_pending_reviews"
+    )
 
 
 @pytest.mark.asyncio
@@ -301,7 +310,7 @@ async def test_an_active_run_for_another_offering_blocks_without_starting() -> N
 
     events = await harness.turn(text("monitor all consumer loans"))
 
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["status"] == "blocked"
     assert harness.pipeline.executed == 0
     assert harness.runs.claims == []
@@ -314,7 +323,7 @@ async def test_a_failed_run_reports_its_code_in_words() -> None:
 
     events = await harness.turn(text("monitor"))
 
-    result = function_responses(events, "monitor")[0]
+    result = function_responses(events, "run_tariff_monitoring")[0]
     assert result["status"] == "failed"
     assert result["failure_code"] == "source.model_failed"
     assert "no configured model was available" in result["failure_summary"]

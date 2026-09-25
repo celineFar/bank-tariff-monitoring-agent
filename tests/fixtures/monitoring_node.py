@@ -128,6 +128,26 @@ class Runs:
     async def record_audit(self, run_id, event_type, **kwargs) -> None:
         self.audits.append((run_id, event_type))
 
+    async def fail_interrupted(self, *, owner_prefix: str, before=None) -> int:
+        self.interrupted_prefixes = [
+            *getattr(self, "interrupted_prefixes", []),
+            owner_prefix,
+        ]
+        failed = 0
+        for run_id, owner in self.owners.items():
+            if (
+                owner.startswith(owner_prefix)
+                and self.runs[run_id].status is RunStatus.RUNNING
+            ):
+                self.set(
+                    run_id,
+                    status=RunStatus.FAILED,
+                    failure_code=RunFailureCode.INTERRUPTED.value,
+                    completed_at=NOW,
+                )
+                failed += 1
+        return failed
+
     def set(self, run_id: UUID, **update: Any) -> MonitoringRun:
         self.runs[run_id] = self.runs[run_id].model_copy(update=update)
         return self.runs[run_id]
@@ -275,12 +295,23 @@ class Pipeline:
         self.runs.execution(
             run.id, offering, status=OfferingRunStatus.SUCCEEDED, stage="publication"
         )
-        return self.runs.set(
+        finished = self.runs.set(
             run.id,
             status=RunStatus.SUCCEEDED,
             summary={"succeeded": 1, "failed": 0},
             completed_at=NOW + timedelta(minutes=5),
         )
+        if progress is not None:
+            await progress.report(
+                PipelineProgress(
+                    kind=ProgressKind.RUN_FINISHED,
+                    run_id=run.id,
+                    product=run.command.product,
+                    elapsed_ms=1000,
+                    detail=RunStatus.SUCCEEDED.value,
+                )
+            )
+        return finished
 
     @staticmethod
     async def _report(progress, run, kind, stage=None) -> None:
@@ -482,7 +513,7 @@ async def build(
         follow_timeout_seconds=follow_timeout_seconds,
     )
 
-    async def monitor(
+    async def run_tariff_monitoring(
         tool_context: ToolContext,
         product: str | None = None,
         offering_id: str | None = None,
@@ -503,7 +534,9 @@ async def build(
     model = ScriptedModel(model="scripted")
     app = App(
         name=APP_NAME,
-        root_agent=Agent(name="root", model=model, tools=tools or [monitor]),
+        root_agent=Agent(
+            name="root", model=model, tools=tools or [run_tariff_monitoring]
+        ),
         resumability_config=ResumabilityConfig(is_resumable=True),
     )
     sessions = InMemorySessionService()

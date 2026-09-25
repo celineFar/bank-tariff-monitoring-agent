@@ -1,4 +1,11 @@
-"""Interactive ADK chat with durable monitoring completion in one terminal session."""
+"""Interactive tariff chat: one ADK invocation per turn, attached to the terminal.
+
+A message starts an invocation of the single `app` agent. If monitoring is
+needed, the monitoring node runs inside that invocation: its progress arrives
+here as partial events, each review arrives as a native `adk_request_input`
+pause, and the reviewer's answer resumes the same invocation. Ctrl-C cancels
+the turn (and with it the run) and rewinds the conversation.
+"""
 
 from __future__ import annotations
 
@@ -7,16 +14,17 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass, replace
+import secrets
+import socket
+import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import monotonic
-from uuid import UUID, uuid4
+from typing import Any
 
-from google.adk.agents import Agent
-from google.adk.apps import App, ResumabilityConfig
-from google.adk.events import Event
+from google.adk.events import Event, EventActions
 from google.adk.runners import Runner
 from google.adk.sessions import BaseSessionService
-from google.adk.tools import LongRunningFunctionTool, ToolContext, request_input
 from google.genai import types
 from google.genai.errors import APIError
 from rich.console import Console
@@ -25,38 +33,42 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from app.agent import root_agent
+from app.agent import app as agent_app
 from app.app_utils import services
 from app.config import get_settings
-from app.domain.monitoring import RunStatus
-from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
-from app.domain.review import ReviewDecision, ReviewDecisionType
+from app.domain.review import (
+    ReviewDecision,
+    ReviewDecisionInput,
+    ReviewDecisionType,
+    ReviewPromptView,
+)
 from app.domain.semantic_extraction import ExtractionField
 from app.runtime import build_application_container
-from app.services.adk_logging import suppress_resource_exhaustion_adk_logs
-from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
+from app.services.adk_logging import (
+    install_runtime_log_filters,
+    suppress_resource_exhaustion_adk_logs,
+)
 from app.services.failure_mapping import explain_failure_code
-from app.services.model_call_usage import DEFAULT_USAGE_PROXY, adk_usage_callbacks
+from app.services.monitoring_node import PROGRESS_KIND
+from app.services.monitoring_progress import (
+    PipelineProgress,
+    ProgressKind,
+    stage_label,
+)
 from app.services.review_input import (
     ReviewInputError,
     parse_review_field_text,
     review_field_format,
     term_supported_by_passage,
 )
-from app.services.run_service import RunProgressPort
-from app.tools import (
-    answer_tariff_query,
-    configure_services,
-    get_current_tariffs,
-    get_next_monitoring_review,
-    get_tariff_history,
-    resolve_request,
-    start_tariff_monitoring,
-    submit_monitoring_review_input,
-)
+from app.tools import configure_services
 
 console = Console(highlight=False)
 logger = logging.getLogger(__name__)
+
+OWNER_STATE_KEY = "cli_owner"
+MONITORING_TOOLS = frozenset({"run_tariff_monitoring", "review_pending_candidates"})
+REVIEW_REQUEST = "adk_request_input"
 
 
 def _notice(message: str, *, tone: str = "cyan", symbol: str = "•") -> None:
@@ -71,6 +83,36 @@ def _input(prompt: str) -> str:
     return input("")
 
 
+async def _ainput(prompt: str) -> str:
+    """Read a line without blocking the loop or holding up interpreter exit.
+
+    A daemon thread, unlike `asyncio.to_thread`, is not joined at shutdown, so
+    Ctrl-C at a prompt exits at once instead of waiting for Enter.
+    """
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[str] = loop.create_future()
+
+    def read() -> None:
+        try:
+            value = _input(prompt)
+        except BaseException as exc:  # handed to the loop, raised by the await
+            loop.call_soon_threadsafe(_settle, future, None, exc)
+        else:
+            loop.call_soon_threadsafe(_settle, future, value, None)
+
+    threading.Thread(target=read, daemon=True).start()
+    return await future
+
+
+def _settle(future: asyncio.Future, value: Any, error: BaseException | None) -> None:
+    if future.done():
+        return
+    if error is not None:
+        future.set_exception(error)
+    else:
+        future.set_result(value)
+
+
 def _error(title: str, message: str) -> None:
     console.print(
         Panel(
@@ -82,322 +124,460 @@ def _error(title: str, message: str) -> None:
     )
 
 
-async def start_tariff_monitoring_cli(
-    product: str,
-    offering_id: str | None,
-    tool_context: ToolContext,
-) -> dict[str, object] | None:
-    """Start a durable monitoring run and pause until the CLI supplies its result."""
-    return await start_tariff_monitoring(product, offering_id, tool_context)
-
-
-cli_agent = Agent(
-    **adk_usage_callbacks(
-        DEFAULT_USAGE_PROXY,
-        stage="adk.cli",
-        model_id=get_settings().models.generation_model,
-    ),
-    name="ameria_tariff_monitor_cli",
-    model=root_agent.model,
-    generate_content_config=types.GenerateContentConfig(
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-    ),
-    instruction=(
-        "You are the Ameria Bank tariff-monitoring assistant. If this "
-        "conversation has an active run awaiting review, any request to continue "
-        "must call get_next_monitoring_review and present its saved review. "
-        "Never offer to restart monitoring while a review is pending. "
-        "On ordinary text turns without a pending review, call resolve_request "
-        "first and follow its canonical scope, language, "
-        "clarification, and catalog guidance. For tariff questions check accepted "
-        "snapshots with get_current_tariffs. When a required snapshot is missing, "
-        "explain that monitoring is needed and ask for confirmation. Only after "
-        "explicit authorization call start_tariff_monitoring_cli. Always pass "
-        "the offering_id that resolve_request resolved, so monitoring covers only "
-        "the offering asked about; pass a null offering_id only when the user "
-        "explicitly asks to monitor the whole product family. When the tool returns "
-        "needs_scope_confirmation, tell the user how many offerings that run would "
-        "cover and call it again only after they confirm that wider scope. "
-        "This long-running "
-        "tool starts the worker and pauses this invocation; do not call it twice. "
-        "When it returns, say in one short line that the run has started, then end "
-        "your turn. Do not call any tool to check on a run that is already "
-        "running: the CLI narrates its progress and supplies the final function "
-        "response when the worker reaches a terminal or review state. A tool that "
-        "answers with action stop_and_wait means exactly that; asking again "
-        "cannot change it. On a failed result, report the saved "
-        "failure_summary and the exact failure_code, without claiming tariff "
-        "data. On success, answer the original "
-        "question from accepted snapshots with answer_tariff_query using the "
-        "saved query_plan and exact original user text. On review, "
-        "call get_next_monitoring_review, show the field, candidate, and evidence, "
-        "and state the returned input_format instruction and examples so the user "
-        "knows what a valid answer looks like, then call request_input with the "
-        "returned review_id and response_schema. "
-        "After native input, call submit_monitoring_review_input; repeat until "
-        "complete. Route history to get_tariff_history. Never invent tariff values, "
-        "evidence, status, or source URLs. Never expose pending candidates as "
-        "accepted tariffs."
-    ),
-    tools=[
-        resolve_request,
-        get_current_tariffs,
-        get_tariff_history,
-        LongRunningFunctionTool(start_tariff_monitoring_cli),
-        get_next_monitoring_review,
-        request_input,
-        submit_monitoring_review_input,
-        answer_tariff_query,
-    ],
-)
-cli_app = App(
-    name="app_cli",
-    root_agent=cli_agent,
-    resumability_config=ResumabilityConfig(is_resumable=True),
-)
-
-
-@dataclass(frozen=True)
-class PendingInput:
-    invocation_id: str
-    function_call_id: str
-    name: str
-    arguments: dict[str, object]
-    initial_response: dict[str, object] | None = None
-
-
-def pending_input(events: list[Event]) -> PendingInput | None:
-    """Find the latest unmatched ADK long-running call in saved session events."""
-    pending: dict[str, PendingInput] = {}
-    for event in events:
-        for part in (event.content.parts if event.content else ()) or ():
-            call = part.function_call
-            if call is not None and call.id in (event.long_running_tool_ids or ()):
-                pending[call.id] = PendingInput(
-                    invocation_id=event.invocation_id,
-                    function_call_id=call.id,
-                    name=call.name,
-                    arguments=dict(call.args or {}),
-                )
-            response = part.function_response
-            if response is not None and response.id in pending:
-                if event.author == "user":
-                    pending.pop(response.id, None)
-                else:
-                    initial = dict(response.response or {})
-                    if pending[
-                        response.id
-                    ].name == "start_tariff_monitoring_cli" and not initial.get(
-                        "request_satisfied"
-                    ):
-                        pending.pop(response.id, None)
-                    else:
-                        pending[response.id] = replace(
-                            pending[response.id], initial_response=initial
-                        )
-    return next(reversed(pending.values())) if pending else None
-
-
-async def _run_and_print(runner: Runner, **kwargs: object) -> None:
-    with suppress_resource_exhaustion_adk_logs():
-        async for event in runner.run_async(**kwargs):
-            for part in (event.content.parts if event.content else ()) or ():
-                if part.text and not getattr(part, "thought", False):
-                    console.print(
-                        Panel(
-                            Markdown(part.text),
-                            title=Text("Assistant", style="bold cyan"),
-                            border_style="cyan",
-                            padding=(0, 1),
-                        )
-                    )
-
-
-async def _resume(
-    runner: Runner,
-    *,
-    user_id: str,
-    session_id: str,
-    pending: PendingInput,
-    response: dict[str, object],
-) -> None:
-    await _run_and_print(
-        runner,
-        user_id=user_id,
-        session_id=session_id,
-        invocation_id=pending.invocation_id,
-        new_message=types.Content(
-            role="user",
-            parts=[
-                types.Part(
-                    function_response=types.FunctionResponse(
-                        id=pending.function_call_id,
-                        name=pending.name,
-                        response=response,
-                    )
-                )
-            ],
-        ),
-    )
-
-
-_STAGE_LABELS = {
-    "starting": "Starting",
-    "acquisition": "Acquiring web content",
-    "normalization": "Reading source documents",
-    "source_discovery": "Finding tariff evidence",
-    "semantic_extraction": "Extracting tariff fields",
-    "previous_snapshot": "Checking previous snapshot",
-    "embedding": "Indexing evidence",
-    "publication": "Saving candidate tariffs",
-    "review_approved": "Review approved",
-    "review_rejected": "Review rejected",
-    "published": "Snapshot published",
-    "internal": "Recovering from an internal error",
-}
-
-
-def _elapsed(started: float) -> str:
-    seconds = int(monotonic() - started)
+def _duration(milliseconds: int | float) -> str:
+    seconds = round(milliseconds / 1000)
     minutes, seconds = divmod(seconds, 60)
     return f"{minutes}m{seconds:02d}s" if minutes else f"{seconds}s"
 
 
-async def _wait_for_run(run_service: RunProgressPort, run_id: UUID, seconds: float):
-    last_progress = None
-    last_message_at = 0.0
-    started = monotonic()
-    while True:
-        run = await run_service.get(run_id)
-        if run is None:
-            raise RuntimeError(f"monitoring run {run_id} was not found")
-        offerings = await run_service.list_offering_executions(run_id)
-        active = tuple(
-            (item.offering_id.value, item.current_stage or item.status.value)
-            for item in offerings
-            if item.status.value in {"running", "pending"}
-        )
-        progress = (run.status.value, active)
-        now = monotonic()
-        # A stage can outlast the poll interval by minutes, so repeat the line
-        # it is on with the elapsed time rather than leaving a still cursor.
-        if progress != last_progress or (
-            run.status is RunStatus.RUNNING and now - last_message_at >= 30
-        ):
-            if active:
-                for offering_id, stage in active:
-                    label = _STAGE_LABELS.get(
-                        stage, stage.replace("_", " ").capitalize()
-                    )
-                    _notice(f"{label} · {offering_id} · {_elapsed(started)}…")
-            elif run.status is RunStatus.QUEUED:
-                _notice(f"Waiting for the worker · {_elapsed(started)}…")
-            elif run.status is RunStatus.RUNNING:
-                _notice(f"Monitoring is still running · {_elapsed(started)}…")
-            else:
-                _notice(
-                    f"Monitoring {run.status.value.replace('_', ' ')} "
-                    f"after {_elapsed(started)}.",
-                    tone="green" if run.status is RunStatus.SUCCEEDED else "yellow",
-                    symbol="✓" if run.status is RunStatus.SUCCEEDED else "•",
+def _leader(label: str, value: str, *, width: int = 40) -> str:
+    dots = "·" * max(2, width - len(label))
+    return f"{label} {dots} {value}"
+
+
+# --- session events -------------------------------------------------------------
+
+
+def live_events(events: list[Event]) -> list[Event]:
+    """`events` without rewound invocations.
+
+    `Runner.rewind_async` appends a marker instead of deleting history; this
+    mirrors ADK's own filter (`google.adk.events._rewind_events._apply_rewinds`)
+    so the CLI sees the same live conversation the model does.
+    """
+    kept: list[Event] = []
+    index = len(events) - 1
+    while index >= 0:
+        event = events[index]
+        target = event.actions.rewind_before_invocation_id if event.actions else None
+        if target:
+            index = next(
+                (
+                    position
+                    for position in range(index)
+                    if events[position].invocation_id == target
+                ),
+                index,
+            )
+        else:
+            kept.append(event)
+        index -= 1
+    kept.reverse()
+    return kept
+
+
+@dataclass(frozen=True)
+class PendingReview:
+    invocation_id: str
+    interrupt_id: str
+    message: str | None
+    payload: dict[str, Any]
+
+
+def pending_review(events: list[Event]) -> PendingReview | None:
+    """The latest `adk_request_input` pause the user has not answered yet."""
+    open_calls: dict[str, PendingReview] = {}
+    for event in live_events(events):
+        for part in (event.content.parts if event.content else ()) or ():
+            call = part.function_call
+            if call is not None and call.name == REVIEW_REQUEST and call.id:
+                args = dict(call.args or {})
+                payload = args.get("payload")
+                open_calls[call.id] = PendingReview(
+                    invocation_id=event.invocation_id,
+                    interrupt_id=call.id,
+                    message=args.get("message"),
+                    payload=payload if isinstance(payload, dict) else {},
                 )
-            last_progress = progress
-            last_message_at = now
-        if run.status.is_terminal or run.status is RunStatus.AWAITING_REVIEW:
-            return run
-        await asyncio.sleep(seconds)
+            response = part.function_response
+            if response is not None and response.id in open_calls:
+                open_calls.pop(response.id, None)
+    return next(reversed(open_calls.values())) if open_calls else None
 
 
-async def _continue_pending(
-    runner: Runner,
-    session_service: BaseSessionService,
-    run_service: RunProgressPort,
-    review_service: ChatReviewService,
-    *,
-    user_id: str,
-    session_id: str,
-    poll_seconds: float,
-) -> None:
-    while True:
-        session = await session_service.get_session(
-            app_name=cli_app.name, user_id=user_id, session_id=session_id
-        )
-        pending = pending_input(session.events)
-        if pending is None:
-            return
-        if pending.name == "start_tariff_monitoring_cli":
-            result = pending.initial_response or {}
-            if not result.get("request_satisfied") or not result.get("run_id"):
+def dangling_monitoring_invocation(events: list[Event]) -> str | None:
+    """The invocation of a monitoring call that never got a response.
+
+    Only meaningful when no review pause is open: then the process that was
+    executing the run died mid-run.
+    """
+    calls: dict[str, str] = {}
+    for event in live_events(events):
+        for part in (event.content.parts if event.content else ()) or ():
+            call = part.function_call
+            if call is not None and call.name in MONITORING_TOOLS and call.id:
+                calls[call.id] = event.invocation_id
+            response = part.function_response
+            if response is not None and response.id in calls:
+                calls.pop(response.id, None)
+    return next(reversed(calls.values())) if calls else None
+
+
+def _review_reply(interrupt_id: str, reply: dict[str, Any]) -> types.Content:
+    return types.Content(
+        role="user",
+        parts=[
+            types.Part(
+                function_response=types.FunctionResponse(
+                    id=interrupt_id,
+                    name=REVIEW_REQUEST,
+                    response={"result": reply},
+                )
+            )
+        ],
+    )
+
+
+# --- rendering ------------------------------------------------------------------
+
+
+class ProgressRenderer:
+    """Turns the invocation's events into terminal output.
+
+    Progress comes only from `custom_metadata["progress"]`; the event text is
+    never parsed. A spinner with a local timer shows the stage in flight, so a
+    long stage never looks frozen and nothing is polled.
+    """
+
+    def __init__(self, *, verbose: bool = False) -> None:
+        self.verbose = verbose
+        self._status = None
+        self._ticker: asyncio.Task | None = None
+        self._offerings = 1
+        self._run_started: float | None = None
+        self.saw_monitoring = False
+
+    def render(self, event: Event) -> None:
+        metadata = event.custom_metadata or {}
+        if metadata.get("kind") == PROGRESS_KIND:
+            self.saw_monitoring = True
+            try:
+                item = PipelineProgress.model_validate(metadata.get("progress"))
+            except ValueError:
                 return
-            scope = result.get("offering_id") or result.get("product") or "monitoring"
-            _notice(
-                f"Monitoring run {result['run_id']} started for {scope}. "
-                "Progress appears here as each stage completes.",
-                symbol="▶",
-            )
-            run = await _wait_for_run(
-                run_service, UUID(str(result["run_id"])), poll_seconds
-            )
-            # Say what the code means here, deterministically, rather than
-            # leaving the user with a bare `source.model_failed` from the model.
-            failure_summary = (
-                explain_failure_code(run.failure_code)
-                if run.status is RunStatus.FAILED
-                else None
-            )
-            if failure_summary is not None:
-                _error(f"Monitoring failed ({run.failure_code})", failure_summary)
-            await _resume(
-                runner,
-                user_id=user_id,
-                session_id=session_id,
-                pending=pending,
-                response={
-                    "run_id": str(run.id),
-                    "status": run.status.value,
-                    "failure_code": run.failure_code,
-                    "failure_detail": run.failure_detail,
-                    "failure_summary": failure_summary,
-                    "review_required": run.status is RunStatus.AWAITING_REVIEW,
-                },
-            )
-            continue
-        if pending.name == "adk_request_input":
-            raw_run_id = session.state.get("monitoring_active_run_id")
-            if not isinstance(raw_run_id, str):
-                raise RuntimeError("review input has no active monitoring run")
-            request = await review_service.pending_request(UUID(raw_run_id))
-            current_id = session.state.get("monitoring_review_current_id")
-            choices = session.state.get("monitoring_review_choices") or {}
-            item = next(
-                (view for view in request.reviews if str(view.review_id) == current_id),
-                None,
-            )
-            if item is None:
-                item = next(
-                    (
-                        view
-                        for view in request.reviews
-                        if str(view.review_id) not in choices
-                    ),
-                    request.reviews[0],
+            self._progress(item)
+            return
+        if self.verbose:
+            self._verbose(event)
+        if event.partial:
+            return
+        for part in (event.content.parts if event.content else ()) or ():
+            if part.text and not getattr(part, "thought", False):
+                self.stop()
+                console.print(
+                    Panel(
+                        Markdown(part.text),
+                        title=Text("Assistant", style="bold cyan"),
+                        border_style="cyan",
+                        padding=(0, 1),
+                    )
                 )
-            decision = await _ask_review_decision(
-                item, request.reviews.index(item) + 1, len(request.reviews)
+
+    def stop(self) -> None:
+        if self._ticker is not None:
+            self._ticker.cancel()
+            self._ticker = None
+        if self._status is not None:
+            self._status.stop()
+            self._status = None
+
+    def _progress(self, item: PipelineProgress) -> None:
+        indent = "    " if self._offerings > 1 else "  "
+        if item.kind is ProgressKind.RUN_STARTED:
+            self._run_started = monotonic()
+            count = re.match(r"(\d+)", item.detail or "")
+            self._offerings = int(count.group(1)) if count else 1
+            scope = (
+                item.offering_id.value
+                if item.offering_id
+                else (
+                    f"{self._offerings} {item.product.value.replace('_', ' ')} "
+                    "offerings"
+                )
             )
-            answer = {
-                "review_id": str(item.review_id),
-                **decision.model_dump(mode="json", exclude_none=True),
-            }
-            await _resume(
-                runner,
-                user_id=user_id,
-                session_id=session_id,
-                pending=pending,
-                response={"result": answer},
+            self.stop()
+            _notice(f"Monitoring {scope}", symbol="▶")
+            if self.verbose:
+                _notice(f"run {item.run_id}", tone="dim", symbol=" ")
+        elif item.kind is ProgressKind.OFFERING_STARTED:
+            if self._offerings > 1 and item.offering_id is not None:
+                self.stop()
+                console.print(Text(f"  {item.offering_id.value}", style="bold"))
+        elif item.kind is ProgressKind.STAGE_STARTED:
+            self._start_spinner(f"{indent}{stage_label(item.stage)}")
+        elif item.kind is ProgressKind.STAGE_COMPLETED:
+            self.stop()
+            console.print(
+                Text(
+                    f"{indent}✓ "
+                    + _leader(stage_label(item.stage), _duration(item.elapsed_ms))
+                )
             )
-            continue
-        raise RuntimeError(f"unsupported pending ADK input: {pending.name}")
+        elif item.kind is ProgressKind.OFFERING_FAILED:
+            self.stop()
+            label = stage_label(item.stage)
+            line = Text(f"{indent}✗ {label}", style="red")
+            if item.failure_code:
+                line.append(f" · {explain_failure_code(item.failure_code)}")
+                line.append(f" ({item.failure_code})", style="dim")
+            console.print(line)
+        elif item.kind is ProgressKind.OFFERING_REVIEW:
+            self.stop()
+        elif item.kind is ProgressKind.RUN_FINISHED:
+            self.stop()
+            elapsed = _duration(item.elapsed_ms)
+            if item.detail == "awaiting_review":
+                _notice(
+                    "Some values need your review before they can be accepted",
+                    tone="yellow",
+                    symbol="●",
+                )
+            elif item.detail == "succeeded":
+                _notice(f"Monitoring finished in {elapsed}", tone="green", symbol="✓")
+            else:
+                detail = (item.detail or "finished").replace("_", " ")
+                _notice(f"Monitoring {detail} after {elapsed}", tone="yellow")
+        elif item.kind is ProgressKind.FOLLOWING:
+            self.stop()
+            _notice(item.detail or "Following a run started elsewhere", symbol="↳")
+
+    def _start_spinner(self, label: str) -> None:
+        self.stop()
+        started = monotonic()
+        self._status = console.status(f"{label}…", spinner="dots")
+        self._status.start()
+
+        async def tick() -> None:
+            while True:
+                await asyncio.sleep(1)
+                if self._status is not None:
+                    self._status.update(
+                        f"{label} · {_duration((monotonic() - started) * 1000)}"
+                    )
+
+        try:
+            self._ticker = asyncio.get_running_loop().create_task(tick())
+        except RuntimeError:  # pragma: no cover - rendering outside a loop
+            self._ticker = None
+
+    def _verbose(self, event: Event) -> None:
+        for part in (event.content.parts if event.content else ()) or ():
+            if part.function_call is not None:
+                _notice(f"call {part.function_call.name}", tone="dim", symbol="→")
+            if part.function_response is not None:
+                _notice(
+                    f"response {part.function_response.name}", tone="dim", symbol="←"
+                )
+
+
+# --- the attach loop --------------------------------------------------------------
+
+
+class ChatSession:
+    """One named conversation: run turns, answer pauses, cancel, recover."""
+
+    def __init__(
+        self,
+        *,
+        runner: Runner,
+        sessions: BaseSessionService,
+        app_name: str,
+        user_id: str,
+        session_id: str,
+        owner: str,
+        runs: Any = None,
+        renderer: ProgressRenderer | None = None,
+    ) -> None:
+        self.runner = runner
+        self.sessions = sessions
+        self.app_name = app_name
+        self.user_id = user_id
+        self.session_id = session_id
+        self.owner = owner
+        self.runs = runs
+        self.renderer = renderer or ProgressRenderer()
+        self._invocation_id: str | None = None
+
+    async def events(self) -> list[Event]:
+        session = await self.sessions.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+        return list(session.events) if session is not None else []
+
+    async def open(self) -> None:
+        """Create the conversation if new, recover it if it was interrupted."""
+        session = await self.sessions.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+        if session is None:
+            session = await self.sessions.create_session(
+                app_name=self.app_name,
+                user_id=self.user_id,
+                session_id=self.session_id,
+            )
+        previous_owner = session.state.get(OWNER_STATE_KEY)
+        events = list(session.events)
+        request = pending_review(events)
+        if request is not None:
+            view = self._view(request)
+            if view is not None:
+                _notice(
+                    "Continuing the review of "
+                    f"{view.offering_id.value} · {view.issue_scope.replace('_', ' ')}",
+                    tone="yellow",
+                    symbol="↳",
+                )
+            await self.answer_reviews()
+        elif (invocation := dangling_monitoring_invocation(events)) is not None:
+            await self._close_interrupted(invocation, previous_owner)
+        await self._record_owner()
+
+    async def converse(self, text: str) -> None:
+        """One user message; Ctrl-C (task cancellation) cancels and rewinds it."""
+        self._invocation_id = None
+        self.renderer.saw_monitoring = False
+        turn = asyncio.create_task(
+            self.run_turn(types.Content(role="user", parts=[types.Part(text=text)]))
+        )
+        try:
+            await turn
+        except asyncio.CancelledError:
+            if not turn.done():
+                turn.cancel()
+            await asyncio.wait({turn})
+            current = asyncio.current_task()
+            if current is not None:
+                current.uncancel()
+            self.renderer.stop()
+            events = await self.events()
+            reviewing = pending_review(events) is not None
+            # Decided from the persisted call, not from whether a progress
+            # event happened to reach the terminal before Ctrl-C.
+            monitoring = (
+                self.renderer.saw_monitoring
+                or dangling_monitoring_invocation(events) is not None
+            )
+            await self.rewind()
+            if reviewing:
+                _notice(
+                    "Review postponed. The candidates stay pending; say "
+                    '"review them" to continue.',
+                    tone="yellow",
+                )
+            elif monitoring:
+                _notice("Monitoring cancelled.", tone="yellow")
+            else:
+                _notice("Cancelled.", tone="yellow")
+        finally:
+            self.renderer.stop()
+
+    async def run_turn(self, message: types.Content) -> None:
+        await self._stream(message)
+        await self.answer_reviews()
+
+    async def answer_reviews(self) -> None:
+        """Answer every open review pause, resuming the paused invocation each time."""
+        while (request := pending_review(await self.events())) is not None:
+            self._invocation_id = self._invocation_id or request.invocation_id
+            reply = await self.ask(request)
+            await self._stream(_review_reply(request.interrupt_id, reply))
+
+    async def ask(self, request: PendingReview) -> dict[str, Any]:
+        """Show one review and return a reply already valid for the pause.
+
+        The reply is validated here, before it is sent: ADK cannot retry a
+        resume whose reply fails the request's schema (plan §5, E11).
+        """
+        view = self._view(request)
+        if view is None:
+            raise RuntimeError(f"unsupported input request: {request.message}")
+        rejected = request.payload.get("rejected")
+        if isinstance(rejected, dict):
+            _error(
+                "The previous answer was not applied",
+                str(rejected.get("message") or rejected.get("reason_code")),
+            )
+        position = int(request.payload.get("position") or 1)
+        total = int(request.payload.get("total") or 1)
+        decision = await _ask_review_decision(view, position, total)
+        reply = ReviewDecisionInput.model_validate(
+            decision.model_dump(mode="json", exclude_none=True)
+        )
+        return reply.model_dump(mode="json", exclude_none=True)
+
+    async def rewind(self) -> None:
+        invocation = self._invocation_id or await self._last_user_invocation()
+        if invocation is None:
+            return
+        await self.runner.rewind_async(
+            user_id=self.user_id,
+            session_id=self.session_id,
+            rewind_before_invocation_id=invocation,
+        )
+
+    async def _stream(self, message: types.Content) -> None:
+        with suppress_resource_exhaustion_adk_logs():
+            async for event in self.runner.run_async(
+                user_id=self.user_id, session_id=self.session_id, new_message=message
+            ):
+                if event.invocation_id:
+                    self._invocation_id = self._invocation_id or event.invocation_id
+                self.renderer.render(event)
+
+    async def _close_interrupted(self, invocation: str, previous_owner: object) -> None:
+        """The CLI died mid-run: close its run and drop the dangling call."""
+        closed = 0
+        if isinstance(previous_owner, str) and previous_owner and self.runs is not None:
+            try:
+                closed = await self.runs.fail_interrupted(owner_prefix=previous_owner)
+            except Exception:
+                logger.warning("could not fail interrupted runs", exc_info=True)
+        await self.runner.rewind_async(
+            user_id=self.user_id,
+            session_id=self.session_id,
+            rewind_before_invocation_id=invocation,
+        )
+        logger.info("closed interrupted monitoring runs=%s", closed)
+        _notice(
+            "Your earlier monitoring run was interrupted when the chat closed. "
+            "Ask again to rerun it.",
+            tone="yellow",
+            symbol="↳",
+        )
+
+    async def _record_owner(self) -> None:
+        """Remember which process owns this conversation's runs, for recovery."""
+        session = await self.sessions.get_session(
+            app_name=self.app_name, user_id=self.user_id, session_id=self.session_id
+        )
+        if session is None or session.state.get(OWNER_STATE_KEY) == self.owner:
+            return
+        await self.sessions.append_event(
+            session,
+            Event(
+                author="user",
+                invocation_id=f"cli-open-{secrets.token_hex(4)}",
+                actions=EventActions(state_delta={OWNER_STATE_KEY: self.owner}),
+            ),
+        )
+
+    async def _last_user_invocation(self) -> str | None:
+        for event in reversed(await self.events()):
+            if event.author == "user" and event.content is not None:
+                return event.invocation_id
+        return None
+
+    @staticmethod
+    def _view(request: PendingReview) -> ReviewPromptView | None:
+        if request.payload.get("kind") != "tariff_review":
+            return None
+        try:
+            return ReviewPromptView.model_validate(request.payload.get("view"))
+        except ValueError:
+            return None
+
+
+# --- review input (unchanged from the pre-redesign CLI) -------------------------
 
 
 def _ordered_evidence(item: object) -> tuple[object, ...]:
@@ -544,8 +724,7 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
         _notice(_entry_format(item.issue_scope), tone="cyan")
     while True:
         raw = (
-            await asyncio.to_thread(
-                _input,
+            await _ainput(
                 f"[bold yellow]{item.issue_scope.replace('_', ' ').title()}[/] [yellow]>[/] ",
             )
         ).strip()
@@ -620,8 +799,7 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
         else:
             while True:
                 number_text = (
-                    await asyncio.to_thread(
-                        _input,
+                    await _ainput(
                         f"[bold yellow]Supporting passage (1-{len(evidence_items)})[/] [yellow]>[/] ",
                     )
                 ).strip()
@@ -650,105 +828,6 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
             reason="Reviewer confirmed the value against the selected official passage.",
             evidence_reference=selected.evidence_id,
         )
-
-
-async def _recover_review(
-    runner: Runner,
-    session_service: BaseSessionService,
-    run_service: RunProgressPort,
-    review_service: ChatReviewService,
-    *,
-    user_id: str,
-    session_id: str,
-) -> bool:
-    """Resume a business review directly when no root ADK input is outstanding."""
-    session = await session_service.get_session(
-        app_name=cli_app.name, user_id=user_id, session_id=session_id
-    )
-    if session is None or pending_input(session.events) is not None:
-        return False
-    raw_run_id = session.state.get("monitoring_active_run_id")
-    known = session.state.get("monitoring_chat_run_ids") or []
-    if not isinstance(raw_run_id, str) or raw_run_id not in known:
-        return False
-    run = await run_service.get(UUID(raw_run_id))
-    if run is None or run.status is not RunStatus.AWAITING_REVIEW:
-        return False
-
-    _notice(
-        f"Monitoring for {run.command.offering_id.value if run.command.offering_id else run.command.product.value} "
-        f"is paused for review (run {run.id}). Continuing here; no new run is needed.",
-        tone="yellow",
-        symbol="↳",
-    )
-    while True:
-        try:
-            request = await review_service.pending_request(run.id)
-        except ReviewNotReadyError:
-            _notice("The review is no longer pending.", tone="yellow")
-            return True
-        decisions = []
-        reject_all = False
-        for index, item in enumerate(request.reviews, start=1):
-            decision = await _ask_review_decision(item, index, len(request.reviews))
-            if decision.decision_type is ReviewDecisionType.REJECT_ALL:
-                reject_all = True
-                break
-            decisions.append(
-                ReviewResponseItem(review_id=item.review_id, decision=decision)
-            )
-        if reject_all:
-            decisions = [
-                ReviewResponseItem(
-                    review_id=item.review_id,
-                    decision=ReviewDecision(
-                        decision_type=ReviewDecisionType.REJECT_ALL
-                    ),
-                )
-                for item in request.reviews
-            ]
-        try:
-            result = await review_service.resume(
-                run.id,
-                MonitoringReviewResponse(decisions=tuple(decisions)),
-                actor_user_id=user_id,
-                actor_session_id=session_id,
-            )
-        except (ValueError, ReviewNotReadyError) as exc:
-            _error("Review was not applied", f"{exc}. Please correct the decision.")
-            continue
-        except Exception as exc:
-            _error(
-                "Review remains pending",
-                f"{type(exc).__name__}. Check the API logs and reopen this session to retry.",
-            )
-            return True
-        _notice(
-            f"Review completed. Monitoring status: {result.status.value}.",
-            tone="green",
-            symbol="✓",
-        )
-        if result.status in {RunStatus.SUCCEEDED, RunStatus.PARTIAL_SUCCESS}:
-            original_question = session.state.get("monitoring_original_question")
-            if isinstance(original_question, str) and original_question:
-                await _run_and_print(
-                    runner,
-                    user_id=user_id,
-                    session_id=session_id,
-                    new_message=types.Content(
-                        role="user",
-                        parts=[
-                            types.Part(
-                                text=(
-                                    "The saved monitoring review is complete. Answer "
-                                    "my original tariff question from accepted data: "
-                                    f"{original_question}"
-                                )
-                            )
-                        ],
-                    ),
-                )
-        return True
 
 
 def _print_api_error(exc: APIError) -> None:
@@ -787,25 +866,35 @@ def _print_api_error(exc: APIError) -> None:
         )
 
 
-def _print_unexpected_error(exc: Exception, step: str, session_id: str) -> None:
-    """Keep one broken step from ending a durable session.
+def _print_unexpected_error(exc: Exception, step: str, session_name: str) -> None:
+    """Keep one broken step from ending a durable conversation.
 
     The traceback still reaches `logs/cli.log`; the terminal gets the step that
-    broke and the command that reopens this session.
+    broke and how to reopen this conversation.
     """
     logger.exception("CLI step failed: %s", step)
     _error(
         "Something went wrong",
         f"{step} failed: {type(exc).__name__}: {exc}\n"
-        "The full traceback is in logs/cli.log. This session is still open; "
-        "the monitoring run keeps going in the worker.\n"
-        f"Resume later with: ./tariff-chat --session-id {session_id}",
+        "The full traceback is in logs/cli.log. This conversation is still open.\n"
+        f'Reopen it later with: ./tariff-chat --session "{session_name}"',
     )
 
 
-async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
+def process_owner() -> str:
+    """`cli:<host>:<pid>:<token>` — unique per CLI process, never a prefix of another."""
+    import os
+
+    return f"cli:{socket.gethostname()}:{os.getpid()}:{secrets.token_hex(4)}"
+
+
+async def chat(
+    user_id: str, session_name: str, *, verbose: bool = False, new: bool = False
+) -> None:
+    install_runtime_log_filters()
     settings = get_settings()
-    container = build_application_container(settings)
+    owner = process_owner()
+    container = build_application_container(settings, monitoring_owner=owner)
     session_service = await services.ensure_session_service_ready()
     configure_services(
         container.run_service,
@@ -813,126 +902,104 @@ async def chat(user_id: str, session_id: str, poll_seconds: float) -> None:
         container.request_resolver,
         container.current_tariff_service,
         container.tariff_history_service,
-        container.run_wait_service,
-        container.chat_review_service,
+        None,
+        None,
         structured_query_service=container.structured_query_service,
         answer_router=container.answer_router,
+        monitoring_node=container.monitoring_node,
+        runs=container.runs,
+        reviews=container.reviews,
     )
     runner = Runner(
-        app=cli_app,
+        app=agent_app,
         session_service=session_service,
         artifact_service=services.get_artifact_service(),
     )
+    session = ChatSession(
+        runner=runner,
+        sessions=session_service,
+        app_name=agent_app.name,
+        user_id=user_id,
+        session_id=session_name,
+        owner=owner,
+        runs=container.runs,
+        renderer=ProgressRenderer(verbose=verbose),
+    )
     try:
-        session = await session_service.get_session(
-            app_name=cli_app.name, user_id=user_id, session_id=session_id
-        )
-        if session is None:
-            await session_service.create_session(
-                app_name=cli_app.name, user_id=user_id, session_id=session_id
+        heading = f'Ameria Tariff Chat · conversation "{session_name}"'
+        hint = "Type quit to exit. Ctrl-C cancels a running turn."
+        if new:
+            hint = (
+                f'This is a new conversation; reopen it with --session "{session_name}".\n'
+                + hint
             )
         console.print(
             Panel(
-                Text(
-                    f"Session: {session_id}\nType quit to exit. Use this session ID to resume later."
-                ),
-                title=Text("Ameria Tariff Chat", style="bold cyan"),
-                border_style="cyan",
+                Text(hint), title=Text(heading, style="bold cyan"), border_style="cyan"
             )
         )
         try:
-            await _continue_pending(
-                runner,
-                session_service,
-                container.run_service,
-                container.chat_review_service,
-                user_id=user_id,
-                session_id=session_id,
-                poll_seconds=poll_seconds,
-            )
-            await _recover_review(
-                runner,
-                session_service,
-                container.run_service,
-                container.chat_review_service,
-                user_id=user_id,
-                session_id=session_id,
-            )
+            await session.open()
         except APIError as exc:
             _print_api_error(exc)
+        except EOFError:
+            return
         except Exception as exc:
-            _print_unexpected_error(exc, "Reopening the saved session", session_id)
+            _print_unexpected_error(exc, "Reopening the conversation", session_name)
         while True:
-            prompt = (
-                await asyncio.to_thread(_input, "[bold cyan]You[/] [cyan]>[/] ")
-            ).strip()
+            prompt = (await _ainput("[bold cyan]You[/] [cyan]>[/] ")).strip()
             if prompt.lower() in {"exit", "quit"}:
                 return
             if not prompt:
                 continue
             try:
-                recovered = await _recover_review(
-                    runner,
-                    session_service,
-                    container.run_service,
-                    container.chat_review_service,
-                    user_id=user_id,
-                    session_id=session_id,
-                )
-                if recovered:
-                    continue
-                await _run_and_print(
-                    runner,
-                    user_id=user_id,
-                    session_id=session_id,
-                    new_message=types.Content(
-                        role="user", parts=[types.Part(text=prompt)]
-                    ),
-                )
-                await _continue_pending(
-                    runner,
-                    session_service,
-                    container.run_service,
-                    container.chat_review_service,
-                    user_id=user_id,
-                    session_id=session_id,
-                    poll_seconds=poll_seconds,
-                )
-                await _recover_review(
-                    runner,
-                    session_service,
-                    container.run_service,
-                    container.chat_review_service,
-                    user_id=user_id,
-                    session_id=session_id,
-                )
+                await session.converse(prompt)
             except APIError as exc:
                 _print_api_error(exc)
+            except EOFError:
+                return
             except Exception as exc:
-                _print_unexpected_error(exc, "This turn", session_id)
+                _print_unexpected_error(exc, "This turn", session_name)
     finally:
-        configure_services(None, None, None, None, None, None, None)
+        session.renderer.stop()
+        configure_services(None, None)
         await container.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Durable Ameria tariff ADK chat")
-    parser.add_argument("--user-id", default="cli-user")
-    parser.add_argument("--session-id", default=None)
-    parser.add_argument("--poll-seconds", type=float, default=3.0)
+    parser.add_argument(
+        "--user",
+        "--user-id",
+        dest="user",
+        default="cli-user",
+        help="whose conversations to open (default: cli-user)",
+    )
+    parser.add_argument(
+        "--session",
+        "--session-id",
+        dest="session",
+        default="default",
+        help='conversation name to open or continue (default: "default")',
+    )
+    parser.add_argument(
+        "--new",
+        action="store_true",
+        help="start a new conversation named after the current time",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="also show tool calls and run ids",
+    )
     args = parser.parse_args()
-    if args.poll_seconds <= 0:
-        parser.error("--poll-seconds must be positive")
-    session_id = args.session_id or str(uuid4())
+    session_name = (
+        datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S") if args.new else args.session
+    )
     try:
-        asyncio.run(chat(args.user_id, session_id, args.poll_seconds))
+        asyncio.run(chat(args.user, session_name, verbose=args.verbose, new=args.new))
     except (KeyboardInterrupt, EOFError):
-        _notice(
-            f"Resume with: ./tariff-chat --user-id {args.user_id} "
-            f"--session-id {session_id}",
-            tone="cyan",
-            symbol="↳",
-        )
+        console.print()
 
 
 if __name__ == "__main__":

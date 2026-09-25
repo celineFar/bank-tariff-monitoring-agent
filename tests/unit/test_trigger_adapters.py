@@ -20,7 +20,6 @@ from app.domain.monitoring import (
 )
 from app.domain.monitoring_workflow import MonitoringWorkflowResult
 from app.domain.review import ReviewReason, ReviewStatus, ReviewTask
-from app.tools import configure_run_service, start_tariff_monitoring
 from app.worker import MonitoringWorker, run_scheduled_monitoring
 
 
@@ -80,13 +79,6 @@ class _FailingRunService:
 
     async def get(self, run_id):
         raise RuntimeError("database DSN and internal detail")
-
-
-class _ToolContext:
-    def __init__(self, state: dict[str, object], invocation_id: str = "turn-1") -> None:
-        self.state = state
-        # The spend grant is bound to the invocation that issued it.
-        self.invocation_id = invocation_id
 
 
 class _ReviewRepository:
@@ -187,28 +179,8 @@ async def test_different_offering_run_is_reported_as_blocked_not_started() -> No
     assert response.status_code == 409
     assert response.json()["detail"]["blocking_run_id"] == str(service.run.id)
     assert response.json()["detail"]["blocking_offering_id"] == "overdraft"
-
-    configure_run_service(service)
-    try:
-        tool_result = await start_tariff_monitoring(
-            "consumer_loan",
-            "credit_line",
-            _ToolContext(
-                state={
-                    "monitoring_authorization": {
-                        "product": "consumer_loan",
-                        "offering_id": "credit_line",
-                        "invocation_id": "turn-1",
-                    }
-                }
-            ),
-        )
-    finally:
-        configure_run_service(None)
-    assert tool_result["status"] == "blocked"
-    assert tool_result["request_satisfied"] is False
-    assert tool_result["offering_id"] == "overdraft"
-    assert tool_result["requested_offering_id"] == "credit_line"
+    # The chat path reports the same conflict as `blocked`; see
+    # tests/unit/test_monitoring_node.py::test_an_active_run_for_another_offering_blocks_without_starting.
 
 
 @pytest.mark.asyncio
@@ -236,88 +208,29 @@ async def test_http_persistence_failures_use_stable_bounded_envelopes() -> None:
     assert "database" not in fetched.text.lower()
 
 
+
+
+
+
+
+
+
+
+
 @pytest.mark.asyncio
-async def test_scheduler_and_adk_tool_submit_through_same_service() -> None:
+async def test_scheduler_submits_each_family_through_the_shared_service() -> None:
     service = _RunService()
-    configure_run_service(service)
-    try:
-        await run_scheduled_monitoring(service)
-        # An unscoped run first returns needs_scope_confirmation, so the wider
-        # product-family scope is acknowledged before the run is submitted.
-        context = _ToolContext(
-            state={
-                "monitoring_authorization": {
-                    "product": "consumer_loan",
-                    "offering_id": None,
-                    "invocation_id": "turn-1",
-                }
-            }
-        )
-        confirmation = await start_tariff_monitoring("consumer_loan", None, context)
-        assert confirmation["status"] == "needs_scope_confirmation"
-        assert confirmation["offering_count"] == 4
-        result = await start_tariff_monitoring("consumer_loan", None, context)
-    finally:
-        configure_run_service(None)
+
+    await run_scheduled_monitoring(service)
 
     assert [item[0].trigger for item in service.commands] == [
         RunTrigger.SCHEDULE,
         RunTrigger.SCHEDULE,
-        RunTrigger.ADK,
     ]
-    assert result["status"] == "queued"
-    assert result["status_url"] == f"/api/v1/runs/{result['run_id']}"
-    assert result["review_handoff_url"] == (
-        f"/api/v1/runs/{result['run_id']}/review-handoff"
-    )
-    assert result["review_url"] == (
-        "/dev-ui/?app=tariff_monitoring_workflow&userId=monitoring-adk&"
-        f"session=monitoring-run-{result['run_id']}"
-    )
-
-
-@pytest.mark.asyncio
-async def test_adk_monitoring_tool_rejects_missing_or_non_monitoring_intent() -> None:
-    service = _RunService()
-    configure_run_service(service)
-    try:
-        result = await start_tariff_monitoring(
-            "mortgage",
-            "mortgage_express",
-            _ToolContext(state={}),
-        )
-    finally:
-        configure_run_service(None)
-
-    assert result["status"] == "rejected"
-    assert result["reason_code"] == "run.intent_not_authorized"
-    assert service.commands == []
-
-
-@pytest.mark.asyncio
-async def test_adk_monitoring_tool_rejects_invalid_cross_family_scope() -> None:
-    service = _RunService()
-    configure_run_service(service)
-    try:
-        result = await start_tariff_monitoring(
-            "consumer_loan",
-            "mortgage_express",
-            _ToolContext(
-                state={
-                    "monitoring_authorization": {
-                        "product": "consumer_loan",
-                        "offering_id": "mortgage_express",
-                        "invocation_id": "turn-1",
-                    }
-                }
-            ),
-        )
-    finally:
-        configure_run_service(None)
-
-    assert result["status"] == "rejected"
-    assert result["reason_code"] == "run.invalid_scope"
-    assert service.commands == []
+    assert {item[0].product for item in service.commands} == {
+        ProductType.CONSUMER_LOAN,
+        ProductType.MORTGAGE,
+    }
 
 
 class _WorkerRuns:
