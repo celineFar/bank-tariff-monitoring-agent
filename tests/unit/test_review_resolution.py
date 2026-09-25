@@ -177,7 +177,7 @@ def _service(run: MonitoringRun, *tasks: ReviewTask, fail: Exception | None = No
     )
 
 
-# --- validate: ported from tests/unit/test_chat_reviews.py -----------------------
+# --- validate ----------------------------------------------------------------------
 
 
 def test_indefinite_term_candidate_is_accepted() -> None:
@@ -453,7 +453,7 @@ async def test_pending_is_ordered_by_creation() -> None:
     ]
 
 
-# --- complete_run: ported from tests/unit/test_monitoring_workflow.py -----------
+# --- complete_run ----------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -560,7 +560,7 @@ async def test_startup_check_closes_only_fully_decided_runs() -> None:
     assert await service.complete_runs_without_pending_reviews() == 1
 
 
-# --- reject_all_pending: replaces ChatReviewService.abort_all -------------------
+# --- reject_all_pending: the API abort route ------------------------------------
 
 
 @pytest.mark.asyncio
@@ -592,7 +592,7 @@ async def test_reject_all_pending_reports_a_failing_run_and_keeps_going() -> Non
     assert result["failed_runs"] == [{"run_id": str(run.id), "reason": "LookupError"}]
 
 
-# --- views: ported from tests/unit/test_monitoring_workflow.py -------------------
+# --- views -------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -709,3 +709,55 @@ def test_terminal_review_status(
         )
         is expected
     )
+
+
+@pytest.mark.asyncio
+async def test_abort_api_requires_configured_admin_token() -> None:
+    from types import SimpleNamespace
+
+    import httpx
+    from fastapi import FastAPI
+    from pydantic import SecretStr
+
+    from app.api.routes import router
+    from app.config.models import HitlSettings
+
+    class _AbortService:
+        def __init__(self) -> None:
+            self.reviewers = []
+
+        async def reject_all_pending(self, *, reviewer):
+            self.reviewers.append(reviewer)
+            return {"aborted_runs": [], "failed_runs": [], "aborted_review_count": 0}
+
+    app = FastAPI()
+    app.state.review_resolution = _AbortService()
+    app.state.settings = SimpleNamespace(
+        hitl=HitlSettings(review_admin_token=SecretStr("secret-token"))
+    )
+    app.include_router(router)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        missing = await client.post("/api/v1/reviews/abort-pending")
+        wrong = await client.post(
+            "/api/v1/reviews/abort-pending", headers={"X-Review-Admin-Token": "wrong"}
+        )
+        allowed = await client.post(
+            "/api/v1/reviews/abort-pending",
+            headers={"X-Review-Admin-Token": "secret-token"},
+        )
+    assert missing.status_code == 403
+    assert wrong.status_code == 403
+    assert allowed.status_code == 200
+    assert allowed.json()["aborted_review_count"] == 0
+    assert app.state.review_resolution.reviewers == ["api-admin"]
+    app.state.settings = SimpleNamespace(hitl=HitlSettings())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        unconfigured = await client.post(
+            "/api/v1/reviews/abort-pending",
+            headers={"X-Review-Admin-Token": "secret-token"},
+        )
+    assert unconfigured.status_code == 503

@@ -1,14 +1,18 @@
 # Architecture
 
 ```text
-FastAPI typed trigger ----+
-                          +--> RunService --> PostgreSQL durable queue
-ADK resolved trigger -----+                         |
-Daily scheduler ----------+                         v
-                                            worker claim/recovery
-                                                    |
-                                                    v
-                                      resumable ADK monitoring workflow
+./tariff-chat / ADK Web --> App "app" (one agent, resumable, ToolPolicyPlugin)
+                                 |  run_tariff_monitoring / review_pending_candidates
+                                 v
+                            monitoring node (in the chat invocation)
+                            submit + claim | stream progress | pause per review
+                                 |                                  ^
+                                 +--> RunService --> PostgreSQL <---+ review state
+FastAPI typed trigger ----+           ^               queue
+Daily scheduler ----------+-> RunService              |
+                                                      v
+                                             worker claim/recovery (no ADK)
+                                 both hosts call the same
                                                     |
                                                     v
                                            deterministic pipeline
@@ -29,14 +33,28 @@ shell, or SQL tool.
 
 ## Package boundaries
 
-- `app/agent.py`: resumable ADK root chat agent, native `request_input`, and stable instructions.
-- `app/cli.py` and `app/cli_entry.py`: interactive terminal entry points launched by `./tariff-chat` using a separate resumable ADK app. The entry module filters two known ADK experimental notices from the terminal. Rich renders the CLI chat, progress, field-matched review evidence, guided review prompts, and actionable API errors; the launcher checks that the container has the matching entry module before starting and sends CLI diagnostics to its own rotating `logs/cli.log`. Its `LongRunningFunctionTool` starts the same PostgreSQL worker run, returns an intermediate run ID, and the CLI polls persisted offering stages and run status before supplying a final function response to the original invocation. The model is expected to end its turn there: the CLI announces the run, then narrates each persisted stage with the elapsed time, and `get_next_monitoring_review` refuses while that long-running call is unanswered, so a run is narrated by the deterministic poller rather than by repeated model calls. When a run fails, the CLI prints the stored failure code together with one sentence derived from it (`explain_failure_code`) and hands the model the same sentence as `failure_summary`. The review workflow prioritizes field-specific passages before its 20-passage prompt limit. The session ID allows recovery after the CLI exits. When a chat-level input call is no longer pending but the business run still awaits review, the CLI reads that run's saved review and resumes the durable ADK worker workflow directly without starting a new run.
+- `app/agent.py`: the single resumable ADK app (`app`) and root agent: seven tools,
+  a 25-line instruction about language and presentation, and `ToolPolicyPlugin`.
+- `app/plugins.py`: `ToolPolicyPlugin` — every business tool requires a
+  `resolve_request` from the same invocation; a tool exception becomes a typed
+  envelope. Tool order is policy in code, not in the prompt.
+- `app/cli.py` and `app/cli_entry.py`: the interactive product, launched by
+  `./tariff-chat`. `ChatSession` runs one invocation per message and renders its
+  events: partial progress events from the monitoring node (read from
+  `custom_metadata`, never from text) become stage lines with a local timer; an
+  `adk_request_input` pause becomes the Rich review panel and guided prompt; the
+  validated reply resumes the same invocation. Ctrl-C cancels the turn (the run is
+  marked `run.cancelled`) and rewinds it. On start the CLI continues an unanswered
+  review, or closes a run its previous process left running (`run.interrupted`).
+  Conversations are named (`--session`, `--new`); no id is printed unless
+  `--verbose`. The entry module filters two known ADK experimental notices, and the
+  launcher sends CLI diagnostics to `logs/cli.log`.
 - `app/config/`: one environment adapter plus nested typed groups shared by API,
   agent, and worker; consumers depend only on the relevant group.
-- `app/tools.py`: narrow ADK adapters that call application services. Monitoring
-  submission requires a one-use, scope-bound authorization produced by the resolver.
-  Native root-chat review replies are read from ADK function responses and validated
-  against the pending review and saved evidence.
+- `app/tools/`: narrow ADK adapters over the application services —
+  `resolution.py` (`resolve_request`, which issues the per-turn grants), `reads.py`
+  (scope-less reads), `monitoring.py` (the tools that run the monitoring node, and
+  the read-only status tool). No tool receives a repository, a URL or SQL.
 - `app/api/`: user-trigger, run-status, and HITL diagnostics plus a token-protected
   `POST /api/v1/reviews/abort-pending` operation. Review decisions enter only
   through resumed ADK invocations.
@@ -54,21 +72,25 @@ shell, or SQL tool.
   strict-schema Gemini PDF extraction boundary.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
   including the transactional pgvector knowledge store and durable review repository.
-  Offering execution stages are updated by the shared pipeline and read by the CLI
-  to report progress during long monitoring runs.
+  Offering execution stages are updated by the shared pipeline and read by the
+  run-status API and by a chat that follows a run another process owns.
 - `app/security/`: URL, download, redirect, and logging guardrails.
 - `app/runtime.py`: shared composition root for HTTP/worker run, review, and snapshot
   repositories, ingestion, per-model discovery and extraction fallback chains,
-  `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services
-  (including the pending-review handoff), and `ChatReviewService` for original-chat
-  review prompts, workflow resumption, and audited bulk abort,
-  retrieval, and `RagAnswerService`.
+  `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
+  `ReviewResolutionService`, the monitoring node (built with the entry point's
+  owner: `cli:` from the CLI, `api:` from FastAPI), retrieval, and
+  `RagAnswerService`.
 - `app/services/structured_query_planning.py`, `app/services/intent_resolution.py`,
-  and `app/tools.py`: deterministic bilingual resolution selects a bounded
-  operation, canonical fields, conditions, and explicit offering IDs. ADK stores
-  a 30-minute `ResolutionPlan` tied to the actual user text, session, and turn;
-  `answer_tariff_query` consumes it once and accepts no model-supplied scope.
-  The existing monitoring/review tools remain separate.
+  and `app/tools/`: deterministic bilingual resolution selects a bounded
+  operation, canonical fields, conditions, and explicit offering IDs.
+  `resolve_request` stores a 30-minute `ResolutionPlan` (the read grant) tied to the
+  actual user text, session, and turn — the normal answer plan, or a scope-only
+  `current`/`history` grant when no answerable shape exists. `answer_tariff_query`,
+  `get_current_tariffs` and `get_tariff_history` take no scope argument and read only
+  that grant; the monitoring offer is derived from it; `run_tariff_monitoring`
+  needs a separate spend grant bound to the invocation. See
+  `docs/agent-and-tool-architecture.md` §3.
 - `POST /api/v1/tariffs/query`: resolves a query server-side and uses the same
   `StructuredTariffQueryService` as ADK. It rejects caller-supplied scope fields
   and never triggers acquisition.
@@ -108,9 +130,9 @@ shell, or SQL tool.
   are rewritten by a wrapping exporter (`OTEL_TRACE_CONTENT=none|mapped`); the
   setup refuses to start when `OTEL_EXPORTER_OTLP_*` is set, because ADK would
   then export the same spans unredacted. `inject_trace_context` and
-  `extract_trace_context` carry W3C trace context through PostgreSQL, so the
-  triggering process, the worker, and the process that resolves a human review
-  all contribute to one trace. See [observability](observability.md).
+  `extract_trace_context` carry W3C trace context through the run row, so a
+  worker-executed run continues the trace of the process that submitted it. A
+  chat-executed run is one trace per CLI turn. See [observability](observability.md).
 - `app/services/run_metrics.py` and `scripts/run_metrics_report.py`: aggregate
   run duration, stage and document-retrieval failures, per-field extraction
   completeness, evidence coverage, HITL rate and decision latency, model
@@ -118,8 +140,14 @@ shell, or SQL tool.
   latency excludes time waiting for a reviewer.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
   scheduled families are submitted independently through `RunService`. Claimed work
-  enters the resumable monitoring workflow, which invokes the shared `TariffPipeline`
-  once and returns immediately when native human input is requested.
+  calls `TariffPipeline.execute(run, progress=LogProgressSink)` directly; the worker
+  owns no ADK app or session and imports nothing from `google.adk`. A run that
+  pauses for review stays `awaiting_review` and is reviewed from the CLI. On start
+  it fails abandoned leases and completes paused runs whose reviews are all decided.
+- `app/services/monitoring_progress.py`: the pipeline's progress port
+  (`PipelineProgress`, `ProgressSink`, log/queue sinks) and `stream_progress`,
+  which runs the pipeline as a task and yields its progress; cancelling the
+  consumer cancels the pipeline, which marks the run `run.cancelled`.
 - `app/services/structured_projection.py`: pure, fail-closed projection of final accepted
   semantic extraction into offering profiles, typed tariff facts, verified citations,
   and clean evidence-backed retrieval units. Accepted projections are published
@@ -490,7 +518,7 @@ and prints retrieval, generation, and citation-validation stages for inspection.
 ## Intent and offering resolution boundary
 
 `RequestResolver` consumes only the versioned seed catalog and resolution settings. It
-classifies the approved eight intents, detects English/Armenian/mixed input, resolves both
+classifies the approved nine intents, detects English/Armenian/mixed input, resolves both
 `ProductType` and `OfferingId`, and returns typed ambiguity rather than invoking business
 services. Unicode/canonical/name/alias/transliteration exact matching runs first, followed
 by conservative fuzzy ranking. Only insufficient deterministic results reach a tool-free
@@ -498,20 +526,21 @@ Gemini classifier, and Python restricts its output to the supplied enum values a
 candidate IDs.
 
 Pending clarification and latest scope live only in ADK session state. A monitoring
-intent creates a temporary one-use authorization for the exact resolved scope; the ADK
-monitoring tool rejects missing, stale, mismatched, and non-monitoring authorization.
+intent (or an affirmative reply to the offer made in the previous turn) creates a spend
+grant for the exact resolved scope, bound to the invocation id; the monitoring tool
+rejects a missing, other-turn, or mismatched grant.
 Typed API and scheduler commands remain classifier-free. See
 `docs/intent-resolution.md`.
 
-## Current tariff, history, and wait boundary
+## Current tariff and history boundary
 
 `CurrentTariffService` reads only latest accepted snapshots and classifies them with the
 configured seven-day freshness policy. A newer review candidate is exposed only as a
 boolean; its tariff values remain hidden. `TariffHistoryService` provides bounded accepted
 snapshot and change reads with sixty-day “what changed?” and thirty-day history defaults.
-Both services have typed HTTP and ADK adapters. `RunWaitService` is chat-side only and
-polls persisted state for at most two minutes; `POST /api/v1/runs` remains asynchronous.
-See `docs/tariff-query-services.md`.
+Both services have typed HTTP and ADK adapters; the ADK adapters read their scope
+from the turn's read grant. `POST /api/v1/runs` remains asynchronous. See
+`docs/tariff-query-services.md`.
 
 ## HTTP and lifecycle contract
 
@@ -520,15 +549,14 @@ not expose a review-decision endpoint:
 
 | Route | Contract |
 |---|---|
-| `POST /api/v1/runs` | Validate a canonical family/offering, enqueue through `RunService`, and return `202` plus the durable run, status link, and review-handoff link. |
+| `POST /api/v1/runs` | Validate a canonical family/offering, enqueue through `RunService`, and return `202` plus the durable run, status link, and review-records link. |
 | `GET /api/v1/runs/{run_id}` | Read the persisted run state and summary. |
 | `POST /api/v1/questions` | Answer from the active evidence corpus through `TariffAnswerRouter`; never acquire sources. |
 | `POST /api/v1/tariffs/query` | Resolve one free-text query server-side and answer it from accepted typed facts; caller-supplied scope is rejected. |
 | `GET /api/v1/tariffs/current` | Read accepted snapshots only, with freshness and pending-newer-review indicators. |
 | `GET /api/v1/tariffs/history` | Read bounded accepted snapshot/change history. |
-| `GET /api/v1/reviews[/{review_id}]` | Inspect durable review records; decisions enter through native ADK resume only. |
-| `POST /api/v1/reviews/abort-pending` | Token-protected admin rejection of pending reviews through their saved ADK workflow invocations. |
-| `GET /api/v1/runs/{run_id}/review-handoff` | Read pending review scopes and the saved ADK Web session link for a paused run. |
+| `GET /api/v1/reviews[/{review_id}]` | Inspect durable review records; decisions enter only through a resumed chat pause. |
+| `POST /api/v1/reviews/abort-pending` | Token-protected admin rejection of every pending review through `ReviewResolutionService`. |
 | `GET /api/v1/healthz` | Liveness probe. |
 
 ADK's own surface (`/dev-ui/`, the agent run endpoints) and the A2A routes under
@@ -543,14 +571,15 @@ deduplication and owns no worker claim while waiting for a person.
 
 State ownership is deliberately split. PostgreSQL business tables own runs, offering
 executions, candidates, evidence, reviews, snapshots, changes, and publication state.
-ADK session/event tables own workflow node progress, invocation/interrupt identity, and
-the native function response. Correlation IDs link the stores; neither store silently
-infers a decision belonging to the other.
+The ADK session (one per conversation) owns the conversation, the paused
+`adk_request_input` call and its response, and the per-turn grants. No correlation
+IDs link the stores: the pause lives in the conversation that answers it, and the node
+re-reads business state on every run.
 
 ## Review and quarantine boundary
 
-Typed review tasks are durable business records correlated to candidate snapshots and,
-when available, ADK workflow identifiers. Candidate documents and chunks are persisted
+Typed review tasks are durable business records tied to candidate snapshots. Candidate
+documents and chunks are persisted
 inactive; they cannot displace the prior accepted active version. Same-scope newer reviews
 supersede older pending reviews under a database lock and uniqueness constraint. A native
 decision is validated against its field schema and captured evidence. After all reviews
@@ -563,58 +592,58 @@ active. See `docs/review-quarantine.md` and `docs/native-hitl-review.md`.
 `ExtractionField` it states the accepted entry format and deterministically reads a typed
 answer (`15-21%`, `up to AMD 15 million`, `Annuity; differentiated`) into the field's
 structured value, reusing `normalize_extraction_field_value` so human entry and model
-output reach the contract through the same rules. Both the CLI prompt and
-`get_next_monitoring_review`'s `input_format` show that format before a value is asked
-for, and a rejected value is returned with it, so a reviewer is never told only that a
-value is invalid. The model never interprets reviewer input.
+output reach the contract through the same rules. The CLI prompt and the
+`input_format` on every review pause show that format before a value is asked for, and a
+rejected value is returned with it, so a reviewer is never told only that a value is
+invalid. The model never interprets reviewer input.
 
-## Resumable monitoring workflow boundary
+## Monitoring node boundary
 
-`app/services/monitoring_workflow.py` wraps the imperative `TariffPipeline` in a
-coarse-grained ADK 2.9.2 `Workflow`; deterministic acquisition, extraction,
-normalization, validation, and persistence remain inside the application service rather
-than becoming artificial agent nodes. The graph has explicit execute, outcome-routing,
-native `RequestInput`, deterministic decision, and final-result nodes and enables
-`ResumabilityConfig(is_resumable=True)`.
+`app/services/monitoring_node.py` builds one ADK `FunctionNode`
+(`rerun_on_resume=True`) that is the monitoring run as seen from the conversation. The
+`run_tariff_monitoring` and `review_pending_candidates` tools run it with
+`tool_context.run_node(...)`, inside the chat invocation:
 
-Each business run uses a stable session ID (`monitoring-run-{run_id}`) and a user ID
-scoped to its API, schedule, ADK, or legacy-user origin. The runner uses the same shared
-session and artifact services as the other ADK surfaces. When candidate data requires
-review, `TariffPipeline` durably creates review tasks and changes the run from `RUNNING`
-to nonterminal `AWAITING_REVIEW`; the request-input node then stores its app, user,
-session, invocation, and interrupt identifiers on every pending task. The worker returns
-as soon as the interrupt event is emitted.
+1. submit (or, review-only, find the oldest paused run in scope); a run that does not
+   cover the request is reported as `blocked`;
+2. if the run is queued, claim it (`RunRepository.claim(run_id, owner)`) and execute
+   `TariffPipeline` in this process, yielding each progress item as a partial ADK
+   event (streamed to the caller, never persisted, never in the model's context);
+3. if another process owns it, follow its persisted stages with a bounded poll —
+   the one remaining poll, needed only because two OS processes are involved;
+4. if it is `awaiting_review`, yield one `RequestInput` per pending review (payload:
+   the bounded `ReviewPromptView`, the entry format, position) and return; on resume,
+   validate the answer and apply it through `ReviewResolutionService`, re-asking under
+   a new interrupt id if it is rejected;
+5. close the run when no review is pending, answer the original question through
+   `TariffAnswerRouter`, and yield the `MonitoringResult` the tool returns.
 
-Migration `008_monitoring_workflow.sql` includes `AWAITING_REVIEW` in active-run
-uniqueness. Migration `010_offering_scoped_active_runs.sql` makes that boundary
-specific to an offering, while keeping family-wide work exclusive across the family.
-A paused run cannot be bypassed by another request for the same offering.
+ADK re-runs the node from the top on every resume, so every branch re-derives its
+position from PostgreSQL, and interrupt ids are `review:<run_id>:<review_id>[:<n>]` so
+a re-run returns to the run it paused on instead of submitting another. The app must be
+resumable (`ResumabilityConfig(is_resumable=True)`), which makes ADK replay the
+original tool call on resume. The ADK behaviours this relies on are re-demonstrated by
+`scripts/probe_adk_runtime.py` and encoded in `tests/unit/test_monitoring_node.py`.
 
-Resumption sends a native `adk_request_input` function response with the persisted
-interrupt ID into that same session. ADK restores the paused invocation from its events,
-so completed pipeline work is replayed as node output rather than executed again. Only a
-narrow deterministic decision service may accept the bounded response, validate its
-candidate/evidence references, rebuild the reviewed snapshot, and transition the business
-run to a terminal state. Reviewer identity is derived from and checked against the
-persisted ADK user/session correlation rather than accepted from the response payload.
-`RuntimeAgentLoader` exposes the composition-root workflow `App` in ADK Web while keeping
-its repositories injected. No module-level repository handle is used by workflow nodes.
+Deterministic acquisition, extraction, normalization, validation and persistence stay
+inside `TariffPipeline`; they are not split into agent nodes. Migration
+`008_monitoring_workflow.sql` includes `AWAITING_REVIEW` in active-run uniqueness, and
+`010_offering_scoped_active_runs.sql` makes that boundary specific to an offering while
+keeping family-wide work exclusive; a paused run cannot be bypassed by another request
+for the same offering. Migration `016_drop_review_workflow_correlation.sql` removed the
+review-to-session correlation columns an earlier workflow design needed.
 
-The shared service factory resolves the validated PostgreSQL `SESSION_SERVICE_URI` even
-in the headless worker, whose Pydantic `.env` loading does not mutate process environment
-variables. FastAPI and worker startup eagerly prepare and require ADK 2.9.2 JSON session
-schema version `1`; ADK Web, A2A, the conversational runner, and the monitoring runner all
-resolve the same cached `shared://session` instance within each process and the same
-PostgreSQL event store across processes.
+Cancellation: cancelling the consumer of `run_async` raises `CancelledError` inside the
+node and the pipeline, which fails the in-flight offering execution and the run with
+`run.cancelled` before re-raising; the CLI then calls `Runner.rewind_async`. A CLI that
+dies mid-run is closed on its next start with `RunRepository.fail_interrupted` for the
+previous process's owner (`run.interrupted`); the worker's lease recovery is the
+backstop.
 
-`WorkflowReconciliationService` runs before normal worker recovery. It bounds scans,
-recreates missing request-input events for live pending reviews, fails an orphaned
-`AWAITING_REVIEW` run safely, completes a paused run whose reviews are all terminal, and
-reports stale/orphaned interrupts without supplying or inventing a decision. Pause,
-resume attempt, approval/rejection, failed resume, supersession, and reconciliation
-outcomes are durable business audit events. PostgreSQL restart coverage disposes the
-first ADK service after pause and resumes through a new service instance while proving
-that deterministic pipeline work executes exactly once.
+The shared service factory resolves the validated PostgreSQL `SESSION_SERVICE_URI`.
+FastAPI and the CLI prepare and require ADK 2.9.2 JSON session schema version `1`; ADK
+Web, A2A and the CLI resolve the same PostgreSQL event store. The worker writes no ADK
+session.
 
 ## Indexing coordinator boundary
 
@@ -640,10 +669,10 @@ offering identities, duplicate enabled URLs, family mismatches, non-HTTPS URLs, 
 hosts outside the acquisition allowlist before a run can be submitted.
 
 A `RunCommand` without an `offering_id` fans out to every enabled offering in the
-product family, so it costs a multiple of a single-offering run. `start_tariff_monitoring`
-therefore returns `needs_scope_confirmation` with the offering count the first time an
-unscoped run is requested in a session, and submits only after the caller repeats the
-request. Chat agents pass the `offering_id` that `resolve_request` resolved, so an
+product family, so it costs a multiple of a single-offering run. `run_tariff_monitoring`
+therefore returns `needs_scope_confirmation` with the offering count, and runs the family
+only after the user confirms in the next turn (a second call in the same turn asks
+again). Chat agents pass the `offering_id` that `resolve_request` resolved, so an
 ordinary question about one offering never launches the whole family.
 
 Offering identity and `KnowledgeDocumentKind` participate in knowledge-document and

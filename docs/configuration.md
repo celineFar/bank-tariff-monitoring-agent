@@ -93,8 +93,9 @@ downloader receives `settings.http` and the PDF extraction service receives
   `TARIFF_DEFAULT_HISTORY_DAYS`, and `TARIFF_MAX_HISTORY_RESULTS` bound accepted-data
   reads. `TARIFF_ANSWER_READ_MODEL` is the reversible cutover switch: `structured`
   (default) answers from accepted typed facts, `legacy` restores the old RAG
-  answer path without a code change. `TARIFF_RUN_WAIT_SECONDS` (at most 120) and `TARIFF_RUN_POLL_SECONDS` bound
-  chat-side persisted run polling; HTTP submission remains asynchronous.
+  answer path without a code change. `TARIFF_RUN_POLL_SECONDS` is the interval at
+  which a chat follows a run another process owns; HTTP submission remains
+  asynchronous.
 - **Retrieval trace:** `RETRIEVAL_TRACE_LEVEL` controls the `tariff.retrieval`
   logger — `off`, `summary` (default, one closing line per answer), `steps`
   (one line per stage with identifiers, counts, and scores), or `verbose`
@@ -268,11 +269,11 @@ uv run adk migrate session --source_db_url <legacy-sync-uri> --dest_db_url <new-
 Only use the migration command's unsafe-unpickling option for a fully trusted legacy
 database. The application never logs either URI.
 
-For local native review, run the normal application services and open ADK Web at
-`/dev-ui/`, select `tariff_monitoring_workflow`, and use the persisted run-scoped user
-and session IDs. `shared://session` ensures all local ADK surfaces resolve the injected
-session service; PostgreSQL remains the cross-process store. See
-`docs/native-hitl-review.md` for the decision flow.
+Reviews are taken in the CLI (below): a review is a native pause of the conversation
+that needs it. ADK Web (`/dev-ui/`, app `app`) is a development surface for the same
+agent. `shared://session` ensures all local ADK surfaces resolve the injected session
+service; PostgreSQL remains the store. See `docs/native-hitl-review.md` for the decision
+flow.
 
 Production still requires authenticated ingress, reviewer authorization, a notification
 adapter, and an explicitly approved deployment. None is enabled merely by setting the
@@ -280,21 +281,23 @@ HITL thresholds or session URI.
 
 ## Durable CLI chat
 
-For monitoring runs that take several minutes, start the custom CLI inside the
-API container:
+The CLI is the product surface. Start it inside the API container:
 
 ```bash
-./tariff-chat
+./tariff-chat                    # the "default" conversation
+./tariff-chat --session pricing  # a named conversation
+./tariff-chat --new              # a new conversation named after the current time
 ```
 
-The CLI prints a session ID. After an interrupted terminal session, run
-`./tariff-chat --session-id <id>` to recover any pending ADK long-running function
-or review input. It reports each persisted offering stage and a heartbeat while
-the worker runs. A Gemini 402 means the configured Google AI project has no
-prepaid credits; add credits and retry in the same session.
-The CLI uses the same PostgreSQL session service and run repository as the API
-and worker. Run the CLI within the container because the Compose `.env` database
-host is `db`.
+A monitoring run asked for in chat executes in the CLI process and streams each stage
+as it happens; reviews are asked in the same conversation. Closing the terminal
+mid-review loses nothing — reopening the conversation continues the review. Ctrl-C
+cancels a running turn (the run is marked `run.cancelled`). `--user` separates
+reviewers' conversations; `--verbose` also shows tool calls and run ids. A Gemini 402
+means the configured Google AI project has no prepaid credits; add credits and retry
+in the same conversation. The CLI uses the same PostgreSQL session service and run
+repository as the API and worker; run it within the container because the Compose
+`.env` database host is `db`.
 
 ## Review abort administration
 

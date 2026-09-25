@@ -82,9 +82,16 @@ without financial advice or unrelated tools.
 ## Monitoring authorization
 
 `resolve_request` does not acquire sources or submit runs. When—and only when—it resolves
-`start_monitoring_run` without ambiguity, it writes a temporary, one-use authorization for
-the exact family/offering scope. `start_tariff_monitoring` requires and consumes that
-authorization before calling `RunService`.
+`start_monitoring_run` without ambiguity, or the user answers "yes" to the monitoring
+offer made in the immediately preceding turn, it writes a spend grant for the exact
+family/offering scope, bound to the current ADK invocation. `run_tariff_monitoring`
+requires a grant from this invocation whose scope equals its arguments before it runs the
+monitoring node; the grant is useless in any later turn. The offer itself is written by
+`get_current_tariffs` from the turn's read grant, never from a tool argument.
+
+`review_pending_candidates` (intent `review_pending_candidates`, e.g. "review them",
+"review the Express Mortgage candidates") needs a resolution in the same turn but no spend
+grant: reviewing starts no run.
 
 This tool-level check prevents an LLM tool-routing error from turning catalog, current,
 history, status, indexed-question, clarification, or unsupported intents into a monitoring
@@ -99,7 +106,7 @@ response is validated again by Python. A nonexistent candidate, disallowed inten
 missing final response, malformed JSON, or exhausted API call becomes clarification or a
 safe unresolved result; it never becomes a business action.
 
-The versioned behavioral suite in `tests/eval/` covers all eight intents, all thirteen
+The versioned behavioral suite in `tests/eval/` covers all nine intents, all thirteen
 offerings, Armenian/English requests, fuzzy aliases, ambiguity, stale wording, and routing
 safety. Multi-turn clarification continuation remains a deterministic session test because
 ADK 2.9.2 does not permit state-bearing initialization events in an eval case.

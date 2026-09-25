@@ -141,14 +141,6 @@ class ReviewPromptView(ReviewModel):
     evidence: tuple[ReviewEvidenceView, ...] = Field(max_length=20)
 
 
-class ReviewCorrelation(ReviewModel):
-    app_name: str = Field(min_length=1, max_length=200)
-    user_id: str = Field(min_length=1, max_length=200)
-    session_id: str = Field(min_length=1, max_length=500)
-    invocation_id: str = Field(min_length=1, max_length=500)
-    interrupt_id: str = Field(min_length=1, max_length=500)
-
-
 class ReviewTask(ReviewModel):
     id: UUID
     idempotency_key: str = Field(min_length=1, max_length=500)
@@ -162,10 +154,6 @@ class ReviewTask(ReviewModel):
     candidates: tuple[ReviewCandidate, ...] = Field(max_length=20)
     evidence: dict[str, JsonValue] = Field(default_factory=dict)
     status: ReviewStatus = ReviewStatus.PENDING
-    correlation: ReviewCorrelation | None = None
-    # W3C traceparent captured when the workflow paused here, so the
-    # process that serves the decision continues the run's trace.
-    trace_parent: str | None = Field(default=None, max_length=55)
     reviewer: str | None = Field(default=None, min_length=1, max_length=200)
     decision: ReviewDecision | None = None
     comment: str | None = Field(default=None, max_length=2000)

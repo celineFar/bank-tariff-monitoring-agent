@@ -9,12 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from app.domain.intent import FreshnessStatus, HistoryQuery
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
-    MonitoringRun,
     SnapshotAttempt,
     SnapshotChangeSet,
     validate_offering_product,
 )
-from app.domain.review import ReviewReason
 
 
 class QueryModel(BaseModel):
@@ -73,42 +71,3 @@ class TariffHistoryResult(QueryModel):
     snapshots: tuple[SnapshotAttempt, ...] = ()
     changes: tuple[SnapshotChangeSet, ...] = ()
     last_change_before_window_at: datetime | None = None
-
-
-class RunWaitState(StrEnum):
-    TERMINAL = "terminal"
-    AWAITING_REVIEW = "awaiting_review"
-    TIMED_OUT = "timed_out"
-    NOT_FOUND = "not_found"
-
-
-class PendingReviewSummary(QueryModel):
-    review_id: UUID
-    offering_id: OfferingId
-    reason: ReviewReason
-    issue_scope: str
-    candidate_count: int = Field(ge=0)
-
-
-class ReviewHandoff(QueryModel):
-    review_url: str
-    reviews_url: str
-    pending: tuple[PendingReviewSummary, ...] = ()
-    ready: bool = False
-
-
-class RunWaitResult(QueryModel):
-    state: RunWaitState
-    run: MonitoringRun | None = None
-    waited_seconds: float = Field(ge=0)
-    review_handoff: ReviewHandoff | None = None
-
-    @model_validator(mode="after")
-    def validate_result(self) -> RunWaitResult:
-        if self.state is RunWaitState.NOT_FOUND and self.run is not None:
-            raise ValueError("not-found wait result cannot contain a run")
-        if self.state is not RunWaitState.NOT_FOUND and self.run is None:
-            raise ValueError("wait result requires a run")
-        if self.review_handoff is not None and self.state is not RunWaitState.AWAITING_REVIEW:
-            raise ValueError("review handoff requires awaiting-review state")
-        return self

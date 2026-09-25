@@ -1,18 +1,23 @@
 """Render deterministic native-HITL request payloads for reviewer training.
 
-This demonstration does not persist reviews or resume a workflow. It builds the same
-bounded ``MonitoringReviewRequest`` contract emitted by the production workflow.
+This demonstration does not persist reviews or pause a conversation. It builds the
+same bounded payload the monitoring node puts on each ``RequestInput`` and the CLI
+renders: the reason-specific review view, the entry format and the position.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import UTC, datetime
 from uuid import UUID
 
 from app.domain.models import OfferingId, ProductType
 from app.domain.review import ReviewCandidate, ReviewReason, ReviewStatus, ReviewTask
-from app.services.monitoring_workflow import build_review_request
+from app.services.review_resolution import (
+    build_review_view,
+    review_input_format,
+)
 
 RUN_ID = UUID("10000000-0000-0000-0000-000000000001")
 EXECUTION_ID = UUID("20000000-0000-0000-0000-000000000001")
@@ -149,7 +154,18 @@ def build_demo_payload(scenario: str) -> str:
         "source-conflict": (source_conflict_review(),),
         "all": (large_change_review(), source_conflict_review()),
     }[scenario]
-    return build_review_request(RUN_ID, tasks).model_dump_json(indent=2)
+    payloads = [
+        {
+            "kind": "tariff_review",
+            "view": build_review_view(task).model_dump(mode="json"),
+            "input_format": review_input_format(task.issue_scope),
+            "position": position,
+            "total": len(tasks),
+            "attempt": 1,
+        }
+        for position, task in enumerate(tasks, start=1)
+    ]
+    return json.dumps(payloads, indent=2, ensure_ascii=False)
 
 
 def main() -> None:

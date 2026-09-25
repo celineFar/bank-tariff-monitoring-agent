@@ -30,7 +30,6 @@ from app.domain.monitoring import (
 from app.domain.pdf_extraction import PdfExtractionResponse
 from app.domain.retrieval import RetrievalCandidate
 from app.domain.review import (
-    ReviewCorrelation,
     ReviewDecision,
     ReviewSnapshotUpdate,
     ReviewStatus,
@@ -207,13 +206,6 @@ class ReviewRepository(Protocol):
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[ReviewTask, ...]: ...
-    async def attach_workflow(
-        self,
-        review_id: UUID,
-        correlation: ReviewCorrelation,
-        *,
-        trace_parent: str | None = None,
-    ) -> ReviewTask: ...
     async def approve(
         self,
         review_id: UUID,

@@ -300,7 +300,6 @@ class TariffQuerySettings(SettingsGroup):
     recent_change_days: int = Field(default=60, ge=1, le=3650)
     default_history_days: int = Field(default=30, ge=1, le=3650)
     max_history_results: int = Field(default=100, ge=1, le=1000)
-    run_wait_seconds: float = Field(default=120, gt=0, le=120)
     run_poll_seconds: float = Field(default=0.5, gt=0, le=10)
     # Reversible cutover switch; `legacy` restores the old RAG answer path.
     answer_read_model: AnswerReadModel = AnswerReadModel.STRUCTURED

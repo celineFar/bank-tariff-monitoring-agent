@@ -30,19 +30,19 @@ Explicit date bounds and result limits remain bounded by configuration.
 The same typed result is available through the `get_tariff_history` ADK tool and
 `GET /api/v1/tariffs/history`.
 
-## Bounded chat wait
+## Read scope in chat
 
-`RunWaitService` polls persisted run state outside database transactions. It waits for at
-most 120 seconds by default and stops immediately for a terminal status or
-`awaiting_review`. For a paused run it waits for the durable review records to be
-attached to the ADK interruption, then returns a compact list of required review scopes
-and exact relative links to the saved ADK Web session and review records. If review
-attachment is still incomplete at the wait deadline, the result marks the handoff as
-not ready so the caller can check again. A timeout while monitoring is still running
-returns the durable run and its current status; it is not reported as fresh data.
-`POST /api/v1/runs` remains asynchronous and does not wait. A chat turn cannot
-spontaneously send a later notification after its wait ends; the run ID remains the
-lookup key for later status and review checks.
+The ADK adapters take no scope argument. `get_current_tariffs()` and
+`get_tariff_history(kind, start_at, end_at, limit)` read the product family and
+offerings from the turn's read grant — the `ResolutionPlan` that `resolve_request`
+issued — and `limit` is clamped to 1-100 rather than refused. When the resolver named
+no family (a broad "what changed recently?"), the grant covers both families. A subset
+of a family's offerings is read per offering and merged in the service. See
+[agent-and-tool-architecture.md](agent-and-tool-architecture.md) §3.
+
+There is no chat-side wait any more: a chat-initiated monitoring run executes inside
+the chat turn and streams its own progress; `get_monitoring_status()` summarises runs
+executing elsewhere. `POST /api/v1/runs` remains asynchronous and does not wait.
 
 
 ## Structured tariff queries

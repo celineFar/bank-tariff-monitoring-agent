@@ -161,7 +161,7 @@ wait keeps the explicit monitoring case bounded because no worker is started:
 ```bash
 DATABASE_URL=postgresql+asyncpg://tariff:tariff@127.0.0.1:5433/tariff_monitor_test \
 SESSION_SERVICE_URI=postgresql+asyncpg://tariff:tariff@127.0.0.1:5433/tariff_monitor_test \
-TARIFF_RUN_WAIT_SECONDS=0.2 TARIFF_RUN_POLL_SECONDS=0.05 \
+TARIFF_RUN_POLL_SECONDS=0.05 \
 agents-cli eval run \
   --dataset tests/eval/datasets/expanded-intent-safety.json \
   --config tests/eval/eval_config.yaml --qps 2

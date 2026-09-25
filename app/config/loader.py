@@ -114,7 +114,6 @@ def load_settings(
             recent_change_days=raw.tariff_recent_change_days,
             default_history_days=raw.tariff_default_history_days,
             max_history_results=raw.tariff_max_history_results,
-            run_wait_seconds=raw.tariff_run_wait_seconds,
             run_poll_seconds=raw.tariff_run_poll_seconds,
             answer_read_model=raw.tariff_answer_read_model,
             retrieval_trace_level=raw.retrieval_trace_level,

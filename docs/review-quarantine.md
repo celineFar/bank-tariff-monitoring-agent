@@ -18,11 +18,13 @@ native ADK input against the field schema and captured evidence. Once every revi
 snapshot is approved, the repository atomically activates the snapshot, change set, and
 eligible documents. A rejection preserves the preceding accepted publication.
 
-Reviewer choices enter through native ADK pause/resume. Chat-originated runs pause
-the original conversation with `request_input`; API and scheduled runs use their
-run-scoped ADK Web session. `POST /api/v1/reviews/abort-pending` is a protected
-admin operation that sends `reject_all` through pending workflows. The model
-never receives a raw database or review repository tool. See `docs/native-hitl-review.md`.
+Reviewer choices enter through native ADK pause/resume: the monitoring node pauses the
+chat invocation on each pending review and applies the answer through
+`ReviewResolutionService` when the invocation resumes. Runs the scheduler or the API
+started are reviewed from the CLI the same way. `POST /api/v1/reviews/abort-pending` is
+a protected admin operation that rejects every pending review and closes those runs. The
+model never receives a raw database or review repository tool, and never relays a
+decision. See `docs/native-hitl-review.md`.
 
 ## Deterministic routing
 

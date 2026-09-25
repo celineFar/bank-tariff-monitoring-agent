@@ -169,6 +169,17 @@ daily scheduler ───────┘
 
 ### 4.2 Coarse-grained ADK workflow
 
+> **Superseded (2026-09-25).** The separate `tariff_monitoring_workflow` app described
+> below was replaced by an in-invocation monitoring node
+> (`app/services/monitoring_node.py`) once ADK 2.9.2's `tool_context.run_node` and
+> `RequestInput` made the pause available inside the conversation itself. This
+> section's intent is preserved — native `RequestInput`, a resumable invocation,
+> PostgreSQL as the business authority, and a deterministic pipeline that is not split
+> into "agentic" nodes — but the pause now lives in the chat invocation that answers
+> it, so the review-to-session correlation and reconciliation described in §4.4 and
+> §6.4 no longer exist. See `docs/architecture.md` ("Monitoring node boundary") and
+> `docs/native-hitl-review.md`.
+
 Implement a graph with only meaningful control/resume boundaries:
 
 ```text

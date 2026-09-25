@@ -51,7 +51,8 @@ missing resources, and persistence unavailability. The monitoring trigger remain
 idempotent: active-run reuse is a normal `202` response rather than an error.
 
 Candidate state is fail-closed across every row in the matrix: a source or model failure
-cannot activate knowledge documents, a failed review resume cannot fabricate a decision,
-and reconciliation never invents reviewer input. Deterministic fixtures cover the stable
+cannot activate knowledge documents, a rejected or failed review answer is re-asked and
+writes nothing, and a cancelled or interrupted run is closed with `run.cancelled` or
+`run.interrupted` without touching accepted data. Deterministic fixtures cover the stable
 codes; the native-review demonstration separately covers valid reviewer choices backed by
 captured evidence.

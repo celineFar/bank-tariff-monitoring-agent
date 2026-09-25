@@ -83,18 +83,24 @@ The script runs the ADK CLI inside the `api` container, so the agent shares the
 same database, configuration, and monitoring runs as the rest of the stack.
 
 From there you can ask tariff questions in plain language, trigger a monitoring
-run, and answer human-review prompts when the agent pauses for one. While a run
-is in progress the CLI prints each monitoring stage as it completes.
+run, and answer human-review prompts when the agent pauses for one. A run you ask
+for executes inside that turn: each stage is printed as it happens, any review is
+asked right there, and the answer to your question follows in the same turn.
+Candidates from scheduled or API runs wait for you too — the agent mentions them,
+and "review them" walks you through each one.
 
-The session is durable. On start the CLI prints a session ID; reconnect to the
-same conversation — including a run still waiting on your review — with:
+Conversations are named and durable. `./tariff-chat` opens the conversation called
+`default`; closing the terminal, even mid-review, loses nothing — reopening it
+continues where you left off.
 
 ```bash
-./tariff-chat --session-id <id>
+./tariff-chat --session pricing   # open or continue a named conversation
+./tariff-chat --new               # start a new conversation (its name is printed)
 ```
 
-Optional flags: `--user-id <name>` to separate conversations, `--poll-seconds <n>`
-to change how often the CLI checks a running monitoring job.
+Ctrl-C cancels a running turn, including a monitoring run in progress. Other flags:
+`--user <name>` to separate reviewers' conversations, `--verbose` to also show tool
+calls and run ids.
 
 If `tariff-chat` reports that the container does not have this CLI version, the
 image is older than your checkout:

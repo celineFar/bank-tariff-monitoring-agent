@@ -13,11 +13,13 @@ cannot:
 
 ### What is instrumented
 
-ADK instruments the agent and workflow layers on its own: `invoke_workflow`,
-`invoke_node`, `invoke_agent`, `call_llm`, and `execute_tool`, plus
-`generate_content` from the google-genai instrumentation library. The monitoring
-workflow in `app/services/monitoring_workflow.py` is a real ADK `Workflow`, so
-its nodes — including the human-review interrupt — appear without extra code.
+ADK instruments the agent and node layers on its own: `invoke_agent`,
+`invoke_node`, `call_llm`, and `execute_tool`, plus `generate_content` from the
+google-genai instrumentation library. The monitoring node
+(`app/services/monitoring_node.py`) runs inside the chat tool call, so a chat turn
+that monitors reads as one trace — invocation → `execute_tool run_tariff_monitoring`
+→ the node → offering → stage — and each review resume is a second invocation span
+whose stage spans carry the same `tariff.run_id`.
 
 Everything between acquisition and publication is ordinary Python and would
 otherwise collapse into one opaque node span. `app/services/monitoring_pipeline.py`
@@ -25,11 +27,11 @@ opens a span per offering and a span per stage. Every stage already funnels
 through one helper, so the seven stages are covered by one call site:
 
 ```
-POST /api/v1/runs                     (or the scheduler, or the CLI)
-└── execute_run                       (worker)
-    └── offering mortgage_primary
-        ├── stage acquisition
-        ├── stage normalization
+POST /api/v1/runs  (or the scheduler)       CLI turn
+└── execute_run    (worker)                 └── invocation → execute_tool run_tariff_monitoring
+    └── offering mortgage_primary               └── monitoring node
+        ├── stage acquisition                       └── offering mortgage_primary
+        ├── stage normalization                         └── stage …  (same seven stages)
         ├── stage source_discovery
         │   └── invoke_agent → call_llm
         ├── stage semantic_extraction
@@ -46,27 +48,23 @@ the same stage names used by `offering_executions.current_stage` and the
 `OfferingFailureCode` taxonomy, so a trace and a metrics report join without a
 translation table.
 
-### One run, one trace, across processes
+### One run, one trace
 
-A run never executes where it was triggered. The API, the scheduler, and the CLI
-all write a queued row that the worker later claims, and a run paused for review
-resumes inside whichever process served the decision. Ambient OpenTelemetry
-context does not survive either handoff.
+A chat-initiated run executes inside the CLI turn that asked for it, so the whole
+run is one trace under that turn's invocation. A review pause ends the invocation;
+the resume is a new invocation span, and its stage and review spans carry the same
+`tariff.run_id`, so the two segments join on that attribute. No span stays open
+while a person decides — a trace's wall-clock duration never includes the
+reviewer's thinking time; latency metrics come from SQL, where review wait is
+subtracted, either way.
 
-`migrations/014_trace_context.sql` adds a `trace_parent` column to
-`monitoring_runs` and `human_reviews`. The W3C traceparent is captured at submit
-and at pause, and restored at claim and at resume, so every segment shares one
-trace id and a backend that groups by trace id shows them as one trace.
-
-Two consequences worth knowing:
-
-- No single span stays open across a pause — a live span cannot be serialized
-  across processes. Continuity comes from the shared trace id and parent
-  pointers, not from one long-lived span. The parent ends before its children
-  start, which trace viewers assemble correctly at query time.
-- A trace's wall-clock duration therefore includes the reviewer's thinking time.
-  That is why latency metrics come from SQL, where review wait is subtracted,
-  rather than from trace durations.
+A run the API or the scheduler starts is executed by the worker. Ambient
+OpenTelemetry context does not survive that handoff, so
+`migrations/014_trace_context.sql` stores the W3C traceparent on
+`monitoring_runs` at submit and the worker restores it at claim: the triggering
+request and the execution share one trace id. (The review-level copy of that
+column was dropped by migration 016 along with the other review-to-session
+correlation; nothing resumes a run in another process any more.)
 
 Rows written while tracing was disabled carry no context, and the reader treats
 that as "start a new trace" rather than failing.

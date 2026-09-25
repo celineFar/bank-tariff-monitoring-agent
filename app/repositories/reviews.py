@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.models import OfferingId, ProductType
 from app.domain.review import (
-    ReviewCorrelation,
     ReviewDecision,
     ReviewDecisionType,
     ReviewReason,
@@ -31,32 +30,12 @@ def _json(value: object) -> str:
 
 def _review_from_row(row: object) -> ReviewTask:
     values = row._mapping if hasattr(row, "_mapping") else row
-    correlation_values = (
-        values["workflow_app_name"],
-        values["workflow_user_id"],
-        values["workflow_session_id"],
-        values["workflow_invocation_id"],
-        values["workflow_interrupt_id"],
-    )
-    correlation = (
-        ReviewCorrelation(
-            app_name=correlation_values[0],
-            user_id=correlation_values[1],
-            session_id=correlation_values[2],
-            invocation_id=correlation_values[3],
-            interrupt_id=correlation_values[4],
-        )
-        if all(correlation_values)
-        else None
-    )
     decision = (
         ReviewDecision.model_validate(values["decision"])
         if values["decision"] is not None
         else None
     )
     return ReviewTask(
-        # Older rows predate the column; absent context starts a new trace.
-        trace_parent=values.get("trace_parent"),
         id=values["id"],
         idempotency_key=values["idempotency_key"],
         run_id=values["run_id"],
@@ -69,7 +48,6 @@ def _review_from_row(row: object) -> ReviewTask:
         candidates=tuple(values["candidates"] or ()),
         evidence=values["evidence"] or {},
         status=ReviewStatus(values["status"]),
-        correlation=correlation,
         reviewer=values["reviewer"],
         decision=decision,
         comment=values["comment"],
@@ -252,41 +230,6 @@ class PostgresReviewRepository:
                 )
             ).all()
         return tuple(_review_from_row(row) for row in rows)
-
-    async def attach_workflow(
-        self,
-        review_id: UUID,
-        correlation: ReviewCorrelation,
-        *,
-        trace_parent: str | None = None,
-    ) -> ReviewTask:
-        async with self._session_factory() as session, session.begin():
-            row = (
-                await session.execute(
-                    text(
-                        """
-                        UPDATE human_reviews
-                        SET workflow_app_name = :app_name,
-                            workflow_user_id = :user_id,
-                            workflow_session_id = :session_id,
-                            workflow_invocation_id = :invocation_id,
-                            workflow_interrupt_id = :interrupt_id,
-                            trace_parent = :trace_parent,
-                            updated_at = now()
-                        WHERE id = :id AND status = 'pending'
-                        RETURNING *
-                        """
-                    ),
-                    {
-                        "id": review_id,
-                        "trace_parent": trace_parent,
-                        **correlation.model_dump(),
-                    },
-                )
-            ).first()
-        if row is None:
-            raise ReviewConflictError("review is missing or no longer pending")
-        return _review_from_row(row)
 
     async def approve(
         self,

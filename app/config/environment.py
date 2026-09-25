@@ -87,7 +87,6 @@ class EnvironmentSettings(BaseSettings):
     tariff_recent_change_days: int = 60
     tariff_default_history_days: int = 30
     tariff_max_history_results: int = 100
-    tariff_run_wait_seconds: float = 120
     tariff_run_poll_seconds: float = 0.5
     tariff_answer_read_model: str = "structured"
     retrieval_trace_level: str = "summary"

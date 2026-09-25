@@ -14,42 +14,47 @@ summary of the main flow is at the end for terminal viewing.
 
 ## 1. Components
 
-Three processes — FastAPI, the worker, and the terminal CLI — share one
-composition root (`app/runtime.py`), one PostgreSQL database, and one ADK session
-store. Only the pipeline touches the bank.
+Three processes — the terminal CLI, FastAPI, and the worker — share one
+composition root (`app/runtime.py`) and one PostgreSQL database. There is one ADK
+app with one agent; a chat-initiated run executes in the chat process, inside the
+agent's invocation, through the monitoring node. Scheduled and API runs execute in
+the worker, which has no ADK at all. Only the pipeline touches the bank.
 
 ```mermaid
 flowchart LR
-    CHAT["ADK chat agent<br/>terminal CLI"]
+    CLI["./tariff-chat<br/>attach loop · review console"]
+    WEB["ADK Web / A2A<br/>dev surface"]
     HTTP["FastAPI<br/>/api/v1"]
     SCHED["Scheduler<br/>06:00 Yerevan"]
 
-    RESOLVER["RequestResolver<br/>intent + offering scope"]
+    AGENT["App app · one agent<br/>ToolPolicyPlugin · 7 tools"]
+    NODE["monitoring node<br/>stream · pause per review"]
+    RESOLVER["RequestResolver<br/>intent + scope grants"]
     QUERY["Read services<br/>structured query · current · history"]
     RUNSVC["RunService<br/>durable submission"]
-    WORKER["MonitoringWorker<br/>claim · recover · reconcile"]
-    WF["ADK Workflow<br/>tariff_monitoring_workflow"]
+    WORKER["MonitoringWorker<br/>claim · recover (no ADK)"]
     PIPE["TariffPipeline<br/>IndexingPipeline"]
-    REVIEW["Review services<br/>chat prompt · decision"]
+    REVIEW["ReviewResolutionService<br/>validate · apply · close"]
 
     PG[("PostgreSQL 17 + pgvector")]
-    ADKS[("ADK sessions and events")]
+    ADKS[("ADK sessions<br/>conversation + pause")]
     FS[("Content-addressed artifacts")]
     BANK(["ameriabank.am<br/>allowlisted HTTPS only"])
 
-    CHAT --> RESOLVER
-    HTTP --> RESOLVER
-    RESOLVER --> QUERY
-    RESOLVER --> RUNSVC
+    CLI --> AGENT
+    WEB --> AGENT
+    AGENT --> ADKS
+    AGENT --> RESOLVER
+    AGENT --> QUERY
+    AGENT --> NODE
+    NODE --> RUNSVC
+    NODE --> PIPE
+    NODE --> REVIEW
     HTTP --> RUNSVC
     SCHED --> RUNSVC
     RUNSVC --> PG
     PG --> WORKER
-    WORKER --> WF
-    WF --> PIPE
-    WF --> REVIEW
-    WF --> ADKS
-    CHAT --> REVIEW
+    WORKER --> PIPE
     REVIEW --> PG
     PIPE --> BANK
     PIPE --> FS
@@ -61,10 +66,11 @@ flowchart LR
 ```
 
 State ownership is deliberately split between the two stores. PostgreSQL owns
-runs, snapshots, changes, reviews, typed facts, chunks, and audit events. ADK owns
-workflow node progress, invocation and interrupt identity, and the native function
-response. Correlation IDs link them; neither store infers a decision belonging to
-the other.
+runs, snapshots, changes, reviews, typed facts, chunks, and audit events. The ADK
+session owns the conversation, the paused `adk_request_input` call and its answer,
+and the per-turn grants. Nothing correlates them: the pause lives in the
+conversation that answers it, and the node re-reads the business state every time it
+runs.
 
 ### Where Gemini is called
 
@@ -101,10 +107,10 @@ isolates their failures from each other.
 
 ```mermaid
 flowchart TD
-    TRIG["Trigger<br/>chat · CLI · POST /api/v1/runs · 06:00 scheduler"]
+    TRIG["Trigger<br/>chat · POST /api/v1/runs · 06:00 scheduler"]
     SUBMIT["RunService.submit<br/>advisory lock, idempotency key,<br/>active-scope check"]
     Q[("monitoring_runs<br/>status = queued")]
-    CLAIM["Worker claim<br/>FOR UPDATE SKIP LOCKED"]
+    CLAIM["Claim<br/>chat: claim(run_id) in the chat process<br/>worker: FOR UPDATE SKIP LOCKED"]
 
     S1["1 · acquisition<br/>allowlisted fetch, conditional browser render,<br/>linked PDFs, captured payloads"]
     S2["2 · normalization<br/>uniform blocks/tables/notes + locators<br/>PDF admission gate, Gemini transcription,<br/>OCR fallback for empty image-only pages"]
@@ -145,51 +151,46 @@ run degrades freshness, never correctness.
 
 ---
 
-## 3. Human review, across processes
+## 3. Human review, inside one conversation
 
-A run is submitted in one process, executed in another, and resolved in a third.
-ADK owns the paused invocation; PostgreSQL owns the business decision. Neither
-store infers the other's state.
+The pause belongs to the conversation that will answer it. The pipeline runs once;
+each review is a native pause of the same ADK invocation, and each answer resumes it.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as User
-    participant A as ADK chat agent
+    participant U as User (CLI)
+    participant R as ADK Runner<br/>invocation I
+    participant M as Gemini
+    participant N as monitoring node
     participant DB as PostgreSQL
-    participant W as Worker
-    participant WF as Monitoring workflow
 
-    U->>A: "consumer loan rates?"
-    A->>A: resolve_request → canonical offering
-    A->>DB: start_tariff_monitoring → queued run
-    W->>DB: claim run
-    W->>WF: start invocation
-    WF->>WF: TariffPipeline stages 1-4
-    WF->>DB: create ReviewTask, run → awaiting_review
-    WF-->>W: native RequestInput emitted
-    W-->>W: release claim, return immediately
-
-    Note over U,WF: the run is durable — nothing is held open
-
-    U->>A: "check status"
-    A->>DB: get_next_monitoring_review
-    DB-->>A: field, candidates, official URL,<br/>page/section, evidence excerpt
-    A->>U: show evidence, call request_input
-    U->>A: approve / select / reject / override
-    A->>A: submit_monitoring_review_input<br/>validate against saved evidence
-    A->>WF: resume saved invocation
-    WF->>WF: replay completed nodes from ADK events
-    WF->>DB: revalidate, then one transaction:<br/>accept snapshot, record changes,<br/>activate documents, retire superseded
-    WF-->>A: terminal run
-    A->>U: answer the original question from accepted data
+    U->>R: "yes" (accepting the monitoring offer)
+    R->>M: turn
+    M-->>R: resolve_request, then run_tariff_monitoring
+    R->>N: tool_context.run_node (spend grant checked)
+    N->>DB: submit + claim(run_id)
+    N->>N: TariffPipeline stages 1-7
+    N-->>U: progress as partial events (streamed, not persisted)
+    N->>DB: ReviewTask rows, run → awaiting_review
+    N-->>R: RequestInput(review 1) and return
+    Note over U,R: invocation I pauses — the model is not called
+    R-->>U: review panel: candidates, passages, entry format
+    U->>R: validated answer (FunctionResponse)
+    R->>N: replay the original tool call; node re-runs
+    N->>DB: validate against saved evidence, apply decision
+    N->>DB: no review pending → one transaction:<br/>accept snapshot, record changes,<br/>activate documents, close run
+    N-->>R: MonitoringResult (+ answer from accepted facts)
+    R->>M: call → result (same invocation)
+    M-->>U: answer the original question
 ```
 
-Resumption replays completed pipeline nodes from ADK events rather than re-running
-them, so acquisition and extraction execute exactly once no matter how long the
-reviewer takes. API-triggered and scheduled runs follow the same sequence with ADK
-Web in place of the chat agent; `POST /api/v1/reviews/abort-pending` is the
-token-protected bulk `reject_all`.
+The node re-runs from the top on each resume and derives everything from PostgreSQL,
+so acquisition and extraction execute exactly once however many reviews there are and
+however long the reviewer takes. A run the scheduler or the API started pauses the
+same way in the worker and is reviewed from the CLI with "review them"
+(`review_pending_candidates`, the same node in review-only mode).
+`POST /api/v1/reviews/abort-pending` is the token-protected bulk `reject_all`.
 
 ---
 
@@ -251,7 +252,7 @@ here they are as lists.
 | Network, browser, or fetch tool | acquisition is an application service behind a host allowlist |
 | Filesystem or shell tool | artifact paths are derived from SHA-256 only, never from model or source strings |
 | Database handle, SQL, or repository | every read is a typed service call with the scope already fixed |
-| Authority to widen its own scope | the `ResolutionPlan` is issued before the call and consumed once |
+| Authority to widen its own scope | read tools take no scope argument; the per-turn grants are issued by `resolve_request` and bound to the invocation |
 | Authority to accept anything | acceptance, activation, and publication are deterministic transactions |
 
 **What Python checks on the way back**
@@ -275,18 +276,16 @@ decide what is persisted, activated, and published.
 For terminals without Mermaid rendering:
 
 ```text
-  chat / CLI / POST /api/v1/runs / 06:00 scheduler
-                    |
-                    v
-      RunService  ->  PostgreSQL durable queue
-                    |
-                    v
-      worker claim (FOR UPDATE SKIP LOCKED)
-                    |
-                    v
-      resumable ADK monitoring workflow
-                    |
-                    v
+  ./tariff-chat (one ADK app)        POST /api/v1/runs / 06:00 scheduler
+          |                                      |
+   monitoring node, in the                RunService -> PostgreSQL queue
+   chat invocation: submit,                      |
+   claim, stream progress,               worker claim (SKIP LOCKED),
+   pause per review, resume              no ADK; reviews wait for the CLI
+          |                                      |
+          +------------------+-------------------+
+                             |
+                             v
   +--------------- TariffPipeline, per offering ----------------+
   |                                                             |
   |  1 acquisition       allowlist, render, linked PDFs         |

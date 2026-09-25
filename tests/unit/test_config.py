@@ -48,7 +48,6 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.tariff_queries.freshness_days == 7
     assert settings.tariff_queries.recent_change_days == 60
     assert settings.tariff_queries.default_history_days == 30
-    assert settings.tariff_queries.run_wait_seconds == 120
     assert settings.database.url.get_secret_value().startswith("postgresql+asyncpg://")
 
 

@@ -13,20 +13,14 @@ from app.config.seed_catalog import load_seed_catalog
 from app.domain.intent import HistoryQuery, HistoryRequestKind
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
-    MonitoringRun,
-    RunCommand,
-    RunStatus,
-    RunTrigger,
     SnapshotAttempt,
     SnapshotChange,
     SnapshotChangeSet,
     SnapshotStatus,
 )
-from app.domain.review import ReviewCorrelation, ReviewReason, ReviewStatus, ReviewTask
-from app.domain.tariff_queries import HistoryResultStatus, RunWaitState
+from app.domain.tariff_queries import HistoryResultStatus
 from app.services.tariff_queries import (
     CurrentTariffService,
-    RunWaitService,
     TariffHistoryService,
 )
 
@@ -196,146 +190,6 @@ async def test_show_history_defaults_to_thirty_days() -> None:
 
     assert result.window_start == NOW - timedelta(days=30)
     assert result.status is HistoryResultStatus.FIRST_OBSERVATION
-
-
-def _run(status: RunStatus) -> MonitoringRun:
-    return MonitoringRun(
-        id=uuid4(),
-        command=RunCommand(
-            product=ProductType.MORTGAGE,
-            trigger=RunTrigger.ADK,
-        ),
-        status=status,
-        queued_at=NOW,
-        started_at=NOW if status is not RunStatus.QUEUED else None,
-        completed_at=NOW if status.is_terminal else None,
-    )
-
-
-class _Runs:
-    def __init__(self, values: list[MonitoringRun | None]) -> None:
-        self.values = values
-
-    async def get(self, run_id: UUID) -> MonitoringRun | None:
-        return self.values.pop(0) if len(self.values) > 1 else self.values[0]
-
-
-class _Timer:
-    def __init__(self) -> None:
-        self.value = 0.0
-
-    def now(self) -> float:
-        return self.value
-
-    async def sleep(self, seconds: float) -> None:
-        self.value += seconds
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("final_status", "expected"),
-    [
-        (RunStatus.SUCCEEDED, RunWaitState.TERMINAL),
-        (RunStatus.AWAITING_REVIEW, RunWaitState.AWAITING_REVIEW),
-    ],
-)
-async def test_run_wait_stops_on_terminal_or_review(
-    final_status: RunStatus,
-    expected: RunWaitState,
-) -> None:
-    timer = _Timer()
-    service = RunWaitService(
-        _Runs([_run(RunStatus.RUNNING), _run(final_status)]),
-        TariffQuerySettings(run_poll_seconds=1),
-        monotonic_clock=timer.now,
-        sleep=timer.sleep,
-    )
-
-    result = await service.wait(uuid4())
-
-    assert result.state is expected
-    assert result.waited_seconds == 1
-
-
-@pytest.mark.asyncio
-async def test_run_wait_delivers_attached_review_session_and_scopes() -> None:
-    run = _run(RunStatus.AWAITING_REVIEW)
-    review = ReviewTask(
-        id=uuid4(),
-        idempotency_key="review:test:1",
-        run_id=run.id,
-        offering_execution_id=uuid4(),
-        snapshot_id=uuid4(),
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=OfferingId.OVERDRAFT,
-        reason=ReviewReason.MISSING_REQUIRED_FIELD,
-        issue_scope="interest_rate",
-        candidates=(),
-        status=ReviewStatus.PENDING,
-        correlation=ReviewCorrelation(
-            app_name="tariff_monitoring_workflow",
-            user_id="monitoring-adk",
-            session_id=f"monitoring-run-{run.id}",
-            invocation_id="invocation-1",
-            interrupt_id=f"monitoring-review:{run.id}",
-        ),
-        created_at=NOW,
-        updated_at=NOW,
-    )
-    run = run.model_copy(update={"summary": {"review_ids": [str(review.id)]}})
-
-    class _Reviews:
-        def __init__(self) -> None:
-            self.calls = 0
-
-        async def list(self, **kwargs):
-            assert kwargs["run_id"] == run.id
-            self.calls += 1
-            if self.calls == 1:
-                return (review.model_copy(update={"correlation": None}),)
-            return (review,)
-
-    timer = _Timer()
-    reviews = _Reviews()
-    result = await RunWaitService(
-        _Runs([run]),
-        TariffQuerySettings(run_poll_seconds=1),
-        reviews=reviews,
-        monotonic_clock=timer.now,
-        sleep=timer.sleep,
-    ).wait(run.id)
-
-    assert reviews.calls == 2
-    assert result.waited_seconds == 1
-    assert result.state is RunWaitState.AWAITING_REVIEW
-    assert result.review_handoff is not None
-    assert result.review_handoff.ready is True
-    assert result.review_handoff.pending[0].issue_scope == "interest_rate"
-    assert result.review_handoff.review_url == (
-        "/dev-ui/?app=tariff_monitoring_workflow&userId=monitoring-adk&"
-        f"session=monitoring-run-{run.id}"
-    )
-    assert result.review_handoff.reviews_url == (
-        f"/api/v1/reviews?run_id={run.id}"
-    )
-
-
-@pytest.mark.asyncio
-async def test_run_wait_returns_incomplete_envelope_at_timeout() -> None:
-    timer = _Timer()
-    service = RunWaitService(
-        _Runs([_run(RunStatus.RUNNING)]),
-        TariffQuerySettings(run_wait_seconds=2, run_poll_seconds=1),
-        monotonic_clock=timer.now,
-        sleep=timer.sleep,
-    )
-
-    result = await service.wait(uuid4())
-
-    assert result.state is RunWaitState.TIMED_OUT
-    assert result.run is not None
-    assert result.run.status is RunStatus.RUNNING
-    assert result.waited_seconds == 2
 
 
 @pytest.mark.asyncio

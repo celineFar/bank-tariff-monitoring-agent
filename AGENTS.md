@@ -8,7 +8,14 @@
 - Keep discovery constraints, downloads, PDF admission/input probing, normalization, validation,
   persistence, change detection, HITL routing, scheduling, and reporting deterministic.
 - Never expose raw network, filesystem, shell, database, or SQL tools to the model.
-- Both FastAPI and `app.worker` must call the same `TariffPipeline` application service.
+- There is one ADK app (`app`) with one agent. A chat-initiated monitoring run executes
+  through the monitoring node (`app/services/monitoring_node.py`) inside the chat
+  invocation; `app.worker` executes scheduled and API runs. Both must call the same
+  `TariffPipeline` application service. The worker owns no ADK app or session.
+- Reviews are native `RequestInput` pauses of the conversation, answered in the CLI;
+  the model never relays a review decision.
+- Business-data tools take no scope argument: scope comes from the per-turn grants that
+  `resolve_request` issues (read grant, spend grant), bound to the ADK invocation id.
 - Persist runs, chunks, snapshots, changes, reviews, and audit events in PostgreSQL/pgvector.
 - Every accepted non-missing tariff value must retain verifiable source evidence.
 - Keep the generated ADK/A2A plumbing in `app/app_utils/` intact unless a task explicitly
