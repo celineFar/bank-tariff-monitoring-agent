@@ -3,11 +3,32 @@ from __future__ import annotations
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import RunStatus
-from app.domain.review import ReviewDecision, ReviewDecisionType, ReviewReason
+from app.domain.review import (
+    ReviewCandidateView,
+    ReviewDecision,
+    ReviewEvidenceView,
+    ReviewPromptView,
+)
+
+# The review view models moved to `app.domain.review`; re-exported here until
+# this module is deleted with the workflow (plan Phase 7).
+__all__ = [
+    "MonitoringReviewRequest",
+    "MonitoringReviewResponse",
+    "MonitoringWorkflowInput",
+    "MonitoringWorkflowResult",
+    "MonitoringWorkflowState",
+    "ReconciliationIssueCode",
+    "ReconciliationItem",
+    "ReconciliationReport",
+    "ReviewCandidateView",
+    "ReviewEvidenceView",
+    "ReviewPromptView",
+    "ReviewResponseItem",
+]
 
 
 class WorkflowModel(BaseModel):
@@ -38,36 +59,6 @@ class MonitoringReviewResponse(WorkflowModel):
         if len(review_ids) != len(set(review_ids)):
             raise ValueError("review decisions must reference unique reviews")
         return self
-
-
-class ReviewEvidenceView(WorkflowModel):
-    evidence_id: str = Field(min_length=1, max_length=200)
-    source_url: str = Field(min_length=1, max_length=2000)
-    source_type: str | None = Field(default=None, max_length=100)
-    document_id: str | None = Field(default=None, max_length=500)
-    page: int | None = Field(default=None, ge=1)
-    section: str | None = Field(default=None, max_length=1000)
-    excerpt: str = Field(min_length=1, max_length=1500)
-
-
-class ReviewCandidateView(WorkflowModel):
-    candidate_id: str = Field(min_length=1, max_length=200)
-    field: str = Field(min_length=1, max_length=200)
-    value: JsonValue
-    evidence_references: tuple[str, ...] = Field(min_length=1, max_length=20)
-    conditions: dict[str, JsonValue] = Field(default_factory=dict)
-
-
-class ReviewPromptView(WorkflowModel):
-    review_id: UUID
-    reason: ReviewReason
-    product: ProductType
-    offering_id: OfferingId
-    issue_scope: str
-    guidance: str = Field(min_length=1, max_length=2000)
-    allowed_decisions: tuple[ReviewDecisionType, ...] = Field(min_length=1)
-    candidates: tuple[ReviewCandidateView, ...] = Field(max_length=20)
-    evidence: tuple[ReviewEvidenceView, ...] = Field(max_length=20)
 
 
 class MonitoringReviewRequest(WorkflowModel):

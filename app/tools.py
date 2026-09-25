@@ -31,10 +31,12 @@ from app.services.monitoring_workflow import (
 )
 from app.services.rag_answer import RagAnswerService
 from app.services.review_decisions import coerce_review_candidate_value
-from app.services.review_input import (
-    ReviewInputError,
-    parse_review_field_text,
-    review_field_format,
+from app.services.review_input import ReviewInputError
+from app.services.review_resolution import (
+    review_input_format as _review_input_format,
+)
+from app.services.review_resolution import (
+    reviewed_value as _reviewed_value,
 )
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.semantic_extraction import validate_review_field_value
@@ -630,33 +632,6 @@ async def get_next_monitoring_review(
         "input_format": _review_input_format(next_item.issue_scope),
         "response_schema": response_schema,
     }
-
-
-def _review_input_format(issue_scope: str) -> dict[str, object]:
-    """Describe a valid answer, so the human is asked for one before typing."""
-    try:
-        field_format = review_field_format(ExtractionField(issue_scope))
-    except (KeyError, ValueError):
-        return {
-            "field": issue_scope,
-            "instruction": "Provide the value as JSON matching the stored field "
-            "structure, or choose a candidate.",
-            "examples": [],
-        }
-    return {
-        "field": issue_scope,
-        "instruction": field_format.instruction,
-        "examples": list(field_format.examples),
-    }
-
-
-def _reviewed_value(field: ExtractionField, value: object, excerpt: str) -> object:
-    """Accept a plain-language override in chat exactly as the CLI accepts one."""
-    if isinstance(value, str):
-        return parse_review_field_text(field, value, excerpts=(excerpt,))
-    coerced = coerce_review_candidate_value(field, value)
-    validate_review_field_value(field, coerced)
-    return coerced
 
 
 def _native_input(tool_context: ToolContext) -> dict[str, object] | None:

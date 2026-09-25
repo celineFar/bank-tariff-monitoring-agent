@@ -83,6 +83,64 @@ class ReviewDecision(ReviewModel):
         return self
 
 
+class ReviewDecisionInput(ReviewModel):
+    """The wire shape of one reviewer reply: the `RequestInput` response schema.
+
+    Deliberately permissive: only field types are checked here. ADK validates a
+    resumed reply against this schema *after* persisting it, and a reply that
+    fails there can never be retried (plan §5, E11). Business rules therefore
+    live in `ReviewResolutionService.validate`, which re-asks instead of failing.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    decision_type: ReviewDecisionType
+    candidate_id: str | None = Field(default=None, max_length=200)
+    override_value: JsonValue = None
+    reason: str | None = Field(default=None, max_length=2000)
+    evidence_reference: str | None = Field(default=None, max_length=500)
+
+    def to_decision(self) -> ReviewDecision:
+        """Raises `ValueError` when the reply is not a coherent decision."""
+        return ReviewDecision(
+            decision_type=self.decision_type,
+            candidate_id=self.candidate_id or None,
+            override_value=self.override_value,
+            reason=self.reason or None,
+            evidence_reference=self.evidence_reference or None,
+        )
+
+
+class ReviewEvidenceView(ReviewModel):
+    evidence_id: str = Field(min_length=1, max_length=200)
+    source_url: str = Field(min_length=1, max_length=2000)
+    source_type: str | None = Field(default=None, max_length=100)
+    document_id: str | None = Field(default=None, max_length=500)
+    page: int | None = Field(default=None, ge=1)
+    section: str | None = Field(default=None, max_length=1000)
+    excerpt: str = Field(min_length=1, max_length=1500)
+
+
+class ReviewCandidateView(ReviewModel):
+    candidate_id: str = Field(min_length=1, max_length=200)
+    field: str = Field(min_length=1, max_length=200)
+    value: JsonValue
+    evidence_references: tuple[str, ...] = Field(min_length=1, max_length=20)
+    conditions: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class ReviewPromptView(ReviewModel):
+    review_id: UUID
+    reason: ReviewReason
+    product: ProductType
+    offering_id: OfferingId
+    issue_scope: str
+    guidance: str = Field(min_length=1, max_length=2000)
+    allowed_decisions: tuple[ReviewDecisionType, ...] = Field(min_length=1)
+    candidates: tuple[ReviewCandidateView, ...] = Field(max_length=20)
+    evidence: tuple[ReviewEvidenceView, ...] = Field(max_length=20)
+
+
 class ReviewCorrelation(ReviewModel):
     app_name: str = Field(min_length=1, max_length=200)
     user_id: str = Field(min_length=1, max_length=200)

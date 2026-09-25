@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.review_repository = container.reviews
     app.state.run_wait_service = container.run_wait_service
     app.state.chat_review_service = container.chat_review_service
+    app.state.review_resolution = container.review_resolution
     await attach_a2a_routes(
         app,
         agent=root_agent,

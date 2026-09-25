@@ -59,6 +59,7 @@ from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
 from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
 from app.services.rag_retrieval import RagRetriever
 from app.services.review_decisions import ReviewDecisionService
+from app.services.review_resolution import ReviewResolutionService
 from app.services.run_service import RunService
 from app.services.semantic_extraction import (
     AdkSemanticExtractor,
@@ -90,6 +91,7 @@ class ApplicationContainer:
     monitoring_workflow_runner: MonitoringWorkflowRunner
     monitoring_workflow_app: App
     chat_review_service: ChatReviewService
+    review_resolution: ReviewResolutionService
     workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     structured_query_service: StructuredTariffQueryService
@@ -288,11 +290,15 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         runs=runs,
         reviews=reviews,
     )
+    review_decisions = ReviewDecisionService(reviews, snapshots)
+    review_resolution = ReviewResolutionService(
+        runs=runs, reviews=reviews, decisions=review_decisions
+    )
     monitoring_workflow = build_monitoring_workflow(
         runs=runs,
         pipeline=tariff_pipeline,
         reviews=reviews,
-        decisions=ReviewDecisionService(reviews, snapshots),
+        decisions=review_decisions,
     )
     from app.app_utils import services as adk_services
 
@@ -323,6 +329,7 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             snapshots,
             settings.tariff_queries,
         ),
+        review_resolution=review_resolution,
         chat_review_service=ChatReviewService(
             runs=runs, reviews=reviews, workflow=monitoring_workflow_runner
         ),

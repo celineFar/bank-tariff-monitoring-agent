@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections.abc import AsyncIterator
 from typing import Protocol
 from uuid import UUID
@@ -22,20 +21,20 @@ from app.domain.monitoring_workflow import (
     MonitoringWorkflowInput,
     MonitoringWorkflowResult,
     MonitoringWorkflowState,
-    ReviewCandidateView,
-    ReviewEvidenceView,
-    ReviewPromptView,
 )
 from app.domain.review import (
     ReviewCorrelation,
     ReviewDecision,
     ReviewDecisionType,
-    ReviewReason,
     ReviewStatus,
     ReviewTask,
 )
 from app.repositories.contracts import ReviewRepository, RunRepository
 from app.services.contracts import TariffPipeline
+from app.services.review_resolution import (
+    build_review_view,
+    terminal_review_status,
+)
 from app.services.telemetry import inject_trace_context
 
 MONITORING_WORKFLOW_APP_NAME = "tariff_monitoring_workflow"
@@ -395,139 +394,11 @@ def workflow_identity(run: MonitoringRun) -> tuple[str, str]:
     return f"monitoring-{origin}", f"monitoring-run-{run.id}"
 
 
-def terminal_review_status(
-    *,
-    approved: int,
-    rejected: int,
-    prior_succeeded: int,
-    prior_failed: int,
-) -> RunStatus:
-    if rejected == 0 and prior_failed == 0:
-        return RunStatus.SUCCEEDED
-    if approved or prior_succeeded:
-        return RunStatus.PARTIAL_SUCCESS
-    return RunStatus.FAILED
-
-
 def build_review_request(
     run_id: UUID,
     tasks: tuple[ReviewTask, ...],
 ) -> MonitoringReviewRequest:
     return MonitoringReviewRequest(
         run_id=run_id,
-        reviews=tuple(_review_prompt(task) for task in tasks),
-    )
-
-
-def _review_prompt(task: ReviewTask) -> ReviewPromptView:
-    allowed, guidance = _review_policy(task.reason)
-    raw_items = task.evidence.get("items", [])
-    raw_items = raw_items if isinstance(raw_items, list) else []
-    candidate_references = {
-        reference
-        for candidate in task.candidates
-        for reference in candidate.evidence_references
-    }
-
-    def rank(raw: object) -> int:
-        if not isinstance(raw, dict):
-            return 4
-        if raw.get("evidence_id") in candidate_references:
-            return 0
-        content = str(raw.get("content", "")).casefold()
-        field = task.issue_scope.replace("_", " ").casefold()
-        if field == "term" and re.search(
-            r"\bterm\s*\(months?\)|\bindefinite term\b",
-            content,
-        ):
-            return 1
-        if field in content:
-            return 2
-        return 3
-
-    evidence = tuple(
-        view
-        for raw in sorted(raw_items, key=rank)
-        if isinstance(raw, dict)
-        if (view := _evidence_view(raw)) is not None
-    )
-    return ReviewPromptView(
-        review_id=task.id,
-        reason=task.reason,
-        product=task.product,
-        offering_id=task.offering_id,
-        issue_scope=task.issue_scope,
-        guidance=guidance,
-        allowed_decisions=allowed,
-        candidates=tuple(
-            ReviewCandidateView.model_validate(candidate.model_dump(mode="json"))
-            for candidate in task.candidates
-        ),
-        evidence=evidence[:20],
-    )
-
-
-def _review_policy(
-    reason: ReviewReason,
-) -> tuple[tuple[ReviewDecisionType, ...], str]:
-    if reason is ReviewReason.LARGE_RATE_CHANGE:
-        return (
-            (
-                ReviewDecisionType.APPROVE,
-                ReviewDecisionType.REJECT_ALL,
-                ReviewDecisionType.OVERRIDE,
-            ),
-            "Confirm the evidence-backed large rate change, reject the candidate "
-            "snapshot, or provide an evidence-linked structured override.",
-        )
-    if reason is ReviewReason.OFFICIAL_SOURCE_CONFLICT:
-        return (
-            (
-                ReviewDecisionType.SELECT_CANDIDATE,
-                ReviewDecisionType.REJECT_ALL,
-                ReviewDecisionType.OVERRIDE,
-            ),
-            "Select one captured official-source candidate, reject all candidates, "
-            "or provide a structured override tied to captured evidence.",
-        )
-    if reason is ReviewReason.OCR_EVIDENCE:
-        return (
-            (
-                ReviewDecisionType.APPROVE,
-                ReviewDecisionType.REJECT_ALL,
-                ReviewDecisionType.OVERRIDE,
-            ),
-            "This value was read off a scanned page by OCR, not from a text "
-            "layer. Check the quoted text against the cited page, then approve "
-            "it, reject the candidate snapshot, or provide an evidence-linked "
-            "structured override.",
-        )
-    return (
-        (ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE),
-        "Reject the candidate snapshot or provide a structured value with a reason "
-        "and reference to captured official evidence.",
-    )
-
-
-def _evidence_view(raw: dict) -> ReviewEvidenceView | None:
-    evidence_id = raw.get("evidence_id")
-    content = raw.get("content")
-    locator = raw.get("locator")
-    if not isinstance(evidence_id, str) or not isinstance(content, str):
-        return None
-    locator = locator if isinstance(locator, dict) else {}
-    source_url = locator.get("source_url")
-    if not isinstance(source_url, str):
-        return None
-    page = locator.get("pdf_page")
-    return ReviewEvidenceView(
-        evidence_id=evidence_id,
-        source_url=source_url,
-        source_type=(
-            str(locator["source_type"]) if locator.get("source_type") else None
-        ),
-        document_id=(str(raw["document_id"]) if raw.get("document_id") else None),
-        page=page if isinstance(page, int) else None,
-        section=str(raw["section"]) if raw.get("section") else None,
-        excerpt=content[:1500],
+        reviews=tuple(build_review_view(task) for task in tasks),
     )

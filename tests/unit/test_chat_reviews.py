@@ -406,11 +406,15 @@ async def test_abort_reports_unprepared_review_as_failed_and_keeps_it_pending() 
 @pytest.mark.asyncio
 async def test_abort_api_requires_configured_admin_token() -> None:
     class _AbortService:
-        async def abort_all(self):
+        def __init__(self) -> None:
+            self.reviewers = []
+
+        async def reject_all_pending(self, *, reviewer):
+            self.reviewers.append(reviewer)
             return {"aborted_runs": [], "failed_runs": [], "aborted_review_count": 0}
 
     app = FastAPI()
-    app.state.chat_review_service = _AbortService()
+    app.state.review_resolution = _AbortService()
     app.state.settings = SimpleNamespace(
         hitl=HitlSettings(review_admin_token=SecretStr("secret-token"))
     )
@@ -430,6 +434,7 @@ async def test_abort_api_requires_configured_admin_token() -> None:
     assert wrong.status_code == 403
     assert allowed.status_code == 200
     assert allowed.json()["aborted_review_count"] == 0
+    assert app.state.review_resolution.reviewers == ["api-admin"]
     app.state.settings = SimpleNamespace(hitl=HitlSettings())
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"

@@ -25,9 +25,9 @@ from app.domain.tariff_queries import (
 )
 from app.repositories.contracts import ReviewRepository
 from app.services.answer_read_model import TariffAnswerRouter
-from app.services.chat_reviews import ChatReviewService
 from app.services.intent_resolution import RequestResolver
 from app.services.rag_answer import RagAnswerService
+from app.services.review_resolution import ReviewResolutionService
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
@@ -348,9 +348,9 @@ async def abort_pending_reviews(
         admin_token, configured.get_secret_value()
     ):
         raise _failure(403, "review.admin_required", "Admin token is required")
-    service: ChatReviewService = request.app.state.chat_review_service
+    service: ReviewResolutionService = request.app.state.review_resolution
     try:
-        return await service.abort_all()
+        return await service.reject_all_pending(reviewer="api-admin")
     except Exception as exc:
         raise _failure(
             503, "review.abort_failed", "Review abort could not complete"
