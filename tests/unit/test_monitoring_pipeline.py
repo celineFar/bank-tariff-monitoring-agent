@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
@@ -406,7 +407,7 @@ async def test_indexing_failure_before_publication_leaves_state_untouched() -> N
 
 
 class _FamilyIndexing:
-    async def refresh(self, offering, run_id, offering_execution_id):
+    async def refresh(self, offering, run_id, offering_execution_id, *, progress=None):
         if offering.offering_id is OfferingId.OVERDRAFT:
             raise RuntimeError("fixture failure")
         return SimpleNamespace(
@@ -478,7 +479,7 @@ class _Runs:
 
 
 class _CandidateIndexing:
-    async def refresh(self, offering, run_id, offering_execution_id):
+    async def refresh(self, offering, run_id, offering_execution_id, *, progress=None):
         snapshot = SimpleNamespace(
             id=uuid4(),
             run_id=run_id,
@@ -595,7 +596,9 @@ async def test_single_offering_failure_reports_source_code_and_reason() -> None:
     from app.services.monitoring_pipeline import OfferingPipelineError
 
     class FailingIndexing:
-        async def refresh(self, offering, run_id, offering_execution_id):
+        async def refresh(
+            self, offering, run_id, offering_execution_id, *, progress=None
+        ):
             raise OfferingPipelineError(
                 "acquisition",
                 "source.parsing_failed",
@@ -725,3 +728,196 @@ async def test_indexing_audit_failure_does_not_fail_the_run(tmp_path) -> None:
 class _FailingDiscovery:
     async def discover(self, bundle, product):
         raise RuntimeError("classifier unavailable")
+
+
+class _ListSink:
+    def __init__(self) -> None:
+        self.items = []
+
+    async def report(self, progress):
+        self.items.append(progress)
+
+
+def _running(offering_id=None) -> MonitoringRun:
+    return MonitoringRun(
+        id=uuid4(),
+        command=RunCommand(
+            product=ProductType.CONSUMER_LOAN,
+            offering_id=offering_id,
+            trigger=RunTrigger.ADK,
+        ),
+        status=RunStatus.RUNNING,
+        queued_at=NOW,
+        started_at=NOW,
+    )
+
+
+@pytest.mark.asyncio
+async def test_indexing_refresh_reports_start_and_completion_of_every_stage() -> None:
+    service, _, _ = _indexing()
+    sink = _ListSink()
+
+    await service.refresh(_offering(), uuid4(), uuid4(), progress=sink)
+
+    stages = [
+        "acquisition",
+        "normalization",
+        "source_discovery",
+        "semantic_extraction",
+        "previous_snapshot",
+        "embedding",
+        "publication",
+    ]
+    assert [(item.kind.value, item.stage) for item in sink.items] == [
+        pair
+        for stage in stages
+        for pair in (("stage_started", stage), ("stage_completed", stage))
+    ]
+    assert all(item.offering_id is OfferingId.CONSUMER_STANDARD for item in sink.items)
+    assert all(
+        item.elapsed_ms >= 0
+        for item in sink.items
+        if item.kind.value == "stage_completed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_tariff_pipeline_reports_run_and_offering_outcomes() -> None:
+    catalog = SeedCatalog(
+        families=_families(),
+        offerings=(
+            _offering(OfferingId.CONSUMER_STANDARD),
+            _offering(OfferingId.OVERDRAFT),
+        ),
+    )
+    sink = _ListSink()
+    pipeline = TariffPipeline(catalog=catalog, indexing=_FamilyIndexing(), runs=_Runs())
+
+    await pipeline.execute(_running(), progress=sink)
+
+    assert [
+        (item.kind.value, item.offering_id.value if item.offering_id else None)
+        for item in sink.items
+    ] == [
+        ("run_started", None),
+        ("offering_started", "consumer_standard"),
+        ("offering_succeeded", "consumer_standard"),
+        ("offering_started", "overdraft"),
+        ("offering_failed", "overdraft"),
+        ("run_finished", None),
+    ]
+    failed = sink.items[4]
+    assert failed.failure_code == "run.internal_error"
+    assert sink.items[-1].detail == "partial_success"
+
+
+@pytest.mark.asyncio
+async def test_candidate_offering_reports_review_and_run_awaiting_review() -> None:
+    catalog = SeedCatalog(
+        families=_families(),
+        offerings=(_offering(OfferingId.CONSUMER_STANDARD),),
+    )
+    sink = _ListSink()
+    pipeline = TariffPipeline(
+        catalog=catalog,
+        indexing=_CandidateIndexing(),
+        runs=_Runs(),
+        reviews=_Reviews(),
+    )
+
+    await pipeline.execute(_running(), progress=sink)
+
+    kinds = [item.kind.value for item in sink.items]
+    assert kinds == [
+        "run_started",
+        "offering_started",
+        "offering_review",
+        "run_finished",
+    ]
+    assert sink.items[2].detail == "1 review"
+    assert sink.items[-1].detail == "awaiting_review"
+
+
+class _AuditedRuns(_Runs):
+    def __init__(self):
+        super().__init__()
+        self.audits = []
+
+    async def record_audit(self, run_id, event_type, **kwargs):
+        self.audits.append((event_type, kwargs))
+
+
+class _BlockingIndexing:
+    """Reports the first stage, then waits until the run is cancelled."""
+
+    def __init__(self) -> None:
+        self.in_stage = asyncio.Event()
+
+    async def refresh(self, offering, run_id, offering_execution_id, *, progress=None):
+        from app.services.monitoring_progress import PipelineProgress, ProgressKind
+
+        await progress.report(
+            PipelineProgress(
+                kind=ProgressKind.STAGE_STARTED,
+                run_id=run_id,
+                product=offering.product,
+                offering_id=offering.offering_id,
+                stage="semantic_extraction",
+            )
+        )
+        self.in_stage.set()
+        await asyncio.Event().wait()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_marks_run_and_in_flight_offering_cancelled() -> None:
+    catalog = SeedCatalog(
+        families=_families(),
+        offerings=(_offering(OfferingId.CONSUMER_STANDARD),),
+    )
+    runs = _AuditedRuns()
+    indexing = _BlockingIndexing()
+    pipeline = TariffPipeline(catalog=catalog, indexing=indexing, runs=runs)
+
+    task = asyncio.create_task(pipeline.execute(_running()))
+    await indexing.in_stage.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    status, finished = runs.finished
+    assert status is RunStatus.FAILED
+    assert finished["failure_code"] == "run.cancelled"
+    assert len(runs.failures) == 1
+    assert runs.failures[0][1]["failure_code"] == "run.cancelled"
+    assert runs.failures[0][1]["stage"] == "semantic_extraction"
+    assert runs.audits == [
+        (
+            "run.cancelled",
+            {
+                "reason_code": "run.cancelled",
+                "payload": {"stage": "semantic_extraction"},
+            },
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cancellation_cleanup_failure_never_replaces_the_cancellation() -> None:
+    catalog = SeedCatalog(
+        families=_families(),
+        offerings=(_offering(OfferingId.CONSUMER_STANDARD),),
+    )
+
+    class BrokenRuns(_Runs):
+        async def finish(self, run_id, status, **kwargs):
+            raise RuntimeError("database gone")
+
+    indexing = _BlockingIndexing()
+    pipeline = TariffPipeline(catalog=catalog, indexing=indexing, runs=BrokenRuns())
+
+    task = asyncio.create_task(pipeline.execute(_running()))
+    await indexing.in_stage.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task

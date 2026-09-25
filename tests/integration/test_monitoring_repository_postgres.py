@@ -353,6 +353,55 @@ async def test_queue_claim_is_skip_locked_and_restart_safe(
 
 
 @pytest.mark.asyncio
+async def test_claim_takes_one_specific_queued_run_exactly_once(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    submitted = await repository.submit(_command())
+
+    first, second = await asyncio.gather(
+        repository.claim(submitted.run.id, "cli:host:1"),
+        repository.claim(submitted.run.id, "cli:host:2"),
+    )
+
+    claims = [item for item in (first, second) if item is not None]
+    assert len(claims) == 1
+    assert claims[0].run.id == submitted.run.id
+    assert claims[0].run.status is RunStatus.RUNNING
+    assert await repository.claim(submitted.run.id, "cli:host:3") is None
+    # A worker polling the queue cannot take it either.
+    assert await repository.claim_next("worker") is None
+
+
+@pytest.mark.asyncio
+async def test_fail_interrupted_touches_only_the_owner_family(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    chat = await repository.submit(_command())
+    worker = await repository.submit(_command(ProductType.MORTGAGE))
+    assert await repository.claim(chat.run.id, "cli:host:42") is not None
+    assert await repository.claim(worker.run.id, "worker-1") is not None
+    execution = await repository.create_offering_execution(
+        chat.run.id, ProductType.CONSUMER_LOAN, OfferingId.CONSUMER_STANDARD
+    )
+    await repository.start_offering_execution(execution.id, stage="acquisition")
+
+    failed = await repository.fail_interrupted(owner_prefix="cli:")
+
+    chat_run = await repository.get(chat.run.id)
+    worker_run = await repository.get(worker.run.id)
+    executions = await repository.list_offering_executions(chat.run.id)
+    assert failed == 1
+    assert chat_run is not None and chat_run.status is RunStatus.FAILED
+    assert chat_run.failure_code == "run.interrupted"
+    assert worker_run is not None and worker_run.status is RunStatus.RUNNING
+    assert executions[0].failure_code == "run.interrupted"
+    # `_` in a prefix is literal, not a LIKE wildcard.
+    assert await repository.fail_interrupted(owner_prefix="worker_") == 0
+
+
+@pytest.mark.asyncio
 async def test_abandoned_running_run_is_failed_and_family_can_restart(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

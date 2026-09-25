@@ -389,6 +389,131 @@ class PostgresRunRepository:
             trace_parent=row.trace_parent,
         )
 
+    async def claim(self, run_id: UUID, owner: str) -> ClaimedRun | None:
+        """Claim one specific queued run; `None` when it is not queued any more.
+
+        The chat node uses this for the run it just submitted, so exactly one
+        process executes it even when a worker is polling the same queue.
+        """
+        normalized_owner = owner.strip()
+        if not normalized_owner or len(normalized_owner) > 200:
+            raise ValueError("owner must contain 1 to 200 characters")
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        f"""
+                        UPDATE monitoring_runs
+                        SET
+                            status = 'running',
+                            started_at = now(),
+                            claimed_at = now(),
+                            claimed_by = :owner,
+                            updated_at = now()
+                        WHERE id = :run_id
+                          AND status = 'queued'
+                        RETURNING {_RUN_COLUMNS}, trace_parent
+                        """
+                    ),
+                    {"run_id": run_id, "owner": normalized_owner},
+                )
+            ).first()
+        if row is None:
+            return None
+        return ClaimedRun(
+            run=_run_from_row(row),
+            worker_id=normalized_owner,
+            trace_parent=row.trace_parent,
+        )
+
+    async def fail_interrupted(
+        self,
+        *,
+        owner_prefix: str,
+        before: datetime | None = None,
+    ) -> int:
+        """Fail `running` runs claimed by a process that is known to be gone.
+
+        Like `recover_abandoned`, but scoped to one owner family (for example
+        `cli:host:`) and recorded as `run.interrupted`, because the caller has
+        positive knowledge that the owner died rather than a lease timing out.
+        """
+        prefix = owner_prefix.strip()
+        if not prefix or len(prefix) > 200:
+            raise ValueError("owner_prefix must contain 1 to 200 characters")
+        if before is not None and (before.tzinfo is None or before.utcoffset() is None):
+            raise ValueError("before must be timezone-aware")
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        parameters: dict[str, object] = {"pattern": f"{escaped}%"}
+        before_clause = ""
+        if before is not None:
+            before_clause = "AND claimed_at < :before"
+            parameters["before"] = before
+        async with self._session_factory() as session, session.begin():
+            run_ids = tuple(
+                (
+                    await session.execute(
+                        text(
+                            f"""
+                            SELECT id
+                            FROM monitoring_runs
+                            WHERE status = 'running'
+                              AND claimed_by LIKE :pattern ESCAPE '\\'
+                              {before_clause}
+                            FOR UPDATE SKIP LOCKED
+                            """
+                        ),
+                        parameters,
+                    )
+                ).scalars()
+            )
+            if not run_ids:
+                return 0
+            await session.execute(
+                text(
+                    """
+                    UPDATE offering_executions
+                    SET
+                        status = 'failed',
+                        completed_at = now(),
+                        failure_count = failure_count + 1,
+                        failure_code = 'run.interrupted',
+                        failure_detail = 'The process executing the run exited',
+                        updated_at = now()
+                    WHERE run_id = ANY(:run_ids)
+                      AND status IN ('pending', 'running')
+                    """
+                ),
+                {"run_ids": list(run_ids)},
+            )
+            await session.execute(
+                text(
+                    """
+                    UPDATE monitoring_runs
+                    SET
+                        status = 'failed',
+                        completed_at = now(),
+                        error_code = 'run.interrupted',
+                        failure_detail = 'The process executing the run exited',
+                        updated_at = now()
+                    WHERE id = ANY(:run_ids)
+                    """
+                ),
+                {"run_ids": list(run_ids)},
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO audit_events (run_id, event_type, reason_code, payload)
+                    SELECT id, 'run.interrupted', 'run.interrupted',
+                           CAST(:payload AS jsonb)
+                    FROM unnest(CAST(:run_ids AS uuid[])) AS id
+                    """
+                ),
+                {"run_ids": list(run_ids), "payload": _json({"owner_prefix": prefix})},
+            )
+        return len(run_ids)
+
     async def recover_abandoned(self, *, before: datetime) -> int:
         if before.tzinfo is None or before.utcoffset() is None:
             raise ValueError("before must be timezone-aware")

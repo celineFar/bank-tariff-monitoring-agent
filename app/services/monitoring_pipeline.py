@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Sequence
 from decimal import Decimal
@@ -51,6 +52,12 @@ from app.services.failure_mapping import (
     source_failure_code,
 )
 from app.services.knowledge_projection import KnowledgeProjectionService
+from app.services.monitoring_progress import (
+    PipelineProgress,
+    ProgressKind,
+    ProgressSink,
+    report_safely,
+)
 from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
 from app.services.snapshot_lifecycle import (
     build_snapshot_attempt,
@@ -149,14 +156,31 @@ class IndexingPipeline:
         offering: SeedCatalogEntry,
         run_id: UUID,
         offering_execution_id: UUID,
+        *,
+        progress: ProgressSink | None = None,
     ) -> IndexingRefreshResult:
         timings: list[StageTiming] = []
 
+        def report(kind: ProgressKind, name: str, elapsed_ms: int = 0):
+            return report_safely(
+                progress,
+                PipelineProgress(
+                    kind=kind,
+                    run_id=run_id,
+                    product=offering.product,
+                    offering_id=offering.offering_id,
+                    stage=name,
+                    elapsed_ms=elapsed_ms,
+                ),
+            )
+
         async def stage(name: str, failure_code, operation: Awaitable[T]) -> T:
+            # The persisted stage stays: the run-status API still reads it.
             if self._runs is not None:
                 await self._runs.start_offering_execution(
                     offering_execution_id, stage=name
                 )
+            await report(ProgressKind.STAGE_STARTED, name)
             # Every stage funnels through here, so one span covers all of them.
             # Nested ADK runners inside a stage open their spans under the
             # ambient context, which makes their model calls children of it.
@@ -165,10 +189,12 @@ class IndexingPipeline:
                 span.set_attribute("tariff.run_id", str(run_id))
                 span.set_attribute("tariff.offering_id", offering.offering_id.value)
                 try:
-                    return await self._stage(name, failure_code, operation, timings)
+                    result = await self._stage(name, failure_code, operation, timings)
                 except OfferingPipelineError as exc:
                     span.set_attribute("tariff.failure_code", exc.failure_code)
                     raise
+            await report(ProgressKind.STAGE_COMPLETED, name, timings[-1].duration_ms)
+            return result
 
         artifact = await stage(
             "acquisition",
@@ -418,7 +444,12 @@ class TariffPipeline:
         self._runs = runs
         self._reviews = reviews
 
-    async def execute(self, run: MonitoringRun) -> MonitoringRun:
+    async def execute(
+        self,
+        run: MonitoringRun,
+        *,
+        progress: ProgressSink | None = None,
+    ) -> MonitoringRun:
         if run.status is not RunStatus.RUNNING:
             raise ValueError("TariffPipeline requires a claimed running run")
         offerings = self._catalog.enabled_for(run.command.product)
@@ -428,89 +459,153 @@ class TariffPipeline:
                 for item in offerings
                 if item.offering_id is run.command.offering_id
             )
+        tracker = _StageTracker(progress)
+
+        async def report(kind: ProgressKind, offering=None, **fields) -> None:
+            await report_safely(
+                tracker,
+                PipelineProgress(
+                    kind=kind,
+                    run_id=run.id,
+                    product=run.command.product,
+                    offering_id=offering.offering_id if offering else None,
+                    **fields,
+                ),
+            )
+
+        await report(
+            ProgressKind.RUN_STARTED,
+            detail=f"{len(offerings)} offering{'s' if len(offerings) != 1 else ''}",
+        )
+        started = perf_counter()
         succeeded = 0
         review_required = 0
         review_ids: list[UUID] = []
         failed = 0
         failure_codes: list[str] = []
-        for offering in offerings:
-            execution = await self._runs.create_offering_execution(
-                run.id,
-                offering.product,
-                offering.offering_id,
-            )
-            execution = await self._runs.start_offering_execution(
-                execution.id,
-                stage="acquisition",
-            )
-            try:
-                # Parents every stage span of this offering, so one run with
-                # several offerings stays readable as separate subtrees.
-                with tracer.start_as_current_span(
-                    f"offering {offering.offering_id.value}"
-                ) as span:
-                    span.set_attribute("tariff.run_id", str(run.id))
-                    span.set_attribute("tariff.product", offering.product.value)
-                    span.set_attribute("tariff.offering_id", offering.offering_id.value)
-                    result = await self._indexing.refresh(
-                        offering,
-                        run.id,
-                        execution.id,
-                    )
-            except OfferingPipelineError as exc:
-                failed += 1
-                failure_codes.append(exc.failure_code)
-                logger.warning(
-                    "offering failed run_id=%s offering_id=%s stage=%s code=%s reason=%s",
+        execution = None
+        try:
+            for offering in offerings:
+                execution = None
+                execution = await self._runs.create_offering_execution(
                     run.id,
-                    offering.offering_id.value,
-                    exc.stage,
-                    exc.failure_code,
-                    exc.cause_reason or exc.cause_log_detail,
+                    offering.product,
+                    offering.offering_id,
                 )
-                await self._runs.fail_offering_execution(
+                execution = await self._runs.start_offering_execution(
                     execution.id,
-                    stage=exc.stage,
-                    failure_code=exc.failure_code,
-                    failure_detail=(
-                        f"{exc.cause_type}:{exc.cause_reason}"
-                        if exc.cause_reason
-                        else exc.cause_detail
-                    ),
-                    audit_payload={
-                        "stage": exc.stage,
-                        "exception_type": exc.cause_type,
-                        "detail": exc.cause_detail,
-                        **({"reason": exc.cause_reason} if exc.cause_reason else {}),
-                    },
+                    stage="acquisition",
                 )
-                continue
-            except Exception as exc:
-                failed += 1
-                failure_codes.append(RunFailureCode.INTERNAL_ERROR.value)
-                await self._runs.fail_offering_execution(
-                    execution.id,
-                    stage="internal",
-                    failure_code=RunFailureCode.INTERNAL_ERROR.value,
-                    failure_detail=bounded_failure_detail(exc),
-                    audit_payload={
-                        "stage": "internal",
-                        "exception_type": type(exc).__name__,
-                        "detail": bounded_failure_detail(exc),
-                    },
-                )
-                continue
-            if result.publication.offering_status is OfferingRunStatus.SUCCEEDED:
-                succeeded += 1
-            else:
-                review_required += 1
-                if self._reviews is None:
-                    raise RuntimeError(
-                        "review repository is required for candidate data"
+                await report(ProgressKind.OFFERING_STARTED, offering)
+                try:
+                    # Parents every stage span of this offering, so one run with
+                    # several offerings stays readable as separate subtrees.
+                    with tracer.start_as_current_span(
+                        f"offering {offering.offering_id.value}"
+                    ) as span:
+                        span.set_attribute("tariff.run_id", str(run.id))
+                        span.set_attribute("tariff.product", offering.product.value)
+                        span.set_attribute(
+                            "tariff.offering_id", offering.offering_id.value
+                        )
+                        result = await self._indexing.refresh(
+                            offering,
+                            run.id,
+                            execution.id,
+                            progress=tracker,
+                        )
+                except OfferingPipelineError as exc:
+                    failed += 1
+                    failure_codes.append(exc.failure_code)
+                    logger.warning(
+                        "offering failed run_id=%s offering_id=%s stage=%s code=%s"
+                        " reason=%s",
+                        run.id,
+                        offering.offering_id.value,
+                        exc.stage,
+                        exc.failure_code,
+                        exc.cause_reason or exc.cause_log_detail,
                     )
-                for review in _review_tasks(result.snapshot):
-                    persisted = await self._reviews.create(review)
-                    review_ids.append(persisted.id)
+                    await self._runs.fail_offering_execution(
+                        execution.id,
+                        stage=exc.stage,
+                        failure_code=exc.failure_code,
+                        failure_detail=(
+                            f"{exc.cause_type}:{exc.cause_reason}"
+                            if exc.cause_reason
+                            else exc.cause_detail
+                        ),
+                        audit_payload={
+                            "stage": exc.stage,
+                            "exception_type": exc.cause_type,
+                            "detail": exc.cause_detail,
+                            **(
+                                {"reason": exc.cause_reason} if exc.cause_reason else {}
+                            ),
+                        },
+                    )
+                    await report(
+                        ProgressKind.OFFERING_FAILED,
+                        offering,
+                        stage=exc.stage,
+                        failure_code=exc.failure_code,
+                    )
+                    continue
+                except Exception as exc:
+                    failed += 1
+                    failure_codes.append(RunFailureCode.INTERNAL_ERROR.value)
+                    await self._runs.fail_offering_execution(
+                        execution.id,
+                        stage="internal",
+                        failure_code=RunFailureCode.INTERNAL_ERROR.value,
+                        failure_detail=bounded_failure_detail(exc),
+                        audit_payload={
+                            "stage": "internal",
+                            "exception_type": type(exc).__name__,
+                            "detail": bounded_failure_detail(exc),
+                        },
+                    )
+                    await report(
+                        ProgressKind.OFFERING_FAILED,
+                        offering,
+                        stage="internal",
+                        failure_code=RunFailureCode.INTERNAL_ERROR.value,
+                    )
+                    continue
+                if result.publication.offering_status is OfferingRunStatus.SUCCEEDED:
+                    succeeded += 1
+                    await report(ProgressKind.OFFERING_SUCCEEDED, offering)
+                else:
+                    review_required += 1
+                    if self._reviews is None:
+                        raise RuntimeError(
+                            "review repository is required for candidate data"
+                        )
+                    created = 0
+                    for review in _review_tasks(result.snapshot):
+                        persisted = await self._reviews.create(review)
+                        review_ids.append(persisted.id)
+                        created += 1
+                    await report(
+                        ProgressKind.OFFERING_REVIEW,
+                        offering,
+                        detail=f"{created} review{'s' if created != 1 else ''}",
+                    )
+                execution = None
+        except asyncio.CancelledError:
+            await self._cancel(
+                run,
+                execution_id=execution.id if execution is not None else None,
+                stage=tracker.current_stage or "starting",
+                summary={
+                    "offering_count": len(offerings),
+                    "succeeded": succeeded,
+                    "review_required": review_required,
+                    "failed": failed,
+                    "review_ids": [str(review_id) for review_id in review_ids],
+                },
+            )
+            raise
 
         total = len(offerings)
         summary = {
@@ -520,15 +615,22 @@ class TariffPipeline:
             "failed": failed,
             "review_ids": [str(review_id) for review_id in review_ids],
         }
+        elapsed_ms = max(0, round((perf_counter() - started) * 1000))
         if review_required:
-            return await self._runs.pause_for_review(run.id, summary=summary)
+            paused = await self._runs.pause_for_review(run.id, summary=summary)
+            await report(
+                ProgressKind.RUN_FINISHED,
+                elapsed_ms=elapsed_ms,
+                detail=RunStatus.AWAITING_REVIEW.value,
+            )
+            return paused
         if succeeded == total:
             status = RunStatus.SUCCEEDED
         elif succeeded or review_required:
             status = RunStatus.PARTIAL_SUCCESS
         else:
             status = RunStatus.FAILED
-        return await self._runs.finish(
+        finished = await self._runs.finish(
             run.id,
             status,
             failure_code=(
@@ -542,6 +644,77 @@ class TariffPipeline:
             ),
             summary=summary,
         )
+        await report(
+            ProgressKind.RUN_FINISHED,
+            elapsed_ms=elapsed_ms,
+            detail=status.value,
+            failure_code=finished.failure_code,
+        )
+        return finished
+
+    async def _cancel(
+        self,
+        run: MonitoringRun,
+        *,
+        execution_id: UUID | None,
+        stage: str,
+        summary: dict[str, object],
+    ) -> None:
+        """Close a cancelled run so nothing is left `running` behind the caller.
+
+        Runs inside the cancelled task's `except CancelledError`, before the
+        cancellation is re-raised. Each write is guarded: a cleanup failure is
+        logged, never allowed to replace the cancellation.
+        """
+        code = RunFailureCode.CANCELLED.value
+        logger.info("run cancelled run_id=%s stage=%s", run.id, stage)
+        if execution_id is not None:
+            try:
+                await self._runs.fail_offering_execution(
+                    execution_id,
+                    stage=stage,
+                    failure_code=code,
+                    failure_detail="Cancelled by the caller",
+                    audit_payload={"stage": stage, "reason": "cancelled"},
+                )
+            except Exception:
+                logger.warning(
+                    "could not fail cancelled offering execution %s",
+                    execution_id,
+                    exc_info=True,
+                )
+        try:
+            await self._runs.finish(
+                run.id,
+                RunStatus.FAILED,
+                failure_code=code,
+                failure_detail="Cancelled by the caller",
+                summary=summary,
+            )
+        except Exception:
+            logger.warning("could not finish cancelled run %s", run.id, exc_info=True)
+        try:
+            await self._runs.record_audit(
+                run.id,
+                "run.cancelled",
+                reason_code=code,
+                payload={"stage": stage},
+            )
+        except Exception:
+            logger.warning("could not audit cancelled run %s", run.id, exc_info=True)
+
+
+class _StageTracker:
+    """Forwards progress and remembers the stage in flight, for cancellation."""
+
+    def __init__(self, sink: ProgressSink | None) -> None:
+        self._sink = sink
+        self.current_stage: str | None = None
+
+    async def report(self, progress: PipelineProgress) -> None:
+        if progress.kind is ProgressKind.STAGE_STARTED:
+            self.current_stage = progress.stage
+        await report_safely(self._sink, progress)
 
 
 def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:

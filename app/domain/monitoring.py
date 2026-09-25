@@ -82,6 +82,10 @@ class RunFailureCode(StrEnum):
     INVALID_TRANSITION = "run.invalid_transition"
     PERSISTENCE_FAILED = "run.persistence_failed"
     INTERNAL_ERROR = "run.internal_error"
+    # The caller cancelled the run it was executing (Ctrl-C in the CLI).
+    CANCELLED = "run.cancelled"
+    # The process executing the run died; found and closed on its next start.
+    INTERRUPTED = "run.interrupted"
 
 
 class OfferingFailureCode(StrEnum):

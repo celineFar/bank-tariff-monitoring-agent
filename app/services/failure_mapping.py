@@ -173,6 +173,10 @@ _FAILURE_EXPLANATIONS = {
     RunFailureCode.PERSISTENCE_FAILED: "the run could not be saved",
     RunFailureCode.CLAIM_CONFLICT: "another worker already claimed this run",
     RunFailureCode.INVALID_TRANSITION: "the run was in an unexpected state",
+    RunFailureCode.CANCELLED: "it was cancelled before it finished",
+    RunFailureCode.INTERRUPTED: (
+        "the chat session running it closed before it finished"
+    ),
 }
 
 

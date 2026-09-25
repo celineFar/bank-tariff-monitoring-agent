@@ -58,7 +58,13 @@ class RunRepository(Protocol):
 
     async def claim_next(self, worker_id: str) -> ClaimedRun | None: ...
 
+    async def claim(self, run_id: UUID, owner: str) -> ClaimedRun | None: ...
+
     async def recover_abandoned(self, *, before: datetime) -> int: ...
+
+    async def fail_interrupted(
+        self, *, owner_prefix: str, before: datetime | None = None
+    ) -> int: ...
 
     async def finish(
         self,

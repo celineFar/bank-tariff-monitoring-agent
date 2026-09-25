@@ -171,7 +171,9 @@ class _Indexing:
         self.published: list[OfferingId] = []
         self.false_changes = 0
 
-    async def refresh(self, offering, run_id: UUID, execution_id: UUID):
+    async def refresh(
+        self, offering, run_id: UUID, execution_id: UUID, *, progress=None
+    ):
         if offering.offering_id in self.failing:
             raise OfferingPipelineError(
                 "acquisition", "offering.acquisition_failed", TimeoutError()
