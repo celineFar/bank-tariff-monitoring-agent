@@ -227,6 +227,59 @@ def issue_resolution_plan(
     )
 
 
+def issue_read_grant(
+    query: str,
+    resolution: IntentResolution,
+    *,
+    history: bool,
+    session_id: str,
+    turn_id: str,
+    issued_at: datetime | None = None,
+) -> ResolutionPlan:
+    """The per-turn read grant every business-data read tool consumes (§6.6).
+
+    When the resolver's scope yields an answerable query shape, the grant is
+    exactly that plan, so `answer_tariff_query` behaves as before. Otherwise
+    (a broad family question, or no family named where the resolver allows
+    that) the grant is scope-only: CURRENT, or HISTORY for change questions,
+    with no fields. Scope always comes from the resolver, never from text the
+    model supplies.
+    """
+    if resolution.needs_clarification:
+        raise ValueError("a read grant requires a resolved scope")
+    if resolution.product is not None:
+        try:
+            return issue_resolution_plan(
+                query,
+                resolution,
+                session_id=session_id,
+                turn_id=turn_id,
+                issued_at=issued_at,
+            )
+        except ValueError:
+            pass
+        offering_ids = resolution.offering_ids or (
+            (resolution.offering_id,)
+            if resolution.offering_id is not None
+            else tuple(
+                item for item in OfferingId if item.product is resolution.product
+            )
+        )
+    else:
+        offering_ids = ()
+    current = issued_at or datetime.now(UTC)
+    return ResolutionPlan(
+        session_id=session_id,
+        turn_id=turn_id,
+        question_sha256=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+        issued_at=current,
+        expires_at=current + timedelta(minutes=30),
+        product=resolution.product,
+        offering_ids=offering_ids,
+        operation=QueryOperation.HISTORY if history else QueryOperation.CURRENT,
+    )
+
+
 def issue_typed_resolution_plan(
     query: str,
     *,

@@ -453,6 +453,21 @@ class QueryOperation(StrEnum):
     COMPARE = "compare"
     FAMILY_RANK = "family_rank"
     HISTORY = "history"
+    # Scope-only read grant: which offerings the read tools may show, with no
+    # answerable field shape (plan §6.6). `answer_tariff_query` declines it.
+    CURRENT = "current"
+
+
+# Operations whose plan names a family and canonical fields, so the structured
+# answer path can run. CURRENT and family-less HISTORY grants carry scope only.
+ANSWERABLE_OPERATIONS = frozenset(
+    {
+        QueryOperation.SINGLE,
+        QueryOperation.COMPARE,
+        QueryOperation.FAMILY_RANK,
+        QueryOperation.HISTORY,
+    }
+)
 
 
 class RankDirection(StrEnum):
@@ -476,7 +491,8 @@ class ResolutionPlan(StructuredTariffModel):
     issued_at: datetime
     expires_at: datetime
     bank: str = "ameria"
-    product: ProductType
+    # None only for a scope-only CURRENT/HISTORY grant over both families.
+    product: ProductType | None
     offering_ids: tuple[OfferingId, ...] = ()
     operation: QueryOperation
     rank_direction: RankDirection | None = None
@@ -497,6 +513,11 @@ class ResolutionPlan(StructuredTariffModel):
             raise ValueError("unsupported field-path version")
         if len(set(self.offering_ids)) != len(self.offering_ids):
             raise ValueError("duplicate offering IDs")
+        if self.product is None:
+            if self.operation not in {QueryOperation.CURRENT, QueryOperation.HISTORY}:
+                raise ValueError("only a current or history grant may omit product")
+            if self.offering_ids:
+                raise ValueError("offering IDs require a resolved product family")
         if any(item.product is not self.product for item in self.offering_ids):
             raise ValueError("offering outside resolved product family")
         if self.operation is QueryOperation.SINGLE and len(self.offering_ids) != 1:

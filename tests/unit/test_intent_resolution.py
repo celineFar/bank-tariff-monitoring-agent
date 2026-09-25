@@ -48,6 +48,8 @@ class _FakeClassifier:
 @dataclass
 class _ToolContext:
     state: dict[str, object]
+    # Grants are bound to the ADK invocation id; tests advance it per turn.
+    invocation_id: str | None = None
 
 
 def _resolver(
@@ -275,29 +277,32 @@ async def test_resolve_request_tool_persists_only_session_clarification_state() 
     assert second["offering_id"] == OfferingId.MORTGAGE_EXPRESS.value
     assert "catalog_intro" not in second
     assert context.state["intent_resolution"]
-    assert context.state["temp:monitoring_authorization"] is None
+    assert context.state["monitoring_authorization"] is None
 
 
 @pytest.mark.asyncio
 async def test_resolve_request_grants_and_revokes_scope_bound_monitoring_authorization() -> (
     None
 ):
-    context = _ToolContext(state={})
+    context = _ToolContext(state={}, invocation_id="turn-1")
     configure_services(None, None, _resolver())
     try:
         monitoring = await resolve_request("refresh Express Mortgage", context)
-        authorization = context.state["temp:monitoring_authorization"]
+        authorization = context.state["monitoring_authorization"]
+        context.invocation_id = "turn-2"
         question = await resolve_request("What is the Express Mortgage fee?", context)
     finally:
         configure_services(None, None, None)
 
     assert monitoring["intent"] == RequestIntent.START_MONITORING_RUN.value
+    # The spend grant is bound to the invocation that issued it (plan §6.4).
     assert authorization == {
         "product": ProductType.MORTGAGE.value,
         "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
+        "invocation_id": "turn-1",
     }
     assert question["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
-    assert context.state["temp:monitoring_authorization"] is None
+    assert context.state["monitoring_authorization"] is None
 
 
 @pytest.mark.asyncio
@@ -310,7 +315,7 @@ async def test_resolve_request_supports_native_adk_state_contract() -> None:
         configure_services(None, None, None)
 
     assert resolution["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
-    assert context.state.get("temp:monitoring_authorization") is None
+    assert context.state.get("monitoring_authorization") is None
 
 
 @pytest.mark.asyncio
@@ -346,24 +351,52 @@ async def test_explicit_new_request_replaces_pending_clarification() -> None:
 
 @pytest.mark.asyncio
 async def test_affirmative_refresh_uses_only_offered_missing_scope() -> None:
-    context = _ToolContext(state={})
+    context = _ToolContext(state={}, invocation_id="turn-1")
     configure_services(None, None, _resolver())
     try:
         await resolve_request("current Express Mortgage rate", context)
         context.state["monitoring_confirmation_offer"] = {
             "product": "mortgage",
             "offering_id": "mortgage_express",
+            "invocation_id": "turn-1",
         }
+        context.invocation_id = "turn-2"
         confirmation = await resolve_request("yes", context)
     finally:
         configure_services(None, None, None)
 
     assert confirmation["intent"] == RequestIntent.START_MONITORING_RUN.value
     assert confirmation["refresh_confirmation"] is True
-    assert context.state["temp:monitoring_authorization"] == {
+    assert context.state["monitoring_authorization"] == {
         "product": ProductType.MORTGAGE.value,
         "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
+        "invocation_id": "turn-2",
     }
+
+
+@pytest.mark.asyncio
+async def test_a_stale_offer_authorizes_nothing() -> None:
+    """Only the offer made in the turn right before the reply may be taken up."""
+    context = _ToolContext(state={}, invocation_id="turn-1")
+    configure_services(None, None, _resolver())
+    try:
+        await resolve_request("current Express Mortgage rate", context)
+        offer = {
+            "product": "mortgage",
+            "offering_id": "mortgage_express",
+            "invocation_id": "turn-1",
+        }
+        context.invocation_id = "turn-2"
+        await resolve_request("What products are supported?", context)
+        context.state["monitoring_confirmation_offer"] = offer
+        context.invocation_id = "turn-3"
+        confirmation = await resolve_request("yes", context)
+    finally:
+        configure_services(None, None, None)
+
+    assert confirmation["intent"] != RequestIntent.START_MONITORING_RUN.value
+    assert context.state["monitoring_authorization"] is None
+    assert context.state["monitoring_confirmation_offer"] is None
 
 
 @pytest.mark.asyncio
@@ -376,7 +409,7 @@ async def test_bare_yes_does_not_authorize_monitoring_without_missing_offer() ->
     finally:
         configure_services(None, None, None)
     assert confirmation["intent"] != RequestIntent.START_MONITORING_RUN.value
-    assert context.state["temp:monitoring_authorization"] is None
+    assert context.state["monitoring_authorization"] is None
 
 
 @pytest.mark.asyncio
@@ -394,18 +427,25 @@ async def test_missing_snapshot_offer_authorizes_confirmed_monitoring() -> None:
                 ),
             )
 
-    context = _ToolContext(state={})
+    context = _ToolContext(state={}, invocation_id="turn-1")
     configure_services(
         None, None, _resolver(), current_tariff_service=_MissingCurrent()
     )
     try:
         await resolve_request("What is the Express Mortgage rate?", context)
-        await get_current_tariffs("mortgage", "mortgage_express", context)
+        # No scope argument: the tool reads the grant resolve_request issued.
+        await get_current_tariffs(context)
+        context.invocation_id = "turn-2"
         confirmation = await resolve_request("yes", context)
     finally:
         configure_services(None, None)
     assert confirmation["intent"] == RequestIntent.START_MONITORING_RUN.value
     assert confirmation["refresh_confirmation"] is True
+    assert context.state["monitoring_authorization"] == {
+        "product": "mortgage",
+        "offering_id": "mortgage_express",
+        "invocation_id": "turn-2",
+    }
     assert context.state["monitoring_original_question"] == (
         "What is the Express Mortgage rate?"
     )
@@ -440,3 +480,29 @@ async def test_family_rank_resolves_enabled_family_scope() -> None:
         OfferingId.ONLINE_CONSUMER_FINANCE,
     }
     assert not turn.resolution.needs_clarification
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "product", "offering"),
+    [
+        ("review them", None, None),
+        ("Are there pending reviews?", None, None),
+        (
+            "review the Express Mortgage candidates",
+            ProductType.MORTGAGE,
+            OfferingId.MORTGAGE_EXPRESS,
+        ),
+    ],
+)
+async def test_review_requests_resolve_deterministically(
+    query, product, offering
+) -> None:
+    classifier = _FakeClassifier(error=AssertionError("must not be called"))
+
+    turn = await _resolver(classifier).resolve_turn(query)
+
+    assert turn.resolution.intent is RequestIntent.REVIEW_PENDING_CANDIDATES
+    assert turn.resolution.product is product
+    assert turn.resolution.offering_id is offering
+    assert turn.resolution.needs_clarification is False

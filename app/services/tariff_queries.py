@@ -54,11 +54,19 @@ class CurrentTariffService:
         *,
         product: ProductType | None = None,
         offering_id: OfferingId | None = None,
+        offering_ids: tuple[OfferingId, ...] = (),
     ) -> CurrentTariffResult:
-        if offering_id is not None and product is None:
+        if (offering_id is not None or offering_ids) and product is None:
             raise ValueError("offering_id requires product")
         if offering_id is not None and offering_id.product is not product:
             raise ValueError("offering does not belong to product")
+        if any(item.product is not product for item in offering_ids):
+            raise ValueError("offering does not belong to product")
+        if offering_id is not None and offering_ids:
+            raise ValueError("use offering_id or offering_ids, not both")
+        if len(offering_ids) == 1:
+            offering_id, offering_ids = offering_ids[0], ()
+        subset = frozenset(offering_ids)
         now = self._clock()
         _require_aware(now, "current tariff clock")
         latest = {
@@ -75,6 +83,7 @@ class CurrentTariffService:
             if entry.enabled
             and (product is None or entry.product is product)
             and (offering_id is None or entry.offering_id is offering_id)
+            and (not subset or entry.offering_id in subset)
         )
         items: list[CurrentTariffItem] = []
         for entry in offerings:
@@ -132,6 +141,69 @@ class TariffHistoryService:
         self._clock = clock
 
     async def query(self, query: HistoryQuery) -> TariffHistoryResult:
+        """Read one scope; a subset of offerings is read per offering and merged."""
+        family = (
+            frozenset(item for item in OfferingId if item.product is query.product)
+            if query.product is not None
+            else frozenset()
+        )
+        if len(query.offering_ids) == 1:
+            query = query.model_copy(
+                update={"offering_id": query.offering_ids[0], "offering_ids": ()}
+            )
+        elif query.offering_ids and frozenset(query.offering_ids) >= family:
+            query = query.model_copy(update={"offering_ids": ()})
+        if not query.offering_ids:
+            return await self._query_one(query, query.offering_id)
+        return await self._query_subset(query)
+
+    async def _query_subset(self, query: HistoryQuery) -> TariffHistoryResult:
+        parts = [
+            await self._query_one(query, offering) for offering in query.offering_ids
+        ]
+        limit = min(query.limit, self._settings.max_history_results)
+        snapshots = tuple(
+            sorted(
+                (item for part in parts for item in part.snapshots),
+                key=lambda item: (item.accepted_at or item.created_at, str(item.id)),
+                reverse=True,
+            )[:limit]
+        )
+        changes = tuple(
+            sorted(
+                (item for part in parts for item in part.changes),
+                key=lambda item: (item.created_at, str(item.id)),
+                reverse=True,
+            )[:limit]
+        )
+        statuses = {part.status for part in parts}
+        for status in (
+            HistoryResultStatus.CHANGES_FOUND,
+            HistoryResultStatus.HISTORY_FOUND,
+            HistoryResultStatus.UNCHANGED_IN_WINDOW,
+            HistoryResultStatus.FIRST_OBSERVATION,
+            HistoryResultStatus.UNAVAILABLE,
+        ):
+            if status in statuses:
+                break
+        older = [
+            part.last_change_before_window_at
+            for part in parts
+            if part.last_change_before_window_at is not None
+        ]
+        return TariffHistoryResult(
+            query=query,
+            status=status,
+            window_start=parts[0].window_start,
+            window_end=parts[0].window_end,
+            snapshots=snapshots,
+            changes=changes,
+            last_change_before_window_at=max(older) if older else None,
+        )
+
+    async def _query_one(
+        self, query: HistoryQuery, offering_id: OfferingId | None
+    ) -> TariffHistoryResult:
         end_at = query.end_at or self._clock()
         _require_aware(end_at, "history clock")
         default_days = (
@@ -144,7 +216,7 @@ class TariffHistoryService:
         snapshots = await self._snapshots.list_accepted_history(
             bank="ameria",
             product=query.product,
-            offering_id=query.offering_id,
+            offering_id=offering_id,
             start_at=start_at,
             end_at=end_at,
             limit=limit,
@@ -169,7 +241,7 @@ class TariffHistoryService:
 
         changes = await self._snapshots.list_changes(
             product=query.product,
-            offering_id=query.offering_id,
+            offering_id=offering_id,
             start_at=start_at,
             end_at=end_at,
             limit=limit,
@@ -185,7 +257,7 @@ class TariffHistoryService:
         latest = await self._snapshots.list_latest_accepted(
             bank="ameria",
             product=query.product,
-            offering_id=query.offering_id,
+            offering_id=offering_id,
         )
         if not latest:
             status = HistoryResultStatus.UNAVAILABLE
@@ -195,7 +267,7 @@ class TariffHistoryService:
             status = HistoryResultStatus.UNCHANGED_IN_WINDOW
         older = await self._snapshots.get_latest_change_before(
             product=query.product,
-            offering_id=query.offering_id,
+            offering_id=offering_id,
             before=start_at,
         )
         return TariffHistoryResult(

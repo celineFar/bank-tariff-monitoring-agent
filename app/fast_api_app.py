@@ -63,6 +63,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         container.chat_review_service,
         structured_query_service=container.structured_query_service,
         answer_router=container.answer_router,
+        monitoring_node=container.monitoring_node,
+        runs=container.runs,
+        reviews=container.reviews,
     )
     runner = Runner(
         app=adk_app,

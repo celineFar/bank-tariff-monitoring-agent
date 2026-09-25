@@ -1,35 +1,27 @@
-import hashlib
+"""The pre-redesign chat monitoring and review protocol (removed in Phase 4).
+
+The old CLI agent and the current root agent still register these tools; the
+ADK-native replacements live in `app/tools/monitoring.py`.
+"""
+
 import json
-from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urlencode
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from google.adk.tools import ToolContext
 
-from app.domain.catalog import normalize_catalog_term
-from app.domain.intent import (
-    ConversationResolutionState,
-    FreshnessStatus,
-    HistoryQuery,
-    HistoryRequestKind,
-    RequestIntent,
-)
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import QuestionCommand, RunCommand, RunStatus, RunTrigger
 from app.domain.monitoring_workflow import MonitoringReviewResponse, ReviewResponseItem
 from app.domain.review import ReviewDecision, ReviewDecisionType
 from app.domain.semantic_extraction import ExtractionField
-from app.domain.structured_tariffs import ResolutionPlan
-from app.services.answer_read_model import TariffAnswerRouter
-from app.services.chat_reviews import ChatReviewService, ReviewNotReadyError
+from app.services.chat_reviews import ReviewNotReadyError
 from app.services.failure_mapping import explain_failure_code
-from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_workflow import (
     MONITORING_WORKFLOW_APP_NAME,
     workflow_identity,
 )
-from app.services.rag_answer import RagAnswerService
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.review_input import ReviewInputError
 from app.services.review_resolution import (
@@ -38,39 +30,26 @@ from app.services.review_resolution import (
 from app.services.review_resolution import (
     reviewed_value as _reviewed_value,
 )
-from app.services.run_service import RunServicePort, run_covers_command
+from app.services.run_service import run_covers_command
 from app.services.semantic_extraction import validate_review_field_value
-from app.services.structured_query_planning import issue_resolution_plan
-from app.services.structured_tariff_query import StructuredTariffQueryService
-from app.services.tariff_queries import (
-    CurrentTariffService,
-    RunWaitService,
-    TariffHistoryService,
+from app.tools._services import services
+from app.tools._state import (
+    FULL_PRODUCT_ACK_KEY,
+    MONITOR_AUTHORIZATION_KEY,
+    MONITOR_OFFER_KEY,
+    ORIGINAL_QUESTION_KEY,
+    issued_this_turn,
 )
 
-_run_service: RunServicePort | None = None
-_answer_service: RagAnswerService | None = None
-_structured_query_service: StructuredTariffQueryService | None = None
-_answer_router: TariffAnswerRouter | None = None
-_request_resolver: RequestResolver | None = None
-_current_tariff_service: CurrentTariffService | None = None
-_tariff_history_service: TariffHistoryService | None = None
-_run_wait_service: RunWaitService | None = None
-_chat_review_service: ChatReviewService | None = None
-_RESOLUTION_STATE_KEY = "intent_resolution"
-_TARIFF_PLAN_KEY = "tariff_resolution_plan"
-_TARIFF_PLAN_USED_KEY = "tariff_resolution_plan_used"
-_TARIFF_LAST_USED_TURN_KEY = "tariff_resolution_last_used_turn"
-_TARIFF_SESSION_KEY = "tariff_resolution_session_id"
-_MONITOR_AUTHORIZATION_KEY = "temp:monitoring_authorization"
+_MONITOR_AUTHORIZATION_KEY = MONITOR_AUTHORIZATION_KEY
 _ACTIVE_RUN_KEY = "monitoring_active_run_id"
 _CHAT_RUN_IDS_KEY = "monitoring_chat_run_ids"
 _REVIEW_PROGRESS_KEY = "monitoring_review_progress"
 _REVIEW_CURRENT_KEY = "monitoring_review_current_id"
 _REVIEW_CHOICES_KEY = "monitoring_review_choices"
-_ORIGINAL_QUESTION_KEY = "monitoring_original_question"
-_MONITOR_OFFER_KEY = "monitoring_confirmation_offer"
-_FULL_PRODUCT_ACK_KEY = "monitoring_full_product_ack"
+_ORIGINAL_QUESTION_KEY = ORIGINAL_QUESTION_KEY
+_MONITOR_OFFER_KEY = MONITOR_OFFER_KEY
+_FULL_PRODUCT_ACK_KEY = FULL_PRODUCT_ACK_KEY
 _REVIEW_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -86,196 +65,6 @@ _REVIEW_INPUT_SCHEMA = {
     },
     "required": ["review_id", "decision_type"],
 }
-_AFFIRMATIVE_REPLIES = frozenset({"yes", "yes please", "refresh", "այո", "թարմացրու"})
-
-
-def configure_run_service(service: RunServicePort | None) -> None:
-    """Bind the application service without exposing repositories to the model."""
-    global _run_service
-    _run_service = service
-
-
-def configure_services(
-    run_service: RunServicePort | None,
-    answer_service: RagAnswerService | None,
-    request_resolver: RequestResolver | None = None,
-    current_tariff_service: CurrentTariffService | None = None,
-    tariff_history_service: TariffHistoryService | None = None,
-    run_wait_service: RunWaitService | None = None,
-    chat_review_service: ChatReviewService | None = None,
-    structured_query_service: StructuredTariffQueryService | None = None,
-    answer_router: TariffAnswerRouter | None = None,
-) -> None:
-    global _answer_service, _request_resolver, _structured_query_service
-    global _current_tariff_service, _tariff_history_service, _run_wait_service
-    global _chat_review_service, _answer_router
-    configure_run_service(run_service)
-    _answer_service = answer_service
-    _structured_query_service = structured_query_service
-    _answer_router = answer_router
-    _request_resolver = request_resolver
-    _current_tariff_service = current_tariff_service
-    _tariff_history_service = tariff_history_service
-    _run_wait_service = run_wait_service
-    _chat_review_service = chat_review_service
-
-
-def _current_user_text(tool_context: ToolContext) -> str | None:
-    session = getattr(tool_context, "session", None)
-    if session is None:
-        return None
-    invocation = getattr(tool_context, "invocation_id", None)
-    for event in reversed(list(getattr(session, "events", ()) or ())):
-        if getattr(event, "author", None) != "user":
-            continue
-        if invocation and getattr(event, "invocation_id", None) != invocation:
-            continue
-        parts = getattr(getattr(event, "content", None), "parts", ()) or ()
-        values = [
-            part.text for part in parts if isinstance(getattr(part, "text", None), str)
-        ]
-        if values:
-            return "".join(values)
-    return ""
-
-
-def _tariff_session_id(tool_context: ToolContext) -> str:
-    session = getattr(tool_context, "session", None)
-    session_id = getattr(session, "id", None)
-    if isinstance(session_id, str) and session_id:
-        return session_id
-    saved = tool_context.state.get(_TARIFF_SESSION_KEY)
-    if isinstance(saved, str) and saved:
-        return saved
-    generated = str(uuid4())
-    tool_context.state[_TARIFF_SESSION_KEY] = generated
-    return generated
-
-
-def _tariff_turn_id(tool_context: ToolContext) -> str:
-    invocation = getattr(tool_context, "invocation_id", None)
-    return invocation if isinstance(invocation, str) and invocation else str(uuid4())
-
-
-async def resolve_request(
-    query: str,
-    tool_context: ToolContext,
-) -> dict[str, object]:
-    """Resolve intent and product/offering scope without starting business work."""
-    if _request_resolver is None:
-        return {
-            "status": "unavailable",
-            "reason_code": "intent.service_unavailable",
-        }
-    invocation = getattr(tool_context, "invocation_id", None)
-    if (
-        isinstance(invocation, str)
-        and invocation
-        and tool_context.state.get(_TARIFF_LAST_USED_TURN_KEY) == invocation
-    ):
-        return {"status": "rejected", "reason_code": "intent.turn_already_used"}
-    # Each resolution replaces any prior business-data authorization.
-    tool_context.state[_TARIFF_PLAN_KEY] = None
-    tool_context.state[_TARIFF_PLAN_USED_KEY] = False
-    user_text = _current_user_text(tool_context)
-    if user_text is not None and query != user_text:
-        return {"status": "rejected", "reason_code": "intent.query_mismatch"}
-    raw_state = tool_context.state.get(_RESOLUTION_STATE_KEY)
-    try:
-        state = ConversationResolutionState.model_validate(raw_state or {})
-    except ValueError:
-        state = ConversationResolutionState()
-    if normalize_catalog_term(query) in _AFFIRMATIVE_REPLIES and isinstance(
-        tool_context.state.get(_MONITOR_OFFER_KEY), dict
-    ):
-        authorization = dict(tool_context.state[_MONITOR_OFFER_KEY])
-        tool_context.state[_MONITOR_OFFER_KEY] = None
-        tool_context.state[_MONITOR_AUTHORIZATION_KEY] = authorization
-        return {
-            "intent": RequestIntent.START_MONITORING_RUN.value,
-            "language": "hy"
-            if any("\u0531" <= char <= "\u0586" for char in query)
-            else "en",
-            "method": "exact",
-            **authorization,
-            "needs_clarification": False,
-            "expects_single_value": False,
-            "refresh_confirmation": True,
-        }
-    tool_context.state[_MONITOR_OFFER_KEY] = None
-    turn = await _request_resolver.resolve_turn(query, state)
-    tool_context.state[_RESOLUTION_STATE_KEY] = turn.state.model_dump(mode="json")
-    resolved_intent = turn.resolution.continuation_intent or turn.resolution.intent
-    if resolved_intent in {
-        RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-        RequestIntent.GET_CURRENT_TARIFFS,
-    }:
-        tool_context.state[_ORIGINAL_QUESTION_KEY] = query
-    elif resolved_intent is RequestIntent.START_MONITORING_RUN:
-        tool_context.state[_ORIGINAL_QUESTION_KEY] = None
-    if (
-        resolved_intent is RequestIntent.START_MONITORING_RUN
-        and not turn.resolution.needs_clarification
-        and turn.resolution.product is not None
-    ):
-        tool_context.state[_MONITOR_AUTHORIZATION_KEY] = {
-            "product": turn.resolution.product.value,
-            "offering_id": (
-                turn.resolution.offering_id.value
-                if turn.resolution.offering_id is not None
-                else None
-            ),
-        }
-    else:
-        tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
-    result = turn.resolution.model_dump(mode="json")
-    if (
-        resolved_intent
-        in {
-            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-            RequestIntent.GET_CURRENT_TARIFFS,
-            RequestIntent.GET_CHANGE_HISTORY,
-        }
-        and not turn.resolution.needs_clarification
-        and turn.resolution.product is not None
-    ):
-        try:
-            plan = issue_resolution_plan(
-                query,
-                turn.resolution,
-                session_id=_tariff_session_id(tool_context),
-                turn_id=_tariff_turn_id(tool_context),
-            )
-        except ValueError:
-            plan = None
-        if plan is not None:
-            tool_context.state[_TARIFF_PLAN_KEY] = plan.model_dump(mode="json")
-            result["query_plan"] = {
-                "operation": plan.operation.value,
-                "offering_ids": [item.value for item in plan.offering_ids],
-                "fields": [item.value for item in plan.fields],
-                "conditions": plan.conditions,
-                "rank_direction": (
-                    plan.rank_direction.value if plan.rank_direction else None
-                ),
-            }
-    active_run_id = tool_context.state.get(_ACTIVE_RUN_KEY)
-    if isinstance(active_run_id, str):
-        result["active_monitoring_run_id"] = active_run_id
-    chat_run_ids = tool_context.state.get(_CHAT_RUN_IDS_KEY)
-    if isinstance(chat_run_ids, list):
-        result["chat_monitoring_run_ids"] = chat_run_ids
-    if not state.introduction_shown:
-        result["catalog_intro"] = _request_resolver.catalog_payload(
-            turn.resolution.language,
-            complete=False,
-        )
-    if resolved_intent is RequestIntent.LIST_SUPPORTED_PRODUCTS:
-        result["supported_catalog"] = _request_resolver.catalog_payload(
-            turn.resolution.language,
-            complete=True,
-        )
-    return result
 
 
 async def start_tariff_monitoring(
@@ -284,7 +73,7 @@ async def start_tariff_monitoring(
     tool_context: ToolContext,
 ) -> dict[str, object]:
     """Hand a canonical product to the deterministic monitoring pipeline."""
-    if _run_service is None:
+    if services.run_service is None:
         return {
             "status": "UNAVAILABLE",
             "product": product,
@@ -310,7 +99,11 @@ async def start_tariff_monitoring(
         "product": product,
         "offering_id": resolved_offering.value if resolved_offering else None,
     }
-    if authorization != expected_authorization:
+    if (
+        not issued_this_turn(authorization, tool_context)
+        or {key: authorization.get(key) for key in expected_authorization}
+        != expected_authorization
+    ):
         return {
             "status": "rejected",
             "product": product,
@@ -337,7 +130,7 @@ async def start_tariff_monitoring(
     tool_context.state[_FULL_PRODUCT_ACK_KEY] = None
     tool_context.state[_MONITOR_AUTHORIZATION_KEY] = None
     tool_context.state[_MONITOR_OFFER_KEY] = None
-    result = await _run_service.submit(command)
+    result = await services.run_service.submit(command)
     request_satisfied = run_covers_command(result.run, command)
     known_run_ids = list(tool_context.state.get(_CHAT_RUN_IDS_KEY) or [])
     chat_review_available = request_satisfied and (
@@ -383,116 +176,20 @@ async def start_tariff_monitoring(
     }
 
 
-async def answer_tariff_query(
-    query: str, tool_context: ToolContext
-) -> dict[str, object]:
-    """Read only the server-held per-turn scope from resolve_request."""
-    if _answer_router is None and _structured_query_service is None:
-        return {"status": "unavailable", "reason_code": "query.service_unavailable"}
-    raw = tool_context.state.get(_TARIFF_PLAN_KEY)
-    if not isinstance(raw, dict):
-        return {"status": "rejected", "reason_code": "query.plan_absent"}
-    if tool_context.state.get(_TARIFF_PLAN_USED_KEY):
-        return {"status": "rejected", "reason_code": "query.plan_replayed"}
-    try:
-        plan = ResolutionPlan.model_validate(raw)
-        if plan.session_id != _tariff_session_id(tool_context):
-            raise ValueError("session mismatch")
-        invocation = getattr(tool_context, "invocation_id", None)
-        if isinstance(invocation, str) and invocation and plan.turn_id != invocation:
-            raise ValueError("turn mismatch")
-        if hashlib.sha256(query.encode("utf-8")).hexdigest() != plan.question_sha256:
-            raise ValueError("question mismatch")
-        if not plan.issued_at <= datetime.now(UTC) < plan.expires_at:
-            raise ValueError("plan expired")
-    except ValueError:
-        return {"status": "rejected", "reason_code": "query.plan_invalid"}
-    tool_context.state[_TARIFF_PLAN_USED_KEY] = True
-    tool_context.state[_TARIFF_LAST_USED_TURN_KEY] = plan.turn_id
-    if _answer_router is not None:
-        result = await _answer_router.answer_plan(plan, query)
-    else:
-        result = await _structured_query_service.answer(plan, query)
-    return result.model_dump(mode="json")
-
-
 async def answer_tariff_question(
     query: str,
     product: Literal["consumer_loan", "mortgage"] | None = None,
     offering_id: str | None = None,
 ) -> dict[str, object]:
     """Answer from the active index only; this tool never acquires source pages."""
-    if _answer_service is None:
+    if services.answer_service is None:
         return {"status": "unavailable", "reason_code": "answer.service_unavailable"}
     command = QuestionCommand(
         query=query,
         product=ProductType(product) if product else None,
         offering_id=OfferingId(offering_id) if offering_id else None,
     )
-    return (await _answer_service.answer(command)).model_dump(mode="json")
-
-
-async def get_current_tariffs(
-    product: Literal["consumer_loan", "mortgage"] | None = None,
-    offering_id: str | None = None,
-    tool_context: ToolContext | None = None,
-) -> dict[str, object]:
-    """Read latest accepted tariffs and freshness without exposing review candidates."""
-    if _current_tariff_service is None:
-        return {"status": "unavailable", "reason_code": "current.service_unavailable"}
-    try:
-        result = await _current_tariff_service.get_current(
-            product=ProductType(product) if product else None,
-            offering_id=OfferingId(offering_id) if offering_id else None,
-        )
-    except ValueError:
-        return {"status": "rejected", "reason_code": "current.invalid_scope"}
-    if (
-        tool_context is not None
-        and product is not None
-        and any(item.freshness is FreshnessStatus.MISSING for item in result.items)
-    ):
-        tool_context.state[_MONITOR_OFFER_KEY] = {
-            "product": product,
-            "offering_id": offering_id,
-        }
-    payload = result.model_dump(mode="json")
-    if any(item.freshness is FreshnessStatus.MISSING for item in result.items):
-        # Demonstration artifacts under `end-to-end/` look like completed work
-        # but never publish a snapshot, so say what "missing" actually means.
-        payload["missing_means"] = (
-            "no monitoring run has published an accepted snapshot for this "
-            "offering yet; demonstration artifacts do not count"
-        )
-    return payload
-
-
-async def get_tariff_history(
-    kind: Literal["what_changed", "show_history"],
-    product: Literal["consumer_loan", "mortgage"] | None = None,
-    offering_id: str | None = None,
-    start_at: str | None = None,
-    end_at: str | None = None,
-    limit: int = 20,
-) -> dict[str, object]:
-    """Read bounded accepted snapshot history or accepted change sets."""
-    if _tariff_history_service is None:
-        return {"status": "unavailable", "reason_code": "history.service_unavailable"}
-    try:
-        query = HistoryQuery.model_validate(
-            {
-                "kind": HistoryRequestKind(kind),
-                "product": ProductType(product) if product else None,
-                "offering_id": OfferingId(offering_id) if offering_id else None,
-                "start_at": start_at,
-                "end_at": end_at,
-                "limit": limit,
-            }
-        )
-        result = await _tariff_history_service.query(query)
-    except ValueError:
-        return {"status": "rejected", "reason_code": "history.invalid_query"}
-    return result.model_dump(mode="json")
+    return (await services.answer_service.answer(command)).model_dump(mode="json")
 
 
 async def wait_for_monitoring_run(
@@ -500,10 +197,10 @@ async def wait_for_monitoring_run(
     timeout_seconds: float | None = None,
 ) -> dict[str, object]:
     """Wait briefly for a persisted run, stopping on terminal or review state."""
-    if _run_wait_service is None:
+    if services.run_wait_service is None:
         return {"status": "unavailable", "reason_code": "run_wait.service_unavailable"}
     try:
-        result = await _run_wait_service.wait(
+        result = await services.run_wait_service.wait(
             UUID(run_id),
             timeout_seconds=timeout_seconds,
         )
@@ -554,7 +251,7 @@ async def get_next_monitoring_review(
     tool_context: ToolContext, run_id: str | None = None
 ) -> dict[str, object]:
     """Get the next evidence-bound review item for this conversation's run."""
-    if _chat_review_service is None or _run_service is None:
+    if services.chat_review_service is None or services.run_service is None:
         return {"status": "unavailable", "reason_code": "review.service_unavailable"}
     if _awaiting_cli_monitoring_result(tool_context):
         return {
@@ -571,7 +268,7 @@ async def get_next_monitoring_review(
     if not isinstance(raw_run_id, str):
         return {"status": "rejected", "reason_code": "review.no_chat_run"}
     run_id = UUID(raw_run_id)
-    run = await _run_service.get(run_id)
+    run = await services.run_service.get(run_id)
     if run is None:
         return {"status": "rejected", "reason_code": "review.run_missing"}
     if run.status is not RunStatus.AWAITING_REVIEW:
@@ -596,7 +293,7 @@ async def get_next_monitoring_review(
             "original_question": tool_context.state.get(_ORIGINAL_QUESTION_KEY),
         }
     try:
-        request = await _chat_review_service.pending_request(run_id)
+        request = await services.chat_review_service.pending_request(run_id)
     except ReviewNotReadyError:
         return {"status": "preparing", "run_id": raw_run_id}
     choices = tool_context.state.get(_REVIEW_CHOICES_KEY) or {}
@@ -677,7 +374,7 @@ async def submit_monitoring_review_input(
     tool_context: ToolContext,
 ) -> dict[str, object]:
     """Apply only the human's native ADK input for the current review item."""
-    if _chat_review_service is None:
+    if services.chat_review_service is None:
         return {"status": "unavailable", "reason_code": "review.service_unavailable"}
     raw_run_id = tool_context.state.get(_ACTIVE_RUN_KEY)
     expected_review_id = tool_context.state.get(_REVIEW_CURRENT_KEY)
@@ -690,7 +387,7 @@ async def submit_monitoring_review_input(
         return {"status": "rejected", "reason_code": "review.input_scope_mismatch"}
     try:
         run_id = UUID(raw_run_id)
-        request = await _chat_review_service.pending_request(run_id)
+        request = await services.chat_review_service.pending_request(run_id)
         item = next(
             view
             for view in request.reviews
@@ -774,7 +471,11 @@ async def submit_monitoring_review_input(
                     "input_format": _review_input_format(item.issue_scope),
                 }
     except ReviewNotReadyError:
-        run = await _run_service.get(run_id) if _run_service is not None else None
+        run = (
+            await services.run_service.get(run_id)
+            if services.run_service is not None
+            else None
+        )
         tool_context.state[_REVIEW_CURRENT_KEY] = None
         return {
             "status": run.status.value if run is not None else "unavailable",
@@ -814,7 +515,7 @@ async def submit_monitoring_review_input(
     else:
         return await get_next_monitoring_review(tool_context)
     try:
-        result = await _chat_review_service.resume(
+        result = await services.chat_review_service.resume(
             run_id,
             response,
             actor_user_id=str(getattr(tool_context, "user_id", "unknown")),
@@ -836,10 +537,10 @@ async def submit_monitoring_review_input(
     if (
         result.status in {RunStatus.SUCCEEDED, RunStatus.PARTIAL_SUCCESS}
         and isinstance(original_question, str)
-        and (_answer_router is not None or _answer_service is not None)
-        and _run_service is not None
+        and (services.answer_router is not None or services.answer_service is not None)
+        and services.run_service is not None
     ):
-        run = await _run_service.get(run_id)
+        run = await services.run_service.get(run_id)
         if run is not None:
             try:
                 command = QuestionCommand(
@@ -848,9 +549,9 @@ async def submit_monitoring_review_input(
                     offering_id=run.command.offering_id,
                 )
                 answer = await (
-                    _answer_router.answer_question(command)
-                    if _answer_router is not None
-                    else _answer_service.answer(command)
+                    services.answer_router.answer_question(command)
+                    if services.answer_router is not None
+                    else services.answer_service.answer(command)
                 )
                 output["answer"] = answer.model_dump(mode="json")
             except Exception:

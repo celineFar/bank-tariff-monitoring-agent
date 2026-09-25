@@ -64,6 +64,21 @@ _STATUS_PATTERNS = (
     "կարգավիճակ",
     "մոնիտորինգի վիճակ",
 )
+_REVIEW_PATTERNS = (
+    "pending review",
+    "pending reviews",
+    "review pending",
+    "review them",
+    "review the candidates",
+    "review candidates",
+    "approve the candidates",
+    "approve candidates",
+    "candidate values",
+    "awaiting review",
+    "վերանայել",
+    "վերանայիր",
+    "վերանայման",
+)
 _HISTORY_PATTERNS = (
     "what changed",
     "changes",
@@ -917,6 +932,11 @@ def detect_request_language(query: str) -> RequestLanguage:
 
 
 def _classify_intent(normalized_query: str) -> RequestIntent | None:
+    if _contains_any(normalized_query, _REVIEW_PATTERNS) or (
+        _contains_any(normalized_query, ("review", "approve"))
+        and _contains_any(normalized_query, ("candidate", "candidates", "pending"))
+    ):
+        return RequestIntent.REVIEW_PENDING_CANDIDATES
     if _contains_any(normalized_query, _STATUS_PATTERNS):
         return RequestIntent.GET_RUN_STATUS
     if _contains_any(normalized_query, _LIST_PATTERNS):
@@ -969,6 +989,7 @@ def _scope_is_optional(
         RequestIntent.GET_RUN_STATUS,
         RequestIntent.GET_CHANGE_HISTORY,
         RequestIntent.UNSUPPORTED_OR_GENERAL,
+        RequestIntent.REVIEW_PENDING_CANDIDATES,
     }:
         return True
     if intent in {

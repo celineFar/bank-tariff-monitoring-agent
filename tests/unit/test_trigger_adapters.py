@@ -83,8 +83,10 @@ class _FailingRunService:
 
 
 class _ToolContext:
-    def __init__(self, state: dict[str, object]) -> None:
+    def __init__(self, state: dict[str, object], invocation_id: str = "turn-1") -> None:
         self.state = state
+        # The spend grant is bound to the invocation that issued it.
+        self.invocation_id = invocation_id
 
 
 class _ReviewRepository:
@@ -193,9 +195,10 @@ async def test_different_offering_run_is_reported_as_blocked_not_started() -> No
             "credit_line",
             _ToolContext(
                 state={
-                    "temp:monitoring_authorization": {
+                    "monitoring_authorization": {
                         "product": "consumer_loan",
                         "offering_id": "credit_line",
+                        "invocation_id": "turn-1",
                     }
                 }
             ),
@@ -243,9 +246,10 @@ async def test_scheduler_and_adk_tool_submit_through_same_service() -> None:
         # product-family scope is acknowledged before the run is submitted.
         context = _ToolContext(
             state={
-                "temp:monitoring_authorization": {
+                "monitoring_authorization": {
                     "product": "consumer_loan",
                     "offering_id": None,
+                    "invocation_id": "turn-1",
                 }
             }
         )
@@ -300,9 +304,10 @@ async def test_adk_monitoring_tool_rejects_invalid_cross_family_scope() -> None:
             "mortgage_express",
             _ToolContext(
                 state={
-                    "temp:monitoring_authorization": {
+                    "monitoring_authorization": {
                         "product": "consumer_loan",
                         "offering_id": "mortgage_express",
+                        "invocation_id": "turn-1",
                     }
                 }
             ),
@@ -341,9 +346,7 @@ class _Workflow:
 
     async def start(self, run: MonitoringRun):
         self.runs.append(run)
-        return MonitoringWorkflowResult(
-            run_id=run.id, status=run.status, paused=False
-        )
+        return MonitoringWorkflowResult(run_id=run.id, status=run.status, paused=False)
 
 
 @pytest.mark.asyncio

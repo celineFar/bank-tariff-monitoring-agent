@@ -101,6 +101,11 @@ class ReviewResolutionService:
         )
         return tuple(sorted(tasks, key=lambda task: (task.created_at, str(task.id))))
 
+    async def all_reviews(self, run_id: UUID) -> tuple[ReviewTask, ...]:
+        """Every review of one run, decided or not, in the same stable order."""
+        tasks = await self._reviews.list(run_id=run_id, limit=_REVIEW_PAGE)
+        return tuple(sorted(tasks, key=lambda task: (task.created_at, str(task.id))))
+
     def prompt_view(self, task: ReviewTask) -> ReviewPromptView:
         return build_review_view(task)
 

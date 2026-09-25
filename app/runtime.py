@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
+import socket
 from dataclasses import dataclass
 
 import httpx
 from google import genai
 from google.adk.apps import App
+from google.adk.workflow import FunctionNode
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.config import Settings, load_seed_catalog
@@ -45,6 +48,7 @@ from app.services.model_call_usage import (
     configure_default_model_usage_repository,
 )
 from app.services.model_pricing import enforce_model_price_cap, model_sequence
+from app.services.monitoring_node import build_monitoring_node
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
 from app.services.monitoring_workflow import (
     MonitoringWorkflowRunner,
@@ -92,6 +96,10 @@ class ApplicationContainer:
     monitoring_workflow_app: App
     chat_review_service: ChatReviewService
     review_resolution: ReviewResolutionService
+    # The ADK-native monitoring node (plan Phase 3); `monitoring_owner` is the
+    # `claimed_by` value this process writes when it executes a chat run.
+    monitoring_node: FunctionNode
+    monitoring_owner: str
     workflow_reconciliation: WorkflowReconciliationService
     answer_service: RagAnswerService
     structured_query_service: StructuredTariffQueryService
@@ -106,7 +114,16 @@ class ApplicationContainer:
         await self.engine.dispose()
 
 
-def build_application_container(settings: Settings) -> ApplicationContainer:
+def process_owner(prefix: str) -> str:
+    """`<prefix>:<host>:<pid>` — the `claimed_by` of runs this process executes."""
+    return f"{prefix}:{socket.gethostname()}:{os.getpid()}"
+
+
+def build_application_container(
+    settings: Settings,
+    *,
+    monitoring_owner: str | None = None,
+) -> ApplicationContainer:
     engine = create_async_engine(settings.database.url.get_secret_value())
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     http_client = httpx.AsyncClient(
@@ -300,6 +317,16 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
         reviews=reviews,
         decisions=review_decisions,
     )
+    owner = monitoring_owner or process_owner("api")
+    monitoring_node = build_monitoring_node(
+        runs=runs,
+        run_service=run_service,
+        pipeline=tariff_pipeline,
+        resolution=review_resolution,
+        answer_router=answer_router,
+        owner=owner,
+        poll_seconds=settings.tariff_queries.run_poll_seconds,
+    )
     from app.app_utils import services as adk_services
 
     session_service = adk_services.get_session_service()
@@ -330,6 +357,8 @@ def build_application_container(settings: Settings) -> ApplicationContainer:
             settings.tariff_queries,
         ),
         review_resolution=review_resolution,
+        monitoring_node=monitoring_node,
+        monitoring_owner=owner,
         chat_review_service=ChatReviewService(
             runs=runs, reviews=reviews, workflow=monitoring_workflow_runner
         ),

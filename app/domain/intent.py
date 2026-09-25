@@ -22,6 +22,7 @@ class RequestIntent(StrEnum):
     GET_CHANGE_HISTORY = "get_change_history"
     UNSUPPORTED_OR_GENERAL = "unsupported_or_general"
     CLARIFICATION_RESPONSE = "clarification_response"
+    REVIEW_PENDING_CANDIDATES = "review_pending_candidates"
 
 
 class RequestLanguage(StrEnum):
@@ -206,16 +207,22 @@ class HistoryQuery(IntentModel):
     kind: HistoryRequestKind
     product: ProductType | None = None
     offering_id: OfferingId | None = None
+    # A subset of the family, from a chat read grant; empty = no subset filter.
+    offering_ids: tuple[OfferingId, ...] = ()
     start_at: datetime | None = None
     end_at: datetime | None = None
     limit: int = Field(default=20, ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_query(self) -> HistoryQuery:
-        if self.product is None and self.offering_id is not None:
+        if self.product is None and (self.offering_id is not None or self.offering_ids):
             raise ValueError("offering_id requires product")
         if self.product is not None:
             validate_offering_product(self.product, self.offering_id)
+            for offering in self.offering_ids:
+                validate_offering_product(self.product, offering)
+        if self.offering_id is not None and self.offering_ids:
+            raise ValueError("use offering_id or offering_ids, not both")
         for value in (self.start_at, self.end_at):
             if value is not None and (
                 value.tzinfo is None or value.utcoffset() is None

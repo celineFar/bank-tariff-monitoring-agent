@@ -31,8 +31,20 @@ def _candidate(offering_id: OfferingId, score: float) -> ResolutionCandidate:
     )
 
 
-def test_intent_taxonomy_contains_the_eight_approved_intents() -> None:
-    assert len(RequestIntent) == 8
+def test_intent_taxonomy_contains_the_nine_approved_intents() -> None:
+    # The ninth, review_pending_candidates, was added by the ADK-native runtime
+    # redesign so pending reviews from headless runs are reachable from chat.
+    assert {intent.value for intent in RequestIntent} == {
+        "list_supported_products",
+        "answer_indexed_tariff_question",
+        "get_current_tariffs",
+        "start_monitoring_run",
+        "get_run_status",
+        "get_change_history",
+        "unsupported_or_general",
+        "clarification_response",
+        "review_pending_candidates",
+    }
 
 
 def test_resolved_offering_requires_matching_family() -> None:
