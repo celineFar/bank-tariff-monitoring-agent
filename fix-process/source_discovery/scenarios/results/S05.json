@@ -1,0 +1,16 @@
+{
+  "scenario": "S05",
+  "passed": true,
+  "gemini_attempts": 0,
+  "gemini_cost_usd": 0.0,
+  "wall_seconds": 1.1,
+  "recorded_rerun": {
+    "discovery_calls": 0,
+    "pdf_selector_calls": 0,
+    "reused_assessments": 279
+  },
+  "items_first_run": 18,
+  "items_after_inserting_a_block": [
+    "page:e950ec1929ec2339::section::dd4975d78c9b813e"
+  ]
+}

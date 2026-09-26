@@ -18,7 +18,11 @@ from app.domain.normalization import (
     NormalizedTable,
     SourceReference,
 )
-from app.domain.pdf_extraction import PdfAdmissionRelevance
+from app.domain.pdf_extraction import (
+    PdfAdmissionRelevance,
+    PdfLinkChoice,
+    PdfLinkSelection,
+)
 from app.services.block_normalizer import normalize_block
 from app.services.normalization_baseline import NormalizationBaseline, score_page
 from app.services.pdf_extraction import (
@@ -119,7 +123,18 @@ class StructuralNormalizationService:
         self._pdf_extractor = pdf_extractor
         self._baseline = baseline
 
-    async def normalize(self, artifact: PageArtifact) -> NormalizedSourceBundle:
+    async def normalize(
+        self,
+        artifact: PageArtifact,
+        *,
+        pdf_selection: PdfLinkSelection | None = None,
+    ) -> NormalizedSourceBundle:
+        """Normalize the page and its linked PDFs.
+
+        `pdf_selection` is source discovery's decision, from each link's
+        metadata, on which admitted PDFs belong to the offering. A PDF it did
+        not select is recorded without being read or transcribed.
+        """
         warnings: list[NormalizationWarning] = []
         page_id = f"page:{artifact.page_content_hash[:16]}"
         normalized_tables: list[NormalizedTable] = []
@@ -222,10 +237,39 @@ class StructuralNormalizationService:
             if document_id in seen_document_ids:
                 continue
             seen_document_ids.add(document_id)
+            choice = (
+                pdf_selection.choices.get(source_document.sha256)
+                if pdf_selection is not None
+                else None
+            )
+            if choice is not None and not choice.transcribe:
+                documents.append(
+                    self._empty_pdf_document(
+                        source_document,
+                        document_id,
+                        extraction_method="pdf_not_selected",
+                        pdf_selection=choice,
+                    )
+                )
+                warnings.append(
+                    NormalizationWarning(
+                        code=NormalizationWarningCode.PDF_SKIPPED_NOT_SELECTED,
+                        source_id=document_id,
+                        message=(
+                            f"Not transcribed: link judged {choice.label.value} "
+                            f"for this offering. {choice.reason}"
+                        )[:2000],
+                    )
+                )
+                continue
             try:
                 content = await self._artifact_reader.read(source_document.artifact)
             except Exception as exc:
-                documents.append(self._empty_pdf_document(source_document, document_id))
+                documents.append(
+                    self._empty_pdf_document(
+                        source_document, document_id, pdf_selection=choice
+                    )
+                )
                 warnings.append(
                     NormalizationWarning(
                         code=NormalizationWarningCode.ARTIFACT_UNAVAILABLE,
@@ -241,7 +285,11 @@ class StructuralNormalizationService:
             except PdfExtractionError as exc:
                 # Only the extractor's own, expected failures become warnings;
                 # anything else is a bug and fails the normalization stage.
-                documents.append(self._empty_pdf_document(source_document, document_id))
+                documents.append(
+                    self._empty_pdf_document(
+                        source_document, document_id, pdf_selection=choice
+                    )
+                )
                 warnings.append(
                     NormalizationWarning(
                         code=_PDF_FAILURE_CODES.get(
@@ -252,7 +300,10 @@ class StructuralNormalizationService:
                     )
                 )
                 continue
-            documents.append(outcome.normalized_document)
+            normalized = outcome.normalized_document
+            if choice is not None:
+                normalized = normalized.model_copy(update={"pdf_selection": choice})
+            documents.append(normalized)
             warnings.extend(_outcome_warnings(outcome, document_id))
 
         return NormalizedSourceBundle(
@@ -264,7 +315,11 @@ class StructuralNormalizationService:
 
     @staticmethod
     def _empty_pdf_document(
-        document: DocumentArtifact, document_id: str
+        document: DocumentArtifact,
+        document_id: str,
+        *,
+        extraction_method: str = "gemini_pdf_unavailable",
+        pdf_selection: PdfLinkChoice | None = None,
     ) -> NormalizedDocument:
         return NormalizedDocument(
             id=document_id,
@@ -273,6 +328,7 @@ class StructuralNormalizationService:
             source_type=SourceType.PDF,
             mime_type=document.mime_type,
             content_sha256=document.sha256,
-            extraction_method="gemini_pdf_unavailable",
+            extraction_method=extraction_method,
             quality_score=0,
+            pdf_selection=pdf_selection,
         )

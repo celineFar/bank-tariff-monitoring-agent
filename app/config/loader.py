@@ -136,6 +136,7 @@ def load_settings(
             max_items_per_batch=raw.source_discovery_max_items_per_batch,
             max_chars_per_item=raw.source_discovery_max_chars_per_item,
             max_chars_per_batch=raw.source_discovery_max_chars_per_batch,
+            max_concurrent_batches=raw.source_discovery_max_concurrent_batches,
             estimated_chars_per_input_token=(
                 raw.source_discovery_estimated_chars_per_input_token
             ),
@@ -151,6 +152,9 @@ def load_settings(
             ),
             classifier_retry_jitter_ratio=(
                 raw.source_discovery_classifier_retry_jitter_ratio
+            ),
+            classifier_max_output_tokens=(
+                raw.source_discovery_classifier_max_output_tokens
             ),
             model_name=raw.source_discovery_model_name,
             fallback_model_names=raw.source_discovery_fallback_model_names,

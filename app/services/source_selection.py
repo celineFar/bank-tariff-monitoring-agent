@@ -11,6 +11,7 @@ from app.domain.source_discovery import (
     Relevance,
     SourceAssessment,
     SourceDiscoveryResult,
+    SourceSelection,
     TemporalStatus,
 )
 
@@ -25,11 +26,27 @@ def is_selected_assessment(assessment: SourceAssessment) -> bool:
 def selected_assessments_by_source_item(
     assessments: tuple[SourceAssessment, ...],
 ) -> dict[str, SourceAssessment]:
+    """The assessment that decides each source item, when it is selected.
+
+    An item's own assessment (a block or table, direct or inherited) decides
+    it. A container's references (a section or document names up to 20 of its
+    members) count only for items with no assessment of their own; otherwise a
+    member the classifier excluded would be selected through its section.
+    """
+    own = {
+        reference.source_item_id
+        for assessment in assessments
+        if assessment.scope in {DiscoveryScope.BLOCK, DiscoveryScope.TABLE}
+        for reference in assessment.source_refs
+    }
     values: dict[str, SourceAssessment] = {}
     for assessment in assessments:
         if not is_selected_assessment(assessment):
             continue
+        is_own = assessment.scope in {DiscoveryScope.BLOCK, DiscoveryScope.TABLE}
         for reference in assessment.source_refs:
+            if not is_own and reference.source_item_id in own:
+                continue
             current = values.get(reference.source_item_id)
             if current is None or assessment_precedence(
                 assessment
@@ -38,17 +55,25 @@ def selected_assessments_by_source_item(
     return values
 
 
-def build_selected_source_bundle(
-    bundle: NormalizedSourceBundle,
-    discovery: SourceDiscoveryResult,
-) -> NormalizedSourceBundle:
-    selected_items = selected_assessments_by_source_item(discovery.assessments)
-    direct_documents = {
+def select_sources(discovery: SourceDiscoveryResult) -> SourceSelection:
+    """The one selection extraction and the RAG projection both read."""
+    items = selected_assessments_by_source_item(discovery.assessments)
+    documents = {
         assessment.document_id
         for assessment in discovery.assessments
         if assessment.source_id == f"document::{assessment.document_id}"
         and is_selected_assessment(assessment)
     }
+    documents |= {assessment.document_id for assessment in items.values()}
+    return SourceSelection(document_ids=tuple(sorted(documents)), items=items)
+
+
+def build_selected_source_bundle(
+    bundle: NormalizedSourceBundle,
+    discovery: SourceDiscoveryResult,
+) -> NormalizedSourceBundle:
+    selection = select_sources(discovery)
+    selected_items = selection.items
     documents: list[NormalizedDocument] = []
     for document in bundle.documents:
         selected_table_ids = {
@@ -63,7 +88,7 @@ def build_selected_source_bundle(
         tables = tuple(
             table for table in document.tables if table.id in selected_table_ids
         )
-        if not blocks and not tables and document.id not in direct_documents:
+        if not blocks and not tables and document.id not in selection.document_ids:
             continue
         selected_link_ids = {link_id for block in blocks for link_id in block.link_ids}
         links = tuple(link for link in document.links if link.id in selected_link_ids)

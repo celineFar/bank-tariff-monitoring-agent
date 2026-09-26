@@ -52,8 +52,6 @@ from app.domain.source_discovery import (
     Authority,
     DecisionSource,
     DiscoveryScope,
-    ExtractionContext,
-    ExtractionContextItem,
     InformationRole,
     ProductAssociation,
     Relevance,
@@ -115,6 +113,8 @@ def _artifact() -> PageArtifact:
         title="Consumer loan",
         canonical_url=URL,
         markdown="# Consumer loan\n\nConsumer loan rate 13.5%\n",
+        blocks=(),
+        downloadable_documents=(),
     )
 
 
@@ -162,17 +162,6 @@ def _discovery() -> SourceDiscoveryResult:
             block_id="rate",
         ),
     )
-    item = ExtractionContextItem(
-        source_id="rate",
-        document_id="page",
-        scope=DiscoveryScope.BLOCK,
-        role=InformationRole.PRICING,
-        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
-        temporal_status=TemporalStatus.CURRENT,
-        precedence=1,
-        text="Consumer loan rate 13.5%",
-        source_refs=(reference,),
-    )
     assessment = SourceAssessment(
         source_id="rate",
         document_id="page",
@@ -192,10 +181,6 @@ def _discovery() -> SourceDiscoveryResult:
         product=ProductType.CONSUMER_LOAN,
         input_content_hash="b" * 64,
         assessments=(assessment,),
-        extraction_context=ExtractionContext(
-            product=ProductType.CONSUMER_LOAN,
-            items=(item,),
-        ),
     )
 
 
@@ -268,7 +253,7 @@ class _Normalization:
     def __init__(self, events):
         self.events = events
 
-    async def normalize(self, artifact):
+    async def normalize(self, artifact, *, pdf_selection=None):
         self.events.append(("normalize", artifact))
         return _bundle()
 
@@ -277,8 +262,8 @@ class _Discovery:
     def __init__(self, events):
         self.events = events
 
-    async def discover(self, bundle, product):
-        self.events.append(("discover", product))
+    async def discover(self, bundle, offering, *, as_of=None):
+        self.events.append(("discover", offering.product))
         return _discovery()
 
 
@@ -723,6 +708,7 @@ async def test_indexing_refresh_collects_stage_numbered_audit_markdown(
         "0_run_context.md",
         "2_normalization_diff.md",
         "2_normalized_webpage.md",
+        "2_pdf_link_selection.md",
         "3_selected_sources.md",
         "3_source_selection_decisions.md",
         "3_source_selection_diff.md",
@@ -771,7 +757,7 @@ async def test_indexing_audit_failure_does_not_fail_the_run(tmp_path) -> None:
 
 
 class _FailingDiscovery:
-    async def discover(self, bundle, product):
+    async def discover(self, bundle, offering, *, as_of=None):
         raise RuntimeError("classifier unavailable")
 
 
@@ -967,3 +953,106 @@ async def test_cancellation_cleanup_failure_never_replaces_the_cancellation() ->
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+class _MenuNormalization(_Normalization):
+    """The page also has a menu block that discovery marks irrelevant."""
+
+    async def normalize(self, artifact, *, pdf_selection=None):
+        bundle = await super().normalize(artifact)
+        page = bundle.documents[0]
+        menu = NormalizedBlock(
+            id="menu",
+            type=NormalizedBlockType.LIST,
+            raw_text="Cards Deposits Transfers",
+            text="Cards Deposits Transfers",
+            source_refs=(
+                SourceReference(
+                    source_item_id="menu",
+                    locator=SourceLocator(
+                        source_url=URL, source_type=SourceType.PAGE, block_id="menu"
+                    ),
+                ),
+            ),
+        )
+        return bundle.model_copy(
+            update={
+                "documents": (page.model_copy(update={"blocks": (*page.blocks, menu)}),)
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_sd7_projection_indexes_only_the_selected_blocks() -> None:
+    events = []
+    publications = _Publications()
+    service = IndexingPipeline(
+        acquisition=_Acquisition(events),
+        normalization=_MenuNormalization(events),
+        discovery=_Discovery(events),
+        extraction=_Extraction(events),
+        projection=KnowledgeProjectionService(),
+        embedder=_Embedder(events),
+        snapshots=_Snapshots(),
+        publications=publications,
+    )
+
+    await service.refresh(_offering(), uuid4(), uuid4())
+
+    source = next(
+        document
+        for document in publications.values[0].documents
+        if document.document_kind.value == "source"
+    )
+    content = "\n".join(chunk.content for chunk in source.chunks)
+    assert "Consumer loan rate 13.5%" in content
+    assert "Cards Deposits Transfers" not in content
+
+
+class _PdfSelection:
+    def __init__(self, events):
+        self.events = events
+
+    async def select(self, artifact, offering):
+        from app.domain.pdf_extraction import PdfLinkSelection
+
+        self.events.append(("select_pdfs", offering.offering_id))
+        return PdfLinkSelection(offering_id=offering.offering_id)
+
+
+class _SelectionAwareNormalization(_Normalization):
+    async def normalize(self, artifact, *, pdf_selection=None):
+        self.events.append(("normalize_with", pdf_selection is not None))
+        return await super().normalize(artifact)
+
+
+@pytest.mark.asyncio
+async def test_pdf_selection_runs_before_normalization_when_the_page_links_pdfs() -> (
+    None
+):
+    events = []
+    publications = _Publications()
+
+    class _PdfAcquisition(_Acquisition):
+        async def acquire(self, url):
+            artifact = await super().acquire(url)
+            return artifact.model_copy(update={"downloadable_documents": ("pdf",)})
+
+    service = IndexingPipeline(
+        acquisition=_PdfAcquisition(events),
+        normalization=_SelectionAwareNormalization(events),
+        pdf_selection=_PdfSelection(events),
+        discovery=_Discovery(events),
+        extraction=_Extraction(events),
+        projection=KnowledgeProjectionService(),
+        embedder=_Embedder(events),
+        snapshots=_Snapshots(),
+        publications=publications,
+    )
+
+    result = await service.refresh(_offering(), uuid4(), uuid4())
+
+    names = [event[0] for event in events]
+    assert names.index("select_pdfs") < names.index("normalize_with")
+    assert ("normalize_with", True) in events
+    assert "pdf_selection" in {timing.stage for timing in result.manifest.timings}

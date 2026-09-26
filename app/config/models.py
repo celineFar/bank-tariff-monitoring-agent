@@ -331,20 +331,28 @@ class TariffQuerySettings(SettingsGroup):
 
 
 class SourceDiscoverySettings(SettingsGroup):
-    policy_version: str = Field(default="1", min_length=1, max_length=50)
-    prompt_version: str = Field(default="1", min_length=1, max_length=50)
+    # 2: assessments are scoped to the offering and the prompt names it.
+    policy_version: str = Field(default="2", min_length=1, max_length=50)
+    prompt_version: str = Field(default="2", min_length=1, max_length=50)
     max_items_per_batch: int = Field(default=8, ge=1, le=50)
     max_chars_per_item: int = Field(default=3000, ge=500, le=12_000)
     max_chars_per_batch: int = Field(default=18_000, ge=1000, le=100_000)
+    # Batches in flight at once; results keep batch order either way.
+    max_concurrent_batches: int = Field(default=3, ge=1, le=16)
     estimated_chars_per_input_token: float = Field(default=4.0, gt=0, le=20)
     estimated_output_tokens_per_item: int = Field(default=160, ge=0, le=10_000)
     classifier_max_attempts: int = Field(default=3, ge=1, le=10)
     classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
     classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    # Per call; a typical 8-item batch answers in about 1,200 tokens.
+    classifier_max_output_tokens: int = Field(default=8192, ge=512, le=65_536)
     model_name: str | None = "gemini-3.1-flash-lite"
-    fallback_model_names: tuple[str, ...] = ()
-    max_price_per_million_tokens_usd: float = Field(default=1.5, gt=0, le=100)
+    # gemini-2.5-flash-lite, the first choice, answers 404 to new users since
+    # 2026-09-22. gemini-3.5-flash-lite prices output at $2.50, so the ceiling
+    # is 2.50 (decided by the user, 2026-09-26).
+    fallback_model_names: tuple[str, ...] = ("gemini-3.5-flash-lite",)
+    max_price_per_million_tokens_usd: float = Field(default=2.5, gt=0, le=100)
 
     @field_validator("fallback_model_names")
     @classmethod

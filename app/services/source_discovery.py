@@ -1,41 +1,58 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import re
+from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import date
 from typing import Protocol
+from urllib.parse import urlsplit
+
+from google.genai.errors import APIError
 
 from app.config import SourceDiscoverySettings
 from app.domain.acquisition import SourceType
+from app.domain.effective_periods import PeriodStatus, period_status
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle, SourceReference
 from app.domain.pdf_extraction import (
     PdfAdmissionRelevance,
     PdfAdmissionRole,
+    PdfLinkLabel,
     PdfTemporalStatus,
 )
 from app.domain.source_discovery import (
     Authority,
+    CandidateLayout,
     DecisionSource,
     DiscoveryBatch,
     DiscoveryBatchResponse,
     DiscoveryCandidate,
     DiscoveryPromptItem,
     DiscoveryScope,
-    EffectivePeriod,
-    ExtractionContext,
-    ExtractionContextItem,
     InformationRole,
+    MemberException,
+    ModelSourceAssessment,
+    OfferingContext,
+    OtherOffering,
     PriorAssessment,
     ProductAssociation,
+    PromptMember,
     Relevance,
     SourceAssessment,
     SourceDiscoveryPlan,
     SourceDiscoveryResult,
     TemporalStatus,
+    page_scope,
 )
 from app.repositories.contracts import SourceDiscoveryRepository
-from app.services.discovery_classifier import is_model_fallback_error
+from app.services.discovery_classifier import (
+    ModelResponseError,
+    is_model_fallback_error,
+)
 from app.services.discovery_prefilter import build_discovery_candidates
 from app.services.failure_mapping import describe_failure
 from app.services.model_call_usage import (
@@ -44,6 +61,44 @@ from app.services.model_call_usage import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def offering_context_for(
+    bundle: NormalizedSourceBundle, product: ProductType
+) -> OfferingContext:
+    """The catalog offering whose seed page this bundle is, for tools and demos.
+
+    The pipeline builds the context from the catalog entry it runs; this is for
+    callers that only hold a bundle. A page that is not in the catalog gets a
+    context named after the page itself.
+    """
+    from app.config.seed_catalog import load_seed_catalog
+
+    page = next(
+        (
+            document
+            for document in bundle.documents
+            if document.source_type is SourceType.PAGE
+        ),
+        bundle.documents[0],
+    )
+    wanted = str(bundle.canonical_url).rstrip("/")
+    catalog = load_seed_catalog()
+    for entry in catalog.offerings:
+        if entry.product is product and str(entry.seed_url).rstrip("/") == wanted:
+            return OfferingContext.from_catalog_entry(
+                entry, page_title=page.name, page_blocks=page.blocks, catalog=catalog
+            )
+    heading, summary = page_scope(page.blocks)
+    return OfferingContext(
+        offering_id="unlisted",
+        product=product,
+        display_name=page.name[:200],
+        seed_url=bundle.canonical_url,
+        page_title=page.name,
+        page_heading=heading,
+        page_summary=summary,
+    )
 
 
 class SourceDiscoveryClassifier(Protocol):
@@ -61,6 +116,7 @@ class InMemorySourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -73,6 +129,7 @@ class InMemorySourceDiscoveryRepository:
                 assessment := self._exact.get(
                     (
                         product.value,
+                        offering_id,
                         policy_version,
                         prompt_version,
                         model_name,
@@ -87,6 +144,7 @@ class InMemorySourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -99,6 +157,7 @@ class InMemorySourceDiscoveryRepository:
                 assessment := self._structural.get(
                     (
                         product.value,
+                        offering_id,
                         policy_version,
                         prompt_version,
                         model_name,
@@ -113,6 +172,7 @@ class InMemorySourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -121,6 +181,7 @@ class InMemorySourceDiscoveryRepository:
         for assessment in assessments:
             exact_key = (
                 product.value,
+                offering_id,
                 policy_version,
                 prompt_version,
                 model_name,
@@ -152,19 +213,36 @@ class SourceDiscoveryService:
         return self._model_name
 
     async def plan(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryPlan:
-        candidates = build_discovery_candidates(bundle)
+        plan, _ = await self._plan(bundle, offering, as_of)
+        return plan
+
+    async def _plan(
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        as_of: date | None = None,
+    ) -> tuple[SourceDiscoveryPlan, tuple[DiscoveryCandidate, ...]]:
+        product = offering.product
+        candidates = build_discovery_candidates(
+            bundle, item_chars=self._settings.max_chars_per_item
+        )
         rule_assessments: list[SourceAssessment] = []
         unresolved: list[DiscoveryCandidate] = []
         for candidate in candidates:
-            if assessment := _rule_assessment(candidate):
+            if assessment := _rule_assessment(candidate, offering):
                 rule_assessments.append(assessment)
             else:
                 unresolved.append(candidate)
 
         exact = await self._repository.get_exact(
             product=product,
+            offering_id=offering.offering_id,
             policy_version=self._settings.policy_version,
             prompt_version=self._settings.prompt_version,
             model_name=self._model_name,
@@ -190,6 +268,7 @@ class SourceDiscoveryService:
 
         priors = await self._repository.get_structural_priors(
             product=product,
+            offering_id=offering.offering_id,
             policy_version=self._settings.policy_version,
             prompt_version=self._settings.prompt_version,
             model_name=self._model_name,
@@ -197,14 +276,25 @@ class SourceDiscoveryService:
                 item.structural_fingerprint for item in llm_candidates
             ],
         )
+        # A prior is a hint about *this* section. When two sections on the
+        # page share a structural fingerprint, the stored prior may belong to
+        # the other one, so neither gets it.
+        structural_counts = Counter(item.structural_fingerprint for item in candidates)
+        priors = {
+            fingerprint: prior
+            for fingerprint, prior in priors.items()
+            if structural_counts[fingerprint] == 1
+        }
         batches = _build_batches(
-            product,
+            offering,
             llm_candidates,
             priors,
             self._settings,
+            as_of,
         )
-        return SourceDiscoveryPlan(
+        plan = SourceDiscoveryPlan(
             product=product,
+            offering_id=offering.offering_id,
             canonical_url=str(bundle.canonical_url),
             input_content_hash=bundle.acquisition_content_hash,
             policy_version=self._settings.policy_version,
@@ -218,11 +308,17 @@ class SourceDiscoveryService:
                 len(candidate.member_source_ids) for candidate in candidates
             ),
         )
+        return plan, candidates
 
     async def discover(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryResult:
-        plan = await self.plan(bundle, product)
+        product = offering.product
+        plan, all_candidates = await self._plan(bundle, offering, as_of)
         await record_model_cache_hit(
             self._usage_repository,
             stage="discovery.classification",
@@ -236,60 +332,90 @@ class SourceDiscoveryService:
         candidate_by_id = {
             candidate.source_id: candidate for candidate in plan.llm_candidates
         }
-        llm_assessments: list[SourceAssessment] = []
-        for batch in plan.batches:
-            assert self._classifier is not None
-            response = await self._classifier.classify(batch)
-            expected = {item.source_id for item in batch.items}
-            received = {item.source_id for item in response.items}
-            if received != expected or len(response.items) != len(expected):
-                raise ValueError(
-                    "classifier response IDs do not exactly match batch IDs"
-                )
-            for item in response.items:
-                candidate = candidate_by_id[item.source_id]
-                llm_assessments.append(
-                    SourceAssessment(
-                        **item.model_dump(),
-                        document_id=candidate.document_id,
-                        scope=candidate.scope,
-                        decision_source=DecisionSource.LLM,
-                        input_fingerprint=candidate.content_fingerprint,
-                        structural_fingerprint=candidate.structural_fingerprint,
-                        source_refs=candidate.source_refs,
-                    )
-                )
+        counters = _BatchCounters()
+        semaphore = asyncio.Semaphore(self._settings.max_concurrent_batches)
 
-        if llm_assessments:
+        async def run(batch: DiscoveryBatch) -> list[SourceAssessment]:
+            async with semaphore:
+                assert self._classifier is not None
+                answered = await _classify_resilient(self._classifier, batch, counters)
+            assessments = [
+                SourceAssessment(
+                    **item.model_dump(),
+                    document_id=candidate_by_id[item.source_id].document_id,
+                    scope=candidate_by_id[item.source_id].scope,
+                    decision_source=DecisionSource.LLM,
+                    input_fingerprint=candidate_by_id[
+                        item.source_id
+                    ].content_fingerprint,
+                    structural_fingerprint=candidate_by_id[
+                        item.source_id
+                    ].structural_fingerprint,
+                    source_refs=candidate_by_id[item.source_id].source_refs,
+                )
+                for item in answered
+            ]
+            # Saved as soon as checked: a later batch failing must not throw
+            # away what earlier batches paid for.
             await self._repository.save(
                 product=product,
+                offering_id=offering.offering_id,
                 policy_version=plan.policy_version,
                 prompt_version=plan.prompt_version,
                 model_name=plan.model_name,
-                assessments=llm_assessments,
+                assessments=assessments,
+            )
+            return assessments
+
+        # Every batch runs to the end, so each good one is saved even when
+        # another fails; results keep batch order, whatever the timing.
+        outcomes = await asyncio.gather(
+            *(run(batch) for batch in plan.batches), return_exceptions=True
+        )
+        failures = [
+            outcome for outcome in outcomes if isinstance(outcome, BaseException)
+        ]
+        if failures:
+            raise failures[0]
+        llm_assessments = [
+            assessment
+            for outcome in outcomes
+            if not isinstance(outcome, BaseException)
+            for assessment in outcome
+        ]
+        if counters.retries or counters.splits:
+            logger.warning(
+                "Source discovery for %s needed %s batch retries and %s splits",
+                offering.offering_id,
+                counters.retries,
+                counters.splits,
             )
 
-        direct = (
-            *plan.deterministic_assessments,
-            *plan.cache_hits,
-            *llm_assessments,
-        )
-        all_candidates = build_discovery_candidates(bundle)
         candidates_by_id = {
             candidate.source_id: candidate for candidate in all_candidates
         }
+        direct = (
+            *plan.deterministic_assessments,
+            *(
+                _settle_temporal(
+                    assessment, candidates_by_id[assessment.source_id], as_of
+                )
+                for assessment in (*plan.cache_hits, *llm_assessments)
+            ),
+        )
         inherited = _inherited_assessments(direct, candidates_by_id, bundle)
-        context = _build_extraction_context(product, direct, candidates_by_id)
         return SourceDiscoveryResult(
             product=product,
+            offering_id=offering.offering_id,
             input_content_hash=plan.input_content_hash,
             policy_version=plan.policy_version,
             prompt_version=plan.prompt_version,
             model_name=plan.model_name,
             assessments=(*direct, *inherited),
-            extraction_context=context,
             llm_batch_count=len(plan.batches),
             reused_assessment_count=len(plan.cache_hits),
+            batch_retries=counters.retries,
+            batch_splits=counters.splits,
         )
 
 
@@ -309,12 +435,16 @@ class FallbackSourceDiscoveryService:
         self._services = tuple(services)
 
     async def discover(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryResult:
         last = len(self._services) - 1
         for index, service in enumerate(self._services):
             try:
-                return await service.discover(bundle, product)
+                return await service.discover(bundle, offering, as_of=as_of)
             except Exception as exc:
                 if index == last or not is_model_fallback_error(exc):
                     raise
@@ -327,7 +457,49 @@ class FallbackSourceDiscoveryService:
         raise AssertionError("source-discovery model sequence exhausted")
 
 
-def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
+# A cross-sell card is a few lines and a "Learn more" link; a section this long
+# that links to another offering is content, and Gemini decides it.
+_CROSS_SELL_MAX_CHARS = 600
+
+
+def _cross_sell_target(
+    candidate: DiscoveryCandidate, offering: OfferingContext | None
+) -> OtherOffering | None:
+    """The other catalog offering a small section advertises, if any.
+
+    Deterministic: the section links to that offering's seed page and not to
+    this offering's own. On the 13 seed pages this finds exactly the 16
+    cross-sell cards ("Construction loan … Learn more") and nothing else.
+    """
+    if (
+        offering is None
+        or not offering.other_offerings
+        or candidate.scope is not DiscoveryScope.SECTION
+        or candidate.layout is not CandidateLayout.CONTENT
+        or not candidate.link_urls
+        or sum(len(member.text) for member in candidate.members) > _CROSS_SELL_MAX_CHARS
+    ):
+        return None
+    paths = {_url_path(url) for url in candidate.link_urls}
+    if _url_path(str(offering.seed_url)) in paths:
+        return None
+    return next(
+        (
+            other
+            for other in offering.other_offerings
+            if _url_path(str(other.seed_url)) in paths
+        ),
+        None,
+    )
+
+
+def _url_path(url: str) -> str:
+    return urlsplit(url).path.rstrip("/").casefold()
+
+
+def _rule_assessment(
+    candidate: DiscoveryCandidate, offering: OfferingContext | None = None
+) -> SourceAssessment | None:
     values: (
         tuple[
             ProductAssociation,
@@ -341,48 +513,35 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
     ) = None
     if (
         candidate.scope is DiscoveryScope.DOCUMENT
-        and candidate.source_type is SourceType.PDF
-        and candidate.pdf_admission is not None
-        and candidate.pdf_admission.relevance is PdfAdmissionRelevance.RELEVANT
+        and candidate.source_type is not SourceType.PAGE
+        and not candidate.member_source_ids
     ):
-        admission = candidate.pdf_admission
-        role = {
-            PdfAdmissionRole.PRODUCT_TERMS: InformationRole.PRODUCT_TERMS,
-            PdfAdmissionRole.FEES: InformationRole.FEES,
-            PdfAdmissionRole.LEGAL_DISCLOSURE: InformationRole.LEGAL_DISCLOSURE,
-            PdfAdmissionRole.OTHER: InformationRole.OTHER,
-        }[admission.role]
-        temporal = {
-            PdfTemporalStatus.CURRENT: TemporalStatus.CURRENT,
-            PdfTemporalStatus.HISTORICAL: TemporalStatus.POSSIBLY_STALE,
-            PdfTemporalStatus.FUTURE: TemporalStatus.FUTURE,
-            PdfTemporalStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
-            PdfTemporalStatus.UNKNOWN: TemporalStatus.UNKNOWN,
-        }[admission.temporal_status]
-        association = {
-            PdfTemporalStatus.HISTORICAL: ProductAssociation.HISTORICAL_VERSION,
-            PdfTemporalStatus.FUTURE: ProductAssociation.FUTURE_VERSION,
-        }.get(admission.temporal_status, ProductAssociation.CURRENT_PRODUCT)
-        return SourceAssessment(
-            source_id=candidate.source_id,
-            document_id=candidate.document_id,
-            scope=candidate.scope,
-            product_association=association,
-            role=role,
-            relevance=Relevance.RELEVANT,
-            authority=Authority.OFFICIAL_TERMS,
-            temporal_status=temporal,
-            effective_periods=tuple(
-                EffectivePeriod(raw=item.raw, start=item.start, end=item.end)
-                for item in admission.effective_periods
-            ),
-            reason=admission.reason,
-            decision_source=DecisionSource.RULE,
-            input_fingerprint=candidate.content_fingerprint,
-            structural_fingerprint=candidate.structural_fingerprint,
-            source_refs=candidate.source_refs,
+        # A linked document with no content: skipped before transcription, or
+        # its transcription failed. There is nothing for a model to read, and
+        # nothing for extraction to use; the normalization warning reports why.
+        values = _no_content_values(candidate)
+    elif (
+        candidate.scope is DiscoveryScope.DOCUMENT
+        and candidate.pdf_admission is not None
+        and candidate.pdf_admission.temporal_status
+        in {PdfTemporalStatus.HISTORICAL, PdfTemporalStatus.FUTURE}
+    ):
+        # Explicit dates in the link context place it outside today's terms,
+        # whatever its content says (transcribed only with skip_historical off).
+        historical = (
+            candidate.pdf_admission.temporal_status is PdfTemporalStatus.HISTORICAL
         )
-    if (
+        values = (
+            ProductAssociation.HISTORICAL_VERSION
+            if historical
+            else ProductAssociation.FUTURE_VERSION,
+            _PDF_ROLES[candidate.pdf_admission.role],
+            Relevance.POSSIBLY_RELEVANT,
+            Authority.OFFICIAL_TERMS,
+            TemporalStatus.POSSIBLY_STALE if historical else TemporalStatus.FUTURE,
+            candidate.pdf_admission.reason,
+        )
+    elif (
         candidate.scope is DiscoveryScope.DOCUMENT
         and candidate.source_type is SourceType.PAGE
     ):
@@ -403,29 +562,41 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
             TemporalStatus.UNKNOWN,
             "All members were marked hidden by browser acquisition.",
         )
-    elif candidate.scope is DiscoveryScope.API_PAYLOAD and _is_template_payload(
-        candidate
-    ):
-        values = (
-            ProductAssociation.GENERIC_BANK_INFORMATION,
-            InformationRole.OTHER,
-            Relevance.IRRELEVANT,
-            Authority.UNKNOWN,
-            TemporalStatus.UNKNOWN,
-            "Payload is a reusable HTML presentation template, not product data.",
-        )
-    elif _is_navigation(candidate):
+    elif candidate.layout is CandidateLayout.SITE_CHROME:
         values = (
             ProductAssociation.GLOBAL_NAVIGATION,
             InformationRole.NAVIGATION,
             Relevance.IRRELEVANT,
             Authority.UNKNOWN,
             TemporalStatus.UNKNOWN,
-            "Unheaded content matches the repeated global navigation structure.",
+            "Blocks sit in the site's navigation, banner or footer.",
+        )
+    elif (target := _cross_sell_target(candidate, offering)) is not None:
+        values = (
+            ProductAssociation.RELATED_PRODUCT,
+            InformationRole.RELATED_PRODUCT,
+            Relevance.POSSIBLY_RELEVANT,
+            Authority.OFFICIAL_PRODUCT_CONTENT,
+            TemporalStatus.UNKNOWN,
+            f"Cross-sell card: links to the {target.display_name} offering's page.",
+        )
+    elif candidate.layout is CandidateLayout.PAGE_HEADER:
+        values = (
+            ProductAssociation.GLOBAL_NAVIGATION,
+            InformationRole.NAVIGATION,
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.UNKNOWN,
+            "Unheaded blocks above the page's first heading are the site header.",
         )
     if values is None:
         return None
     association, role, relevance, authority, temporal, reason = values
+    unselected = (
+        candidate.pdf_selection is not None
+        and not candidate.pdf_selection.transcribe
+        and not candidate.member_source_ids
+    )
     return SourceAssessment(
         source_id=candidate.source_id,
         document_id=candidate.document_id,
@@ -436,49 +607,106 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
         authority=authority,
         temporal_status=temporal,
         reason=reason,
-        decision_source=DecisionSource.RULE,
+        # A PDF the link selection did not keep was decided by that step.
+        decision_source=(
+            DecisionSource.LINK_SELECTION if unselected else DecisionSource.RULE
+        ),
         input_fingerprint=candidate.content_fingerprint,
         structural_fingerprint=candidate.structural_fingerprint,
         source_refs=candidate.source_refs,
     )
 
 
-def _is_template_payload(candidate: DiscoveryCandidate) -> bool:
-    value = candidate.title.casefold()
-    return ".html" in value and any(
-        token in value for token in ("/contentthemes/", "templates.view.html")
-    )
+_PDF_ROLES = {
+    PdfAdmissionRole.PRODUCT_TERMS: InformationRole.PRODUCT_TERMS,
+    PdfAdmissionRole.FEES: InformationRole.FEES,
+    PdfAdmissionRole.LEGAL_DISCLOSURE: InformationRole.LEGAL_DISCLOSURE,
+    PdfAdmissionRole.OTHER: InformationRole.OTHER,
+}
+_LINK_ASSOCIATIONS = {
+    PdfLinkLabel.CURRENT_PRODUCT: ProductAssociation.CURRENT_PRODUCT,
+    PdfLinkLabel.SHARED_TERMS: ProductAssociation.CURRENT_PRODUCT,
+    PdfLinkLabel.RELATED_PRODUCT: ProductAssociation.RELATED_PRODUCT,
+    PdfLinkLabel.GENERIC_BANK_INFORMATION: ProductAssociation.GENERIC_BANK_INFORMATION,
+    PdfLinkLabel.UNCLEAR: ProductAssociation.UNKNOWN,
+}
 
 
-def _is_navigation(candidate: DiscoveryCandidate) -> bool:
-    if candidate.scope is not DiscoveryScope.SECTION or candidate.heading_path:
-        return False
-    text = candidate.context_text.casefold()
-    markers = (
-        "personal",
-        "business",
-        "investment",
-        "about bank",
-        "branches",
-        "cards",
-        "loans",
-        "accounts",
-        "contact center",
+def _no_content_values(
+    candidate: DiscoveryCandidate,
+) -> tuple[
+    ProductAssociation, InformationRole, Relevance, Authority, TemporalStatus, str
+]:
+    choice = candidate.pdf_selection
+    if choice is not None and not choice.transcribe:
+        return (
+            _LINK_ASSOCIATIONS[choice.label],
+            _PDF_ROLES[choice.role],
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.UNKNOWN,
+            f"Not transcribed: link judged {choice.label.value}. {choice.reason}"[
+                :2000
+            ],
+        )
+    admission = candidate.pdf_admission
+    if (
+        admission is not None
+        and admission.temporal_status is PdfTemporalStatus.HISTORICAL
+    ):
+        return (
+            ProductAssociation.HISTORICAL_VERSION,
+            InformationRole.OTHER,
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.POSSIBLY_STALE,
+            "Superseded edition, skipped before transcription; it has no content.",
+        )
+    if (
+        admission is not None
+        and admission.relevance is PdfAdmissionRelevance.IRRELEVANT
+    ):
+        return (
+            ProductAssociation.UNKNOWN,
+            InformationRole.OTHER,
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.UNKNOWN,
+            "Off-topic link metadata, skipped before transcription; it has no content.",
+        )
+    return (
+        ProductAssociation.UNKNOWN,
+        InformationRole.OTHER,
+        Relevance.IRRELEVANT,
+        Authority.UNKNOWN,
+        TemporalStatus.UNKNOWN,
+        f"Linked document has no extracted content ({candidate.extraction_method}).",
     )
-    return sum(marker in text for marker in markers) >= 4
 
 
 def _build_batches(
-    product: ProductType,
+    offering: OfferingContext,
     candidates: list[DiscoveryCandidate],
     priors: dict[str, SourceAssessment],
     settings: SourceDiscoverySettings,
+    as_of: date | None = None,
 ) -> tuple[DiscoveryBatch, ...]:
     batches: list[DiscoveryBatch] = []
     current: list[DiscoveryPromptItem] = []
     current_chars = 0
     for candidate in candidates:
-        content = candidate.context_text[: settings.max_chars_per_item]
+        members = tuple(
+            PromptMember(id=f"m{index}", text=member.text)
+            for index, member in enumerate(candidate.members, start=1)
+        )
+        # A section shows its members whole (parts were split to fit); the
+        # item's own content is then only the section's links.
+        content = (
+            candidate.member_context
+            if members
+            else candidate.context_text[: settings.max_chars_per_item]
+        )
+        size = len(content) + sum(len(member.text) + 12 for member in members)
         item = DiscoveryPromptItem(
             source_id=candidate.source_id,
             scope=candidate.scope,
@@ -486,6 +714,7 @@ def _build_batches(
             title=candidate.title,
             heading_path=candidate.heading_path,
             content=content,
+            members=members,
             mime_type=candidate.mime_type,
             extraction_method=candidate.extraction_method,
             quality_score=candidate.quality_score,
@@ -493,26 +722,259 @@ def _build_batches(
         )
         if current and (
             len(current) >= settings.max_items_per_batch
-            or current_chars + len(content) > settings.max_chars_per_batch
+            or current_chars + size > settings.max_chars_per_batch
         ):
             batches.append(
                 DiscoveryBatch(
                     id=f"batch_{len(batches):03d}",
-                    product=product,
+                    product=offering.product,
+                    offering=offering,
+                    as_of=as_of,
                     items=tuple(current),
                 )
             )
             current = []
             current_chars = 0
         current.append(item)
-        current_chars += len(content)
+        current_chars += size
     if current:
         batches.append(
             DiscoveryBatch(
-                id=f"batch_{len(batches):03d}", product=product, items=tuple(current)
+                id=f"batch_{len(batches):03d}",
+                product=offering.product,
+                offering=offering,
+                as_of=as_of,
+                items=tuple(current),
             )
         )
     return tuple(batches)
+
+
+class DiscoveryResponseError(ModelResponseError):
+    """A model could not answer one item validly, even alone and asked twice.
+
+    Counts as a fallback error: the next configured model gets a turn.
+    """
+
+
+@dataclass
+class _BatchCounters:
+    retries: int = 0
+    splits: int = 0
+
+
+async def _classify_resilient(
+    classifier: SourceDiscoveryClassifier,
+    batch: DiscoveryBatch,
+    counters: _BatchCounters,
+) -> list[ModelSourceAssessment]:
+    """Answer a batch; on an invalid answer, ask again, then split it in halves.
+
+    A provider error (`APIError`) is not an invalid answer: the classifier has
+    already retried it, and it goes to the fallback chain unchanged.
+    """
+    last: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            response = await classifier.classify(batch)
+            _check_response(batch, response)
+            return list(response.items)
+        except APIError:
+            raise
+        except (ValueError, RuntimeError) as exc:
+            last = exc
+            if attempt == 1:
+                counters.retries += 1
+            logger.warning(
+                "Invalid source-discovery answer for batch %s (%s items, attempt %s): %s",
+                batch.id,
+                len(batch.items),
+                attempt,
+                describe_failure(exc),
+            )
+    if len(batch.items) == 1:
+        raise DiscoveryResponseError(
+            f"no valid answer for {batch.items[0].source_id} after two attempts"
+        ) from last
+    counters.splits += 1
+    middle = len(batch.items) // 2
+    halves = (batch.items[:middle], batch.items[middle:])
+    answered: list[ModelSourceAssessment] = []
+    for suffix, items in zip("ab", halves, strict=True):
+        answered.extend(
+            await _classify_resilient(
+                classifier,
+                batch.model_copy(update={"id": f"{batch.id}.{suffix}", "items": items}),
+                counters,
+            )
+        )
+    return answered
+
+
+def _settle_temporal(
+    assessment: SourceAssessment,
+    candidate: DiscoveryCandidate,
+    as_of: date | None,
+) -> SourceAssessment:
+    """Deterministic checks on the model's temporal status, fresh or cached.
+
+    - `possibly_stale` and `future` need evidence: a quote from the item itself
+      that shows it (SD18). Without one, the status is `unknown`.
+    - Dated effective periods decide the status on `as_of`, so a cached
+      "valid until 31.10.2026" becomes stale on 1 November without a new call
+      (SD5).
+    """
+    status = assessment.temporal_status
+    if status in {
+        TemporalStatus.POSSIBLY_STALE,
+        TemporalStatus.FUTURE,
+    } and not _quoted_in(assessment.temporal_evidence, candidate):
+        status = TemporalStatus.UNKNOWN
+    if (
+        as_of is not None
+        and status in {TemporalStatus.POSSIBLY_STALE, TemporalStatus.FUTURE}
+        and (dates := _dates_in(assessment.temporal_evidence or ""))
+        and _contradicts(status, dates, as_of)
+    ):
+        # The quoted words carry a date that says otherwise: "effective from
+        # 14.07.2026", read as future on 26.09.2026 (Phase 7).
+        status = TemporalStatus.UNKNOWN
+    if as_of is not None:
+        dated = period_status(assessment.effective_periods, as_of)
+        if dated is not None:
+            status = {
+                PeriodStatus.CURRENT: TemporalStatus.CURRENT,
+                PeriodStatus.HISTORICAL: TemporalStatus.POSSIBLY_STALE,
+                PeriodStatus.FUTURE: TemporalStatus.FUTURE,
+                PeriodStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
+            }[dated]
+    if (
+        status in {TemporalStatus.POSSIBLY_STALE, TemporalStatus.FUTURE}
+        and (moved := _dates_of_a_few_members(assessment, candidate, status))
+        is not None
+    ):
+        return moved
+    if status is assessment.temporal_status:
+        return assessment
+    return assessment.model_copy(update={"temporal_status": status})
+
+
+def _dates_of_a_few_members(
+    assessment: SourceAssessment,
+    candidate: DiscoveryCandidate,
+    status: TemporalStatus,
+) -> SourceAssessment | None:
+    """Stale or future because of a few members: move it onto those members.
+
+    A "Terms and conditions" part that lists links to old editions ("…
+    (effective from 30.03.26 to 31.05.26)") was called stale as a whole, from
+    the linked editions' dates, and excluded 19 current blocks with it (Phase 8).
+    When the dates or quoted words that make an item stale or future sit in
+    fewer than half of its members, the item is `unknown` and those members
+    become exceptions: old (or future) editions, not relevant today.
+    """
+    if len(candidate.members) < 2:
+        return None
+    markers = [
+        _normalized(text)
+        for text in (
+            *(period.raw for period in assessment.effective_periods),
+            assessment.temporal_evidence or "",
+        )
+        if text and text.strip()
+    ]
+    carriers = [
+        index
+        for index, member in enumerate(candidate.members, start=1)
+        if any(marker in _normalized(member.text) for marker in markers)
+    ]
+    if not carriers or len(carriers) * 2 >= len(candidate.members):
+        return None
+    excepted = {exception.member_id for exception in assessment.member_exceptions}
+    edition = (
+        ProductAssociation.HISTORICAL_VERSION
+        if status is TemporalStatus.POSSIBLY_STALE
+        else ProductAssociation.FUTURE_VERSION
+    )
+    added = tuple(
+        MemberException(
+            member_id=f"m{index}",
+            product_association=edition,
+            role=assessment.role,
+            relevance=Relevance.IRRELEVANT,
+            reason="Refers to another edition, dated outside today's terms.",
+        )
+        for index in carriers
+        if f"m{index}" not in excepted
+    )
+    return assessment.model_copy(
+        update={
+            "temporal_status": TemporalStatus.UNKNOWN,
+            "member_exceptions": (*assessment.member_exceptions, *added),
+        }
+    )
+
+
+_EVIDENCE_DATE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})\b")
+
+
+def _dates_in(text: str) -> tuple[date, ...]:
+    values: list[date] = []
+    for day, month, year in _EVIDENCE_DATE.findall(text):
+        full_year = int(year) + 2000 if len(year) == 2 else int(year)
+        try:
+            values.append(date(full_year, int(month), int(day)))
+        except ValueError:
+            continue
+    return tuple(values)
+
+
+def _contradicts(status: TemporalStatus, dates: tuple[date, ...], as_of: date) -> bool:
+    """Future needs a date after `as_of`; stale needs one before it."""
+    if status is TemporalStatus.FUTURE:
+        return all(value <= as_of for value in dates)
+    return all(value >= as_of for value in dates)
+
+
+def _quoted_in(quote: str | None, candidate: DiscoveryCandidate) -> bool:
+    if not quote or not quote.strip():
+        return False
+    text = "\n".join(
+        (
+            candidate.title,
+            candidate.context_text,
+            *(member.text for member in candidate.members),
+        )
+    )
+    return _normalized(quote) in _normalized(text)
+
+
+def _normalized(value: str) -> str:
+    return " ".join(value.casefold().split())
+
+
+def _check_response(batch: DiscoveryBatch, response: DiscoveryBatchResponse) -> None:
+    """The response names every item once, and exceptions only real members."""
+    expected = {item.source_id for item in batch.items}
+    received = {item.source_id for item in response.items}
+    if received != expected or len(response.items) != len(expected):
+        raise ValueError("classifier response IDs do not exactly match batch IDs")
+    members = {item.source_id: {m.id for m in item.members} for item in batch.items}
+    for item in response.items:
+        named = [exception.member_id for exception in item.member_exceptions]
+        if len(named) != len(set(named)) or not set(named) <= members[item.source_id]:
+            raise ValueError(
+                f"classifier exceptions for {item.source_id} name unknown or "
+                "repeated members"
+            )
+        if any(
+            not exception.reason.strip() or len(exception.reason) > 2000
+            for exception in item.member_exceptions
+        ):
+            raise ValueError(
+                f"classifier exceptions for {item.source_id} need a reason of "
+                "1 to 2000 characters"
+            )
 
 
 def _prior(assessment: SourceAssessment | None) -> PriorAssessment | None:
@@ -539,29 +1001,51 @@ def _inherited_assessments(
     inherited: list[SourceAssessment] = []
     for assessment in direct:
         candidate = candidates[assessment.source_id]
-        for member_id in candidate.member_source_ids:
+        # Exceptions name members by their prompt id; members were shown in
+        # `member_source_ids` order, which the content fingerprint fixes.
+        exceptions = (
+            {
+                exception.member_id: exception
+                for exception in assessment.member_exceptions
+            }
+            if candidate.members
+            else {}
+        )
+        for index, member_id in enumerate(candidate.member_source_ids, start=1):
             reference = refs.get(member_id)
             if reference is None:
                 continue
             fingerprint = hashlib.sha256(
                 f"{assessment.input_fingerprint}\x1f{member_id}".encode()
             ).hexdigest()
-            inherited.append(
-                assessment.model_copy(
-                    update={
-                        "source_id": member_id,
-                        "scope": (
-                            DiscoveryScope.TABLE
-                            if "::table::" in member_id
-                            else DiscoveryScope.BLOCK
-                        ),
-                        "decision_source": DecisionSource.INHERITED,
-                        "inherited_from": assessment.source_id,
-                        "input_fingerprint": fingerprint,
-                        "source_refs": (reference,),
-                    }
-                )
-            )
+            update: dict[str, object] = {
+                "source_id": member_id,
+                "scope": (
+                    DiscoveryScope.TABLE
+                    if "::table::" in member_id
+                    else DiscoveryScope.BLOCK
+                ),
+                "decision_source": DecisionSource.INHERITED,
+                "inherited_from": assessment.source_id,
+                "input_fingerprint": fingerprint,
+                "source_refs": (reference,),
+                "member_exceptions": (),
+            }
+            if (exception := exceptions.get(f"m{index}")) is not None:
+                # The classifier read this member and judged it differently
+                # from its section: its own decision, not an inherited one.
+                update |= {
+                    "product_association": exception.product_association,
+                    "role": exception.role,
+                    "relevance": exception.relevance,
+                    "reason": exception.reason,
+                    "decision_source": (
+                        DecisionSource.CACHE
+                        if assessment.decision_source is DecisionSource.CACHE
+                        else DecisionSource.LLM
+                    ),
+                }
+            inherited.append(assessment.model_copy(update=update))
     return tuple(inherited)
 
 
@@ -577,57 +1061,3 @@ def _member_references(
             if table.source_refs:
                 values[f"{document.id}::table::{table.id}"] = table.source_refs[0]
     return values
-
-
-def _build_extraction_context(
-    product: ProductType,
-    direct: tuple[SourceAssessment, ...],
-    candidates: dict[str, DiscoveryCandidate],
-) -> ExtractionContext:
-    items: list[ExtractionContextItem] = []
-    for assessment in direct:
-        if (
-            assessment.relevance is Relevance.IRRELEVANT
-            or assessment.temporal_status
-            in {
-                TemporalStatus.POSSIBLY_STALE,
-                TemporalStatus.FUTURE,
-            }
-        ):
-            continue
-        candidate = candidates[assessment.source_id]
-        items.append(
-            ExtractionContextItem(
-                source_id=assessment.source_id,
-                document_id=assessment.document_id,
-                scope=assessment.scope,
-                role=assessment.role,
-                authority=assessment.authority,
-                temporal_status=assessment.temporal_status,
-                precedence=_precedence(assessment),
-                text=candidate.context_text,
-                conditions=assessment.conditions,
-                effective_periods=assessment.effective_periods,
-                source_refs=candidate.source_refs,
-            )
-        )
-    items.sort(key=lambda item: (item.precedence, item.document_id, item.source_id))
-    return ExtractionContext(product=product, items=tuple(items))
-
-
-def _precedence(assessment: SourceAssessment) -> int:
-    if assessment.authority is Authority.OFFICIAL_TERMS:
-        return 1
-    if assessment.scope is DiscoveryScope.TABLE and assessment.role in {
-        InformationRole.PRODUCT_TERMS,
-        InformationRole.PRICING,
-        InformationRole.FEES,
-    }:
-        return 2
-    if assessment.authority is Authority.OFFICIAL_PRODUCT_CONTENT:
-        return 3
-    if assessment.authority is Authority.OFFICIAL_FAQ:
-        return 4
-    if assessment.authority is Authority.OFFICIAL_CAMPAIGN_CONTENT:
-        return 5
-    return 6

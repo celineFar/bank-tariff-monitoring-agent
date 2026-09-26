@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Sequence
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from time import perf_counter
@@ -28,6 +29,7 @@ from app.domain.monitoring import (
     SourceManifestItem,
 )
 from app.domain.normalization import NormalizedSourceBundle
+from app.domain.pdf_extraction import PdfLinkSelection
 from app.domain.pipeline import IndexingRefreshResult, SourceManifest, StageTiming
 from app.domain.review import (
     ReviewCandidate,
@@ -39,7 +41,7 @@ from app.domain.semantic_extraction import (
     SemanticExtractionPlan,
     SemanticExtractionResult,
 )
-from app.domain.source_discovery import SourceDiscoveryResult
+from app.domain.source_discovery import OfferingContext, SourceDiscoveryResult
 from app.repositories.contracts import (
     MonitoringSnapshotRepository,
     OfferingPublicationRepository,
@@ -66,6 +68,10 @@ from app.services.snapshot_lifecycle import (
     evidence_changed,
     non_reviewable_extraction_failure,
 )
+from app.services.source_selection import (
+    build_selected_source_bundle,
+    select_sources,
+)
 from app.services.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -78,12 +84,27 @@ class AcquisitionPort(Protocol):
 
 
 class NormalizationPort(Protocol):
-    async def normalize(self, artifact: PageArtifact) -> NormalizedSourceBundle: ...
+    async def normalize(
+        self,
+        artifact: PageArtifact,
+        *,
+        pdf_selection: PdfLinkSelection | None = None,
+    ) -> NormalizedSourceBundle: ...
+
+
+class PdfLinkSelectionPort(Protocol):
+    async def select(
+        self, artifact: PageArtifact, offering: OfferingContext
+    ) -> PdfLinkSelection: ...
 
 
 class SourceDiscoveryPort(Protocol):
     async def discover(
-        self, bundle: NormalizedSourceBundle, product
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryResult: ...
 
 
@@ -140,8 +161,13 @@ class IndexingPipeline:
         runs: RunRepository | None = None,
         audit_archive: PipelineAuditArchive | None = None,
         large_rate_change_percentage_points: float = 3.0,
+        pdf_selection: PdfLinkSelectionPort | None = None,
+        catalog: SeedCatalog | None = None,
     ) -> None:
         self._acquisition = acquisition
+        self._pdf_selection = pdf_selection
+        # The other offerings, for source discovery's cross-sell rule.
+        self._catalog = catalog
         self._normalization = normalization
         self._discovery = discovery
         self._extraction = extraction
@@ -219,10 +245,25 @@ class IndexingPipeline:
                     offering.offering_id.value,
                     exc_info=True,
                 )
+        offering_context = OfferingContext.from_catalog_entry(
+            offering,
+            page_title=artifact.title,
+            page_blocks=artifact.blocks,
+            catalog=self._catalog,
+        )
+        pdf_selection = None
+        if self._pdf_selection is not None and artifact.downloadable_documents:
+            # Source discovery's first step: which linked PDFs belong to this
+            # offering, from their links, before any transcription is paid for.
+            pdf_selection = await stage(
+                "pdf_selection",
+                OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
+                self._pdf_selection.select(artifact, offering_context),
+            )
         bundle = await stage(
             "normalization",
             OfferingFailureCode.NORMALIZATION_FAILED,
-            self._normalization.normalize(artifact),
+            self._normalization.normalize(artifact, pdf_selection=pdf_selection),
         )
         audit = self._audit_archive
         audit_context = (
@@ -242,7 +283,11 @@ class IndexingPipeline:
             discovery = await stage(
                 "source_discovery",
                 OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
-                self._discovery.discover(bundle, offering.product),
+                self._discovery.discover(
+                    bundle,
+                    offering_context,
+                    as_of=artifact.retrieved_at.date(),
+                ),
             )
         except OfferingPipelineError as exc:
             if audit is not None and audit_context is not None:
@@ -309,17 +354,17 @@ class IndexingPipeline:
                 self._large_rate_change_percentage_points
             ),
         )
-        selected_document_ids = frozenset(
-            item.document_id for item in discovery.extraction_context.items
-        )
+        # The same selection extraction used: the RAG index holds only what
+        # source discovery selected for this offering, with its labels.
+        selection = select_sources(discovery)
         source_documents = self._projection.project_sources(
             run_id=run_id,
             product=offering.product,
             offering_id=offering.offering_id,
-            bundle=bundle,
+            bundle=build_selected_source_bundle(bundle, discovery),
             retrieved_at=artifact.retrieved_at,
             language=offering.language or artifact.language or "en",
-            selected_document_ids=selected_document_ids,
+            labels=selection.items,
         )
         if not source_documents:
             raise OfferingPipelineError(

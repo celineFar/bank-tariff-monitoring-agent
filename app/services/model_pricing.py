@@ -112,6 +112,20 @@ MODEL_PRICE_CATALOG: dict[str, tuple[ModelPrice, ...]] = {
 }
 
 
+# How the structured classifiers switch thinking off, per model. Probed with one
+# call each on 2026-09-26: every model accepts temperature 0, but
+# gemini-3.5-flash-lite answers 400 to `thinking_budget=0` and takes
+# `thinking_level=MINIMAL` instead, while gemini-3.7-flash and gemini-3.8-flash
+# answer 400 to `MINIMAL`. (The older list of "no temperature 0" models was a
+# misdiagnosis of this.) Models not listed use `thinking_budget=0`.
+MINIMAL_THINKING_LEVEL_MODELS = frozenset({"gemini-3.5-flash-lite"})
+
+
+def uses_minimal_thinking_level(model: str) -> bool:
+    """Whether `model` needs `thinking_level=MINIMAL` rather than a zero budget."""
+    return model in MINIMAL_THINKING_LEVEL_MODELS
+
+
 def get_model_price(model: str, *, on_date: date | None = None) -> ModelPrice:
     effective_date = on_date or date.today()
     for price in MODEL_PRICE_CATALOG.get(model, ()):

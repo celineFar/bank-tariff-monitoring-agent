@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -22,6 +22,23 @@ from app.domain.normalization import (
     NormalizedTable,
 )
 from app.domain.semantic_extraction import ExtractedValue, LoanProduct
+from app.domain.source_discovery import (
+    ProductAssociation,
+    SourceAssessment,
+    TemporalStatus,
+)
+from app.services.source_selection import assessment_precedence
+
+# Discovery labels a unit may carry and still be indexed for this offering.
+# Related products, navigation, and superseded or future versions are left out:
+# an offering's index must not answer with a sibling's values.
+_INDEXED_ASSOCIATIONS = frozenset(
+    {
+        ProductAssociation.CURRENT_PRODUCT,
+        ProductAssociation.UNKNOWN,
+        ProductAssociation.GENERIC_BANK_INFORMATION,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +50,8 @@ class _ProjectionUnit:
     extraction_method: str
     quality_score: float | None
     unit_type: str
+    # The discovery assessment that selected this unit, when known.
+    label: SourceAssessment | None = None
 
 
 class KnowledgeProjectionService:
@@ -51,7 +70,15 @@ class KnowledgeProjectionService:
         retrieved_at: datetime,
         language: str,
         selected_document_ids: frozenset[str] | None = None,
+        labels: Mapping[str, SourceAssessment] | None = None,
     ) -> tuple[KnowledgeDocument, ...]:
+        """Chunks for the documents of a (selected) bundle.
+
+        With `labels` (source item id -> the discovery assessment that selected
+        it), units labelled as another product, navigation, or a superseded or
+        future version are left out, and every chunk records the labels of the
+        units it holds.
+        """
         if offering_id.product is not product:
             raise ValueError("offering does not belong to product")
         documents = (
@@ -60,16 +87,21 @@ class KnowledgeProjectionService:
             if selected_document_ids is None or document.id in selected_document_ids
         )
         return tuple(
-            self._project_source_document(
-                run_id=run_id,
-                product=product,
-                offering_id=offering_id,
-                document=document,
-                retrieved_at=retrieved_at,
-                language=language,
-            )
+            projected
             for document in documents
             if document.blocks or document.tables
+            if (
+                projected := self._project_source_document(
+                    run_id=run_id,
+                    product=product,
+                    offering_id=offering_id,
+                    document=document,
+                    retrieved_at=retrieved_at,
+                    language=language,
+                    labels=labels,
+                )
+            )
+            is not None
         )
 
     def project_summary(
@@ -143,7 +175,9 @@ class KnowledgeProjectionService:
         document: NormalizedDocument,
         retrieved_at: datetime,
         language: str,
-    ) -> KnowledgeDocument:
+        labels: Mapping[str, SourceAssessment] | None = None,
+    ) -> KnowledgeDocument | None:
+        labels = labels or {}
         table_by_id = {table.id: table for table in document.tables}
         rendered_tables: set[str] = set()
         units: list[_ProjectionUnit] = []
@@ -151,15 +185,18 @@ class KnowledgeProjectionService:
             if block.type is NormalizedBlockType.TABLE and block.table_id:
                 table = table_by_id.get(block.table_id)
                 if table is not None:
-                    units.append(_table_unit(table, document))
+                    units.append(_table_unit(table, document, labels.get(table.id)))
                     rendered_tables.add(table.id)
                     continue
-            units.append(_block_unit(block, document))
+            units.append(_block_unit(block, document, labels.get(block.id)))
         units.extend(
-            _table_unit(table, document)
+            _table_unit(table, document, labels.get(table.id))
             for table in document.tables
             if table.id not in rendered_tables
         )
+        units = [unit for unit in units if unit.label is None or _indexed(unit.label)]
+        if not units:
+            return None
         chunks = self._chunks_from_units(
             tuple(units),
             language=language,
@@ -210,10 +247,12 @@ class KnowledgeProjectionService:
         current_size = 0
         for unit in expanded:
             separator_size = 2 if current else 0
-            if (
-                current
-                and current_size + separator_size + len(unit.content)
+            if current and (
+                current_size + separator_size + len(unit.content)
                 > self._max_chunk_chars
+                # A chunk never mixes the offering's own content with generic
+                # bank material, so each chunk's labels describe all of it.
+                or _association(current[-1]) != _association(unit)
             ):
                 groups.append(current)
                 current = []
@@ -244,6 +283,25 @@ class KnowledgeProjectionService:
                 )
             )
             methods = tuple(dict.fromkeys(unit.extraction_method for unit in group))
+            unit_labels = [unit.label for unit in group if unit.label is not None]
+            label_metadata: dict[str, Any] = (
+                {
+                    "product_associations": sorted(
+                        {label.product_association.value for label in unit_labels}
+                    ),
+                    "temporal_statuses": sorted(
+                        {label.temporal_status.value for label in unit_labels}
+                    ),
+                    "authorities": sorted(
+                        {label.authority.value for label in unit_labels}
+                    ),
+                    "precedence": min(
+                        assessment_precedence(label) for label in unit_labels
+                    ),
+                }
+                if unit_labels
+                else {}
+            )
             scores = tuple(
                 unit.quality_score for unit in group if unit.quality_score is not None
             )
@@ -267,6 +325,7 @@ class KnowledgeProjectionService:
                         "unit_types": list(
                             dict.fromkeys(unit.unit_type for unit in group)
                         ),
+                        **label_metadata,
                     },
                 )
             )
@@ -328,8 +387,25 @@ def _render_summary_field(
     return lines
 
 
+def _indexed(label: SourceAssessment) -> bool:
+    return (
+        label.product_association in _INDEXED_ASSOCIATIONS
+        and label.temporal_status
+        not in {
+            TemporalStatus.POSSIBLY_STALE,
+            TemporalStatus.FUTURE,
+        }
+    )
+
+
+def _association(unit: _ProjectionUnit) -> str | None:
+    return unit.label.product_association.value if unit.label is not None else None
+
+
 def _block_unit(
-    block: NormalizedBlock, document: NormalizedDocument
+    block: NormalizedBlock,
+    document: NormalizedDocument,
+    label: SourceAssessment | None = None,
 ) -> _ProjectionUnit:
     heading = " / ".join(block.heading_path) or None
     if block.type is NormalizedBlockType.HEADING:
@@ -352,11 +428,14 @@ def _block_unit(
         extraction_method=block.extraction_method,
         quality_score=document.quality_score,
         unit_type=block.type.value,
+        label=label,
     )
 
 
 def _table_unit(
-    table: NormalizedTable, document: NormalizedDocument
+    table: NormalizedTable,
+    document: NormalizedDocument,
+    label: SourceAssessment | None = None,
 ) -> _ProjectionUnit:
     lines = [f"### {table.title}"] if table.title else []
     if table.headers:
@@ -391,6 +470,7 @@ def _table_unit(
         extraction_method=document.extraction_method,
         quality_score=document.quality_score,
         unit_type="table",
+        label=label,
     )
 
 

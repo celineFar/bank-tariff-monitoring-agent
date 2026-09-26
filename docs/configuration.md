@@ -115,22 +115,29 @@ downloader receives `settings.http` and the PDF extraction service receives
   separate from `LOG_FILE`, reusing `LOG_MAX_BYTES` and `LOG_BACKUP_COUNT`.
 - **Source discovery:** `SOURCE_DISCOVERY_POLICY_VERSION`,
   `SOURCE_DISCOVERY_PROMPT_VERSION`, `SOURCE_DISCOVERY_MAX_ITEMS_PER_BATCH`,
-  `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`, and
-  `SOURCE_DISCOVERY_MAX_CHARS_PER_BATCH`. Preflight cost assumptions use
+  `SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM` (sections longer than this are split into
+  parts, never cut), `SOURCE_DISCOVERY_MAX_CHARS_PER_BATCH`, and
+  `SOURCE_DISCOVERY_MAX_CONCURRENT_BATCHES` (default `3`; results keep batch
+  order). Preflight cost assumptions use
   `SOURCE_DISCOVERY_ESTIMATED_CHARS_PER_INPUT_TOKEN` and
   `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`. Classifier resilience uses
   `SOURCE_DISCOVERY_CLASSIFIER_MAX_ATTEMPTS`,
   `SOURCE_DISCOVERY_CLASSIFIER_BACKOFF_BASE_SECONDS`,
-  `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`, and
-  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Whole-run fallback order is
-  configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`.
+  `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`,
+  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`, and
+  `SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS` (default `8192` per call; caps a
+  runaway answer). Whole-run fallback order is
+  configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`
+  (default `gemini-3.5-flash-lite`; the same chain serves the PDF link selection).
   `SOURCE_DISCOVERY_MODEL_NAME` overrides the primary classifier model for this
   stage; when unset the stage falls back to the global `MODEL_NAME`.
-  `SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` is a hard ceiling applied
-  independently to both input and output rates before any live model call.
+  `SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `2.50`, the output
+  rate of the fallback) is a hard ceiling applied independently to both input and
+  output rates before any live model call.
   Model-specific paid-tier
-  rates and effective periods live in `app/services/model_pricing.py`. Policy,
-  prompt, model, product, and
+  rates and effective periods live in `app/services/model_pricing.py`, with the
+  models that switch thinking off with `thinking_level=MINIMAL` instead of a zero
+  budget (a model that rejects the other form answers 400 to every call). Policy, prompt, model, product, offering, and
   content fingerprints jointly define exact cache reuse. Changing either version
   deliberately invalidates the corresponding cached assessments.
 - **Semantic extraction:** `SEMANTIC_EXTRACTION_SCHEMA_VERSION`,

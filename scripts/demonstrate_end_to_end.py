@@ -63,7 +63,7 @@ from app.services.semantic_extraction import (
     AdkSemanticExtractor,
     SemanticExtractionService,
 )
-from app.services.source_discovery import SourceDiscoveryService
+from app.services.source_discovery import SourceDiscoveryService, offering_context_for
 from app.services.source_selection import build_selected_source_bundle
 from scripts.demonstrations.runs import RUN_DIRECTORY, next_run_directory
 
@@ -638,7 +638,7 @@ def _document_selection_decision(
             for item in result.assessments
             if item.document_id == document.id
             and item.source_id == f"document::{document.id}"
-            and item.scope in {DiscoveryScope.DOCUMENT, DiscoveryScope.API_PAYLOAD}
+            and item.scope is DiscoveryScope.DOCUMENT
         ),
         None,
     )
@@ -695,7 +695,7 @@ async def _run_discovery(
             settings=settings.source_discovery,
             model_name=model_name,
         )
-        plan = await service.plan(bundle, product)
+        plan = await service.plan(bundle, offering_context_for(bundle, product))
         print(
             f"  source-discovery model {index + 1}/{len(models)}: {model_name}",
             flush=True,
@@ -707,7 +707,9 @@ async def _run_discovery(
             flush=True,
         )
         try:
-            result = await service.discover(bundle, product)
+            result = await service.discover(
+                bundle, offering_context_for(bundle, product)
+            )
         except Exception as exc:
             attempts.append(_model_attempt(model_name, classifier.usage, exc))
             if is_model_fallback_error(exc) and index + 1 < len(models):
@@ -897,6 +899,9 @@ async def _import_previous_run_caches(
             if reusable:
                 await discovery_repository.save(
                     product=discovery.product,
+                    # Recordings from before the offering scope carry none and,
+                    # like migration 019's old rows, never match an offering.
+                    offering_id=discovery.offering_id or "",
                     policy_version=discovery.policy_version,
                     prompt_version=discovery.prompt_version,
                     model_name=discovery.model_name,

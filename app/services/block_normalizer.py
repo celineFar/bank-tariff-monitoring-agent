@@ -44,6 +44,7 @@ def normalize_block(
         parent_id=block.parent_id,
         link_ids=block.link_ids,
         visible=block.visible,
+        site_chrome=block.site_chrome,
         table_id=table_id,
         fields=fields,
         scalar_candidates=extract_scalar_candidates(text),

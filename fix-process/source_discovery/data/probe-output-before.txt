@@ -1,0 +1,161 @@
+== 1. Candidates per seed (page only) ==
+    shared_structural_groups=1
+consumer_standard                candidates= 33 rule= 2 gemini= 31 batches=4 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3935 chars  Consumer loan
+    cut: section  11770 chars  Terms and conditions
+    cut: table     4556 chars  Consumer Loan Not Secured by Property — Consumer loan not se
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+credit_line                      candidates= 35 rule= 2 gemini= 33 batches=5 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3944 chars  Credit line
+    cut: section  10825 chars  Terms and conditions
+    cut: table     6003 chars  Credit line unsecured
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_commercial              candidates= 18 rule= 2 gemini= 16 batches=2 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3858 chars  Purchase commercial real estate
+    cut: section  12000 chars  Terms and conditions
+    cut: table    11999 chars  Tariffs — Loan for Purchase of Commercial Real Estate
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_construction            candidates= 20 rule= 2 gemini= 18 batches=3 cut>3000=5 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3944 chars  Construction loan
+    cut: section  12000 chars  Terms and conditions
+    cut: table    12000 chars  Home Construction Loan
+    cut: table    12000 chars  Loan for construction of commercial real estate
+    cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_diaspora                candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=1 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3823 chars  Your home in Armenia
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_express                 candidates= 23 rule= 2 gemini= 21 batches=3 cut>3000=1 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   4042 chars  Quick mortgage loan
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_no_income_verification  candidates= 25 rule= 2 gemini= 23 batches=3 cut>3000=2 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3990 chars  Get a mortgage without income verification
+    cut: table     3177 chars  Terms
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_online                  candidates= 32 rule= 2 gemini= 30 batches=4 cut>3000=4 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   4028 chars  Real estate online loan for primary and secondary market
+    cut: section  12000 chars  Terms and conditions
+    cut: table     9765 chars  Tariffs in the case of the primary market
+    cut: table     7090 chars  Tariffs in the case of the secondary market
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_primary                 candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=4 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3643 chars  Real estate loan for primary market
+    cut: section  12000 chars  Terms and conditions
+    cut: table    12000 chars  Tariffs — Home Purchase Loan (primary market)
+    cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_renovation              candidates= 18 rule= 2 gemini= 16 batches=2 cut>3000=5 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   4165 chars  Renovation loan
+    cut: section  12000 chars  Terms and conditions
+    cut: table    12000 chars  Home Renovation Loan
+    cut: table    11705 chars  Loan for renovation of commercial real estate
+    cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+mortgage_secondary_market        candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=4 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3929 chars  Real estate loan for secondary market
+    cut: section  12000 chars  Terms and conditions
+    cut: table    12000 chars  Tarifs — Home Purchase Loan (secondary market)
+    cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+online_consumer_finance          candidates= 17 rule= 2 gemini= 15 batches=2 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3887 chars  Online consumer finance
+    cut: section   5033 chars  Partners
+    cut: section   3310 chars  Terms and conditions
+    shared structural fingerprint x4: Unheaded page content
+    shared_structural_groups=1
+overdraft                        candidates= 32 rule= 2 gemini= 30 batches=4 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
+    cut: section   3926 chars  Overdraft
+    cut: section   4622 chars  Terms and conditions
+    cut: table     5280 chars  Overdrafts via Cards not secured with property (unsecured)
+    shared structural fingerprint x4: Unheaded page content
+
+== 2. Admitted PDF links: who decides ==
+consumer_standard                current    relevant  product_terms    rule    Consumer_loan_unsecured_eng.pdf
+consumer_standard                current    relevant  product_terms    rule    Consumer_unsecured_eng.pdf
+consumer_standard                irrelevant relevant  product_terms    rule    web-info-eng.pdf
+consumer_standard                current    relevant  fees             rule    Loan_tariffs_eng.pdf
+credit_line                      current    relevant  product_terms    rule    Credit_line_unsecured_eng.pdf
+credit_line                      current    relevant  product_terms    rule    unsecured_credit_line_eng.pdf
+credit_line                      current    relevant  fees             rule    Loan_tariffs_eng.pdf
+credit_line                      irrelevant relevant  product_terms    rule    web-info-eng.pdf
+mortgage_commercial              current    ambiguous other            gemini  insured-properties.pdf
+mortgage_commercial              current    relevant  product_terms    rule    mortgage_commercial_purchase_eng.pdf
+mortgage_commercial              current    relevant  fees             rule    Loan_tariffs_eng.pdf
+mortgage_commercial              current    relevant  legal_disclosure rule    Floating_Agreement_eng.pdf
+mortgage_construction            current    relevant  product_terms    rule    insured-properties.pdf
+mortgage_construction            current    relevant  product_terms    rule    mortage_personal_construction_eng.pdf
+mortgage_construction            current    relevant  product_terms    rule    mortgage_commercial_construction_eng.pdf
+mortgage_construction            current    relevant  product_terms    rule    mortgage_personal_express_eng.pdf
+mortgage_construction            current    relevant  product_terms    rule    terms_mortgage_lending_campaign_eng.pdf
+mortgage_construction            current    relevant  fees             rule    Loan_tariffs_eng.pdf
+mortgage_construction            current    relevant  legal_disclosure rule    Floating_Agreement_eng.pdf
+mortgage_express                 current    relevant  product_terms    rule    mortgage_personal_express_eng.pdf
+mortgage_express                 current    relevant  fees             rule    Loan_tariffs_eng.pdf
+mortgage_express                 current    relevant  fees             rule    Loan_tariffs_14.07.26_eng.pdf
+mortgage_no_income_verification  current    relevant  product_terms    rule    no-verification-mortgage-eng.pdf
+mortgage_online                  current    relevant  product_terms    rule    insured-properties.pdf
+mortgage_online                  current    relevant  product_terms    rule    mortgage_personal_online_purchase_eng.pdf
+mortgage_online                  current    relevant  product_terms    rule    mortgage_personal_online_secondary_purchase_eng.pdf
+mortgage_online                  current    relevant  product_terms    rule    terms_mortgage_lending_campaign_eng.pdf
+mortgage_online                  current    relevant  fees             rule    Loan_tariffs_eng.pdf
+mortgage_online                  current    relevant  legal_disclosure rule    Floating_Agreement_eng.pdf
+mortgage_primary                 current    relevant  product_terms    rule    insured-properties.pdf
+mortgage_primary                 current    relevant  product_terms    rule    mortgage_personal_purchase_eng.pdf
+mortgage_primary                 current    relevant  product_terms    rule    mortgage_personal_express_eng.pdf
+mortgage_primary                 current    relevant  product_terms    rule    terms_flexible_mortgage_eng.pdf
+mortgage_primary                 current    relevant  product_terms    rule    terms_mortgage_lending_campaign_eng.pdf
+mortgage_primary                 current    relevant  fees             rule    Loan_tariffs_eng.pdf
+mortgage_primary                 current    relevant  legal_disclosure rule    Floating_Agreement_eng.pdf
+mortgage_renovation              current    relevant  product_terms    rule    insured-properties.pdf
+mortgage_renovation              current    relevant  product_terms    rule    mortage_personal_renovation_eng.pdf
+mortgage_renovation              current    relevant  product_terms    rule    mortgage_commercial_renovation_eng.pdf
+mortgage_renovation              current    relevant  product_terms    rule    mortgage_personal_express_eng.pdf
+mortgage_renovation              current    relevant  product_terms    rule    renovation_loan_special_offer_eng.pdf
+mortgage_renovation              current    relevant  legal_disclosure rule    Floating_Agreement_eng.pdf
+mortgage_secondary_market        current    relevant  product_terms    rule    insured-properties.pdf
+mortgage_secondary_market        current    relevant  product_terms    rule    mortage_personal_purchase_Secondary_eng.pdf
+mortgage_secondary_market        current    relevant  product_terms    rule    mortgage_personal_express_eng.pdf
+mortgage_secondary_market        current    relevant  product_terms    rule    terms_mortgage_lending_campaign_eng.pdf
+mortgage_secondary_market        current    relevant  fees             rule    Loan_tariffs_eng.pdf
+mortgage_secondary_market        current    relevant  legal_disclosure rule    Floating_Agreement_eng.pdf
+online_consumer_finance          current    relevant  fees             rule    Payment_terminals_arm.pdf
+online_consumer_finance          current    relevant  product_terms    rule    Leaflet_consumer_finance_eng.pdf
+online_consumer_finance          irrelevant ambiguous other            gemini  web-info.pdf
+online_consumer_finance          current    ambiguous other            gemini  basic_conditions_of_installment_financing-service_eng.pdf
+overdraft                        current    relevant  product_terms    rule    Overdraft_unsecured_eng.pdf
+overdraft                        current    relevant  product_terms    rule    unsecured_overdraft_eng.pdf
+overdraft                        current    relevant  fees             rule    Loan_tariffs_eng.pdf
+tally (label, route): {('current', 'rule'): 50, ('irrelevant', 'rule'): 2, ('current', 'gemini'): 2, ('irrelevant', 'gemini'): 1}
+
+== 3. % values in current PDFs that also appear on the page ==
+consumer_standard: 13 distinct % values on the page
+    Consumer_loan_unsecured_eng.pdf                  pdf= 15 also_on_page= 12 pdf_only=  3
+    Consumer_unsecured_eng.pdf                       pdf= 11 also_on_page= 11 pdf_only=  0
+    Loan_tariffs_eng.pdf                             pdf=  2 also_on_page=  2 pdf_only=  0
+mortgage_express: 15 distinct % values on the page
+    mortgage_personal_express_eng.pdf                pdf= 15 also_on_page= 11 pdf_only=  4
+    Loan_tariffs_eng.pdf                             pdf=  2 also_on_page=  0 pdf_only=  2
+    Loan_tariffs_14.07.26_eng.pdf                    pdf=  2 also_on_page=  0 pdf_only=  2
+mortgage_primary: 41 distinct % values on the page
+    insured-properties.pdf                           pdf=  0 also_on_page=  0 pdf_only=  0
+    mortgage_personal_purchase_eng.pdf               pdf= 31 also_on_page= 30 pdf_only=  1
+    mortgage_personal_express_eng.pdf                pdf= 15 also_on_page= 15 pdf_only=  0
+    terms_flexible_mortgage_eng.pdf                  pdf=  5 also_on_page=  4 pdf_only=  1
+    terms_mortgage_lending_campaign_eng.pdf          pdf=  5 also_on_page=  3 pdf_only=  2
+    Loan_tariffs_eng.pdf                             pdf=  2 also_on_page=  2 pdf_only=  0
+    Floating_Agreement_eng.pdf                       pdf= 10 also_on_page=  4 pdf_only=  6
+overdraft: 12 distinct % values on the page
+    Overdraft_unsecured_eng.pdf                      pdf= 14 also_on_page= 11 pdf_only=  3
+    unsecured_overdraft_eng.pdf                      pdf= 10 also_on_page= 10 pdf_only=  0
+    Loan_tariffs_eng.pdf                             pdf=  2 also_on_page=  2 pdf_only=  0

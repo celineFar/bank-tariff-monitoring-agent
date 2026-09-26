@@ -1,0 +1,30 @@
+{
+  "scenario": "S03",
+  "passed": false,
+  "gemini_attempts": 0,
+  "gemini_cost_usd": 0.0,
+  "wall_seconds": 0.1,
+  "express_table": {
+    "mortgage_primary": "related",
+    "mortgage_construction": "related",
+    "mortgage_renovation": "related",
+    "mortgage_secondary_market": "related"
+  },
+  "own_tables_current": "28 of 29",
+  "own_tables_wrong": [
+    [
+      "consumer_standard",
+      "Loan service fees",
+      "related"
+    ]
+  ],
+  "leaks_after": 1,
+  "leaks_before": 29,
+  "section_leaks_after": [
+    [
+      "mortgage_construction",
+      "Construction loan > Terms and conditions",
+      "Online mortgage"
+    ]
+  ]
+}

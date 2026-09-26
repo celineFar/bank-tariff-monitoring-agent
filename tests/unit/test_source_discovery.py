@@ -21,6 +21,7 @@ from app.domain.source_discovery import (
     DiscoveryBatchResponse,
     InformationRole,
     ModelSourceAssessment,
+    OfferingContext,
     ProductAssociation,
     Relevance,
     TemporalStatus,
@@ -28,10 +29,12 @@ from app.domain.source_discovery import (
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
 from app.services.model_pricing import model_sequence
 from app.services.source_discovery import (
+    DiscoveryResponseError,
     FallbackSourceDiscoveryService,
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
+from app.services.source_selection import select_sources
 from scripts.demonstrate_source_discovery import (
     SourceDiscoveryRunFailed,
     _render_classification_results,
@@ -39,6 +42,12 @@ from scripts.demonstrate_source_discovery import (
 )
 
 URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
+OFFERING = OfferingContext(
+    offering_id="mortgage_primary",
+    product=ProductType.MORTGAGE,
+    display_name="Primary Market Mortgage",
+    seed_url=URL,
+)
 
 
 def test_model_sequence_preserves_order_and_removes_duplicates() -> None:
@@ -256,9 +265,9 @@ async def test_discovery_prefilters_inherits_and_reuses_exact_assessments() -> N
         model_name="configured-model",
     )
 
-    first = await service.discover(_bundle(), ProductType.MORTGAGE)
+    first = await service.discover(_bundle(), OFFERING)
     first_call_count = len(classifier.batches)
-    second = await service.discover(_bundle(), ProductType.MORTGAGE)
+    second = await service.discover(_bundle(), OFFERING)
 
     assert first_call_count > 0
     assert len(classifier.batches) == first_call_count
@@ -267,7 +276,7 @@ async def test_discovery_prefilters_inherits_and_reuses_exact_assessments() -> N
     assert any(item.inherited_from == "document::api:1" for item in first.assessments)
     assert all(
         item.role is not InformationRole.NAVIGATION
-        for item in first.extraction_context.items
+        for item in select_sources(first).items.values()
     )
 
 
@@ -281,10 +290,10 @@ async def test_changed_content_gets_prior_hint_but_is_reassessed() -> None:
         SourceDiscoverySettings(),
         model_name="configured-model",
     )
-    await service.discover(_bundle(), ProductType.MORTGAGE)
+    await service.discover(_bundle(), OFFERING)
 
     plan = await service.plan(
-        _bundle(changed_text="Nominal interest rate is 14%"), ProductType.MORTGAGE
+        _bundle(changed_text="Nominal interest rate is 14%"), OFFERING
     )
 
     changed = next(
@@ -302,8 +311,9 @@ async def test_discovery_rejects_missing_or_invented_classifier_ids() -> None:
         model_name="configured-model",
     )
 
-    with pytest.raises(ValueError, match="response IDs"):
-        await service.discover(_bundle(), ProductType.MORTGAGE)
+    with pytest.raises(DiscoveryResponseError, match="no valid answer") as raised:
+        await service.discover(_bundle(), OFFERING)
+    assert "response IDs" in str(raised.value.__cause__)
 
 
 @pytest.mark.asyncio
@@ -316,8 +326,8 @@ async def test_classification_markdown_groups_direct_decisions() -> None:
         model_name="configured-model",
     )
     bundle = _bundle()
-    plan = await service.plan(bundle, ProductType.MORTGAGE)
-    result = await service.discover(bundle, ProductType.MORTGAGE)
+    plan = await service.plan(bundle, OFFERING)
+    result = await service.discover(bundle, OFFERING)
 
     markdown = _render_classification_results(plan, result)
 
@@ -339,7 +349,7 @@ async def test_classifier_retries_transient_server_error(
         SourceDiscoverySettings(),
         model_name="configured-model",
     )
-    batch = (await planning.plan(_bundle(), ProductType.MORTGAGE)).batches[0]
+    batch = (await planning.plan(_bundle(), OFFERING)).batches[0]
     classifier = AdkSourceDiscoveryClassifier(
         "configured-model",
         api_key="fixture-key",
@@ -421,7 +431,7 @@ async def test_discovery_falls_back_when_the_primary_model_is_retired() -> None:
         )
     )
 
-    result = await service.discover(_bundle(), ProductType.MORTGAGE)
+    result = await service.discover(_bundle(), OFFERING)
 
     assert retired.calls == 1
     assert successor.batches
@@ -441,12 +451,14 @@ async def test_discovery_raises_once_every_configured_model_fails() -> None:
     )
 
     with pytest.raises(ClientError):
-        await service.discover(_bundle(), ProductType.MORTGAGE)
+        await service.discover(_bundle(), OFFERING)
 
 
 @pytest.mark.asyncio
-async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> None:
-    """A malformed response is the same on the next model, so do not pay twice."""
+async def test_an_answer_invalid_after_retry_and_split_moves_to_the_next_model() -> (
+    None
+):
+    """A model that cannot answer an item even alone, asked twice, hands over."""
     repository = InMemorySourceDiscoveryRepository()
     successor = _Classifier()
     service = FallbackSourceDiscoveryService(
@@ -456,6 +468,28 @@ async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> N
         )
     )
 
-    with pytest.raises(ValueError):
-        await service.discover(_bundle(), ProductType.MORTGAGE)
+    result = await service.discover(_bundle(), OFFERING)
+
+    assert successor.batches
+    assert result.model_name == "successor-model"
+
+
+@pytest.mark.asyncio
+async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> None:
+    """A failure in our own code is the same on the next model: do not pay twice."""
+
+    class _Broken:
+        async def classify(self, batch):
+            raise TypeError("bug in the caller")
+
+    successor = _Classifier()
+    service = FallbackSourceDiscoveryService(
+        (
+            _service(_Broken(), InMemorySourceDiscoveryRepository(), "first-model"),
+            _service(successor, InMemorySourceDiscoveryRepository(), "successor"),
+        )
+    )
+
+    with pytest.raises(TypeError):
+        await service.discover(_bundle(), OFFERING)
     assert not successor.batches

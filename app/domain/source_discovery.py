@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceType
+from app.domain.catalog import SeedCatalog, SeedCatalogEntry
 from app.domain.models import ProductType
 from app.domain.normalization import SourceReference
-from app.domain.pdf_extraction import PdfAdmission
+from app.domain.pdf_extraction import (
+    PdfAdmission,
+    PdfAdmissionRole,
+    PdfLinkChoice,
+    PdfLinkLabel,
+)
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -74,6 +81,8 @@ class DecisionSource(StrEnum):
     LLM = "llm"
     INHERITED = "inherited"
     HUMAN_OVERRIDE = "human_override"
+    # A linked PDF decided by source discovery from its link, before transcription.
+    LINK_SELECTION = "link_selection"
 
 
 class DiscoveryScope(StrEnum):
@@ -82,6 +91,16 @@ class DiscoveryScope(StrEnum):
     BLOCK = "block"
     TABLE = "table"
     API_PAYLOAD = "api_payload"
+
+
+class CandidateLayout(StrEnum):
+    """Where on the page a candidate sits, as far as layout alone can tell."""
+
+    CONTENT = "content"
+    # Inside the site's navigation, banner or footer.
+    SITE_CHROME = "site_chrome"
+    # Unheaded blocks above the page's first heading (language switch, phone).
+    PAGE_HEADER = "page_header"
 
 
 class EffectivePeriod(DiscoveryModel):
@@ -94,6 +113,32 @@ class EffectivePeriod(DiscoveryModel):
         if self.start and self.end and self.end < self.start:
             raise ValueError("effective period end must not precede start")
         return self
+
+
+class DiscoveryMember(DiscoveryModel):
+    """One block of a section, shown to the classifier with its own text."""
+
+    member_source_id: str = Field(min_length=1, max_length=500)
+    text: str = Field(min_length=1, max_length=12_000)
+
+
+class MemberException(DiscoveryModel):
+    """A section member that differs from its section's assessment.
+
+    `member_id` is the member's short id in the prompt item (`m1`, `m2`, ...),
+    in the order of the candidate's `member_source_ids`.
+
+    Deliberately unconstrained: this model is part of the classifier's response
+    schema, and Gemini rejects the whole request (400 INVALID_ARGUMENT) when the
+    nested exception carries a pattern or length limits on top of the item's
+    own. `_check_response` enforces them instead.
+    """
+
+    member_id: str
+    product_association: ProductAssociation
+    role: InformationRole
+    relevance: Relevance
+    reason: str
 
 
 class DiscoveryCandidate(DiscoveryModel):
@@ -115,6 +160,15 @@ class DiscoveryCandidate(DiscoveryModel):
     structural_fingerprint: str
     selection_reason: str = Field(min_length=1, max_length=1000)
     pdf_admission: PdfAdmission | None = None
+    pdf_selection: PdfLinkChoice | None = None
+    layout: CandidateLayout = CandidateLayout.CONTENT
+    # The URLs a page section links to (for the cross-sell rule).
+    link_urls: tuple[str, ...] = ()
+    # Sections list every member, so the classifier sees each member's text
+    # and can name the ones that differ. `member_context` is what the prompt
+    # shows beside them (the section's links).
+    members: tuple[DiscoveryMember, ...] = ()
+    member_context: str = ""
 
     @model_validator(mode="after")
     def validate_fingerprints(self) -> DiscoveryCandidate:
@@ -139,6 +193,9 @@ class SourceAssessment(DiscoveryModel):
     effective_periods: tuple[EffectivePeriod, ...] = Field(default=(), max_length=20)
     conditions: tuple[str, ...] = Field(default=(), max_length=50)
     reason: str = Field(min_length=1, max_length=2000)
+    member_exceptions: tuple[MemberException, ...] = Field(default=(), max_length=200)
+    # For `possibly_stale` or `future`: the item's own words showing it.
+    temporal_evidence: str | None = Field(default=None, max_length=500)
     decision_source: DecisionSource
     inherited_from: str | None = None
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -157,6 +214,105 @@ class PriorAssessment(DiscoveryModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class OtherOffering(DiscoveryModel):
+    offering_id: str
+    display_name: str
+    seed_url: HttpUrl
+
+
+class OfferingContext(DiscoveryModel):
+    """Which offering a discovery run is about.
+
+    `current_product` and `related_product` only mean something relative to
+    one offering: the Express mortgage table is the current product on the
+    Express page and a sibling on the primary-market page. The classifier gets
+    this identity, and the assessment cache is scoped to `offering_id`.
+    """
+
+    offering_id: str = Field(min_length=1, max_length=100)
+    product: ProductType
+    display_name: str = Field(min_length=1, max_length=200)
+    seed_url: HttpUrl
+    page_title: str | None = Field(default=None, max_length=1000)
+    names: tuple[str, ...] = ()
+    # What the offering's own page says it covers: its main heading and the
+    # text right under it ("For you to purchase, construct and renovate your
+    # home"). The name alone does not tell which variants the offering covers.
+    page_heading: str | None = Field(default=None, max_length=500)
+    page_summary: str | None = Field(default=None, max_length=1000)
+    # The catalog's other offerings. Used by the cross-sell rule (a card that
+    # links to another offering's page is that offering's); left out of the
+    # prompt JSON.
+    other_offerings: tuple[OtherOffering, ...] = Field(default=(), exclude=True)
+
+    @classmethod
+    def from_catalog_entry(
+        cls,
+        entry: SeedCatalogEntry,
+        *,
+        page_title: str | None = None,
+        page_blocks: Sequence[object] = (),
+        catalog: SeedCatalog | None = None,
+    ) -> OfferingContext:
+        names: list[str] = []
+        for terms in entry.localized_names.values():
+            names.extend((terms.name, *terms.aliases))
+        heading, summary = page_scope(page_blocks)
+        return cls(
+            offering_id=entry.offering_id.value,
+            product=entry.product,
+            display_name=entry.display_name,
+            seed_url=entry.seed_url,
+            page_title=page_title,
+            names=tuple(dict.fromkeys(name for name in names if name))[:20],
+            page_heading=heading,
+            page_summary=summary,
+            other_offerings=tuple(
+                OtherOffering(
+                    offering_id=other.offering_id.value,
+                    display_name=other.display_name,
+                    seed_url=other.seed_url,
+                )
+                for other in (catalog.offerings if catalog is not None else ())
+                if other.offering_id != entry.offering_id
+            ),
+        )
+
+
+def page_scope(
+    blocks: Sequence[object], *, limit: int = 800
+) -> tuple[str | None, str | None]:
+    """The page's first heading and the text right under it, outside site chrome.
+
+    Works on acquisition and normalized blocks alike (both have `type`,
+    `text` and `site_chrome`), so the PDF link selection, which runs before
+    normalization, sees the same scope as section classification.
+    """
+    heading: str | None = None
+    parts: list[str] = []
+    size = 0
+    for block in blocks:
+        if getattr(block, "site_chrome", False) or getattr(block, "table_id", None):
+            continue
+        text = " ".join(str(getattr(block, "text", "")).split())
+        if not text:
+            continue
+        if heading is None:
+            if getattr(getattr(block, "type", None), "value", None) == "heading":
+                heading = text[:500]
+            continue
+        if size + len(text) > limit:
+            break
+        parts.append(text)
+        size += len(text) + 3
+    return heading, (" / ".join(parts)[:1000] or None)
+
+
+class PromptMember(DiscoveryModel):
+    id: str
+    text: str
+
+
 class DiscoveryPromptItem(DiscoveryModel):
     source_id: str
     scope: DiscoveryScope
@@ -164,6 +320,7 @@ class DiscoveryPromptItem(DiscoveryModel):
     title: str
     heading_path: tuple[str, ...]
     content: str
+    members: tuple[PromptMember, ...] = ()
     mime_type: str
     extraction_method: str
     quality_score: float | None
@@ -173,6 +330,11 @@ class DiscoveryPromptItem(DiscoveryModel):
 class DiscoveryBatch(DiscoveryModel):
     id: str
     product: ProductType
+    offering: OfferingContext
+    # The day temporal status is judged on (the page's retrieval date). The
+    # model does not know today's date otherwise: it called "effective from
+    # 14.07.2026" future on 26.09.2026.
+    as_of: date | None = None
     items: tuple[DiscoveryPromptItem, ...] = Field(min_length=1)
 
 
@@ -186,6 +348,9 @@ class ModelSourceAssessment(DiscoveryModel):
     effective_periods: tuple[EffectivePeriod, ...] = Field(default=(), max_length=20)
     conditions: tuple[str, ...] = Field(default=(), max_length=50)
     reason: str = Field(min_length=1, max_length=2000)
+    # No length limit here either (see MemberException); checked after parsing.
+    member_exceptions: tuple[MemberException, ...] = ()
+    temporal_evidence: str | None = Field(default=None, max_length=500)
 
 
 class DiscoveryBatchResponse(DiscoveryModel):
@@ -194,6 +359,7 @@ class DiscoveryBatchResponse(DiscoveryModel):
 
 class SourceDiscoveryPlan(DiscoveryModel):
     product: ProductType
+    offering_id: str
     canonical_url: str
     input_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     policy_version: str
@@ -206,32 +372,58 @@ class SourceDiscoveryPlan(DiscoveryModel):
     inherited_item_count: int = Field(default=0, ge=0)
 
 
-class ExtractionContextItem(DiscoveryModel):
-    source_id: str
-    document_id: str
-    scope: DiscoveryScope
-    role: InformationRole
-    authority: Authority
-    temporal_status: TemporalStatus
-    precedence: int = Field(ge=1)
-    text: str = Field(min_length=1)
-    conditions: tuple[str, ...] = ()
-    effective_periods: tuple[EffectivePeriod, ...] = ()
-    source_refs: tuple[SourceReference, ...] = Field(min_length=1)
+class SourceSelection(DiscoveryModel):
+    """What source discovery hands to extraction and to the RAG projection.
 
+    `items` maps each selected source item (block, table) to the assessment
+    that decides it; `document_ids` are the documents with any selected
+    content, or selected as a whole. One selection for both consumers.
+    """
 
-class ExtractionContext(DiscoveryModel):
-    product: ProductType
-    items: tuple[ExtractionContextItem, ...] = ()
+    document_ids: tuple[str, ...] = ()
+    items: dict[str, SourceAssessment] = Field(default_factory=dict)
 
 
 class SourceDiscoveryResult(DiscoveryModel):
     product: ProductType
+    offering_id: str | None = None
     input_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     policy_version: str
     prompt_version: str
     model_name: str
     assessments: tuple[SourceAssessment, ...]
-    extraction_context: ExtractionContext
     llm_batch_count: int = Field(ge=0)
     reused_assessment_count: int = Field(ge=0)
+    # Invalid answers asked again, and batches split to isolate one (SD6).
+    batch_retries: int = Field(default=0, ge=0)
+    batch_splits: int = Field(default=0, ge=0)
+
+
+class PdfLinkPromptItem(DiscoveryModel):
+    """What the link selector sees of one admitted PDF link."""
+
+    id: str
+    file_name: str
+    document_name: str
+    link_text: str
+    link_title: str | None = None
+    heading_path: tuple[str, ...] = ()
+    nearby_text: str = ""
+    effective_periods: tuple[str, ...] = ()
+
+
+class PdfLinkBatch(DiscoveryModel):
+    id: str
+    offering: OfferingContext
+    links: tuple[PdfLinkPromptItem, ...] = Field(min_length=1)
+
+
+class PdfLinkModelDecision(DiscoveryModel):
+    id: str
+    label: PdfLinkLabel
+    role: PdfAdmissionRole
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class PdfLinkBatchResponse(DiscoveryModel):
+    items: tuple[PdfLinkModelDecision, ...] = Field(min_length=1)

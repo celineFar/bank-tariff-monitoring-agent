@@ -1,0 +1,9 @@
+{
+  "scenario": "S01",
+  "passed": true,
+  "gemini_attempts": 0,
+  "gemini_cost_usd": 0.0,
+  "wall_seconds": 39.5,
+  "files": 13,
+  "summary": "199 passed, 13 warnings in 37.86s"
+}

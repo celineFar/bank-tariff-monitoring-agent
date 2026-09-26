@@ -96,20 +96,24 @@ class EnvironmentSettings(BaseSettings):
     tariff_answer_read_model: str = "structured"
     retrieval_trace_level: str = "summary"
     retrieval_log_file: Path | None = None
-    source_discovery_policy_version: str = "1"
-    source_discovery_prompt_version: str = "1"
+    source_discovery_policy_version: str = "2"
+    source_discovery_prompt_version: str = "2"
     source_discovery_max_items_per_batch: int = 8
     source_discovery_max_chars_per_item: int = 3000
     source_discovery_max_chars_per_batch: int = 18_000
+    source_discovery_max_concurrent_batches: int = 3
     source_discovery_estimated_chars_per_input_token: float = 4.0
     source_discovery_estimated_output_tokens_per_item: int = 160
     source_discovery_classifier_max_attempts: int = 3
     source_discovery_classifier_backoff_base_seconds: float = 5.0
     source_discovery_classifier_max_backoff_seconds: float = 60.0
     source_discovery_classifier_retry_jitter_ratio: float = 0.25
+    source_discovery_classifier_max_output_tokens: int = 8192
     source_discovery_model_name: str | None = "gemini-3.1-flash-lite"
-    source_discovery_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
-    source_discovery_max_price_per_million_tokens_usd: float = 1.5
+    source_discovery_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
+        "gemini-3.5-flash-lite",
+    )
+    source_discovery_max_price_per_million_tokens_usd: float = 2.5
     semantic_extraction_schema_version: str = "5"
     semantic_extraction_prompt_version: str = "5"
     semantic_extraction_max_evidence_chars_per_item: int = 5000

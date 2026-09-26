@@ -163,6 +163,7 @@ def stream_progress(
 STAGE_LABELS: dict[str, str] = {
     "starting": "Starting",
     "acquisition": "Acquiring web content",
+    "pdf_selection": "Choosing the offering's documents",
     "normalization": "Reading source documents",
     "source_discovery": "Finding tariff evidence",
     "semantic_extraction": "Extracting tariff fields",

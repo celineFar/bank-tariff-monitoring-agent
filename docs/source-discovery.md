@@ -12,89 +12,187 @@ state and each PDF receives its own `*.selection_decisions.md` and
 `*.selection_diff.md`. The retained content is also written as
 `selected_webpage.md` and per-document `selected_*.md` files. These are
 human-readable renderings of `selected_sources.json`, the filtered structured bundle
-passed to semantic extraction. A PDF admitted as relevant from its title, link label,
-and surrounding metadata receives one document-level decision that is inherited by
-its blocks and tables; historical or future status still excludes it from current
-terms.
+passed to semantic extraction.
+
+## PDF link selection (before transcription)
+
+Source discovery starts before normalization. `PdfLinkSelectionService` takes every
+linked PDF that deterministic admission lets through (off-topic metadata and, by
+default, superseded editions are skipped without any model) and asks a tool-free
+Gemini classifier, in one call per offering, to label each from its link metadata
+alone (file name, document name, link text and title, heading path, nearby text,
+effective periods):
+
+- `current_product`: the offering's own terms, information leaflet, or tariff;
+- `shared_terms`: terms that apply to it among other loans (the loan fee schedule,
+  the floating-rate procedure, a lending campaign that covers it);
+- `related_product`: another product's or an uncovered variant's document;
+- `generic_bank_information`: bank-wide material that is not lending terms;
+- `unclear`: the link does not say.
+
+Only `current_product`, `shared_terms` and `unclear` PDFs are read and transcribed.
+The pipeline records the stage as `pdf_selection`, the audit as
+`2_pdf_link_selection.md`, and caches decisions in `pdf_link_selections` by offering,
+policy and prompt version, model, and a fingerprint of the link metadata, so an
+unchanged link is never asked about again. It uses the discovery models and fallback
+chain. In discovery, every transcribed PDF is then checked once on its content,
+whatever its link label: the website's profile terms are linked as "Terms and
+Conditions" under a loan's own terms, and an undated "special offer" link led to a
+campaign that ended on 31.12.2025. Its blocks and tables inherit that document
+decision. A PDF the link step dropped has no content and keeps the link decision
+(`link_selection`). Historical or future status from explicit dates still excludes a
+PDF from current terms.
+
+## Cross-sell cards
+
+A small content section (at most 600 characters) that links to another catalog
+offering's seed page, and not to this offering's own, is that offering's cross-sell
+card and is decided `related_product` by rule, with no model call. The pipeline gives
+the `OfferingContext` the catalog's other offerings for this (they are not sent in the
+prompt). On the 13 seed pages the rule finds exactly the 16 cross-sell cards.
 
 ## Cost-aware execution
 
 `SourceDiscoveryService.plan()` performs all work that can happen before a model call:
 
-1. Build document, page-section, table, and API-payload classification units.
-2. Group children so one decision can be inherited by many blocks or JSON leaves.
+1. Build document, page-section, and table classification units.
+2. Group children so one decision can be inherited by many blocks.
 3. Apply deterministic rules for the canonical product document, hidden content,
-   repeated global navigation, and reusable HTML template payloads.
+   the site's navigation, header and footer (blocks the HTML parser marks
+   `site_chrome`, kept in their own group so a footer never joins a content
+   section), the unheaded page header above the first heading, and linked
+   documents with no content (skipped before transcription, or failed).
 4. Reuse exact assessments whose content fingerprints and discovery versions match.
+   Fingerprints are built from content, never from positional block or table ids,
+   so a block inserted near the top of a page does not invalidate every section.
 5. Attach a prior assessment as a non-authoritative hint when the structure is stable
-   but content changed.
+   but content changed. The structural fingerprint includes the parent's text (the
+   accordion or card title); a fingerprint that occurs twice on one page gets no
+   prior, because the stored one may belong to the other section.
 6. Pack only unresolved units into bounded model batches.
 
 An unchanged source therefore needs no repeated semantic assessment. A changed item
 is reassessed without discarding useful information about its stable page position.
-Cache identity includes product, content fingerprint, policy version, prompt version,
-and configured model name.
+Cache identity includes product, offering, content fingerprint, policy version,
+prompt version, and configured model name. The offering is part of it because
+"current product" and "related product" are relative: the Express mortgage table
+is the current product on the Express page and a sibling on the primary-market
+page.
 
-The PostgreSQL cache is owned by migration `003_source_discovery.sql`. It stores only
+The PostgreSQL cache is owned by migrations `003_source_discovery.sql` and
+`019_source_discovery_offering_scope.sql`. It stores only
 validated structured assessments. The model cannot access the repository or SQL.
 
 ## ADK classifier
 
 `AdkSourceDiscoveryClassifier` is a narrow tool-free ADK agent with a Pydantic output
-schema. It receives only the bounded batches produced by the plan. Source text is
+schema. It receives only the bounded batches produced by the plan. Every batch
+carries the `OfferingContext` (offering id, display name, catalog names, seed URL,
+page title, and the page's main heading with the text under it) that the product
+association is judged against. The offering covers every variant its page heading
+and text name (primary and secondary market; purchase, construction and renovation;
+residential and commercial property); `related_product` is for products the page
+presents as separate offers. The PDF link selection receives the same context.
+Every batch also carries `as_of`, the page's retrieval date: without it the model
+called "effective from 14.07.2026" future on 26.09.2026. Every model runs at
+temperature 0 with thinking off; how thinking is switched off depends on the model
+(`thinking_budget=0`, or `thinking_level=MINIMAL` for `gemini-3.5-flash-lite`, which
+rejects a zero budget), recorded in `app/services/model_pricing.py`.
+Each call is capped at `SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS` (default
+8192): a runaway answer is cut, fails validation, and is retried or split. The
+nested member-exception model deliberately carries no pattern or length limits:
+Gemini rejects the whole request (400) when it does, so `_check_response` enforces
+them. Source text is
 explicitly treated as untrusted evidence. The classifier must return exactly one
 known source ID per requested item; the application service rejects missing,
 duplicate, or invented IDs.
 
-The Google SDK performs its own bounded request retries. The classifier adds a
-second bounded application-level retry loop for status codes 429, 500, 502, 503,
-and 504, using exponential backoff and jitter. Authentication, permission, schema,
-and validation failures are not retried. After a model exhausts retryable failures,
-the run restarts complete discovery with the next explicitly configured
-`SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` entry. This applies to the worker's
-pipeline and to the demonstration alike: a provider error on any configured
-model — including the permanent 404 a retired model id answers — moves the run
-to the next model rather than failing the offering with `source.model_failed`.
-A deterministic failure such as a malformed or mismatched response is not a
-model-availability problem, so it fails the offering without paying for the
-next model. Each model keeps its own assessment cache namespace and is the
-`model_name` stored with the rows it produced, so whole-run fallback avoids
-mixing model decisions within one accepted result. The worker logs every model
-transition; the demonstration also announces them on the console and records
-failures, retries, usage, and cost per model in `model_attempts.json`.
+Retries have one owner: the Google SDK makes a single attempt, and the classifier's
+application-level loop retries status codes 429, 500, 502, 503, and 504 with
+exponential backoff and jitter (at most `SOURCE_DISCOVERY_CLASSIFIER_MAX_ATTEMPTS`
+calls per batch per model). Authentication and permission failures are not
+retried. An answer that breaks the contract (invalid JSON, a missing, repeated or
+invented id, an exception naming a member the item did not show) is asked once
+more; if it is still invalid, the batch is split in halves, down to single items.
+Batches run concurrently (`SOURCE_DISCOVERY_MAX_CONCURRENT_BATCHES`), every valid
+batch is saved as soon as it is checked, and results keep batch order. A model that
+cannot answer one item validly even alone and asked twice raises
+`DiscoveryResponseError`.
+
+After a model exhausts retryable failures, or raises `DiscoveryResponseError`, the
+run restarts complete discovery with the next `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`
+entry. This applies to the worker's pipeline and to the demonstration alike: a
+provider error on any configured model — including the permanent 404 a retired
+model id answers — moves the run to the next model rather than failing the offering
+with `source.model_failed`. A failure in the application's own code is not handed
+over. Each model keeps its own assessment cache namespace and is the `model_name`
+stored with the rows it produced, so whole-run fallback avoids mixing model
+decisions within one accepted result. The worker logs every model transition; the
+demonstration also announces them on the console and records failures, retries,
+usage, and cost per model in `model_attempts.json`.
 
 Because the classifier's output is schema-bound rather than free prose, this
 stage runs on its own cheap model instead of the global `MODEL_NAME`:
 `SOURCE_DISCOVERY_MODEL_NAME` defaults to `gemini-3.1-flash-lite`, falls back to
 `MODEL_NAME` only when explicitly unset, and runs with thinking disabled.
 `gemini-2.5-flash-lite` held this slot until the provider stopped serving it to
-new users on 2026-09-22. `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` is empty by
-default because the named successor, `gemini-3.5-flash-lite`, prices output
-above this stage's `1.50` ceiling; configuring it means raising that ceiling
-deliberately.
+new users on 2026-09-22 (it answers 404). The fallback is `gemini-3.5-flash-lite`,
+whose output rate is $2.50, so this stage's price ceiling is `2.50`.
+
+## Temporal status
+
+The classifier extracts explicit effective periods. Content with no date is
+`unknown`, not `possibly_stale`: `possibly_stale` and `future` need
+`temporal_evidence`, a quote from the item showing it, and an answer whose quote is
+missing or not found in the item becomes `unknown`. So does one whose quote carries
+dates that contradict it ("effective from 14.07.2026" read as future on
+26.09.2026). A "last updated" stamp is not an effective period.
+Effective periods are only the dates of the item's own content: when the dates or
+quoted words that make a section stale or future sit in fewer than half of its
+members (a "Terms and conditions" part that lists links to old editions), the
+section is `unknown` and those members become exceptions (an old or future
+edition, not relevant today). Dated periods then decide the status on
+the run's `as_of` date (the acquisition's retrieval date) for fresh and cached
+assessments alike, with the same rule PDF admission uses: current when a period
+covers the day, historical (`possibly_stale`) when all ended, future when all start
+later, time-bounded otherwise. A cached "valid until 31.10.2026" therefore becomes
+stale on 1 November without a new model call.
 
 Before live execution, every primary and fallback model is checked against
-`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `1.50`). If either
+`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `2.50`). If either
 its current input or output price exceeds the ceiling, the run stops before
 making an API request.
 
-Children inherit the validated container assessment. The final result still contains
-an assessment for every block, while the model operates on a much smaller set of
-classification units.
+Children inherit the validated container assessment, but a page section's children
+are not inherited blind. Each section item lists its member blocks with short ids
+(`m1`, `m2`, ...) and their full text; a section too long for one item
+(`SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`) is split into consecutive parts
+("Terms and conditions (part 2 of 5)") instead of being cut, so every member's
+text reaches the classifier. The classifier may return `member_exceptions` for
+members that differ from their section (a cross-sell card or a footer line); those
+members get the exception's association, role, relevance and reason, and the
+exception is stored with the section's assessment so a cache hit reproduces it.
+An exception naming a member the item did not show is rejected. Table items show
+the headers, the label of every row, and then as many full rows as fit. A linked
+document's blocks and tables inherit the document-level decision. The final result
+contains an assessment for every block, and a member's own assessment decides
+whether it is selected: a section's references never re-select a member the
+classifier excluded.
 
-## API and network payloads
+## Source selection
 
-Captured API payloads are part of discovery because they may contain terms absent
-from static HTML. They are assessed at payload scope, not one call per JSON leaf.
-Known presentation-template payloads are rejected deterministically. Relevant or
-ambiguous payloads receive compact representative content, with individual JSON-path
-blocks inheriting the result.
-
-## Extraction context
-
-Python converts assessments into a bounded `ExtractionContext`. Irrelevant material
-is excluded, while relevant and possibly relevant material is ordered using this
-precedence:
+`select_sources()` (`app/services/source_selection.py`) turns the assessments into
+one `SourceSelection`: each selected block or table with the assessment that
+decides it, and the documents that have selected content. Semantic extraction
+(`build_selected_source_bundle`) and the RAG projection read the same selection.
+Irrelevant, possibly stale and future material is excluded. A block's or table's own
+assessment decides it; a section's or document's references count only for items
+without one. The projection further leaves out units labelled as another product,
+navigation, or a superseded or future version, never puts the offering's own
+content and generic bank material in one chunk, and stamps every chunk's metadata
+with the product associations, temporal statuses, authorities and best precedence
+of its units. When one item has several selected assessments, the precedence
+decides:
 
 1. product-specific official terms;
 2. product terms/pricing/fees tables;
@@ -134,7 +232,7 @@ be updated when the provider changes rates.
 To execute the classifier explicitly, set `GEMINI_API_KEY` and add
 `--execute-llm`. Live outputs go to a new `llm_run_NNN/` directory and never
 overwrite `preflight/` or a previous live run. The live directory adds
-`source_discovery_result.json`, `assessments.json`, `extraction_context.json`, and
+`source_discovery_result.json`, `assessments.json`, `source_selection.json`, and
 `actual_usage_and_cost.json`. It also writes `classification_results.md`, a readable
 review grouped into relevant, possibly relevant, irrelevant, and deterministic/reused
 decisions. The report lists direct units only and summarizes inherited children. A
@@ -201,7 +299,7 @@ The individual fields mean:
 - `LLM batches that would be sent`: candidates packed into bounded requests.
 - `Characters selected for LLM`: total characters across all prospective requests, not token count.
 - `Changed-layout prior hints`: previous assessments available for structurally equivalent but content-changed components. Despite the label, these are normally stable-layout/content-changed hints.
-- `Child items covered by inheritance`: individual blocks or JSON leaves that do not need separate LLM calls because they inherit a grouped assessment.
+- `Child items covered by inheritance`: individual blocks and tables that do not need separate LLM calls because they inherit a grouped assessment.
 
 For this run, 30,941 normalized child items were condensed into only 40 semantic candidates.
 
@@ -216,10 +314,9 @@ In case_008, it contains nine assessments.
 Examples of material that can be classified deterministically include:
 
 - the canonical product-page document;
-- repeated global navigation;
+- the site's navigation, header and footer, and the unheaded page header;
 - content known to be hidden;
-- reusable HTML presentation templates;
-- obvious non-product payloads.
+- linked documents with no content (skipped before transcription, or failed).
 
 A typical assessment contains:
 
@@ -248,7 +345,7 @@ Important fields:
 
 - `source_id`: unique discovery identifier for the assessed unit.
 - `document_id`: normalized document containing the unit.
-- `scope`: level assessed, such as `document`, `section`, `table`, or `api_payload`.
+- `scope`: level assessed, such as `document`, `section`, or `table` (`api_payload` appears only in rows written before network payloads were removed).
 - `product_association`: whether it concerns the current product, another product, navigation, or generic bank information.
 - `role`: its information function, such as pricing, fees, eligibility, FAQ, or navigation.
 - `relevance`: `relevant`, `possibly_relevant`, or `irrelevant`.
@@ -304,7 +401,6 @@ Candidates may represent:
 - a page section;
 - a table;
 - an entire linked document;
-- a network/API payload;
 - another grouped structural unit.
 
 A typical candidate contains:
@@ -338,7 +434,7 @@ Important fields:
 - `source_id`: ID used when requesting and receiving a classification.
 - `document_id`: parent normalized document.
 - `scope`: classification-unit level.
-- `source_type`: page, PDF document, or API payload.
+- `source_type`: page or PDF document.
 - `title`: best available title for the unit.
 - `heading_path`: structural headings surrounding the content.
 - `context_text`: representative content from the complete unit.
@@ -548,4 +644,4 @@ Most importantly:
 - `discovery_plan.json` is the complete combined preflight object.
 - `summary.txt` is the quick overview.
 
-There are no final LLM classifications or final extraction context in this directory because this demonstration intentionally stops immediately before Gemini invocation.
+There are no final LLM classifications or final source selection in this directory because this demonstration intentionally stops immediately before Gemini invocation.

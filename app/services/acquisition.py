@@ -344,7 +344,9 @@ class AcquisitionService:
         material = {
             "canonical_url": canonical_url,
             "blocks": [
-                block.model_dump(mode="json")
+                # `site_chrome` is always False here; leaving it out keeps the
+                # identity of pages stored before the field existed.
+                block.model_dump(mode="json", exclude={"site_chrome"})
                 for block in parsed.blocks
                 if block.id not in chrome
             ],

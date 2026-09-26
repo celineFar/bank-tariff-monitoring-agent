@@ -17,6 +17,7 @@ Daily scheduler ----------+-> RunService              |
                                                     v
                                            deterministic pipeline
  discovery -> secure retrieval -> deterministic PDF admission/input probe
+ -> bounded Gemini PDF link selection (which admitted PDFs belong to the offering)
  -> bounded Gemini PDF structure extraction + deterministic HTML parsing
  -> structural normalization -> cached/rule prefilter -> bounded Gemini source classification
  -> clean/chunk -> PostgreSQL + pgvector -> hybrid retrieval
@@ -222,6 +223,8 @@ shell, or SQL tool.
   Project-owned event timestamps retain their `timestamptz` instants and have
   stored `timestamp` columns suffixed `_yerevan` for direct local-time inspection.
   Migration `009` generates and backfills those columns; ADK-owned tables are unchanged.
+  Migration `019` scopes the source-discovery assessment cache to the offering;
+  migration `020` adds `pdf_link_selections`, the cache of PDF link decisions.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
 
@@ -406,7 +409,15 @@ off-topic marker is admitted as irrelevant, and (unless `PDF_EXTRACTION_SKIP_HIS
 is disabled) a document whose metadata resolves to a historical temporal status is also
 skipped. Skipped documents yield an empty `pdf_skipped` normalized document, raise
 `PDF_SKIPPED_HISTORICAL`/`PDF_SKIPPED_IRRELEVANT`, and never reach the model. The
-link context admission reads is the link's own row, list item or paragraph. Otherwise a tool-free ADK agent sends the original PDF
+link context admission reads is the link's own row, list item or paragraph. For every
+PDF admission lets through, the pipeline's `pdf_selection` stage (source discovery's
+first step, `PdfLinkSelectionService`) asks a tool-free Gemini classifier, once per
+offering and from the links' metadata alone, whether it is the offering's own
+document, terms shared with other loans, another product's document, bank-wide
+material, or unclear. Only the offering's own, shared and unclear PDFs are read and
+transcribed; the others become empty `pdf_not_selected` documents with a
+`PDF_SKIPPED_NOT_SELECTED` warning. Decisions are cached in `pdf_link_selections`
+(migration 020) by offering and link-metadata fingerprint. Otherwise a tool-free ADK agent sends the original PDF
 bytes to Gemini and requires page-complete blocks, rectangular tables, notes, and
 footnotes. PDF outputs retain page locators (table cells cite themselves by id) and are
 cached by source hash, schema, prompt, model, and admission/probe fingerprint.
@@ -441,7 +452,7 @@ See `docs/normalization.md` for the complete contract and inspection workflow.
 tables, and PDFs into bounded classification units; applies deterministic
 rules; reuses content-addressed PostgreSQL assessments; and sends only unresolved
 semantic cases to a tool-free ADK classifier with strict structured output. Child
-blocks and JSON leaves inherit their container decision, so model use scales with
+blocks inherit their container decision, so model use scales with
 semantic novelty rather than raw normalized block count.
 
 `app/runtime.py` wraps one `SourceDiscoveryService` per configured model in a
@@ -452,19 +463,28 @@ its own cache namespace and stores its own `model_name`, so one accepted result
 never mixes decisions from two models. `FallbackSemanticExtractionService` does
 the same for extraction; its chain is empty unless configured.
 
-Downloaded PDFs with strongly product-relevant link text, title, URL, or surrounding
-heading receive a deterministic document assessment, so their extracted content is
-not sent through source classification again. Relevance does not imply currentness:
-archive/previous-term context and explicit effective dates independently classify a
-PDF as current, historical, future, time-bounded, or unknown. Historical and future
-documents remain auditable but are excluded from current-tariff extraction evidence.
+Every transcribed PDF, whatever its link was judged, is then classified once on its
+content (reading order, each page's tables compacted), and its blocks and tables
+inherit that decision: a link that looks like the loan's terms ("Terms and
+Conditions") can be the website's terms, and an undated link can lead to an expired
+campaign. A PDF with no content (skipped, not selected, or failed) is decided by rule;
+one the link selection dropped is recorded as `link_selection`. A small page section
+that links to another catalog offering's seed page (a cross-sell card) is
+`related_product` by rule. Relevance does not imply
+currentness: archive/previous-term context and explicit effective dates independently
+classify a PDF as current, historical, future, time-bounded, or unknown. Historical and
+future documents remain auditable but are excluded from current-tariff extraction
+evidence.
 
-Exact reuse requires matching product, content fingerprint, policy version, prompt
-version, and model name. Stable structure with changed content supplies only a prior
+Exact reuse requires matching product, offering, content fingerprint, policy version,
+prompt version, and model name; every classifier batch names the offering its product
+association is judged against. Stable structure with changed content supplies only a prior
 hint and still requires reassessment. Deterministic Python validates response IDs,
-persists assessments, expands inheritance, and constructs the precedence-ordered
-extraction context. See `docs/source-discovery.md` for the full contract and no-LLM
-preflight workflow.
+persists assessments, expands inheritance, and builds one `SourceSelection` that
+semantic extraction and the RAG projection both read: the knowledge index holds only
+selected content of this offering (no sibling products, navigation, or superseded
+versions), each chunk labelled with its discovery assessments. See
+`docs/source-discovery.md` for the full contract and no-LLM preflight workflow.
 
 ## Semantic extraction boundary
 

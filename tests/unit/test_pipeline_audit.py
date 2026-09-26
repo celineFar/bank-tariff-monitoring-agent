@@ -30,7 +30,6 @@ from app.domain.source_discovery import (
     Authority,
     DecisionSource,
     DiscoveryScope,
-    ExtractionContext,
     InformationRole,
     ProductAssociation,
     Relevance,
@@ -305,7 +304,6 @@ def _audit_fixture() -> tuple[
         prompt_version="1",
         model_name="test-model",
         assessments=(assessment,),
-        extraction_context=ExtractionContext(product=ProductType.MORTGAGE),
         llm_batch_count=1,
         reused_assessment_count=0,
     )

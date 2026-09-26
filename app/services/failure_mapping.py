@@ -114,7 +114,7 @@ def source_failure_code(exc: Exception, *, stage: str) -> SourceFailureCode:
         return SourceFailureCode.PARSING_FAILED
     if stage == "semantic_extraction":
         return SourceFailureCode.MODEL_FAILED
-    if stage == "source_discovery":
+    if stage in {"pdf_selection", "source_discovery"}:
         return SourceFailureCode.MODEL_FAILED
     return SourceFailureCode.VALIDATION_FAILED
 

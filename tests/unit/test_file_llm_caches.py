@@ -60,6 +60,7 @@ async def test_file_source_discovery_cache_reuses_exact_and_structural_entries(
 
     await repository.save(
         product=ProductType.MORTGAGE,
+        offering_id="mortgage_primary",
         policy_version="1",
         prompt_version="2",
         model_name="test-model",
@@ -68,6 +69,7 @@ async def test_file_source_discovery_cache_reuses_exact_and_structural_entries(
 
     exact = await repository.get_exact(
         product=ProductType.MORTGAGE,
+        offering_id="mortgage_primary",
         policy_version="1",
         prompt_version="2",
         model_name="test-model",
@@ -75,6 +77,7 @@ async def test_file_source_discovery_cache_reuses_exact_and_structural_entries(
     )
     structural = await repository.get_structural_priors(
         product=ProductType.MORTGAGE,
+        offering_id="mortgage_primary",
         policy_version="1",
         prompt_version="2",
         model_name="test-model",
