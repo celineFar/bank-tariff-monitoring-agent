@@ -1480,19 +1480,77 @@ item for values. The term-threshold test quotes the whole sentence.
 
 ### Phase 7: Cache and review memory (SE11, SE12)
 
-- [ ] SE11: `prompt_fingerprint` over model, generation config, instruction and user prompt;
+- [x] SE11: `prompt_fingerprint` over model, generation config, instruction and user prompt;
       deterministic rendering (ordering, number formats, JSON separators).
-- [ ] SE11: migration adding `prompt_fingerprint` (and a `validation_status` column) to
+- [x] SE11: migration adding `prompt_fingerprint` (and a `validation_status` column) to
       `semantic_extraction_batches`; look up by fingerprint; one default for the versions in
       `config/models.py`.
-- [ ] SE12: cache every response with its validation outcome.
-- [ ] SE12: migration for `review_decision_memory` (offering, field, prompt fingerprint,
+- [x] SE12: cache every response with its validation outcome.
+- [x] SE12: migration for `review_decision_memory` (offering, field, prompt fingerprint,
       result fingerprint, decision, reviewer, time); write on resolution in
       `review_resolution.py`.
-- [ ] SE12: reuse rule (same prompt fingerprint, or same field result) in extraction before
+- [x] SE12: reuse rule (same prompt fingerprint, or same field result) in extraction before
       review items are created; audit event `review_decision_reused`.
-- [ ] Update [docs/architecture.md](../../docs/architecture.md) (persistence responsibilities)
+- [x] Update [docs/architecture.md](../../docs/architecture.md) (persistence responsibilities)
       and [docs/native-hitl-review.md](../../docs/native-hitl-review.md).
+
+#### Phase 7 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 7: cache and review memory*. Full
+suite **1,038 passed** (the same 4 Gemini-key failures), including 2 new Postgres
+tests. The SE11 tests all pass without `xfail`; one `xfail` remains (SE25, Phase 8).
+
+**SE11 (cache key).**
+- `SemanticExtractionService.prompt_fingerprint(batch)` = sha256(model ‖ generation
+  settings (temperature 0, thinking budget, max output tokens) ‖ the instruction as
+  it is at call time ‖ `build_extraction_prompt(batch)`). `plan()` puts it in
+  `batch.content_fingerprint`.
+- Rendering is deterministic: reading order, `sort_keys` contracts, fixed separators.
+  So the key changes exactly when what the model sees changes. The planner's old
+  item-list hash is overridden.
+- `schema_version` and `prompt_version` are still in the lookup, as the manual
+  switch; they are both 6 in `models.py` and `environment.py` (Phase 5).
+  `environment.py` keeps its own default because the loader maps every environment
+  field that way; the two now agree.
+- Migration **021** adds `prompt_fingerprint` and `validation_status` to
+  `semantic_extraction_batches`, with an index. Lookups use `prompt_fingerprint`;
+  rows from before it are never matched again.
+
+**SE12 (every answer cached; decisions remembered).**
+- Every fresh answer is saved with `accepted` or `review`.
+- A cached answer is reused as it is. Before, one failing re-validation was dropped
+  and asked again. Now only an answer for other fields is set aside.
+- The bounded repair runs only on fresh answers, so an unchanged failing field costs
+  **no call at all** on later runs.
+- `review_decision_memory` (migration 021) holds offering, field, prompt fingerprint,
+  result fingerprint, the resolved `ValidatedFieldResult`, reviewer and review id.
+  `app/repositories/review_memory.py` has the Postgres and in-memory versions and
+  `result_fingerprint()` (field, status, canonical value, sorted cited IDs).
+- Review items and validated fields now carry both fingerprints.
+- **Written** by `ReviewDecisionService` (`review_decisions.py`, the service
+  `review_resolution.py` calls) *after* `approve_with_snapshot` commits, for
+  `select_candidate` and `override`. It is keyed on the model's own result for that
+  field: the review item when validation failed, or the flagged validated field (for
+  example a required field `not_stated`).
+- `approve` and `reject_all` are not remembered: they are about one run's candidate.
+- **Read** by `SemanticExtractionService._apply_review_memory` after validation. A
+  review item, or a validated field, whose prompt fingerprint or result fingerprint
+  matches is replaced by the decision, if every evidence ID the decision cites is in
+  the current catalog. The product is then assembled from the validated fields.
+- The result lists `reused_review_decisions` (field, review id, `matched_by`,
+  reviewer). The pipeline writes one `review_decision_reused` audit event each.
+- Tested end to end with fakes:
+  - run 1 opens a grounding review;
+  - after the decision, run 2 has no review, reuses it, makes **0 model calls**, and
+    matches by prompt;
+  - a changed evidence text re-opens the review.
+
+**Wiring.** `runtime.py` builds `PostgresReviewDecisionMemory` for both services.
+
+**Docs.** [docs/architecture.md](../../docs/architecture.md) (the extraction boundary
+rewritten for Phases 1–7: evidence identity, modes, validation, persistence) and
+[docs/native-hitl-review.md](../../docs/native-hitl-review.md) ("Remembered decisions").
+
 
 ### Phase 8: Execution and reliability (SE25, SE26, Q8)
 

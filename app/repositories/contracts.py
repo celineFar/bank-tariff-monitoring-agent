@@ -356,4 +356,5 @@ class SemanticExtractionRepository(Protocol):
         prompt_version: str,
         model_name: str,
         values: Sequence[tuple[str, ExtractionBatchResponse]],
+        validation_statuses: dict[str, str] | None = None,
     ) -> None: ...

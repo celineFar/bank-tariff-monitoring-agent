@@ -56,6 +56,7 @@ from app.services.semantic_extraction import (
     InMemorySemanticExtractionRepository,
     SemanticExtractionService,
     normalize_extraction_field_value,
+    validate_review_field_value,
 )
 from app.services.table_normalizer import normalize_table
 
@@ -454,7 +455,6 @@ async def _fingerprints(bundle, discovery, settings=None) -> set[str]:
     return {batch.content_fingerprint for batch in plan.batches}
 
 
-@pytest.mark.xfail(strict=True, reason="SE11: the instruction is not in the cache key")
 @pytest.mark.asyncio
 async def test_se11_instruction_change_changes_the_cache_key(monkeypatch) -> None:
     bundle, discovery = _mortgage_bundle("Loan amount AMD 3,000,000-150,000,000")
@@ -916,3 +916,90 @@ def test_se19_threshold_outside_every_range_is_not_a_term_rule() -> None:
         batch_id="b",
     )
     _validate_semantic_completeness(batch, result, validated)  # 6 < 12: not a split
+
+
+# --- SE11 / SE12: the prompt is the cache key; review decisions are remembered -----------
+
+
+@pytest.mark.asyncio
+async def test_se12_a_review_decision_is_asked_once_and_reused_until_evidence_changes() -> (
+    None
+):
+    from app.domain.semantic_extraction import (
+        RememberedReviewDecision,
+        ValidatedFieldResult,
+    )
+    from app.repositories.review_memory import InMemoryReviewDecisionMemory
+    from app.services.semantic_extraction import _hydrate_citation
+
+    class QuotesTheLabelOnly(ScriptedExtractor):
+        """A rate that always fails grounding the same way."""
+
+        def __init__(self):
+            super().__init__(
+                {
+                    ExtractionField.INTEREST_RATE: (
+                        '[{"value":{"min":21,"max":21},"conditions":[]}]',
+                        "Interest rate",
+                    )
+                }
+            )
+
+    memory = InMemoryReviewDecisionMemory()
+    repository = InMemorySemanticExtractionRepository()
+    extractor = QuotesTheLabelOnly()
+    service = SemanticExtractionService(
+        extractor,
+        repository,
+        SemanticExtractionSettings(),
+        model_name="model-a",
+        review_memory=memory,
+    )
+    bundle, discovery = _mortgage_bundle("Interest rate: 21% per annum")
+    discovery = discovery.model_copy(update={"offering_id": "mortgage_primary"})
+
+    first = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+    review = next(
+        item
+        for item in first.review_items
+        if item.field is ExtractionField.INTEREST_RATE
+    )
+    assert "review" in repository.validation_statuses.values()
+    terms = next(
+        item for item in first.evidence_catalog if item.source_item_id == "terms"
+    )
+    catalog = {item.evidence_id: item for item in first.evidence_catalog}
+    await memory.remember(
+        RememberedReviewDecision(
+            offering_id="mortgage_primary",
+            field=ExtractionField.INTEREST_RATE,
+            prompt_fingerprint=review.prompt_fingerprint,
+            result_fingerprint=review.result_fingerprint,
+            decision=ValidatedFieldResult(
+                field=ExtractionField.INTEREST_RATE,
+                status=ExtractionStatus.FOUND,
+                value=validate_review_field_value(
+                    ExtractionField.INTEREST_RATE, [{"value": {"min": 21, "max": 21}}]
+                ),
+                evidence=(_hydrate_citation(terms.evidence_id, "21%", catalog),),
+                batch_id="memory:review-1",
+            ),
+            reviewer="analyst",
+            review_id="review-1",
+        )
+    )
+
+    calls = extractor.calls
+    second = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+    assert extractor.calls == calls, "the cached answer is reused, not repaired again"
+    assert ExtractionField.INTEREST_RATE not in _reviewed_fields(second)
+    assert second.reused_review_decisions[0]["field"] == "interest_rate"
+    assert second.reused_review_decisions[0]["matched_by"] == "prompt"
+
+    changed, changed_discovery = _mortgage_bundle("Interest rate: 21% per annum, fixed")
+    changed_discovery = changed_discovery.model_copy(
+        update={"offering_id": "mortgage_primary"}
+    )
+    third = await service.extract(changed, changed_discovery, retrieved_at=RETRIEVED_AT)
+    assert ExtractionField.INTEREST_RATE in _reviewed_fields(third)
+    assert not third.reused_review_decisions

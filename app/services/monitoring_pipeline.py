@@ -332,6 +332,20 @@ class IndexingPipeline:
             await audit.record_semantic_extraction(
                 audit_context, bundle, discovery, plan, extraction
             )
+        for reused in extraction.reused_review_decisions:
+            # A field answered by a remembered decision instead of a new review
+            # (SE12) is recorded, so the reuse is visible in the run's history.
+            try:
+                await self._runs.record_audit(
+                    run_id,
+                    "review_decision_reused",
+                    offering_execution_id=offering_execution_id,
+                    payload={"offering_id": offering.offering_id.value, **reused},
+                )
+            except Exception:
+                logger.warning(
+                    "could not audit a reused review decision", exc_info=True
+                )
         extraction_failure = non_reviewable_extraction_failure(extraction)
         if extraction_failure is not None:
             raise OfferingPipelineError(

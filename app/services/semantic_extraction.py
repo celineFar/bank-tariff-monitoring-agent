@@ -54,6 +54,7 @@ from app.domain.semantic_extraction import (
     PropertyMarket,
     Rate,
     RawBatchOutput,
+    RememberedReviewDecision,
     RepaymentMethod,
     RequiredDocument,
     RequirementPolicy,
@@ -70,6 +71,7 @@ from app.domain.source_discovery import (
     SourceDiscoveryResult,
 )
 from app.repositories.contracts import SemanticExtractionRepository
+from app.repositories.review_memory import ReviewDecisionMemory, result_fingerprint
 from app.services.adk_logging import suppress_handled_adk_exception_logs
 from app.services.discovery_classifier import (
     ClassifierUsage,
@@ -203,6 +205,7 @@ Expected value shapes:
 class InMemorySemanticExtractionRepository:
     def __init__(self) -> None:
         self._values: dict[tuple[str, ...], ExtractionBatchResponse] = {}
+        self.validation_statuses: dict[str, str] = {}
 
     async def get_exact(
         self,
@@ -238,7 +241,9 @@ class InMemorySemanticExtractionRepository:
         prompt_version: str,
         model_name: str,
         values: Sequence[tuple[str, ExtractionBatchResponse]],
+        validation_statuses: dict[str, str] | None = None,
     ) -> None:
+        self.validation_statuses.update(validation_statuses or {})
         for fingerprint, value in values:
             self._values[
                 (
@@ -477,12 +482,14 @@ class SemanticExtractionService:
         *,
         model_name: str,
         usage_repository: PostgresModelCallUsageRepository | None = None,
+        review_memory: ReviewDecisionMemory | None = None,
     ) -> None:
         self._extractor = extractor
         self._repository = repository
         self._settings = settings
         self._model_name = model_name
         self._usage_repository = usage_repository
+        self._review_memory = review_memory
 
     @property
     def model_name(self) -> str:
@@ -506,6 +513,12 @@ class SemanticExtractionService:
             offering_id=discovery.offering_id,
             offering=offering,
         )
+        batches = tuple(
+            batch.model_copy(
+                update={"content_fingerprint": self.prompt_fingerprint(batch)}
+            )
+            for batch in batches
+        )
         cached = await self._repository.get_exact(
             product=discovery.product,
             schema_version=self._settings.schema_version,
@@ -513,24 +526,18 @@ class SemanticExtractionService:
             model_name=self._model_name,
             fingerprints=[batch.content_fingerprint for batch in batches],
         )
-        evidence_by_id = {item.evidence_id: item for item in evidence}
         valid_cached: dict[str, ExtractionBatchResponse] = {}
         for batch in batches:
             response = cached.get(batch.content_fingerprint)
             if response is None:
                 continue
-            try:
-                _validate_response(batch, response)
-                for item in response.results:
-                    validated = _validate_field_result(
-                        item,
-                        evidence_by_id,
-                        product=discovery.product,
-                    )
-                    _validate_semantic_completeness(batch, item, validated)
-            except (TypeError, ValueError, ValidationError):
+            # The key is the exact prompt (SE11), so a stored answer is reused as
+            # it is -- one that needs review too (SE12): asking again would give
+            # the same answer at temperature 0, and a remembered decision may
+            # settle it. Only an answer for other fields is set aside.
+            if {item.field for item in response.results} != set(batch.fields):
                 logger.warning(
-                    "Ignoring invalid semantic-extraction cache entry for %s",
+                    "Ignoring semantic-extraction cache entry for %s: other fields",
                     batch.id,
                 )
                 continue
@@ -556,7 +563,24 @@ class SemanticExtractionService:
                 for batch in batches
                 if batch.content_fingerprint in valid_cached
             ),
+            offering_id=discovery.offering_id,
         )
+
+    def prompt_fingerprint(self, batch: ExtractionBatch) -> str:
+        """The cache key (SE11): exactly what the call sends, and to whom."""
+        generation = (
+            f"temperature=0;thinking_budget={self._settings.thinking_budget};"
+            f"max_output_tokens={self._settings.max_output_tokens}"
+        )
+        material = "\x1e".join(
+            (
+                self._model_name,
+                generation,
+                SEMANTIC_EXTRACTION_INSTRUCTION,
+                build_extraction_prompt(batch),
+            )
+        )
+        return hashlib.sha256(material.encode()).hexdigest()
 
     async def extract(
         self,
@@ -657,17 +681,22 @@ class SemanticExtractionService:
         if plan.batches and not responses and not plan.cache_hits:
             raise execution_failures[-1][1]
         failed_batch_ids = {item[0].id for item in execution_failures}
-        batch_pairs = (
-            *zip(plan.cached_batches, plan.cache_hits, strict=True),
-            *zip(
+        fresh_pairs = tuple(
+            zip(
                 (batch for batch in plan.batches if batch.id not in failed_batch_ids),
                 responses,
                 strict=True,
-            ),
+            )
         )
-        batch_pairs, repair_outputs = await self._repair_suspicious_fields(
+        # A cached answer had its repair chance when it was fresh; repairing it
+        # again every run would pay for the same failure each time (SE12).
+        fresh_pairs, repair_outputs = await self._repair_suspicious_fields(
             plan,
-            batch_pairs,
+            fresh_pairs,
+        )
+        batch_pairs = (
+            *zip(plan.cached_batches, plan.cache_hits, strict=True),
+            *fresh_pairs,
         )
         raw_outputs.extend(repair_outputs)
         all_responses = tuple(response for _, response in batch_pairs)
@@ -682,14 +711,26 @@ class SemanticExtractionService:
                 schema_version=plan.schema_version,
                 prompt_version=plan.prompt_version,
                 model_name=plan.model_name,
-                values=cache_values,
+                values=[
+                    (fingerprint, response) for fingerprint, response, _ in cache_values
+                ],
+                validation_statuses={
+                    fingerprint: status for fingerprint, _, status in cache_values
+                },
             )
+        validated_fields, review_items, reused = await self._apply_review_memory(
+            plan, validated_fields, review_items
+        )
         loan_product = None
         if not review_items:
-            loan_product = assemble_loan_product(
-                plan,
-                all_responses,
-                retrieved_at=retrieved_at,
+            loan_product = (
+                _assemble_from_validated(plan, validated_fields, retrieved_at)
+                if reused
+                else assemble_loan_product(
+                    plan,
+                    all_responses,
+                    retrieved_at=retrieved_at,
+                )
             )
         category_field = next(
             (
@@ -723,12 +764,88 @@ class SemanticExtractionService:
             review_items=review_items,
             reused_batch_count=len(plan.cache_hits),
             evidence_mode=self._settings.evidence_mode,
+            reused_review_decisions=reused,
             units_left_out={
                 batch.id: batch.units_left_out
                 for batch in (*plan.cached_batches, *plan.batches)
                 if batch.units_left_out
             },
         )
+
+    async def _apply_review_memory(
+        self,
+        plan: SemanticExtractionPlan,
+        validated_fields: tuple[ValidatedFieldResult, ...],
+        review_items: tuple[ExtractionReviewItem, ...],
+    ) -> tuple[
+        tuple[ValidatedFieldResult, ...],
+        tuple[ExtractionReviewItem, ...],
+        tuple[dict[str, str], ...],
+    ]:
+        """Answer a field from a remembered review decision (SE12).
+
+        A decision is reused when the field comes from the same call (prompt
+        fingerprint) or has the same result (value and cited evidence), and every
+        evidence ID the decision cites is still in this run's catalog. Anything
+        else is asked again.
+        """
+        if self._review_memory is None or not plan.offering_id:
+            return validated_fields, review_items, ()
+        catalog = {item.evidence_id for item in plan.evidence_catalog}
+        fields = {item.field: item for item in validated_fields}
+        remaining: list[ExtractionReviewItem] = []
+        reused: list[dict[str, str]] = []
+
+        async def lookup(field, prompt, result):
+            decision = await self._review_memory.find(
+                offering_id=plan.offering_id,
+                field=field,
+                prompt_fingerprints=[prompt] if prompt else [],
+                result_fingerprints=[result] if result else [],
+            )
+            if decision is None or not all(
+                citation.evidence_id in catalog
+                for citation in decision.decision.evidence
+            ):
+                return None
+            return decision
+
+        for item in review_items:
+            decision = await lookup(
+                item.field, item.prompt_fingerprint, item.result_fingerprint
+            )
+            if decision is None:
+                remaining.append(item)
+                continue
+            fields[item.field] = decision.decision.model_copy(
+                update={
+                    "prompt_fingerprint": item.prompt_fingerprint,
+                    "result_fingerprint": item.result_fingerprint,
+                }
+            )
+            reused.append(_reuse_record(decision, item.prompt_fingerprint))
+        for field, item in tuple(fields.items()):
+            if item.batch_id.startswith("memory:") or any(
+                entry["field"] == field.value for entry in reused
+            ):
+                continue
+            decision = await lookup(
+                field, item.prompt_fingerprint, item.result_fingerprint
+            )
+            if decision is None or (
+                decision.decision.value == item.value
+                and (decision.decision.status is item.status)
+            ):
+                continue
+            fields[field] = decision.decision.model_copy(
+                update={
+                    "prompt_fingerprint": item.prompt_fingerprint,
+                    "result_fingerprint": item.result_fingerprint,
+                }
+            )
+            reused.append(_reuse_record(decision, item.prompt_fingerprint))
+        ordered = tuple(fields.values())
+        return ordered, tuple(remaining), tuple(reused)
 
     async def _repair_suspicious_fields(
         self,
@@ -1883,12 +2000,12 @@ def _validate_individual_fields(
 ) -> tuple[
     tuple[ValidatedFieldResult, ...],
     tuple[ExtractionReviewItem, ...],
-    tuple[tuple[str, ExtractionBatchResponse], ...],
+    tuple[tuple[str, ExtractionBatchResponse, str], ...],
 ]:
     evidence_by_id = {item.evidence_id: item for item in plan.evidence_catalog}
     validated: list[ValidatedFieldResult] = []
     reviews: list[ExtractionReviewItem] = []
-    cache_values: list[tuple[str, ExtractionBatchResponse]] = []
+    cache_values: list[tuple[str, ExtractionBatchResponse, str]] = []
 
     for batch, response in batch_pairs:
         batch_reviews_before = len(reviews)
@@ -1927,6 +2044,11 @@ def _validate_individual_fields(
                     evidence_by_id,
                     product=plan.product,
                     batch_id=batch.id,
+                ).model_copy(
+                    update={
+                        "prompt_fingerprint": batch.content_fingerprint,
+                        "result_fingerprint": _model_result_fingerprint(item),
+                    }
                 )
                 _validate_semantic_completeness(batch, item, validated_item)
                 if (
@@ -1978,8 +2100,15 @@ def _validate_individual_fields(
                     response.model_dump_json(indent=2),
                 )
             )
-        if len(reviews) == batch_reviews_before and batch in plan.batches:
-            cache_values.append((batch.content_fingerprint, response))
+        if batch in plan.batches:
+            # Every fresh answer is kept, with its outcome (SE12).
+            cache_values.append(
+                (
+                    batch.content_fingerprint,
+                    response,
+                    "accepted" if len(reviews) == batch_reviews_before else "review",
+                )
+            )
 
     for batch, exc, raw_response in execution_failures:
         for field in batch.fields:
@@ -2141,6 +2270,10 @@ def _review_item(
         model_name=model_name,
         raw_result=raw_result,
         raw_response=raw_response,
+        prompt_fingerprint=batch.content_fingerprint,
+        result_fingerprint=(
+            _model_result_fingerprint(raw_result) if raw_result is not None else None
+        ),
         validation_issues=issues,
         evidence_ids=tuple(citation.evidence_id for citation in raw_result.evidence)
         if raw_result is not None
@@ -2156,6 +2289,65 @@ def _safe_input(value: Any) -> str | None:
     except TypeError:
         rendered = repr(value)
     return rendered[:4000]
+
+
+def _model_result_fingerprint(result: ModelFieldResult) -> str:
+    return result_fingerprint(
+        result.field,
+        result.status.value,
+        result.value_json,
+        [citation.evidence_id for citation in result.evidence],
+    )
+
+
+def _reuse_record(
+    decision: RememberedReviewDecision, prompt_fingerprint: str | None
+) -> dict[str, str]:
+    return {
+        "field": decision.field.value,
+        "review_id": decision.review_id or "",
+        "matched_by": (
+            "prompt"
+            if prompt_fingerprint and decision.prompt_fingerprint == prompt_fingerprint
+            else "result"
+        ),
+        "reviewer": decision.reviewer or "",
+    }
+
+
+def _assemble_from_validated(
+    plan: SemanticExtractionPlan,
+    fields: Sequence[ValidatedFieldResult],
+    retrieved_at: datetime,
+) -> LoanProduct:
+    """The product from validated fields, when some came from review memory."""
+    return assemble_loan_product(
+        plan,
+        (
+            ExtractionBatchResponse(
+                results=tuple(
+                    ModelFieldResult(
+                        field=item.field,
+                        status=item.status,
+                        value_json=(
+                            TypeAdapter(Any).dump_json(item.value).decode("utf-8")
+                            if item.value is not None
+                            else None
+                        ),
+                        evidence=tuple(
+                            ModelCitation(
+                                evidence_id=citation.evidence_id, quote=citation.quote
+                            )
+                            for citation in item.evidence
+                        ),
+                        explanation=item.explanation,
+                    )
+                    for item in fields
+                )
+            ),
+        ),
+        retrieved_at=retrieved_at,
+    )
 
 
 def _unpack(

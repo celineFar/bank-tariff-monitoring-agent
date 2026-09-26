@@ -26,6 +26,7 @@ from app.repositories.monitoring import (
 from app.repositories.pdf_extraction import PostgresPdfExtractionRepository
 from app.repositories.pdf_link_selection import PostgresPdfLinkSelectionRepository
 from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
+from app.repositories.review_memory import PostgresReviewDecisionMemory
 from app.repositories.reviews import PostgresReviewRepository
 from app.repositories.semantic_extraction import PostgresSemanticExtractionRepository
 from app.repositories.source_discovery import PostgresSourceDiscoveryRepository
@@ -239,6 +240,7 @@ def build_application_container(
         settings.semantic_extraction.fallback_model_names,
     )
     extraction_repository = PostgresSemanticExtractionRepository(sessions)
+    review_memory = PostgresReviewDecisionMemory(sessions)
     extraction = FallbackSemanticExtractionService(
         tuple(
             SemanticExtractionService(
@@ -253,6 +255,7 @@ def build_application_container(
                 settings.semantic_extraction,
                 model_name=extraction_model,
                 usage_repository=model_usage,
+                review_memory=review_memory,
             )
             for extraction_model in extraction_models
         )
@@ -365,7 +368,9 @@ def build_application_container(
     review_resolution = ReviewResolutionService(
         runs=runs,
         reviews=reviews,
-        decisions=ReviewDecisionService(reviews, snapshots),
+        decisions=ReviewDecisionService(
+            reviews, snapshots, memory=PostgresReviewDecisionMemory(sessions)
+        ),
     )
     owner = monitoring_owner or process_owner("api")
     monitoring_node = build_monitoring_node(

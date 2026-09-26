@@ -556,6 +556,10 @@ class ValidatedFieldResult(ExtractionModel):
     evidence: tuple[EvidenceCitation, ...] = ()
     explanation: str | None = None
     batch_id: str
+    # What a remembered review decision is keyed on (SE12): the call that
+    # produced the field, and the field's result (status, value, cited IDs).
+    prompt_fingerprint: str | None = None
+    result_fingerprint: str | None = None
 
 
 class ExtractionReviewItem(ExtractionModel):
@@ -567,6 +571,20 @@ class ExtractionReviewItem(ExtractionModel):
     raw_response: str | None = None
     validation_issues: tuple[ValidationIssue, ...] = Field(min_length=1)
     evidence_ids: tuple[str, ...] = ()
+    prompt_fingerprint: str | None = None
+    result_fingerprint: str | None = None
+
+
+class RememberedReviewDecision(ExtractionModel):
+    """A reviewer's decision on one field of one offering (SE12)."""
+
+    offering_id: str = Field(min_length=1, max_length=100)
+    field: ExtractionField
+    prompt_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    result_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision: ValidatedFieldResult
+    reviewer: str | None = None
+    review_id: str | None = None
 
 
 class PartialLoanProduct(ExtractionModel):
@@ -598,6 +616,7 @@ class SemanticExtractionPlan(ExtractionModel):
     batches: tuple[ExtractionBatch, ...]
     cached_batches: tuple[ExtractionBatch, ...] = ()
     cache_hits: tuple[ExtractionBatchResponse, ...] = ()
+    offering_id: str | None = None
 
 
 class SemanticExtractionResult(ExtractionModel):
@@ -616,3 +635,5 @@ class SemanticExtractionResult(ExtractionModel):
     # run left out (empty in full mode).
     evidence_mode: str = "full"
     units_left_out: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    # Fields answered by a remembered review decision instead of a new review.
+    reused_review_decisions: tuple[dict[str, str], ...] = ()
