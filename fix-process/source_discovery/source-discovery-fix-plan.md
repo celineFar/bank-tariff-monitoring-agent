@@ -787,15 +787,66 @@ call whether this project's key can still use it; if not, the choice goes back t
 
 ### Phase 3: Member classification (SD3, SD17)
 
-- [ ] Add `members` to `DiscoveryPromptItem` and `member_exceptions` to
+- [x] Add `members` to `DiscoveryPromptItem` and `member_exceptions` to
       `ModelSourceAssessment`.
-- [ ] Split long sections into parts instead of cutting them; compact tables to headers + all
+- [x] Split long sections into parts instead of cutting them; compact tables to headers + all
       row labels + full rows that fit.
-- [ ] Validate exceptions (member belongs to the item); apply them in
+- [x] Validate exceptions (member belongs to the item); apply them in
       `_inherited_assessments`.
-- [ ] Keep 12,000 characters only as the upper bound on one member's text (SD17).
-- [ ] Unit tests: every member of a 12,000-character section appears in some prompt item; an
+- [x] Keep 12,000 characters only as the upper bound on one member's text (SD17).
+- [x] Unit tests: every member of a 12,000-character section appears in some prompt item; an
       exception overrides inheritance; a foreign `member_id` is rejected.
+
+#### Phase 3 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 3: members are classified, not inherited blind*.
+
+**What changed.**
+- **Members in the prompt.** A section candidate carries `members` (member id and full text,
+  12,000 characters at most per member) and `member_context` (its links). Its prompt item
+  lists the members as `m1`, `m2`, … with their text; the item's `content` is then only the
+  links. The instruction explains members and `member_exceptions`.
+- **Split, never cut.** `build_discovery_candidates(bundle, item_chars=…)` (the service passes
+  `max_chars_per_item`) splits a section whose members do not fit one item into consecutive
+  parts, `…::section::<id>::part::<n>`, titled "Terms and conditions (part 2 of 5)". The part
+  label is in the title, so it is in the structural fingerprint. A single member longer than
+  the item budget is sent alone and whole, up to 12,000 characters (SD17). Rule-decided groups
+  (site chrome, page header) are never split: they are never sent.
+- **Exceptions.** `ModelSourceAssessment` and `SourceAssessment` carry `member_exceptions`
+  (member id, association, role, relevance, reason). `_check_response` rejects an exception
+  that names a member the item did not show, or names one twice. `_inherited_assessments`
+  gives an excepted member the exception's values with `decision_source=llm` (`cache` on a
+  cache hit) and keeps `inherited_from` pointing at its section. Because exceptions are stored
+  with the section's assessment, a cache hit reproduces them.
+- **Tables** show the headers, then `Row labels:` with the first cell of every row, then as many
+  full rows (with their in-table section) as fit, then the notes if all rows fit.
+- **Selection fix found on the way.** `selected_assessments_by_source_item` used every selected
+  assessment's `source_refs`, and a section's refs name up to 20 of its members. A member the
+  classifier excluded by exception would still have been selected through its section. An
+  item's own (block or table) assessment now decides it; container refs count only for items
+  with none. Phase 6 builds on this.
+
+**Measured** ([data/probe-output-phase3.txt](data/probe-output-phase3.txt), all 13 seeds;
+Phase 0 measured with the same probe from the Phase 0 worktree):
+
+| | Phase 0 | Phase 3 |
+|---|---|---|
+| Gemini items | 293 | 279 (chrome removed in Phase 1; parts added here) |
+| Items the classifier sees only in part | 1–5 per page | **0** |
+| Content characters sent | 186,128 | 246,802 (+33%) |
+
+The +33% is the text that used to be cut; at `gemini-3.1-flash-lite` prices the whole 13-seed
+pass stays around $0.10.
+
+**Tests.** New: every member of a 20-paragraph section reaches exactly one part, in order, and
+no part exceeds the budget; an exception overrides inheritance *and* selection, and survives a
+cache hit; an exception naming `m9` is rejected; a 40-row table shows its last row's label.
+The SD6 and SD9 regression tests now read member text too (they looked only at `content`, so
+SD6 briefly passed without being fixed). Full suite: 927 passed, 43 skipped, 5 xfailed, plus
+the 4 known key-dependent failures. `ruff` clean.
+
+**Remaining.** A bad exception still fails the whole batch; Phase 5 (SD6) turns that into a
+retry and split.
 
 ### Phase 4: PDF link selection (SD2, SD4 not-selected)
 

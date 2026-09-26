@@ -32,6 +32,7 @@ from app.domain.source_discovery import (
     OfferingContext,
     PriorAssessment,
     ProductAssociation,
+    PromptMember,
     Relevance,
     SourceAssessment,
     SourceDiscoveryPlan,
@@ -203,7 +204,9 @@ class SourceDiscoveryService:
         self, bundle: NormalizedSourceBundle, offering: OfferingContext
     ) -> tuple[SourceDiscoveryPlan, tuple[DiscoveryCandidate, ...]]:
         product = offering.product
-        candidates = build_discovery_candidates(bundle)
+        candidates = build_discovery_candidates(
+            bundle, item_chars=self._settings.max_chars_per_item
+        )
         rule_assessments: list[SourceAssessment] = []
         unresolved: list[DiscoveryCandidate] = []
         for candidate in candidates:
@@ -307,12 +310,7 @@ class SourceDiscoveryService:
         for batch in plan.batches:
             assert self._classifier is not None
             response = await self._classifier.classify(batch)
-            expected = {item.source_id for item in batch.items}
-            received = {item.source_id for item in response.items}
-            if received != expected or len(response.items) != len(expected):
-                raise ValueError(
-                    "classifier response IDs do not exactly match batch IDs"
-                )
+            _check_response(batch, response)
             for item in response.items:
                 candidate = candidate_by_id[item.source_id]
                 llm_assessments.append(
@@ -572,7 +570,18 @@ def _build_batches(
     current: list[DiscoveryPromptItem] = []
     current_chars = 0
     for candidate in candidates:
-        content = candidate.context_text[: settings.max_chars_per_item]
+        members = tuple(
+            PromptMember(id=f"m{index}", text=member.text)
+            for index, member in enumerate(candidate.members, start=1)
+        )
+        # A section shows its members whole (parts were split to fit); the
+        # item's own content is then only the section's links.
+        content = (
+            candidate.member_context
+            if members
+            else candidate.context_text[: settings.max_chars_per_item]
+        )
+        size = len(content) + sum(len(member.text) + 12 for member in members)
         item = DiscoveryPromptItem(
             source_id=candidate.source_id,
             scope=candidate.scope,
@@ -580,6 +589,7 @@ def _build_batches(
             title=candidate.title,
             heading_path=candidate.heading_path,
             content=content,
+            members=members,
             mime_type=candidate.mime_type,
             extraction_method=candidate.extraction_method,
             quality_score=candidate.quality_score,
@@ -587,7 +597,7 @@ def _build_batches(
         )
         if current and (
             len(current) >= settings.max_items_per_batch
-            or current_chars + len(content) > settings.max_chars_per_batch
+            or current_chars + size > settings.max_chars_per_batch
         ):
             batches.append(
                 DiscoveryBatch(
@@ -600,7 +610,7 @@ def _build_batches(
             current = []
             current_chars = 0
         current.append(item)
-        current_chars += len(content)
+        current_chars += size
     if current:
         batches.append(
             DiscoveryBatch(
@@ -611,6 +621,22 @@ def _build_batches(
             )
         )
     return tuple(batches)
+
+
+def _check_response(batch: DiscoveryBatch, response: DiscoveryBatchResponse) -> None:
+    """The response names every item once, and exceptions only real members."""
+    expected = {item.source_id for item in batch.items}
+    received = {item.source_id for item in response.items}
+    if received != expected or len(response.items) != len(expected):
+        raise ValueError("classifier response IDs do not exactly match batch IDs")
+    members = {item.source_id: {m.id for m in item.members} for item in batch.items}
+    for item in response.items:
+        named = [exception.member_id for exception in item.member_exceptions]
+        if len(named) != len(set(named)) or not set(named) <= members[item.source_id]:
+            raise ValueError(
+                f"classifier exceptions for {item.source_id} name unknown or "
+                "repeated members"
+            )
 
 
 def _prior(assessment: SourceAssessment | None) -> PriorAssessment | None:
@@ -637,29 +663,51 @@ def _inherited_assessments(
     inherited: list[SourceAssessment] = []
     for assessment in direct:
         candidate = candidates[assessment.source_id]
-        for member_id in candidate.member_source_ids:
+        # Exceptions name members by their prompt id; members were shown in
+        # `member_source_ids` order, which the content fingerprint fixes.
+        exceptions = (
+            {
+                exception.member_id: exception
+                for exception in assessment.member_exceptions
+            }
+            if candidate.members
+            else {}
+        )
+        for index, member_id in enumerate(candidate.member_source_ids, start=1):
             reference = refs.get(member_id)
             if reference is None:
                 continue
             fingerprint = hashlib.sha256(
                 f"{assessment.input_fingerprint}\x1f{member_id}".encode()
             ).hexdigest()
-            inherited.append(
-                assessment.model_copy(
-                    update={
-                        "source_id": member_id,
-                        "scope": (
-                            DiscoveryScope.TABLE
-                            if "::table::" in member_id
-                            else DiscoveryScope.BLOCK
-                        ),
-                        "decision_source": DecisionSource.INHERITED,
-                        "inherited_from": assessment.source_id,
-                        "input_fingerprint": fingerprint,
-                        "source_refs": (reference,),
-                    }
-                )
-            )
+            update: dict[str, object] = {
+                "source_id": member_id,
+                "scope": (
+                    DiscoveryScope.TABLE
+                    if "::table::" in member_id
+                    else DiscoveryScope.BLOCK
+                ),
+                "decision_source": DecisionSource.INHERITED,
+                "inherited_from": assessment.source_id,
+                "input_fingerprint": fingerprint,
+                "source_refs": (reference,),
+                "member_exceptions": (),
+            }
+            if (exception := exceptions.get(f"m{index}")) is not None:
+                # The classifier read this member and judged it differently
+                # from its section: its own decision, not an inherited one.
+                update |= {
+                    "product_association": exception.product_association,
+                    "role": exception.role,
+                    "relevance": exception.relevance,
+                    "reason": exception.reason,
+                    "decision_source": (
+                        DecisionSource.CACHE
+                        if assessment.decision_source is DecisionSource.CACHE
+                        else DecisionSource.LLM
+                    ),
+                }
+            inherited.append(assessment.model_copy(update=update))
     return tuple(inherited)
 
 

@@ -17,6 +17,7 @@ from app.domain.normalization import (
 from app.domain.source_discovery import (
     CandidateLayout,
     DiscoveryCandidate,
+    DiscoveryMember,
     DiscoveryScope,
 )
 
@@ -41,20 +42,33 @@ _TARIFF_TERMS = (
     "գումար",
     "վարկ",
 )
+# What one prompt item may show by default (`SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`).
+DEFAULT_ITEM_CHARS = 3_000
+# Room a member's id and separators take in the prompt.
+_MEMBER_OVERHEAD = 12
 _SITE_CHROME_KEY = ("<site-chrome>",)
 _PAGE_HEADER_KEY = ("<page-header>",)
 
 
 def build_discovery_candidates(
     bundle: NormalizedSourceBundle,
+    *,
+    item_chars: int = DEFAULT_ITEM_CHARS,
 ) -> tuple[DiscoveryCandidate, ...]:
+    """Classification units, each small enough to show whole in one prompt item.
+
+    A page section longer than `item_chars` is split into consecutive parts
+    rather than cut: every member's text reaches the classifier. Only a single
+    block longer than 12,000 characters is cut.
+    """
     candidates: list[DiscoveryCandidate] = []
     for document in bundle.documents:
         if document.source_type is SourceType.PAGE:
             candidates.append(_page_document_candidate(document))
-            candidates.extend(_page_section_candidates(document))
+            candidates.extend(_page_section_candidates(document, item_chars))
             candidates.extend(
-                _table_candidate(document, table) for table in document.tables
+                _table_candidate(document, table, item_chars)
+                for table in document.tables
             )
         else:
             candidates.append(_document_candidate(document))
@@ -84,7 +98,7 @@ def _page_document_candidate(document: NormalizedDocument) -> DiscoveryCandidate
 
 
 def _page_section_candidates(
-    document: NormalizedDocument,
+    document: NormalizedDocument, item_chars: int
 ) -> tuple[DiscoveryCandidate, ...]:
     links = {link.id: link for link in document.links}
     blocks_by_id = {block.id: block for block in document.blocks}
@@ -112,7 +126,7 @@ def _page_section_candidates(
         groups[key].append(block)
 
     result: list[DiscoveryCandidate] = []
-    for key, blocks in groups.items():
+    for key, group in groups.items():
         layout = CandidateLayout.CONTENT
         if key == _SITE_CHROME_KEY:
             layout = CandidateLayout.SITE_CHROME
@@ -121,92 +135,145 @@ def _page_section_candidates(
             layout = CandidateLayout.PAGE_HEADER
             title, heading_path = "Page header", ()
         else:
-            heading_path = blocks[0].heading_path
+            heading_path = group[0].heading_path
             title = heading_path[-1] if heading_path else "Unheaded page content"
-        member_ids = tuple(
-            member_source_id(document.id, "block", block.id) for block in blocks
-        )
-        context = _representative_blocks(blocks)
-        linked = tuple(
-            links[link_id]
-            for block in blocks
-            for link_id in block.link_ids
-            if link_id in links
-        )
-        if linked:
-            unique_links = {link.id: link for link in linked}
-            link_context = "\n".join(
-                "LINK: "
-                f"{link.text or '(no text)'} -> {link.url} "
-                f"[downloadable={link.downloadable}]"
-                for link in unique_links.values()
-            )
-            context = _bounded(f"{context}\n{link_context}")
         identity = json.dumps(
             {"document": document.id, "key": key},
             ensure_ascii=False,
             sort_keys=True,
         )
         group_id = hashlib.sha256(identity.encode()).hexdigest()[:16]
-        parent = blocks_by_id.get(blocks[0].parent_id or "")
-        result.append(
-            _candidate(
-                source_id=f"{document.id}::section::{group_id}",
-                document=document,
-                scope=DiscoveryScope.SECTION,
-                title=title,
-                heading_path=heading_path,
-                context=context,
-                member_ids=member_ids,
-                refs=_block_refs(blocks),
-                all_hidden=all(not block.visible for block in blocks),
-                has_scalars=any(block.scalar_candidates for block in blocks),
-                # Content only: block ids are positional, and one new block
-                # near the top would otherwise change every section's key.
-                content_identity=tuple(
-                    (
-                        block.text,
-                        block.markdown,
-                        block.fields,
-                        block.visible,
-                        tuple(
-                            str(links[link_id].url)
-                            for link_id in block.link_ids
-                            if link_id in links
-                        ),
-                    )
-                    for block in blocks
-                ),
-                selection_reason=(
-                    "Page blocks sharing heading and parent context are assessed together."
-                ),
-                # Sections under one heading are told apart by their parent
-                # (the accordion or card title) in the structural key too.
-                parent=parent.text[:200] if parent is not None else None,
-                layout=layout,
-            )
+        parent = blocks_by_id.get(group[0].parent_id or "")
+        # Rule-decided groups are never shown to the classifier, so they are
+        # never split.
+        parts = (
+            _split_members(group, item_chars)
+            if layout is CandidateLayout.CONTENT
+            else [group]
         )
+        for index, blocks in enumerate(parts, start=1):
+            part = f"{index}/{len(parts)}" if len(parts) > 1 else None
+            result.append(
+                _section_candidate(
+                    document,
+                    blocks,
+                    links=links,
+                    source_id=(
+                        f"{document.id}::section::{group_id}"
+                        + (f"::part::{index}" if part else "")
+                    ),
+                    title=title,
+                    heading_path=heading_path,
+                    parent=parent.text[:200] if parent is not None else None,
+                    part=part,
+                    layout=layout,
+                )
+            )
     return tuple(result)
 
 
-def _table_candidate(
-    document: NormalizedDocument, table: NormalizedTable
+def _split_members(
+    blocks: list[NormalizedBlock], item_chars: int
+) -> list[list[NormalizedBlock]]:
+    """Consecutive runs of members whose texts fit one prompt item together."""
+    parts: list[list[NormalizedBlock]] = [[]]
+    size = 0
+    for block in blocks:
+        length = min(len(block.text), _MAX_CONTEXT_CHARS) + _MEMBER_OVERHEAD
+        if parts[-1] and size + length > item_chars:
+            parts.append([])
+            size = 0
+        parts[-1].append(block)
+        size += length
+    return parts
+
+
+def _section_candidate(
+    document: NormalizedDocument,
+    blocks: list[NormalizedBlock],
+    *,
+    links: dict,
+    source_id: str,
+    title: str,
+    heading_path: tuple[str, ...],
+    parent: str | None,
+    part: str | None,
+    layout: CandidateLayout,
 ) -> DiscoveryCandidate:
-    lines = []
-    if table.headers:
-        lines.append(" | ".join(table.headers))
-    for row in table.rows:
-        lines.append(" | ".join(cell.text for cell in row.cells))
-    if table.notes:
-        lines.extend(f"NOTE: {note.text}" for note in table.notes)
-    context = _bounded("\n".join(lines)) or table.title or "Empty table"
+    member_ids = tuple(
+        member_source_id(document.id, "block", block.id) for block in blocks
+    )
+    context = _representative_blocks(blocks)
+    linked = tuple(
+        links[link_id]
+        for block in blocks
+        for link_id in block.link_ids
+        if link_id in links
+    )
+    link_context = ""
+    if linked:
+        unique_links = {link.id: link for link in linked}
+        link_context = "\n".join(
+            "LINK: "
+            f"{link.text or '(no text)'} -> {link.url} "
+            f"[downloadable={link.downloadable}]"
+            for link in unique_links.values()
+        )
+        context = _bounded(f"{context}\n{link_context}")
+    return _candidate(
+        source_id=source_id,
+        document=document,
+        scope=DiscoveryScope.SECTION,
+        title=f"{title} (part {part.replace('/', ' of ')})" if part else title,
+        heading_path=heading_path,
+        context=context,
+        member_ids=member_ids,
+        refs=_block_refs(blocks),
+        all_hidden=all(not block.visible for block in blocks),
+        has_scalars=any(block.scalar_candidates for block in blocks),
+        # Content only: block ids are positional, and one new block
+        # near the top would otherwise change every section's key.
+        content_identity=tuple(
+            (
+                block.text,
+                block.markdown,
+                block.fields,
+                block.visible,
+                tuple(
+                    str(links[link_id].url)
+                    for link_id in block.link_ids
+                    if link_id in links
+                ),
+            )
+            for block in blocks
+        ),
+        selection_reason=(
+            "Page blocks sharing heading and parent context are assessed together."
+        ),
+        # Sections under one heading are told apart by their parent
+        # (the accordion or card title) in the structural key too.
+        parent=parent,
+        layout=layout,
+        members=tuple(
+            DiscoveryMember(
+                member_source_id=member_id, text=block.text[:_MAX_CONTEXT_CHARS]
+            )
+            for member_id, block in zip(member_ids, blocks, strict=True)
+        ),
+        member_context=link_context[:_MAX_CONTEXT_CHARS],
+    )
+
+
+def _table_candidate(
+    document: NormalizedDocument, table: NormalizedTable, item_chars: int
+) -> DiscoveryCandidate:
     return _candidate(
         source_id=member_source_id(document.id, "table", table.id),
         document=document,
         scope=DiscoveryScope.TABLE,
         title=table.title or "Untitled table",
         heading_path=(),
-        context=context,
+        context=_table_context(table, item_chars),
         member_ids=(),
         refs=table.source_refs,
         all_hidden=False,
@@ -216,6 +283,36 @@ def _table_candidate(
         content_identity=_table_identity(table),
         selection_reason="Structured tables are assessed independently from surrounding prose.",
     )
+
+
+def _table_context(table: NormalizedTable, item_chars: int) -> str:
+    """Headers and the label of every row first, then as many full rows as fit.
+
+    The classifier used to get the header and the first rows only, cut at the
+    item budget; the row labels show what the whole table is about.
+    """
+    lines = []
+    if table.headers:
+        lines.append(" | ".join(table.headers))
+    labels = [
+        row.cells[0].text for row in table.rows if row.cells and row.cells[0].text
+    ]
+    if labels:
+        lines.append("Row labels: " + "; ".join(labels))
+    size = sum(len(line) + 1 for line in lines)
+    for row in table.rows:
+        line = " | ".join(
+            ([f"[{row.section}]"] if row.section else [])
+            + [cell.text for cell in row.cells]
+        )
+        if size + len(line) + 1 > item_chars:
+            lines.append("...")
+            break
+        lines.append(line)
+        size += len(line) + 1
+    else:
+        lines.extend(f"NOTE: {note.text}" for note in table.notes)
+    return _bounded("\n".join(lines)) if lines else (table.title or "Empty table")
 
 
 def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
@@ -331,6 +428,8 @@ def _candidate(
     pdf_admission=None,
     parent: str | None = None,
     layout: CandidateLayout = CandidateLayout.CONTENT,
+    members: tuple[DiscoveryMember, ...] = (),
+    member_context: str = "",
 ) -> DiscoveryCandidate:
     structural = {
         "document_url": str(document.source_url),
@@ -363,6 +462,8 @@ def _candidate(
         selection_reason=selection_reason,
         pdf_admission=pdf_admission,
         layout=layout,
+        members=members,
+        member_context=member_context,
     )
 
 

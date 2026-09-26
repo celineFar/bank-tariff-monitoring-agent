@@ -124,6 +124,11 @@ def _bundle(*documents: NormalizedDocument) -> NormalizedSourceBundle:
     )
 
 
+def _item_text(item) -> str:
+    """What the classifier sees of one prompt item: its content and members."""
+    return "\n".join((item.content, *(member.text for member in item.members)))
+
+
 class _Classifier:
     """Accepts everything as current, or answers with the given overrides."""
 
@@ -277,7 +282,9 @@ class _FlakyClassifier(_Classifier):
         self.failures = failures
 
     async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
-        if self.failures and any(self.bad_text in item.content for item in batch.items):
+        if self.failures and any(
+            self.bad_text in _item_text(item) for item in batch.items
+        ):
             self.failures -= 1
             self.batches.append(batch)
             return DiscoveryBatchResponse(
@@ -363,9 +370,9 @@ async def test_sd9_site_chrome_is_decided_by_rule_and_kept_apart() -> None:
     result = await _service(classifier).discover(_bundle(page), _offering())
 
     sent = [item for batch in classifier.batches for item in batch.items]
-    assert not any("Corporate Governance" in item.content for item in sent)
-    assert not any("Personal" == item.content for item in sent)
-    assert any("Down payment from 10%" in item.content for item in sent)
+    assert not any("Corporate Governance" in _item_text(item) for item in sent)
+    assert not any("Personal" == _item_text(item) for item in sent)
+    assert any("Down payment from 10%" in _item_text(item) for item in sent)
     chrome = next(
         a for a in result.assessments if a.source_refs[0].source_item_id == "b5"
     )
@@ -582,3 +589,143 @@ def test_sd12_pdf_context_keeps_each_page_tables_with_the_page() -> None:
     text = candidate.context_text
     assert text.index("TABLE: Tariffs") < text.index("Clause text.")
     assert "Rows: Nominal rate" in text
+
+
+# --- Phase 3: members are classified, not silently inherited (SD3) ------------------
+
+
+def test_sd3_every_member_of_a_long_section_reaches_a_prompt_item() -> None:
+    paragraphs = [f"Clause {index}: " + "terms text " * 60 for index in range(1, 21)]
+    page = _page(
+        _block("b0", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
+        *(
+            _block(f"b{index}", text, heading_path=("Primary", "Terms and conditions"))
+            for index, text in enumerate(paragraphs, start=1)
+        ),
+    )
+
+    parts = [
+        candidate
+        for candidate in build_discovery_candidates(_bundle(page), item_chars=3000)
+        if candidate.title.startswith("Terms and conditions")
+    ]
+
+    shown = [member.text for part in parts for member in part.members]
+    assert len(parts) > 1
+    assert shown == paragraphs
+    assert all(sum(len(m.text) for m in part.members) <= 3000 for part in parts)
+    assert parts[0].title == f"Terms and conditions (part 1 of {len(parts)})"
+
+
+class _ExceptionClassifier(_Classifier):
+    """Accepts sections as current but calls member m2 a related product."""
+
+    def __init__(self, member_id: str = "m2") -> None:
+        super().__init__()
+        self.member_id = member_id
+
+    async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
+        response = await super().classify(batch)
+        from app.domain.source_discovery import MemberException
+
+        items = []
+        for item, answer in zip(batch.items, response.items, strict=True):
+            if len(item.members) > 1:
+                answer = answer.model_copy(
+                    update={
+                        "member_exceptions": (
+                            MemberException(
+                                member_id=self.member_id,
+                                product_association=ProductAssociation.RELATED_PRODUCT,
+                                role=InformationRole.RELATED_PRODUCT,
+                                relevance=Relevance.POSSIBLY_RELEVANT,
+                                reason="Cross-sell card for the construction loan.",
+                            ),
+                        )
+                    }
+                )
+            items.append(answer)
+        return DiscoveryBatchResponse(items=tuple(items))
+
+
+def _cross_sell_page() -> NormalizedDocument:
+    return _page(
+        _block("b0", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
+        _block("b1", "Nominal rate 12.9%", heading_path=("Primary", "Terms")),
+        _block(
+            "b2",
+            "Our construction loan offers... Learn more",
+            heading_path=("Primary", "Terms"),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_sd3_a_member_exception_overrides_inheritance_and_selection() -> None:
+    from app.services.source_selection import selected_assessments_by_source_item
+
+    repository = InMemorySourceDiscoveryRepository()
+    classifier = _ExceptionClassifier()
+    service = _service(classifier, repository)
+    bundle = _bundle(_cross_sell_page())
+
+    first = await service.discover(bundle, _offering())
+    calls = len(classifier.batches)
+    second = await service.discover(bundle, _offering())
+
+    for result in (first, second):
+        by_block = {
+            a.source_refs[0].source_item_id: a
+            for a in result.assessments
+            if a.scope is DiscoveryScope.BLOCK
+        }
+        assert by_block["b1"].product_association is ProductAssociation.CURRENT_PRODUCT
+        assert by_block["b1"].decision_source is DecisionSource.INHERITED
+        assert by_block["b2"].product_association is ProductAssociation.RELATED_PRODUCT
+        assert by_block["b2"].inherited_from is not None
+        selected = selected_assessments_by_source_item(result.assessments)
+        assert selected["b2"].product_association is ProductAssociation.RELATED_PRODUCT
+    assert len(classifier.batches) == calls  # the second run is a cache hit
+
+
+@pytest.mark.asyncio
+async def test_sd3_an_exception_naming_a_foreign_member_is_rejected() -> None:
+    service = _service(_ExceptionClassifier(member_id="m9"))
+
+    with pytest.raises(ValueError, match="unknown or repeated members"):
+        await service.discover(_bundle(_cross_sell_page()), _offering())
+
+
+def test_sd3_a_table_item_shows_every_row_label() -> None:
+    from app.domain.normalization import (
+        NormalizedTable,
+        NormalizedTableCell,
+        NormalizedTableRow,
+    )
+
+    def cell(text: str) -> NormalizedTableCell:
+        return NormalizedTableCell(raw_text=text, text=text, source_refs=(_ref("t1"),))
+
+    rows = tuple(
+        NormalizedTableRow(
+            id=f"r{index}", cells=(cell(f"Label {index}"), cell("x" * 400))
+        )
+        for index in range(1, 41)
+    )
+    table = NormalizedTable(
+        id="t1",
+        title="Express Home Mortgage Loan",
+        headers=("Item", "Terms"),
+        rows=rows,
+        source_refs=(_ref("t1"),),
+    )
+    page = _rates_page().model_copy(update={"tables": (table,)})
+
+    candidate = next(
+        c
+        for c in build_discovery_candidates(_bundle(page), item_chars=3000)
+        if c.scope is DiscoveryScope.TABLE
+    )
+
+    assert "Label 40" in candidate.context_text
+    assert len(candidate.context_text) <= 3000 + 10

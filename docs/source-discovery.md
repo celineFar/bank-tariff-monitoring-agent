@@ -91,9 +91,21 @@ Before live execution, every primary and fallback model is checked against
 its current input or output price exceeds the ceiling, the run stops before
 making an API request.
 
-Children inherit the validated container assessment. The final result still contains
-an assessment for every block, while the model operates on a much smaller set of
-classification units.
+Children inherit the validated container assessment, but a page section's children
+are not inherited blind. Each section item lists its member blocks with short ids
+(`m1`, `m2`, ...) and their full text; a section too long for one item
+(`SOURCE_DISCOVERY_MAX_CHARS_PER_ITEM`) is split into consecutive parts
+("Terms and conditions (part 2 of 5)") instead of being cut, so every member's
+text reaches the classifier. The classifier may return `member_exceptions` for
+members that differ from their section (a cross-sell card or a footer line); those
+members get the exception's association, role, relevance and reason, and the
+exception is stored with the section's assessment so a cache hit reproduces it.
+An exception naming a member the item did not show is rejected. Table items show
+the headers, the label of every row, and then as many full rows as fit. A linked
+document's blocks and tables inherit the document-level decision. The final result
+contains an assessment for every block, and a member's own assessment decides
+whether it is selected: a section's references never re-select a member the
+classifier excluded.
 
 ## Extraction context
 

@@ -42,6 +42,13 @@ product_association is always relative to that offering:
   version of this offering's terms.
 - unknown: only when the item gives no way to tell.
 
+Some items are page sections and list their blocks under `members`, each with a
+short id (m1, m2, ...). The item's assessment applies to every member. When a
+member differs from the rest of its section (a cross-sell card, a footer line,
+a block about another product), add it to member_exceptions with its own
+product_association, role, relevance and reason. Name only members of that
+item, each at most once; leave member_exceptions empty when all agree.
+
 For each item also classify information role, relevance, authority, and
 temporal status using only the offering, the supplied title, structural
 context, and content. Extract explicit effective periods and important scope

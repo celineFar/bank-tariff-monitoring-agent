@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -31,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from app.config import load_settings  # noqa: E402
+from app.config.seed_catalog import load_seed_catalog  # noqa: E402
 from app.domain.acquisition import PageArtifact  # noqa: E402
 from app.domain.models import ProductType  # noqa: E402
 from app.services.acquisition import AcquisitionService  # noqa: E402
@@ -43,6 +45,11 @@ from app.services.source_discovery import (  # noqa: E402
     _rule_assessment,
 )
 
+try:  # absent before the offering identity (Phase 2)
+    from app.services.source_discovery import offering_context_for
+except ImportError:  # pragma: no cover - older code
+    offering_context_for = None
+
 # The last live capture of the normalization fix: its stored blocks match this
 # branch's parser. `SURVEY_CACHE` picks another capture folder.
 CACHE = Path(
@@ -53,6 +60,9 @@ LABELS = json.loads(
 )
 AS_OF = date.fromisoformat(LABELS["as_of"])
 PERCENT = re.compile(r"\d+(?:[.,]\d+)?\s*%")
+CATALOG = {
+    entry.offering_id.value: entry.product for entry in load_seed_catalog().offerings
+}
 OVERLAP_SEEDS = (
     "consumer_standard",
     "mortgage_primary",
@@ -99,11 +109,35 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
             artifact.rendered_html or "", source_url=str(artifact.final_url)
         )
         bundle = await _page_bundle(artifact)
-        candidates = build_discovery_candidates(bundle)
+        if "item_chars" in inspect.signature(build_discovery_candidates).parameters:
+            candidates = build_discovery_candidates(
+                bundle, item_chars=settings.max_chars_per_item
+            )
+        else:
+            candidates = build_discovery_candidates(bundle)
         rules = [c for c in candidates if _rule_assessment(c)]
         llm = [c for c in candidates if not _rule_assessment(c)]
-        batches = _build_batches(ProductType.MORTGAGE, llm, {}, settings)
-        cut = [c for c in llm if len(c.context_text) > settings.max_chars_per_item]
+        first = inspect.signature(_build_batches).parameters
+        target = (
+            offering_context_for(bundle, CATALOG[seed])
+            if "offering" in first
+            else ProductType.MORTGAGE
+        )
+        batches = _build_batches(target, llm, {}, settings)
+        # What the classifier does not see of an item: text past the item budget.
+        # Items that list members show them whole (sections are split instead).
+        cut = [
+            c
+            for c in llm
+            if not getattr(c, "members", ())
+            and len(c.context_text) > settings.max_chars_per_item
+        ]
+        prompt_chars = sum(
+            len(item.content)
+            + sum(len(member.text) for member in getattr(item, "members", ()))
+            for batch in batches
+            for item in batch.items
+        )
         nav = [
             c
             for c in candidates
@@ -125,6 +159,7 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
             f"{seed:32} candidates={len(candidates):3} rule={len(rules):2} "
             f"gemini={len(llm):3} batches={len(batches)} "
             f"cut>{settings.max_chars_per_item}={len(cut)} "
+            f"prompt_chars={prompt_chars} "
             f"nav_group={[len(c.member_source_ids) for c in nav]} "
             f"nav_rule={[bool(_rule_assessment(c)) for c in nav]} "
             f"gemini_items_with_chrome={len(chrome)}"

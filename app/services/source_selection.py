@@ -25,11 +25,27 @@ def is_selected_assessment(assessment: SourceAssessment) -> bool:
 def selected_assessments_by_source_item(
     assessments: tuple[SourceAssessment, ...],
 ) -> dict[str, SourceAssessment]:
+    """The assessment that decides each source item, when it is selected.
+
+    An item's own assessment (a block or table, direct or inherited) decides
+    it. A container's references (a section or document names up to 20 of its
+    members) count only for items with no assessment of their own; otherwise a
+    member the classifier excluded would be selected through its section.
+    """
+    own = {
+        reference.source_item_id
+        for assessment in assessments
+        if assessment.scope in {DiscoveryScope.BLOCK, DiscoveryScope.TABLE}
+        for reference in assessment.source_refs
+    }
     values: dict[str, SourceAssessment] = {}
     for assessment in assessments:
         if not is_selected_assessment(assessment):
             continue
+        is_own = assessment.scope in {DiscoveryScope.BLOCK, DiscoveryScope.TABLE}
         for reference in assessment.source_refs:
+            if not is_own and reference.source_item_id in own:
+                continue
             current = values.get(reference.source_item_id)
             if current is None or assessment_precedence(
                 assessment
