@@ -299,25 +299,45 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 
 - [x] Create branch `fix/reviews` from `integration/process-fixes` (`f47240d`).
 - [x] Re-measure the scale on the new pipeline: [unit-measurements.txt](unit-measurements.txt).
-- [ ] Run `uv run pytest tests/unit tests/integration` and record the baseline.
-- [ ] Add regression tests, `xfail(strict=True)`, one per item, asserting the target behaviour:
-  - [ ] RV1/RV2: a `not_stated` required field's signal carries an evidence set seeded from
+- [x] Run `uv run pytest tests/unit tests/integration` and record the baseline.
+- [x] Add regression tests, `xfail(strict=True)`, one per item, asserting the target behaviour:
+  - [x] RV1/RV2: a `not_stated` required field's signal carries an evidence set seeded from
         its extraction call, not the first 20 catalog entries;
-  - [ ] RV3: an unknown cited ID lands in `unknown_ids`, not in references;
-  - [ ] RV4: a signal's evidence set survives into the review; a `large_rate_change` review
+  - [x] RV3: an unknown cited ID lands in `unknown_ids`, not in references;
+  - [x] RV4: a signal's evidence set survives into the review; a `large_rate_change` review
         links the new value's citations;
-  - [ ] RV5: a value that failed a check raises `extraction_invalid` with Gemini's value as
+  - [x] RV5: a value that failed a check raises `extraction_invalid` with Gemini's value as
         candidate and the failed check in the guidance;
-  - [ ] RV6: resolving the OCR review keeps the `large_rate_change` signal of the same field;
-  - [ ] RV7: a new review row stores references, not the evidence catalog;
-  - [ ] RV8: `get_current_tariffs` returns no `evidence` and no `normalized_tariff`;
-  - [ ] RV9: a unit shows a whole table up to 30 rows, a window around a seed block, at most
+  - [x] RV6: resolving the OCR review keeps the `large_rate_change` signal of the same field;
+  - [x] RV7: a new review row stores references, not the evidence catalog;
+  - [x] RV8: `get_current_tariffs` returns no `evidence` and no `normalized_tariff`;
+  - [x] RV9: a unit shows a whole table up to 30 rows, a window around a seed block, at most
         2 units, and the model payload carries ≤ 5 seed passages;
-  - [ ] RV10: a snapshot carries the selected sources' Markdown;
-  - [ ] RV12: an ADK model call during a run records the run id;
-  - [ ] RV13: a decision citing a passage outside the shown units writes an audit event.
-- [ ] Check each `xfail` with `--runxfail` to fail today.
-- [ ] Write the scenario files `scenarios/R01…R06` (Phase 5).
+  - [x] RV10: a snapshot carries the selected sources' Markdown;
+  - [x] RV12: an ADK model call during a run records the run id;
+  - [x] RV13: a decision citing a passage outside the shown units writes an audit event.
+- [x] Check each `xfail` with `--runxfail` to fail today.
+- [x] Write the scenario files `scenarios/R01…R06` (Phase 5).
+
+**Phase 0 notes (done).**
+- Baseline on `fix/reviews` before any change: **1041 passed, 5 skipped**; the only
+  failures/errors are the 4 known tests that need a live Gemini key
+  (`test_agent`, `test_agent_engine_app`, `test_server_e2e`).
+- `tests/unit/test_review_fixes.py`: 10 `xfail(strict=True)` tests. RV3 is asserted
+  inside the RV5 test (the unknown ID and the failed value come from the same answer);
+  RV7 inside the first RV4 test (the stored set is the signal's set, with no `items`).
+  RV11 is a CLI rendering change and is tested in Phase 2 with the CLI tests.
+- With `--runxfail`, each fails for its own missing piece (`call_evidence`,
+  `EXTRACTION_INVALID`, `evidence_set`, `_without_review_signal` arity,
+  `current_tariffs_payload`, `set`, `selected_sources_markdown`, `ACTIVE_RUN_STATE_KEY`,
+  the audit events on `ReviewSnapshotUpdate`).
+- Scenario files: [scenarios/](scenarios/) R01–R06, results filled in Phase 5.
+- The tests fix these target APIs: `SemanticExtractionResult.call_evidence`;
+  signals with `evidence_set` (`units[kind,key,evidence_ids,seed_ids,why,omitted]`,
+  `unknown_ids`); `_without_review_signal(validation, scope, reason)`;
+  `current_tariffs_payload(result)` in `app/tools/reads.py`;
+  `build_snapshot_attempt(..., selected_sources_markdown=)`;
+  `ACTIVE_RUN_STATE_KEY` in `model_call_usage.py`; `ReviewSnapshotUpdate.audit_events`.
 
 ### Phase 1: What the signal knows (RV2, RV3, RV1, RV5, RV4, RV6)
 

@@ -58,3 +58,23 @@ decided, why, and where it matters.
 - **Live run settings.** Repairs capped at 1 per offering (production default 3) and a
   $1.55 guard, to fit the $2 budget. The budgeted-mode live pass was dropped when the
   budget ran out; budgeted mode is measured offline only.
+
+## Reviews (fix-process/reviews/)
+
+Decisions the review-process report left open, taken without asking (plan table Q1–Q11):
+- **`extraction_invalid`** is the new reason for a value that failed a check. Allowed:
+  `select_candidate` (accept Gemini's value after checking), `override`, `reject_all`.
+- **A validation failure on a non-required field is still a review** (as
+  `extraction_invalid`). Dropping it silently would lose data.
+- **Bounds are code constants** (1 unit, a second within `HITL_DOCUMENT_RANK_GAP`; tables
+  whole up to 30 rows; section windows ±2 blocks, ≤ 3,000 characters).
+- **No embeddings** in review ranking; ranking misses are logged instead.
+- **The generic "Information Guide" tagged `current_product` on Overdraft** is a
+  source-discovery issue: hand-off, not fixed here.
+- **No separate table display rendering**: the semantic-extraction row records already are
+  the readable form.
+- **`get_current_tariffs` returns freshness and field statuses only** (D5 option i).
+- **`?` shows the selected sources' Markdown saved with the snapshot**, never sent to the
+  model.
+- **The model gets at most 5 seed passages (600 characters each)** per review; the CLI
+  renders the units itself.
