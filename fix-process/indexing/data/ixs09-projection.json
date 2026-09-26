@@ -1,0 +1,373 @@
+{
+  "as_of": "2026-09-26T21:39:27.536962+00:00",
+  "chunk_size_chars": 1500,
+  "seeds": {
+    "consumer_standard": {
+      "before": {
+        "documents": 4,
+        "chunks": 40,
+        "characters": 42595,
+        "largest_chunk": 1485,
+        "over_limit": 0,
+        "table_only_chunks": 14,
+        "table_chunks_without_title_or_header": 3,
+        "chunks_opening_mid_section": 13,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 4,
+        "chunks": 37,
+        "characters": 43983,
+        "largest_chunk": 1486,
+        "over_limit": 0,
+        "table_only_chunks": 11,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 15,
+        "of_which_with_breadcrumb": 12
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "credit_line": {
+      "before": {
+        "documents": 4,
+        "chunks": 39,
+        "characters": 43114,
+        "largest_chunk": 1490,
+        "over_limit": 0,
+        "table_only_chunks": 22,
+        "table_chunks_without_title_or_header": 3,
+        "chunks_opening_mid_section": 13,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 4,
+        "chunks": 41,
+        "characters": 48242,
+        "largest_chunk": 1500,
+        "over_limit": 0,
+        "table_only_chunks": 22,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 13,
+        "of_which_with_breadcrumb": 11
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_commercial": {
+      "before": {
+        "documents": 4,
+        "chunks": 52,
+        "characters": 57332,
+        "largest_chunk": 1499,
+        "over_limit": 0,
+        "table_only_chunks": 27,
+        "table_chunks_without_title_or_header": 4,
+        "chunks_opening_mid_section": 22,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 4,
+        "chunks": 55,
+        "characters": 60732,
+        "largest_chunk": 1497,
+        "over_limit": 0,
+        "table_only_chunks": 30,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 21,
+        "of_which_with_breadcrumb": 16
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_construction": {
+      "before": {
+        "documents": 6,
+        "chunks": 75,
+        "characters": 85549,
+        "largest_chunk": 1495,
+        "over_limit": 0,
+        "table_only_chunks": 49,
+        "table_chunks_without_title_or_header": 5,
+        "chunks_opening_mid_section": 22,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 6,
+        "chunks": 76,
+        "characters": 90405,
+        "largest_chunk": 1495,
+        "over_limit": 0,
+        "table_only_chunks": 50,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 21,
+        "of_which_with_breadcrumb": 16
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_diaspora": {
+      "before": {
+        "documents": 1,
+        "chunks": 3,
+        "characters": 3356,
+        "largest_chunk": 1431,
+        "over_limit": 0,
+        "table_only_chunks": 0,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 2,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 1,
+        "chunks": 3,
+        "characters": 3534,
+        "largest_chunk": 1492,
+        "over_limit": 0,
+        "table_only_chunks": 0,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 2,
+        "of_which_with_breadcrumb": 2
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_express": {
+      "before": {
+        "documents": 4,
+        "chunks": 31,
+        "characters": 28307,
+        "largest_chunk": 1492,
+        "over_limit": 0,
+        "table_only_chunks": 23,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 3,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 4,
+        "chunks": 30,
+        "characters": 29383,
+        "largest_chunk": 1500,
+        "over_limit": 0,
+        "table_only_chunks": 21,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 3,
+        "of_which_with_breadcrumb": 2
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_no_income_verification": {
+      "before": {
+        "documents": 2,
+        "chunks": 12,
+        "characters": 9746,
+        "largest_chunk": 1491,
+        "over_limit": 0,
+        "table_only_chunks": 7,
+        "table_chunks_without_title_or_header": 1,
+        "chunks_opening_mid_section": 3,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 2,
+        "chunks": 10,
+        "characters": 10269,
+        "largest_chunk": 1500,
+        "over_limit": 0,
+        "table_only_chunks": 5,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 2,
+        "of_which_with_breadcrumb": 1
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_online": {
+      "before": {
+        "documents": 6,
+        "chunks": 61,
+        "characters": 67792,
+        "largest_chunk": 1492,
+        "over_limit": 0,
+        "table_only_chunks": 35,
+        "table_chunks_without_title_or_header": 5,
+        "chunks_opening_mid_section": 20,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 6,
+        "chunks": 64,
+        "characters": 72663,
+        "largest_chunk": 1494,
+        "over_limit": 0,
+        "table_only_chunks": 37,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 20,
+        "of_which_with_breadcrumb": 16
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_primary": {
+      "before": {
+        "documents": 6,
+        "chunks": 62,
+        "characters": 70276,
+        "largest_chunk": 1499,
+        "over_limit": 0,
+        "table_only_chunks": 36,
+        "table_chunks_without_title_or_header": 6,
+        "chunks_opening_mid_section": 22,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 6,
+        "chunks": 64,
+        "characters": 74172,
+        "largest_chunk": 1498,
+        "over_limit": 0,
+        "table_only_chunks": 38,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 21,
+        "of_which_with_breadcrumb": 15
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_renovation": {
+      "before": {
+        "documents": 4,
+        "chunks": 67,
+        "characters": 76371,
+        "largest_chunk": 1499,
+        "over_limit": 0,
+        "table_only_chunks": 45,
+        "table_chunks_without_title_or_header": 5,
+        "chunks_opening_mid_section": 19,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 4,
+        "chunks": 67,
+        "characters": 80826,
+        "largest_chunk": 1499,
+        "over_limit": 0,
+        "table_only_chunks": 44,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 18,
+        "of_which_with_breadcrumb": 14
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "mortgage_secondary_market": {
+      "before": {
+        "documents": 5,
+        "chunks": 59,
+        "characters": 66784,
+        "largest_chunk": 1493,
+        "over_limit": 0,
+        "table_only_chunks": 35,
+        "table_chunks_without_title_or_header": 5,
+        "chunks_opening_mid_section": 20,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 5,
+        "chunks": 63,
+        "characters": 73463,
+        "largest_chunk": 1500,
+        "over_limit": 0,
+        "table_only_chunks": 39,
+        "table_chunks_without_title_or_header": 1,
+        "chunks_opening_mid_section": 19,
+        "of_which_with_breadcrumb": 15
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "online_consumer_finance": {
+      "before": {
+        "documents": 3,
+        "chunks": 19,
+        "characters": 18491,
+        "largest_chunk": 1476,
+        "over_limit": 0,
+        "table_only_chunks": 10,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 7,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 3,
+        "chunks": 17,
+        "characters": 19012,
+        "largest_chunk": 1467,
+        "over_limit": 0,
+        "table_only_chunks": 8,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 7,
+        "of_which_with_breadcrumb": 6
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    },
+    "overdraft": {
+      "before": {
+        "documents": 4,
+        "chunks": 39,
+        "characters": 41585,
+        "largest_chunk": 1497,
+        "over_limit": 0,
+        "table_only_chunks": 16,
+        "table_chunks_without_title_or_header": 3,
+        "chunks_opening_mid_section": 16,
+        "of_which_with_breadcrumb": 0
+      },
+      "after": {
+        "documents": 4,
+        "chunks": 38,
+        "characters": 43156,
+        "largest_chunk": 1497,
+        "over_limit": 0,
+        "table_only_chunks": 14,
+        "table_chunks_without_title_or_header": 0,
+        "chunks_opening_mid_section": 16,
+        "of_which_with_breadcrumb": 10
+      },
+      "deterministic": true,
+      "pdfs_missing_transcription": []
+    }
+  },
+  "totals": {
+    "before": {
+      "documents": 53,
+      "chunks": 559,
+      "characters": 611298,
+      "largest_chunk": 1499,
+      "over_limit": 0,
+      "table_only_chunks": 319,
+      "table_chunks_without_title_or_header": 40,
+      "chunks_opening_mid_section": 182,
+      "of_which_with_breadcrumb": 0,
+      "estimated_tokens": 152824,
+      "full_reembed_usd": 0.0229
+    },
+    "after": {
+      "documents": 53,
+      "chunks": 565,
+      "characters": 649840,
+      "largest_chunk": 1500,
+      "over_limit": 0,
+      "table_only_chunks": 319,
+      "table_chunks_without_title_or_header": 1,
+      "chunks_opening_mid_section": 178,
+      "of_which_with_breadcrumb": 136,
+      "estimated_tokens": 162460,
+      "full_reembed_usd": 0.0244
+    }
+  },
+  "deterministic": true
+}

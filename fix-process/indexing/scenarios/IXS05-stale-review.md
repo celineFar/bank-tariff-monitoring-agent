@@ -13,4 +13,4 @@
 `ReviewConflictError("... newer accepted snapshot ...")` and the newer documents stay
 active.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26); the resolution service's handling is tested too. See [../scenario-results.md](../scenario-results.md#ixs02ixs06-behaviour-one-test-each).

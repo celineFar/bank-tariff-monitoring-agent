@@ -10,4 +10,4 @@ content-addressed key), a PDF disappeared, and the summary changed.
 version and the new summary. The old page version, the vanished PDF and the old summary
 are `retired`.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26). See [../scenario-results.md](../scenario-results.md#ixs02ixs06-behaviour-one-test-each).

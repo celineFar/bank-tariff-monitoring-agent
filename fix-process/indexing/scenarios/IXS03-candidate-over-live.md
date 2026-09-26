@@ -10,4 +10,4 @@ discovery selection).
 **Pass when.** The live chunks are unchanged, content and count, and the candidate is a
 separate `knowledge_documents` row (a new version) that stays inactive.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26). See [../scenario-results.md](../scenario-results.md#ixs02ixs06-behaviour-one-test-each).

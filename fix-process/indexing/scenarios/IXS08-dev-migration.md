@@ -22,4 +22,4 @@ backfill and clean-up behave.
 5 active `api:*` documents holding 135 HTML chunks, 22 of 246 active evidence rows
 unlinked.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26): `api:*` active 5 → 0; unlinked evidence 22 → 0 of 246; one active version per URL. The dev DB is at migration 015: deployment must apply 016–023. Script: `run_ixs08_replay.py`. See [../scenario-results.md](../scenario-results.md#ixs08-migration-023-on-a-copy-of-the-dev-database).

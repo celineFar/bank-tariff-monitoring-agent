@@ -152,6 +152,9 @@ shell, or SQL tool.
   owns no ADK app or session and imports nothing from `google.adk`. A run that
   pauses for review stays `awaiting_review` and is reviewed from the CLI. On start
   it fails abandoned leases and completes paused runs whose reviews are all decided.
+  A separate loop embeds active chunks stored without a vector (`embed_missing`, every
+  `EMBEDDING_SWEEP_INTERVAL_SECONDS`), so a provider quota wait never blocks claiming
+  runs.
 - `app/services/monitoring_progress.py`: the pipeline's progress port
   (`PipelineProgress`, `ProgressSink`, log/queue sinks) and `stream_progress`,
   which runs the pipeline as a task and yields its progress; cancelling the
@@ -551,23 +554,34 @@ demonstration flow.
 
 ## RAG index / knowledge-store boundary
 
-`KnowledgeIndexer` accepts page-aware source-faithful and deterministic-summary chunks,
-requests `RETRIEVAL_DOCUMENT` embeddings through an injected embedding provider, and
-passes only validated 768-dimensional vectors to `PostgresKnowledgeStore`. Neither
-the embedding client nor the repository is exposed as an ADK tool.
+`KnowledgeIndexer` accepts page-aware source-faithful and deterministic-summary chunks
+and requests `RETRIEVAL_DOCUMENT` embeddings through an injected embedding provider
+(content-addressed cache first); it writes nothing but vectors (`embed_missing`). Neither
+the embedding client nor the repositories are exposed as an ADK tool.
 
-Document-version UUIDs are derived from bank, product, stable document identity, and
-source checksum. Chunk IDs are SHA-256 digests of the document checksum and stable
-location fields. Re-ingesting unchanged input therefore upserts the same rows. A
-per-document PostgreSQL advisory transaction lock serializes concurrent ingestion;
-new versions retire prior active versions and their chunks while retaining history.
-Re-chunking the same version also retires chunks absent from the new input.
+`app/repositories/knowledge_publication.py` is the only writer of document versions,
+always inside the offering publication or review transaction and under the offering's
+publication advisory lock (taken before any review row lock):
 
-`knowledge_documents` retains source/version metadata, active state, retrieval time,
-extraction method, and quality. `knowledge_chunks` retains page/section/language,
-content, extraction metadata, a generated `tsvector`, and a `vector(768)` embedding.
-GIN and HNSW indexes support the lexical/vector retrieval component implemented in a
-later checklist item. Migration `002_rag_knowledge_store.sql` owns this schema.
+- a document version is one projection of one source's bytes; its UUID derives from
+  bank, product, offering, kind, document key, source checksum and projection hash
+  (`projection_sha256`, chunk content and metadata plus `PROJECTION_SCHEMA_VERSION`),
+  and chunk IDs from the version and ordinal. Versions are immutable: storing one again
+  refreshes bookkeeping and fills missing vectors only;
+- `snapshot_documents` (migration `023`) records the versions each snapshot was built
+  from; fact evidence links to documents through it;
+- `activate_snapshot_set` makes a snapshot's set the offering's whole active index and
+  retires everything else of the offering, keeping history;
+- `discard_snapshot_documents` deletes a rejected or superseded snapshot's
+  never-published versions that no other snapshot names.
+
+`knowledge_documents` retains source/version metadata, publication state
+(`pending_review`, `active`, `retired`), retrieval time, extraction method, and quality.
+`knowledge_chunks` retains page/section/language, content, extraction metadata, a
+generated `tsvector`, and a `vector(768)` embedding that is `NULL` until embedded
+(content under review, quota-deferred runs). Partial GIN and HNSW indexes over active
+chunks support the lexical/vector retrieval component. Migrations `002` and `023` own
+this schema; `app/repositories/knowledge_records.py` mirrors it.
 
 ## RAG retrieval boundary
 
@@ -663,8 +677,10 @@ re-reads business state on every run.
 ## Review and quarantine boundary
 
 Typed review tasks are durable business records tied to candidate snapshots. Candidate
-documents and chunks are persisted
-inactive; they cannot displace the prior accepted active version. Same-scope newer reviews
+documents and chunks are persisted inactive and text only (nothing is embedded before a
+decision), as their own immutable versions; they cannot displace or rewrite the prior
+accepted active version. An accepted publication supersedes pending reviews of older
+snapshots, and an approval that races one is refused (`StaleReviewError`). Same-scope newer reviews
 supersede older pending reviews under a database lock and uniqueness constraint (pending
 reviews are unique per field *and* reason since migration `022`, so sibling reviews of one
 snapshot coexist). A native decision is validated against its field schema and captured
@@ -681,9 +697,10 @@ for the reviewer's `?`. An override citing a passage outside the shown units wri
 `review_citation_outside_shown_units` in the decision's transaction
 (`ReviewSnapshotUpdate.audit_events`). After all reviews
 for a snapshot are approved, one database transaction updates and accepts the snapshot,
-records its change set, activates candidate documents/chunks, retires replaced active
-versions, and completes the offering. Rejection leaves the previous accepted publication
-active. See `docs/review-quarantine.md` and `docs/native-hitl-review.md`.
+records its change set, adds the final values' offering summary to the snapshot's set,
+activates that set as the offering's whole index, and completes the offering; the
+approved chunks are embedded after the commit. Rejection deletes the snapshot's
+never-published versions and leaves the previous accepted publication active. See `docs/review-quarantine.md` and `docs/native-hitl-review.md`.
 
 `app/services/review_input.py` owns the reviewer-facing side of that contract: for every
 `ExtractionField` it states the accepted entry format and deterministically reads a typed

@@ -14,4 +14,4 @@ captures offline and report chunk counts and the largest chunk.
 
 **Pass when.** All pass; no chunk of the seed projection exceeds the configured size.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26): 0 chunks over 1,500; bare table chunks 40 → 1; breadcrumbs on 136 of 178 mid-section chunks; deterministic. Script: `run_ixs09_projection.py`. See [../scenario-results.md](../scenario-results.md#ixs09-chunk-shape-on-the-13-seeds).

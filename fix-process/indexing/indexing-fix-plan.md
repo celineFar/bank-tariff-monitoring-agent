@@ -1,7 +1,7 @@
 # Indexing: fix plan
 
 Date: 2026-09-26 · Branch: `fix/indexing` (to create from `integration/process-fixes` at
-`a812f69`) · Status: **in progress** (Phases 0–5 done).
+`a812f69`) · Status: **implemented and validated** (Phases 0–6 done; the live run IXS10 and deployment need approval).
 
 The four design choices this plan depends on (D1–D4) were confirmed by the user on
 2026-09-26. The other decisions (D5–D12) are Claude's; each is listed in
@@ -63,23 +63,23 @@ The path from a selected, normalized source bundle to searchable RAG chunks:
 
 ## Summary
 
-| ID | Problem | Severity | Fix |
-|---|---|---|---|
-| IX1 | Old versions of a page or PDF, and sources that disappear, are never retired | **critical** | Publishing replaces the offering's whole active set (D2) |
-| IX2 | A review-required run overwrites live chunks in place (quarantine bypass) | **critical** | Version identity includes a projection hash; version rows are immutable |
-| IX3 | Approval can leave approved documents inactive (`run_id` = first-seen run) | **high** | `snapshot_documents` mapping; activation by snapshot, not `run_id` |
-| IX4 | Approving a stale review rolls back a newer accepted result | **high** | Supersede on accepted publish, plus a guard at approval (D3) |
-| IX5 | Content under review is embedded before anyone approves it | **high** (cost) | Store text only; embed on approval (D1) |
-| IX6 | Approval never builds the offering summary; the old summary stays live | **high** | Approval projects the summary from the final snapshot |
-| IX7 | Quota deferral publishes no documents at all; nothing fills the gap later | medium | Publish the text-only set; a worker sweep embeds it (D1) |
-| IX8 | Dead vectors dilute filtered HNSW search; nothing is ever cleaned up | medium | Partial indexes, iterative scan, delete discarded rows (D4) |
-| IX9 | `rejected`/`superseded` document states are write-only and harmful | medium | States become `pending_review`, `active`, `retired`; discarded rows are deleted |
-| IX10 | Split table pieces lose title and header; chunks lack heading context | medium | Repeat title and header per piece; heading breadcrumb per chunk |
-| IX11 | The summary is re-versioned and re-embedded on every accepted run | low | Timestamps move out of the summary content |
-| IX12 | Fact evidence is linked to documents by `run_id`, so unchanged documents are not linked | **high** | Link through `snapshot_documents` |
-| IX13 | `_split_unit` drops the unit's discovery label | low | Carry the label |
-| IX14 | `chunk_overlap_chars` is never used; chunk-size bounds disagree | low | Remove the overlap setting; align the bounds |
-| IX15 | A second, unused writer always writes `is_active=True` | low | Delete it |
+| ID | Problem | Severity | Fix | Status |
+|---|---|---|---|---|
+| IX1 | Old versions of a page or PDF, and sources that disappear, are never retired | **critical** | Publishing replaces the offering's whole active set (D2) | **fixed** |
+| IX2 | A review-required run overwrites live chunks in place (quarantine bypass) | **critical** | Version identity includes a projection hash; version rows are immutable | **fixed** |
+| IX3 | Approval can leave approved documents inactive (`run_id` = first-seen run) | **high** | `snapshot_documents` mapping; activation by snapshot, not `run_id` | **fixed** |
+| IX4 | Approving a stale review rolls back a newer accepted result | **high** | Supersede on accepted publish, plus a guard at approval (D3) | **fixed** |
+| IX5 | Content under review is embedded before anyone approves it | **high** (cost) | Store text only; embed on approval (D1) | **fixed** |
+| IX6 | Approval never builds the offering summary; the old summary stays live | **high** | Approval projects the summary from the final snapshot | **fixed** |
+| IX7 | Quota deferral publishes no documents at all; nothing fills the gap later | medium | Publish the text-only set; a worker sweep embeds it (D1) | **fixed** |
+| IX8 | Dead vectors dilute filtered HNSW search; nothing is ever cleaned up | medium | Partial indexes, iterative scan, delete discarded rows (D4) | **fixed** |
+| IX9 | `rejected`/`superseded` document states are write-only and harmful | medium | States become `pending_review`, `active`, `retired`; discarded rows are deleted | **fixed** |
+| IX10 | Split table pieces lose title and header; chunks lack heading context | medium | Repeat title and header per piece; heading breadcrumb per chunk | **fixed** |
+| IX11 | The summary is re-versioned and re-embedded on every accepted run | low | Timestamps move out of the summary content | **fixed** |
+| IX12 | Fact evidence is linked to documents by `run_id`, so unchanged documents are not linked | **high** | Link through `snapshot_documents` | **fixed** |
+| IX13 | `_split_unit` drops the unit's discovery label | low | Carry the label | **fixed** |
+| IX14 | `chunk_overlap_chars` is never used; chunk-size bounds disagree | low | Remove the overlap setting; align the bounds | **fixed** |
+| IX15 | A second, unused writer always writes `is_active=True` | low | Delete it | **fixed** |
 
 ---
 
@@ -861,20 +861,50 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
 
 ### Phase 6: Validation and docs
 
-- [ ] Run IXS01–IXS09 and write `scenario-results.md`.
+- [x] Run IXS01–IXS09 and write `scenario-results.md`.
 - [ ] Ask for budget approval before IXS10 (live overdraft run); run it if approved.
-- [ ] Update [docs/indexing-projection.md](../../docs/indexing-projection.md),
+      **Not done:** waiting for the user's approval of the model spend.
+- [x] Update [docs/indexing-projection.md](../../docs/indexing-projection.md),
       [docs/knowledge-store.md](../../docs/knowledge-store.md),
       [docs/rag-retrieval.md](../../docs/rag-retrieval.md),
       [docs/review-quarantine.md](../../docs/review-quarantine.md) and
       [docs/architecture.md](../../docs/architecture.md) (persistence responsibilities
       and the worker sweep change, as AGENTS.md requires).
-- [ ] Update this plan's Summary with statuses, and add the decisions to
+- [x] Update this plan's Summary with statuses, and add the decisions to
       [../note.md](../note.md).
+
+**Phase 6 notes (done, except IXS10).** Results: [scenario-results.md](scenario-results.md).
+- IXS01–IXS09 pass. IXS01: 1087 passed, 5 skipped, only the 4 known Gemini-key tests
+  failing (baseline 1064 passed).
+- **IXS07 changed from the plan.** A cross-offering recall assertion proved flaky:
+  it is ANN approximation on a 205-node graph, and returned 4 of 5 with or without
+  iterative scan. It was replaced by a dead-row crowding check, which is deterministic
+  after a VACUUM and was verified to fail on a full index. **Found:** the hybrid query
+  never used the HNSW index (the query vector came from a CTE column); fixed in Phase 5.
+- **IXS08** ([run_ixs08_replay.py](scenarios/run_ixs08_replay.py)): on a dev copy,
+  after 023 and one replayed accepted publication, `api:*` active documents went 5 → 0,
+  unlinked evidence 22 → 0 of 246, and each URL has one active version.
+  **Found: the dev database stops at migration 015** (016–022 were never applied),
+  so deployment must apply 016–023. The replay re-canonicalizes the stored snapshot's payload, because today's
+  projector refuses the pre-branch form; this is unrelated to indexing.
+- **IXS09** ([run_ixs09_projection.py](scenarios/run_ixs09_projection.py)): on 13 seeds,
+  compared against the `a812f69` projection. Bare table chunks went 40 → 1 (the 1 is a
+  headerless table's notes); 136 of 178 mid-section chunks have breadcrumbs (the rest
+  start with a unit that has no heading path); 0 chunks over 1,500 characters;
+  deterministic; +6% characters; a full re-embed costs about $0.024.
+- Docs: `indexing-projection.md` and `knowledge-store.md` rewritten;
+  `review-quarantine.md`, `rag-retrieval.md`, `configuration.md` and `architecture.md`
+  (knowledge-store boundary, worker sweep, review and quarantine boundary) updated.
+- **Left open:** the table-cell `<br>` markers the projection writes are embedded as
+  text (the `simple` text search drops them as tags). This is harmless, but could be
+  rendered as `; ` in a later projection schema version.
 
 ## Deployment (needs human approval)
 
-- [ ] Apply migration `023_indexing_publication_sets.sql`.
+- [ ] Apply the pending migrations in order. **The dev database stops at 015**, so this
+      means `016_drop_review_workflow_correlation.sql` through
+      `022_review_evidence_sets.sql`, then `023_indexing_publication_sets.sql` (all
+      idempotent; IXS08 applied exactly this sequence to a copy).
 - [ ] Confirm the backfill: every active document and every pending review's documents
       have a `snapshot_documents` row.
 - [ ] Run one accepted monitoring run per offering (or wait for the schedule) and check:
@@ -883,3 +913,5 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
   - `embed_missing` leaves no active `NULL` vectors.
 - [ ] Watch `indexing.embedding_sweep` usage and the `indexing.embedding_deferred`
       warning after deploy.
+- [ ] Restart the worker so the embedding sweep loop starts (new settings
+      `EMBEDDING_SWEEP_BATCH`, `EMBEDDING_SWEEP_INTERVAL_SECONDS`; defaults 200 / 300 s).

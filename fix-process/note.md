@@ -131,3 +131,29 @@ Decisions the review-process report left open, taken without asking (plan table 
 - **Merge.** `fix/reviews` is merged into `integration/process-fixes`, like the earlier
   fixes (see Branches).
 
+
+## Indexing (fix-process/indexing/)
+
+The user chose D1–D4 on 2026-09-26: text-only content before review, replacing the
+whole set on publication, supersede-plus-guard for stale reviews, and partial indexes
+with discarded rows deleted. Claude decided D5–D12 and recorded them in the plan.
+Implemented on `fix/indexing` (not merged yet).
+
+- **`document_key` is not rekeyed by URL (D5).** Fact evidence stores and verifies
+  `source_document_key` and `source_checksum`, so both stay the normalized id and raw
+  hash. A new `projection_sha256` separates projections of the same bytes.
+- **Found: `source_manifests.document_id` had no `ON DELETE` rule**; migration 023 makes
+  it `SET NULL`, so discarded versions can be deleted.
+- **Found: lock order.** Publication now supersedes reviews, so every path that touches
+  an offering's documents or pending reviews takes the offering publication lock first.
+- **Found: the hybrid query never used the HNSW index** (its query vector was a CTE
+  column). It now orders by the bound vector. At today's size the planner still
+  prefers a btree path and a sort.
+- **Sweep settings are named `EMBEDDING_SWEEP_BATCH` / `EMBEDDING_SWEEP_INTERVAL_SECONDS`**,
+  following the existing un-prefixed names (the plan said `RAG_EMBED_SWEEP_BATCH`).
+  The sweep runs in its own worker loop, so a quota wait never blocks runs.
+- **IXS07 recall check replaced** by a deterministic dead-row crowding check. ANN recall
+  on a 205-node graph is approximate and was not asserted.
+- **Found: the dev database is at migration 015.** 016–022 were never applied; a
+  deployment must apply 016–023 (IXS08 did this on a copy).
+- **IXS10 (live run) not run**: it needs the user's approval of the model spend.

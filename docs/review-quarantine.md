@@ -15,13 +15,23 @@ are siblings and both stay pending (migration `022`); each decision removes only
 signal. Repeated creation and repeated identical decisions
 are idempotent; a conflicting late decision is rejected.
 
-Documents published with a `candidate` or `review_required` snapshot are inserted with
-`publication_state=pending_review`, with inactive chunks. Existing accepted documents stay
-active. Rejected, failed, or superseded review documents remain inactive and receive the
-corresponding terminal publication state. The deterministic decision service validates
-native ADK input against the field schema and captured evidence. Once every review for a
-snapshot is approved, the repository atomically activates the snapshot, change set, and
-eligible documents. A rejection preserves the preceding accepted publication.
+Documents published with a `candidate` or `review_required` snapshot are stored as
+text only (no embedding is paid for content a reviewer may reject), inactive, with
+`publication_state=pending_review`, and linked to the snapshot (`snapshot_documents`).
+Existing accepted documents stay active and are never rewritten: the same source bytes
+projected into other chunks are another version. A rejected, failed, or superseded
+review deletes the snapshot's never-published versions that no other snapshot names.
+The deterministic decision service validates native ADK input against the field schema
+and captured evidence. Once every review for a snapshot is approved, the repository
+atomically activates the snapshot, change set, its offering summary (built from the
+final values), and its whole document set, which replaces the offering's index; the
+approved chunks are embedded right after the commit (the worker's sweep retries). A
+rejection preserves the preceding accepted publication.
+
+An accepted publication supersedes pending reviews of the offering's older snapshots
+(`review.superseded`, reason `newer_accepted_snapshot`): approving one would roll the
+offering back. An approval that races such a publication is refused with
+`StaleReviewError` and the review is superseded (`review.superseded_stale`).
 
 Reviewer choices enter through native ADK pause/resume: the monitoring node pauses the
 chat invocation on each pending review and applies the answer through

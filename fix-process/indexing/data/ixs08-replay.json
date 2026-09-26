@@ -1,0 +1,167 @@
+{
+  "as_of": "2026-09-26T21:45:57.538697+00:00",
+  "before_migration": {
+    "documents_by_state": {
+      "active/true": 10,
+      "rejected/false": 7
+    },
+    "chunks_by_active": {
+      "false": 506,
+      "true": 493
+    },
+    "active_api_documents": {
+      "n": 5
+    },
+    "active_html_chunks": {
+      "n": 67
+    },
+    "active_page_versions_per_url": {
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=41635": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=41637": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=41638": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=54240": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=54241": 1,
+      "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_eng.pdf": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/Overdraft_unsecured_eng.pdf": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf": 1
+    },
+    "active_evidence_unlinked": {
+      "n": 22
+    },
+    "active_evidence": {
+      "n": 246
+    },
+    "active_chunks_without_vector": {
+      "n": 0
+    },
+    "snapshot_sets": "n/a (ProgrammingError)"
+  },
+  "after_migration": {
+    "documents_by_state": {
+      "active/true": 10
+    },
+    "chunks_by_active": {
+      "true": 493
+    },
+    "active_api_documents": {
+      "n": 5
+    },
+    "active_html_chunks": {
+      "n": 67
+    },
+    "active_page_versions_per_url": {
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=41635": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=41637": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=41638": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=54240": 1,
+      "https://ameriabank.am/en/API/WebsitesCreative/MyContentManager/API/Init?portalId=0&tabId=6103&moduleId=54241": 1,
+      "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_eng.pdf": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/Overdraft_unsecured_eng.pdf": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf": 1
+    },
+    "active_evidence_unlinked": {
+      "n": 22
+    },
+    "active_evidence": {
+      "n": 246
+    },
+    "active_chunks_without_vector": {
+      "n": 0
+    },
+    "snapshot_sets": {
+      "accepted": 10
+    }
+  },
+  "publication": {
+    "previous_snapshot_id": "f96de36b-41bb-47c0-add3-7ef8d60f932d",
+    "replayed_snapshot_id": "7bb933b7-e6f9-4a99-8552-2ac3ce90dc57",
+    "documents_published": [
+      "document:0:3472fe8d3966",
+      "document:1:64566c7add62",
+      "document:2:7b405d165676",
+      "page:57a088f48d2397b8",
+      "offering-summary:overdraft"
+    ],
+    "document_results": [
+      {
+        "document_id": "9287668c-fe52-5d3f-a94b-27232afd4d58",
+        "document_created": true,
+        "chunks_created": 13,
+        "chunks_updated": 0,
+        "chunks_retired": 0,
+        "versions_retired": 0
+      },
+      {
+        "document_id": "80683bc6-c5e1-5fb1-8b64-5fb274287320",
+        "document_created": true,
+        "chunks_created": 4,
+        "chunks_updated": 0,
+        "chunks_retired": 0,
+        "versions_retired": 0
+      },
+      {
+        "document_id": "d2623dfc-fc93-5b69-a1c1-40653e4dc3cb",
+        "document_created": true,
+        "chunks_created": 3,
+        "chunks_updated": 0,
+        "chunks_retired": 0,
+        "versions_retired": 0
+      },
+      {
+        "document_id": "1ff11d63-f1bc-5934-865b-363a504d877f",
+        "document_created": true,
+        "chunks_created": 15,
+        "chunks_updated": 0,
+        "chunks_retired": 0,
+        "versions_retired": 0
+      },
+      {
+        "document_id": "0e76cf51-56e9-55dc-90d0-db75d7de972f",
+        "document_created": true,
+        "chunks_created": 9,
+        "chunks_updated": 0,
+        "chunks_retired": 0,
+        "versions_retired": 0
+      }
+    ],
+    "evidence_linked": 246,
+    "evidence_unlinked": 0,
+    "unlinked_by_document_key": {}
+  },
+  "after_publication": {
+    "documents_by_state": {
+      "active/true": 5,
+      "retired/false": 10
+    },
+    "chunks_by_active": {
+      "false": 493,
+      "true": 44
+    },
+    "active_api_documents": {
+      "n": 0
+    },
+    "active_html_chunks": {
+      "n": 6
+    },
+    "active_page_versions_per_url": {
+      "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_eng.pdf": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/Overdraft_unsecured_eng.pdf": 1,
+      "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf": 1
+    },
+    "active_evidence_unlinked": {
+      "n": 0
+    },
+    "active_evidence": {
+      "n": 246
+    },
+    "active_chunks_without_vector": {
+      "n": 9
+    },
+    "snapshot_sets": {
+      "accepted": 15
+    }
+  }
+}

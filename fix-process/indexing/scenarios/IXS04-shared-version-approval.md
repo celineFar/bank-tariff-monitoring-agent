@@ -8,4 +8,4 @@ review supersedes A's. B is approved.
 **Pass when.** B's whole document set is active (including the version first inserted
 by A), and nothing from before is left active.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26). See [../scenario-results.md](../scenario-results.md#ixs02ixs06-behaviour-one-test-each).

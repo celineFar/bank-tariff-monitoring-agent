@@ -16,4 +16,4 @@ TEST_DATABASE_URL=postgresql+asyncpg://tariff:tariff@localhost:5434/tariff_acqui
 **Baseline (Phase 0, 2026-09-26).** 1064 passed, 5 skipped; 1 failed + 3 errors (the
 4 known Gemini-key tests).
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26): 1087 passed, 5 skipped; only the 4 known Gemini-key tests fail. No `xfail` left.

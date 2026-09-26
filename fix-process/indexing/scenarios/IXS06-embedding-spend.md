@@ -14,4 +14,4 @@ Postgres: `test_ix6_approval_activates_the_summary_it_carries`,
 **Pass when.** All pass; the usage ledger records no `indexing.embedding` call for a
 review-required run.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26). See [../scenario-results.md](../scenario-results.md#ixs02ixs06-behaviour-one-test-each).

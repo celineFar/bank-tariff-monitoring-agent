@@ -11,4 +11,4 @@ recall check added in Phase 5.
 
 **Pass when.** Both hold.
 
-**Result.** _Filled in Phase 6._
+**Result.** **PASS** (2026-09-26). The recall check became a dead-row crowding check (verified to fail on a full index); cross-offering ANN recall is not asserted. Finding: the hybrid query never used the HNSW index. See [../scenario-results.md](../scenario-results.md#ixs07-retrieval-over-partial-indexes).

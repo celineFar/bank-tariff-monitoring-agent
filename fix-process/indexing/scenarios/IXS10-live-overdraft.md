@@ -11,4 +11,4 @@ extraction and embedding calls; about $0.05 of it for the re-embed).
 **Pass when.** One active version per source, no active `api:*` document, 0 unlinked
 evidence rows, no active chunk without a vector after the sweep.
 
-**Result.** _Filled in Phase 6._
+**Result.** **Not run**: needs the user's approval of the model spend.
