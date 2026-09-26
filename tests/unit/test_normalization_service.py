@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.domain.acquisition import (
+    AcquisitionInventory,
     AcquisitionMode,
     ContentBlock,
     ContentBlockType,
@@ -80,6 +81,7 @@ async def test_service_preserves_table_and_link_relationships() -> None:
         downloadable_documents=(),
         network_payloads=(),
         retrieved_at=datetime.now(UTC),
+        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0, payloads=0),
         content_hash="a" * 64,
         page_content_hash="b" * 64,
     )

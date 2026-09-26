@@ -9,7 +9,11 @@ from app.domain.monitoring import (
     RunFailureCode,
     SourceFailureCode,
 )
-from app.services.browser_renderer import BrowserRenderingError
+from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
+from app.services.browser_renderer import (
+    BrowserRenderingError,
+    BrowserRenderingFailure,
+)
 from app.services.html_retriever import (
     HtmlRetrievalError,
     HtmlRetrievalFailure,
@@ -23,6 +27,21 @@ _REDIRECT_FAILURES = {
     PdfDownloadFailure.REDIRECT_WITHOUT_LOCATION,
     PdfDownloadFailure.REDIRECT_LIMIT_EXCEEDED,
     PdfDownloadFailure.REDIRECT_LOOP,
+}
+
+# Each renderer reason maps to the code its static-fetch counterpart gets, so a
+# redirect or a 404 reads the same whichever fetcher met it.
+_BROWSER_FAILURES = {
+    BrowserRenderingFailure.UNAVAILABLE: SourceFailureCode.BROWSER_UNAVAILABLE,
+    BrowserRenderingFailure.NAVIGATION: SourceFailureCode.BROWSER_FAILED,
+    BrowserRenderingFailure.INTERACTION: SourceFailureCode.BROWSER_FAILED,
+    BrowserRenderingFailure.DISALLOWED_REDIRECT: SourceFailureCode.REDIRECT_REJECTED,
+    BrowserRenderingFailure.REDIRECT_LIMIT_EXCEEDED: (
+        SourceFailureCode.REDIRECT_REJECTED
+    ),
+    BrowserRenderingFailure.HTTP_STATUS: SourceFailureCode.HTTP_STATUS,
+    BrowserRenderingFailure.UNSUPPORTED_MIME_TYPE: SourceFailureCode.MIME_REJECTED,
+    BrowserRenderingFailure.PAGE_TOO_LARGE: SourceFailureCode.SIZE_REJECTED,
 }
 
 
@@ -72,11 +91,19 @@ def source_failure_code(exc: Exception, *, stage: str) -> SourceFailureCode:
                     if current.status_code == 404
                     else SourceFailureCode.HTTP_STATUS
                 )
-        if (
-            isinstance(current, BrowserRenderingError)
-            or type(current).__name__ == "AcquisitionError"
-        ):
-            return SourceFailureCode.PARSING_FAILED
+        if isinstance(current, AcquisitionError):
+            if current.reason is AcquisitionFailure.INCOMPLETE_CONTENT:
+                return SourceFailureCode.INCOMPLETE_CONTENT
+            if current.reason is AcquisitionFailure.BROWSER_UNAVAILABLE:
+                return SourceFailureCode.BROWSER_UNAVAILABLE
+            # A browser failure keeps the renderer's more specific reason, which
+            # is the cause further down the chain.
+            cause = current.__cause__
+            if isinstance(cause, BrowserRenderingError):
+                return _BROWSER_FAILURES[cause.reason]
+            return SourceFailureCode.BROWSER_FAILED
+        if isinstance(current, BrowserRenderingError):
+            return _BROWSER_FAILURES[current.reason]
         if isinstance(current, ValidationError):
             return SourceFailureCode.MALFORMED_STRUCTURED_OUTPUT
         current = current.__cause__ or current.__context__
@@ -136,6 +163,7 @@ _FAILURE_EXPLANATIONS = {
     ),
     SourceFailureCode.SIGNATURE_REJECTED: "a downloaded file was not a valid PDF",
     SourceFailureCode.PARSING_FAILED: "a source page could not be parsed",
+    SourceFailureCode.OCR_FAILED: ("a scanned tariff page could not be read by OCR"),
     SourceFailureCode.PDF_EXTRACTION_FAILED: (
         "a tariff PDF could not be transcribed by any configured model"
     ),
@@ -147,6 +175,18 @@ _FAILURE_EXPLANATIONS = {
     ),
     SourceFailureCode.VALIDATION_FAILED: (
         "the extracted values did not pass validation, so nothing was published"
+    ),
+    SourceFailureCode.BROWSER_UNAVAILABLE: (
+        "the headless browser needed to read the bank's page could not start"
+    ),
+    SourceFailureCode.BROWSER_FAILED: (
+        "the bank's page could not be rendered in the browser, so nothing was read"
+    ),
+    SourceFailureCode.INCOMPLETE_CONTENT: (
+        "the bank's page came back without its tariff content, or with much less "
+        "of it than last time, so nothing was published; if the bank redesigned "
+        "the page, an operator can accept it with "
+        "`python -m scripts.reset_acquisition_baseline <offering_id>`"
     ),
     IndexingFailureCode.INVALID_DOCUMENT: "a source document failed its index checks",
     IndexingFailureCode.EMBEDDING_FAILED: "the evidence index could not be built",

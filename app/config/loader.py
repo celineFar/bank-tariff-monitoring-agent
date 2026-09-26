@@ -61,7 +61,7 @@ def load_settings(
         ),
         acquisition=AcquisitionSettings(
             browser_enabled=raw.acquisition_browser_enabled,
-            min_static_text_chars=raw.acquisition_min_static_text_chars,
+            min_main_content_chars=raw.acquisition_min_main_content_chars,
             browser_navigation_timeout_seconds=(
                 raw.acquisition_browser_navigation_timeout_seconds
             ),

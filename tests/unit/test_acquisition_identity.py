@@ -99,7 +99,9 @@ def _service(tmp_path, html: str, *, browser=None, pdf=None) -> AcquisitionServi
         html_parser=HtmlArtifactParser(("ameriabank.am",)),
         pdf_downloader=pdf or _PdfDownloader(),
         artifact_store=FileSystemArtifactStore(tmp_path),
-        settings=AcquisitionSettings(min_static_text_chars=10),
+        settings=AcquisitionSettings(
+            browser_enabled=browser is not None, min_main_content_chars=10
+        ),
         browser_renderer=browser,
     )
 

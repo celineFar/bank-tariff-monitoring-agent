@@ -113,6 +113,9 @@ class SourceFailureCode(StrEnum):
     MODEL_FAILED = "source.model_failed"
     MALFORMED_STRUCTURED_OUTPUT = "source.malformed_structured_output"
     VALIDATION_FAILED = "source.validation_failed"
+    BROWSER_UNAVAILABLE = "source.browser_unavailable"
+    BROWSER_FAILED = "source.browser_failed"
+    INCOMPLETE_CONTENT = "source.incomplete_content"
 
 
 class IndexingFailureCode(StrEnum):

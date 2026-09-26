@@ -638,10 +638,11 @@ async def test_single_offering_failure_reports_source_code_and_reason() -> None:
         ):
             raise OfferingPipelineError(
                 "acquisition",
-                "source.parsing_failed",
+                "source.incomplete_content",
                 AcquisitionError(
-                    AcquisitionFailure.INSUFFICIENT_CONTENT,
-                    "source content is insufficient",
+                    AcquisitionFailure.INCOMPLETE_CONTENT,
+                    "source content is incomplete",
+                    reasons=("tables 3 -> 0",),
                 ),
             )
 
@@ -666,11 +667,12 @@ async def test_single_offering_failure_reports_source_code_and_reason() -> None:
     completed = await pipeline.execute(running)
 
     assert completed.status is RunStatus.FAILED
-    assert completed.failure_code == "source.parsing_failed"
+    assert completed.failure_code == "source.incomplete_content"
     assert runs.failures[0][1]["failure_detail"] == (
-        "AcquisitionError:INSUFFICIENT_CONTENT"
+        "AcquisitionError:INCOMPLETE_CONTENT"
     )
-    assert runs.failures[0][1]["audit_payload"]["reason"] == ("INSUFFICIENT_CONTENT")
+    assert runs.failures[0][1]["audit_payload"]["reason"] == "INCOMPLETE_CONTENT"
+    assert runs.failures[0][1]["audit_payload"]["reasons"] == ["tables 3 -> 0"]
 
 
 @pytest.mark.asyncio

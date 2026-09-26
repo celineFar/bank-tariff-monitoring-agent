@@ -196,13 +196,17 @@ class HttpSettings(SettingsGroup):
 
 class AcquisitionSettings(SettingsGroup):
     browser_enabled: bool = True
-    min_static_text_chars: int = Field(default=500, ge=0, le=100_000)
+    # Completeness floor: text outside the site header, menus and footer, which
+    # alone run to ~9k characters on every bank page. Measured 2026-09-26:
+    # static-only pages carry 75-1,179 such characters, the thinnest real render
+    # (a campaign page) 3,294.
+    min_main_content_chars: int = Field(default=1_500, ge=0, le=100_000)
     browser_navigation_timeout_seconds: float = Field(default=30, gt=0, le=120)
     browser_settle_milliseconds: int = Field(default=750, ge=0, le=10_000)
     max_interactions: int = Field(default=100, ge=0, le=100)
     max_network_payloads: int = Field(default=25, ge=0, le=200)
     max_network_payload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
-    max_linked_documents: int = Field(default=10, ge=0, le=50)
+    max_linked_documents: int = Field(default=40, ge=0, le=50)
     # How long an acquisition stays usable. Within the window a run reuses the
     # stored page artifact instead of fetching the bank again; 0 disables reuse
     # and every run re-acquires. Only acquisition is skipped -- normalization

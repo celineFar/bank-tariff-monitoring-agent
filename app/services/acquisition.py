@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
-from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import unquote, urlsplit
@@ -12,12 +10,16 @@ import httpx
 
 from app.config import AcquisitionSettings, Settings
 from app.domain.acquisition import (
+    AcquisitionInventory,
     AcquisitionMode,
+    AcquisitionWarning,
+    AcquisitionWarningCode,
     DocumentArtifact,
     NetworkPayload,
     PageArtifact,
     StoredArtifact,
 )
+from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.browser_renderer import (
     BrowserRenderer,
@@ -33,26 +35,14 @@ from app.services.pdf_downloader import (
     PdfDownloadError,
 )
 
-_INTERACTIVE_HTML = re.compile(
-    r"aria-expanded\s*=\s*['\"]false|data-(?:bs-)?toggle\s*=|role\s*=\s*['\"]tab",
-    re.IGNORECASE,
-)
-_APP_SHELL_HTML = re.compile(
-    r"id\s*=\s*['\"](?:app|root|__next)['\"]|__NEXT_DATA__",
-    re.IGNORECASE,
-)
-
-
-class AcquisitionFailure(StrEnum):
-    BROWSER_REQUIRED = "BROWSER_REQUIRED"
-    BROWSER_FAILED = "BROWSER_FAILED"
-    INSUFFICIENT_CONTENT = "INSUFFICIENT_CONTENT"
-
-
-class AcquisitionError(RuntimeError):
-    def __init__(self, reason: AcquisitionFailure, message: str) -> None:
-        super().__init__(message)
-        self.reason = reason
+__all__ = [
+    "AcquisitionError",
+    "AcquisitionFailure",
+    "AcquisitionService",
+    "build_acquisition_service",
+    "build_file_system_artifact_store",
+    "completeness_floor_failures",
+]
 
 
 class ArtifactStore(Protocol):
@@ -64,6 +54,27 @@ class ArtifactStore(Protocol):
         media_type: str,
         extension: str,
     ) -> StoredArtifact: ...
+
+
+def completeness_floor_failures(
+    inventory: AcquisitionInventory, settings: AcquisitionSettings
+) -> tuple[str, ...]:
+    """Why an acquisition is too thin to monitor from, or () when it is not.
+
+    Two conditions, both required. The page must carry real text outside the
+    site's header, menus and footer -- every bank page has ~9k characters of
+    those, so counting the whole page proves nothing. And it must carry at least
+    one of the structures tariffs are published in: a table, a PDF link, or a
+    captured data payload.
+    """
+    failures: list[str] = []
+    if inventory.main_chars < settings.min_main_content_chars:
+        failures.append(
+            f"main_chars {inventory.main_chars} < {settings.min_main_content_chars}"
+        )
+    if not (inventory.tables or inventory.pdf_links or inventory.payloads):
+        failures.append("no tables, PDF links or payloads")
+    return tuple(failures)
 
 
 class AcquisitionService:
@@ -88,65 +99,72 @@ class AcquisitionService:
 
     async def acquire(self, url: str) -> PageArtifact:
         retrieved = await self._html_retriever.retrieve(url)
-        raw_parsed = self._html_parser.parse(
-            retrieved.html, source_url=retrieved.final_url
-        )
-        parsed = raw_parsed
+        parsed = self._html_parser.parse(retrieved.html, source_url=retrieved.final_url)
         rendered_html: str | None = None
         final_url = retrieved.final_url
         network_payloads: tuple[NetworkPayload, ...] = ()
         mode = AcquisitionMode.STATIC
-        warnings: list[str] = []
+        interactions = 0
+        warnings: list[AcquisitionWarning] = []
 
-        requires_browser = self._requires_browser(retrieved.html, raw_parsed)
-        if requires_browser:
-            if not self._settings.browser_enabled:
-                if not self._is_useful(raw_parsed):
-                    raise AcquisitionError(
-                        AcquisitionFailure.BROWSER_REQUIRED,
-                        "Static HTML is insufficient and browser acquisition is disabled",
-                    )
-                warnings.append("Browser rendering was indicated but is disabled")
-            elif self._browser_renderer is None:
+        # With the browser enabled, every page is rendered: the bank's tariff
+        # tables, PDF links and data payloads exist only in the rendered page,
+        # and static HTML never carries them. A render that fails fails the
+        # acquisition -- falling back to static HTML used to monitor six of
+        # thirteen seeds from their navigation menus.
+        if self._settings.browser_enabled:
+            if self._browser_renderer is None:
                 raise AcquisitionError(
-                    AcquisitionFailure.BROWSER_REQUIRED,
-                    "Static HTML requires browser rendering but no renderer is configured",
+                    AcquisitionFailure.BROWSER_UNAVAILABLE,
+                    "Browser acquisition is enabled but no renderer is configured",
                 )
-            else:
-                try:
-                    rendered = await self._browser_renderer.render(retrieved.final_url)
-                except BrowserRenderingError as exc:
-                    if not self._is_useful(raw_parsed):
-                        raise AcquisitionError(
-                            AcquisitionFailure.BROWSER_FAILED,
-                            "Browser rendering failed and static content is insufficient",
-                        ) from exc
-                    warnings.append(f"Browser rendering failed: {exc.reason.value}")
-                else:
-                    rendered_parsed = self._html_parser.parse(
-                        rendered.html, source_url=rendered.final_url
+            try:
+                rendered = await self._browser_renderer.render(retrieved.final_url)
+            except BrowserRenderingError as exc:
+                raise AcquisitionError(
+                    AcquisitionFailure.BROWSER_FAILED,
+                    f"Browser rendering failed: {exc.reason.value}",
+                ) from exc
+            rendered_html = rendered.html
+            final_url = rendered.final_url
+            parsed = self._html_parser.parse(
+                rendered.html, source_url=rendered.final_url
+            )
+            mode = AcquisitionMode.BROWSER
+            interactions = rendered.interactions
+            # Canonical here too, not only in the renderer: the artifact is what
+            # every later stage reads, so its payload order must not depend on
+            # who produced it. The cap applies after the sort.
+            available = order_network_payloads(rendered.network_payloads, limit=None)
+            network_payloads = available[: self._settings.max_network_payloads]
+            skipped = len(available) - len(network_payloads)
+            skipped += rendered.payloads_over_budget
+            if skipped:
+                warnings.append(
+                    AcquisitionWarning(
+                        code=AcquisitionWarningCode.PAYLOAD_CAP_REACHED,
+                        detail=f"{skipped} payloads not kept",
                     )
-                    if self._is_useful(rendered_parsed):
-                        rendered_html = rendered.html
-                        final_url = rendered.final_url
-                        parsed = rendered_parsed
-                        # Canonical here too, not only in the renderer: the
-                        # artifact is what every later stage reads, so its
-                        # payload order must not depend on who produced it.
-                        network_payloads = order_network_payloads(
-                            rendered.network_payloads,
-                            limit=self._settings.max_network_payloads,
-                        )
-                        mode = AcquisitionMode.BROWSER
-                    elif self._is_useful(raw_parsed):
-                        warnings.append(
-                            "Browser rendering returned insufficient content; using static HTML"
-                        )
+                )
+            if rendered.interaction_cap_reached:
+                warnings.append(
+                    AcquisitionWarning(
+                        code=AcquisitionWarningCode.INTERACTION_CAP_REACHED,
+                        detail=f"stopped after {interactions} interactions",
+                    )
+                )
 
-        if not self._is_useful(parsed):
+        inventory = AcquisitionInventory(
+            main_chars=len(parsed.main_text),
+            tables=len(parsed.tables),
+            pdf_links=len(self._pdf_link_urls(parsed)),
+            payloads=len(network_payloads),
+        )
+        if failures := completeness_floor_failures(inventory, self._settings):
             raise AcquisitionError(
-                AcquisitionFailure.INSUFFICIENT_CONTENT,
-                "Acquired page did not contain enough useful public content",
+                AcquisitionFailure.INCOMPLETE_CONTENT,
+                "Acquired page is too incomplete to monitor: " + "; ".join(failures),
+                reasons=failures,
             )
 
         stored: list[StoredArtifact] = []
@@ -221,28 +239,27 @@ class AcquisitionService:
             network_payloads=tuple(persisted_payloads),
             stored_artifacts=tuple(stored),
             warnings=tuple(warnings),
+            inventory=inventory,
+            interactions=interactions,
             retrieved_at=retrieved.retrieved_at,
             content_hash=content_hash,
             page_content_hash=page_content_hash,
         )
 
-    def _requires_browser(self, html: str, parsed: ParsedHtml) -> bool:
-        return (
-            not self._is_useful(parsed)
-            or bool(_INTERACTIVE_HTML.search(html))
-            or (bool(_APP_SHELL_HTML.search(html)) and len(parsed.visible_text) < 2_000)
-        )
-
-    def _is_useful(self, parsed: ParsedHtml) -> bool:
-        return len(parsed.visible_text) >= self._settings.min_static_text_chars or bool(
-            parsed.tables
-        )
+    @staticmethod
+    def _pdf_link_urls(parsed: ParsedHtml) -> tuple[str, ...]:
+        """The distinct same-host document links the page advertises, in page order."""
+        urls: dict[str, None] = {}
+        for link in parsed.links:
+            if link.downloadable and link.same_allowlisted_source:
+                urls.setdefault(str(link.url), None)
+        return tuple(urls)
 
     async def _download_documents(
         self, parsed: ParsedHtml
-    ) -> tuple[tuple[DocumentArtifact, ...], tuple[str, ...]]:
+    ) -> tuple[tuple[DocumentArtifact, ...], tuple[AcquisitionWarning, ...]]:
         documents: list[DocumentArtifact] = []
-        warnings: list[str] = []
+        warnings: list[AcquisitionWarning] = []
         candidates = []
         seen_urls: set[str] = set()
         for link in parsed.links:
@@ -254,8 +271,18 @@ class AcquisitionService:
             ):
                 candidates.append(link)
                 seen_urls.add(url)
-            if len(candidates) >= self._settings.max_linked_documents:
-                break
+        if len(candidates) > self._settings.max_linked_documents:
+            skipped = len(candidates) - self._settings.max_linked_documents
+            warnings.append(
+                AcquisitionWarning(
+                    code=AcquisitionWarningCode.LINKED_DOCUMENT_CAP_REACHED,
+                    detail=(
+                        f"{skipped} of {len(candidates)} linked documents not "
+                        f"downloaded (cap {self._settings.max_linked_documents})"
+                    ),
+                )
+            )
+            candidates = candidates[: self._settings.max_linked_documents]
         for link in candidates:
             try:
                 downloaded = await self._pdf_downloader.download(
@@ -263,8 +290,13 @@ class AcquisitionService:
                 )
             except PdfDownloadError as exc:
                 warnings.append(
-                    f"Linked document {link.id} was not downloaded: "
-                    f"{source_failure_code(exc, stage='acquisition').value}"
+                    AcquisitionWarning(
+                        code=AcquisitionWarningCode.LINKED_DOCUMENT_FAILED,
+                        detail=(
+                            f"{link.id}: "
+                            f"{source_failure_code(exc, stage='acquisition').value}"
+                        ),
+                    )
                 )
                 continue
             artifact = await self._artifact_store.save(

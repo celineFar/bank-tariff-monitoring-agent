@@ -146,3 +146,108 @@ def test_log_description_keeps_the_provider_message_for_operators() -> None:
     )
 
     assert describe_failure(error) == "HTTP 404 / NOT_FOUND: model retired"
+
+
+def _browser_failure(reason):
+    from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
+    from app.services.browser_renderer import BrowserRenderingError
+
+    try:
+        try:
+            raise BrowserRenderingError(reason, "render failed")
+        except BrowserRenderingError as exc:
+            raise AcquisitionError(
+                AcquisitionFailure.BROWSER_FAILED, "browser failed"
+            ) from exc
+    except AcquisitionError as wrapped:
+        return wrapped
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    [
+        ("UNAVAILABLE", SourceFailureCode.BROWSER_UNAVAILABLE),
+        ("NAVIGATION", SourceFailureCode.BROWSER_FAILED),
+        ("INTERACTION", SourceFailureCode.BROWSER_FAILED),
+        ("DISALLOWED_REDIRECT", SourceFailureCode.REDIRECT_REJECTED),
+        ("REDIRECT_LIMIT_EXCEEDED", SourceFailureCode.REDIRECT_REJECTED),
+        ("HTTP_STATUS", SourceFailureCode.HTTP_STATUS),
+        ("UNSUPPORTED_MIME_TYPE", SourceFailureCode.MIME_REJECTED),
+        ("PAGE_TOO_LARGE", SourceFailureCode.SIZE_REJECTED),
+    ],
+)
+def test_each_browser_failure_keeps_its_own_code(reason, expected) -> None:
+    from app.services.browser_renderer import BrowserRenderingFailure
+
+    error = _browser_failure(BrowserRenderingFailure(reason))
+
+    assert source_failure_code(error, stage="acquisition") is expected
+
+
+def test_every_browser_failure_reason_is_mapped() -> None:
+    from app.services.browser_renderer import BrowserRenderingFailure
+    from app.services.failure_mapping import _BROWSER_FAILURES
+
+    assert set(_BROWSER_FAILURES) == set(BrowserRenderingFailure)
+
+
+def test_acquisition_failures_have_their_own_codes() -> None:
+    from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
+
+    incomplete = AcquisitionError(
+        AcquisitionFailure.INCOMPLETE_CONTENT, "thin", reasons=("tables 3 -> 0",)
+    )
+    unavailable = AcquisitionError(AcquisitionFailure.BROWSER_UNAVAILABLE, "none")
+    unexplained = AcquisitionError(AcquisitionFailure.BROWSER_FAILED, "failed")
+
+    assert (
+        source_failure_code(incomplete, stage="acquisition")
+        is SourceFailureCode.INCOMPLETE_CONTENT
+    )
+    assert (
+        source_failure_code(unavailable, stage="acquisition")
+        is SourceFailureCode.BROWSER_UNAVAILABLE
+    )
+    assert (
+        source_failure_code(unexplained, stage="acquisition")
+        is SourceFailureCode.BROWSER_FAILED
+    )
+
+
+def test_a_playwright_error_is_never_reported_as_validation_failure() -> None:
+    # A raw Playwright error escaping the renderer used to fall through every
+    # branch and read as `source.validation_failed`. The renderer now wraps it;
+    # this pins the wrapped form.
+    from app.services.browser_renderer import BrowserRenderingFailure
+
+    error = _browser_failure(BrowserRenderingFailure.INTERACTION)
+
+    assert (
+        source_failure_code(error, stage="acquisition")
+        is not SourceFailureCode.VALIDATION_FAILED
+    )
+
+
+def test_incomplete_content_reasons_reach_the_pipeline_error() -> None:
+    from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
+
+    error = OfferingPipelineError(
+        "acquisition",
+        SourceFailureCode.INCOMPLETE_CONTENT.value,
+        AcquisitionError(
+            AcquisitionFailure.INCOMPLETE_CONTENT,
+            "thin",
+            reasons=("tables 3 -> 0", "pdf_links 10 -> 0"),
+        ),
+    )
+
+    assert error.cause_reason == "INCOMPLETE_CONTENT"
+    assert error.cause_reasons == ("tables 3 -> 0", "pdf_links 10 -> 0")
+
+
+def test_every_source_failure_code_has_an_explanation() -> None:
+    from app.services.failure_mapping import explain_failure_code
+
+    for code in SourceFailureCode.__members__.values():
+        explanation = explain_failure_code(code.value)
+        assert not explanation.startswith("Monitoring stopped with failure code"), code

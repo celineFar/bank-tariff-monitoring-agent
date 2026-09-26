@@ -115,6 +115,9 @@ class OfferingPipelineError(RuntimeError):
         self.cause_type = type(cause).__name__
         reason = getattr(cause, "reason", None)
         self.cause_reason = reason.value if isinstance(reason, StrEnum) else None
+        # Counts such as "tables 3 -> 0": what an incomplete acquisition lacked.
+        # Never source text, so safe to persist.
+        self.cause_reasons = tuple(getattr(cause, "reasons", ()) or ())
         # `ClientError` alone cannot tell an operator that a model was retired,
         # so keep the transport status too. The provider's message stays in the
         # logs; `docs/failure-behavior.md` keeps it out of stored details.
@@ -348,6 +351,7 @@ class IndexingPipeline:
             document_count=len(embedded),
             chunk_count=sum(len(document.chunks) for document in embedded),
             warning_codes=(
+                *(warning.code.value for warning in artifact.warnings),
                 *(warning.code.value for warning in bundle.warnings),
                 *(("indexing.embedding_deferred",) if index_deferred else ()),
             ),
@@ -370,6 +374,10 @@ class IndexingPipeline:
                             timing.model_dump(mode="json") for timing in timings
                         ],
                         "warning_codes": list(manifest.warning_codes),
+                        "acquisition_warnings": [
+                            warning.model_dump(mode="json")
+                            for warning in artifact.warnings
+                        ],
                     },
                 )
             ),
@@ -572,6 +580,11 @@ class TariffPipeline:
                             "detail": exc.cause_detail,
                             **(
                                 {"reason": exc.cause_reason} if exc.cause_reason else {}
+                            ),
+                            **(
+                                {"reasons": list(exc.cause_reasons)}
+                                if exc.cause_reasons
+                                else {}
                             ),
                         },
                     )

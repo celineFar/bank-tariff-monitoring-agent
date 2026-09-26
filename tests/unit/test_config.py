@@ -168,7 +168,7 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("http_max_retry_delay_seconds", 0),
         ("max_redirects", 11),
         ("max_download_bytes", 0),
-        ("acquisition_min_static_text_chars", -1),
+        ("acquisition_min_main_content_chars", -1),
         ("acquisition_browser_navigation_timeout_seconds", 0),
         ("acquisition_browser_settle_milliseconds", 10_001),
         ("acquisition_max_interactions", 101),

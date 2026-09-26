@@ -48,13 +48,13 @@ class EnvironmentSettings(BaseSettings):
     max_redirects: int = 5
     max_download_bytes: int = 25 * 1024 * 1024
     acquisition_browser_enabled: bool = True
-    acquisition_min_static_text_chars: int = 500
+    acquisition_min_main_content_chars: int = 1_500
     acquisition_browser_navigation_timeout_seconds: float = 30
     acquisition_browser_settle_milliseconds: int = 750
     acquisition_max_interactions: int = 100
     acquisition_max_network_payloads: int = 25
     acquisition_max_network_payload_bytes: int = 2 * 1024 * 1024
-    acquisition_max_linked_documents: int = 10
+    acquisition_max_linked_documents: int = 40
     acquisition_freshness_hours: float = 1.0
     pdf_extraction_schema_version: str = "2"
     pdf_extraction_prompt_version: str = "2"
