@@ -345,6 +345,8 @@ class SourceDiscoverySettings(SettingsGroup):
     classifier_backoff_base_seconds: float = Field(default=5.0, ge=0, le=300)
     classifier_max_backoff_seconds: float = Field(default=60.0, ge=0, le=900)
     classifier_retry_jitter_ratio: float = Field(default=0.25, ge=0, le=1)
+    # Per call; a typical 8-item batch answers in about 1,200 tokens.
+    classifier_max_output_tokens: int = Field(default=8192, ge=512, le=65_536)
     model_name: str | None = "gemini-3.1-flash-lite"
     # gemini-2.5-flash-lite, the first choice, answers 404 to new users since
     # 2026-09-22. gemini-3.5-flash-lite prices output at $2.50, so the ceiling

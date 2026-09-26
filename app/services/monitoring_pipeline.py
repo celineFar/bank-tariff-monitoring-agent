@@ -243,7 +243,7 @@ class IndexingPipeline:
                     exc_info=True,
                 )
         offering_context = OfferingContext.from_catalog_entry(
-            offering, page_title=artifact.title
+            offering, page_title=artifact.title, page_blocks=artifact.blocks
         )
         pdf_selection = None
         if self._pdf_selection is not None and artifact.downloadable_documents:

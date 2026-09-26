@@ -46,7 +46,10 @@ _MAX_LINKS_PER_BATCH = 40
 PDF_LINK_INSTRUCTION = """
 You decide which PDF documents linked from a bank's product page belong to ONE
 offering, described under `offering`: its name, other names, product type, page
-URL and page title. You see only each link's metadata: file name, document
+URL, page title, and its page's main heading and the text under it. The
+offering covers everything that heading and text describe, including every
+variant they name (primary and secondary market; purchase, construction and
+renovation; residential and commercial property). You see only each link's metadata: file name, document
 name, link text and title, the headings the link sits under, nearby text, and
 any effective period in the link context. Return exactly one decision per link
 id and no other ids.
@@ -56,8 +59,8 @@ label:
 - shared_terms: terms that apply to this offering among other loans, such as
   the bank's loan service fee schedule, the procedure for floating interest
   rates, or a lending campaign that covers this offering.
-- related_product: the terms of another product, or of a variant this
-  offering does not cover. Example: on the "Primary Market Mortgage" page, a
+- related_product: the terms of another product the page presents as a
+  separate offer, or of a variant the page heading and text do not cover. Example: on the "Primary Market Mortgage" page, a
   link "Terms of express Home Mortgage Loan" is related_product.
 - generic_bank_information: bank-wide documents that are not lending terms:
   website terms of use, lists of partners, insured properties or appraisers,

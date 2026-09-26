@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -44,6 +45,7 @@ from app.domain.source_discovery import (
     SourceDiscoveryPlan,
     SourceDiscoveryResult,
     TemporalStatus,
+    page_scope,
 )
 from app.repositories.contracts import SourceDiscoveryRepository
 from app.services.discovery_classifier import (
@@ -82,13 +84,18 @@ def offering_context_for(
     wanted = str(bundle.canonical_url).rstrip("/")
     for entry in load_seed_catalog().offerings:
         if entry.product is product and str(entry.seed_url).rstrip("/") == wanted:
-            return OfferingContext.from_catalog_entry(entry, page_title=page.name)
+            return OfferingContext.from_catalog_entry(
+                entry, page_title=page.name, page_blocks=page.blocks
+            )
+    heading, summary = page_scope(page.blocks)
     return OfferingContext(
         offering_id="unlisted",
         product=product,
         display_name=page.name[:200],
         seed_url=bundle.canonical_url,
         page_title=page.name,
+        page_heading=heading,
+        page_summary=summary,
     )
 
 
@@ -791,16 +798,26 @@ def _settle_temporal(
 ) -> SourceAssessment:
     """Deterministic checks on the model's temporal status, fresh or cached.
 
-    - `possibly_stale` needs evidence: a quote from the item itself that shows
-      it is out of date (SD18). Without one, undated content is `unknown`.
+    - `possibly_stale` and `future` need evidence: a quote from the item itself
+      that shows it (SD18). Without one, the status is `unknown`.
     - Dated effective periods decide the status on `as_of`, so a cached
       "valid until 31.10.2026" becomes stale on 1 November without a new call
       (SD5).
     """
     status = assessment.temporal_status
-    if status is TemporalStatus.POSSIBLY_STALE and not _quoted_in(
-        assessment.stale_evidence, candidate
+    if status in {
+        TemporalStatus.POSSIBLY_STALE,
+        TemporalStatus.FUTURE,
+    } and not _quoted_in(assessment.temporal_evidence, candidate):
+        status = TemporalStatus.UNKNOWN
+    if (
+        as_of is not None
+        and status in {TemporalStatus.POSSIBLY_STALE, TemporalStatus.FUTURE}
+        and (dates := _dates_in(assessment.temporal_evidence or ""))
+        and _contradicts(status, dates, as_of)
     ):
+        # The quoted words carry a date that says otherwise: "effective from
+        # 14.07.2026", read as future on 26.09.2026 (Phase 7).
         status = TemporalStatus.UNKNOWN
     if as_of is not None:
         dated = period_status(assessment.effective_periods, as_of)
@@ -814,6 +831,27 @@ def _settle_temporal(
     if status is assessment.temporal_status:
         return assessment
     return assessment.model_copy(update={"temporal_status": status})
+
+
+_EVIDENCE_DATE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})\b")
+
+
+def _dates_in(text: str) -> tuple[date, ...]:
+    values: list[date] = []
+    for day, month, year in _EVIDENCE_DATE.findall(text):
+        full_year = int(year) + 2000 if len(year) == 2 else int(year)
+        try:
+            values.append(date(full_year, int(month), int(day)))
+        except ValueError:
+            continue
+    return tuple(values)
+
+
+def _contradicts(status: TemporalStatus, dates: tuple[date, ...], as_of: date) -> bool:
+    """Future needs a date after `as_of`; stale needs one before it."""
+    if status is TemporalStatus.FUTURE:
+        return all(value <= as_of for value in dates)
+    return all(value >= as_of for value in dates)
 
 
 def _quoted_in(quote: str | None, candidate: DiscoveryCandidate) -> bool:
@@ -846,6 +884,14 @@ def _check_response(batch: DiscoveryBatch, response: DiscoveryBatchResponse) -> 
             raise ValueError(
                 f"classifier exceptions for {item.source_id} name unknown or "
                 "repeated members"
+            )
+        if any(
+            not exception.reason.strip() or len(exception.reason) > 2000
+            for exception in item.member_exceptions
+        ):
+            raise ValueError(
+                f"classifier exceptions for {item.source_id} need a reason of "
+                "1 to 2000 characters"
             )
 
 

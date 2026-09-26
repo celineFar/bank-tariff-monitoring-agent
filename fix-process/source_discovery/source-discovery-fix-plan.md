@@ -1,8 +1,10 @@
 # Source discovery: problem report and fix plan
 
 Date: 2026-09-26 · Branch: `fix/source-discovery` (from `integration/process-fixes` at `f5c4e44`) ·
-Status: **in progress** (see the phase notes). Decisions Q1–Q6 are made. The hand labels wait
-for the user's confirmation.
+Status: **done** (Phases 0–7; commits on `fix/source-discovery`). Two scenario checks fail on
+Gemini judgements that remain (S03: 7 cross-sell leaks and one own table; S04: 4 wrong PDF
+keeps); see the Phase 7 notes for the options. The hand labels still wait for the user's
+confirmation. Gemini spend for validation: **$0.71** of the ~$1 budget.
 
 ## Scope
 
@@ -48,24 +50,24 @@ code and not reproduced.
 
 | ID | Problem | Severity | Evidence | Status |
 |---|---|---|---|---|
-| SD1 | Gemini is never told which offering it is classifying; the cache is shared across offerings | **critical** | code + confirmed | proposed |
-| SD2 | PDFs are chosen by keyword, not Gemini, and all become the offering's top-precedence terms | **critical** | confirmed | decided (Q1) |
-| SD3 | Section members inherit a label from text Gemini never saw | **high** | confirmed | decided (Q5, Q6) |
-| SD4 | Skipped and failed PDFs are sent to Gemini as empty documents | **high** | code | proposed |
-| SD5 | Cached date judgements never expire | **high** | code | proposed |
-| SD6 | One bad batch fails the offering and throws away the good batches | **high** | code | proposed |
-| SD7 | Extraction and the RAG index select sources differently | **high** | code | decided (Q3) |
-| SD8 | No fallback model is configured | medium | config | decided (Q2) |
-| SD9 | Site header and footer are recognised by English words; footer blocks join the last content section | medium | confirmed | proposed |
-| SD10 | Inserting one block changes every section's fingerprint | medium | code | proposed |
-| SD11 | The "prior assessment" hint can come from a different section | medium | confirmed | proposed |
-| SD12 | A PDF's tables are cut off before Gemini sees them | medium | code | proposed |
-| SD13 | Retries stack: up to 9 calls per batch | low | code | proposed |
-| SD14 | Temperature 0 is skipped for two hard-coded model names | low | code | proposed |
-| SD15 | The HTML-template and API-payload rules are dead code | low | code | proposed |
-| SD16 | Candidates are built twice per run | low | code | proposed |
-| SD17 | The 12,000-character context cap | low | confirmed | proposed |
-| SD18 | Gemini marks undated content `possibly_stale`, which drops the page's own tariff table | **critical** | confirmed (Phase 0) | proposed |
+| SD1 | Gemini is never told which offering it is classifying; the cache is shared across offerings | **critical** | code + confirmed | **done** (Phases 2, 7) |
+| SD2 | PDFs are chosen by keyword, not Gemini, and all become the offering's top-precedence terms | **critical** | confirmed | **done**; 4 wrong keeps remain (S04) |
+| SD3 | Section members inherit a label from text Gemini never saw | **high** | confirmed | **done** (Phase 3) |
+| SD4 | Skipped and failed PDFs are sent to Gemini as empty documents | **high** | code | **done** (Phases 1, 4) |
+| SD5 | Cached date judgements never expire | **high** | code | **done** (Phase 5) |
+| SD6 | One bad batch fails the offering and throws away the good batches | **high** | code | **done** (Phase 5) |
+| SD7 | Extraction and the RAG index select sources differently | **high** | code | **done** (Phase 6) |
+| SD8 | No fallback model is configured | medium | config | **done**, Q2 revised (Phase 5) |
+| SD9 | Site header and footer are recognised by English words; footer blocks join the last content section | medium | confirmed | **done** (Phase 1) |
+| SD10 | Inserting one block changes every section's fingerprint | medium | code | **done** (Phase 1) |
+| SD11 | The "prior assessment" hint can come from a different section | medium | confirmed | **done** (Phase 1) |
+| SD12 | A PDF's tables are cut off before Gemini sees them | medium | code | **done** (Phase 1) |
+| SD13 | Retries stack: up to 9 calls per batch | low | code | **done** (Phase 5) |
+| SD14 | Temperature 0 is skipped for two hard-coded model names | low | code | **done** (Phase 5) |
+| SD15 | The HTML-template and API-payload rules are dead code | low | code | **done** (Phase 1) |
+| SD16 | Candidates are built twice per run | low | code | **done** (Phase 1) |
+| SD17 | The 12,000-character context cap | low | confirmed | **done** (Phase 3) |
+| SD18 | Gemini marks undated content `possibly_stale`, which drops the page's own tariff table | **critical** | confirmed (Phase 0) | **done** (Phases 5, 7) |
 
 ---
 
@@ -1079,29 +1081,119 @@ content and metadata change.
 
 ### Phase 7: Validation
 
-- [ ] `uv run pytest tests/unit tests/integration`: all green, no `xfail` left from Phase 0.
-- [ ] `agents-cli lint`: no new findings in changed files.
-- [ ] Re-run [survey/probe_discovery.py](survey/probe_discovery.py); save
+- [x] `uv run pytest tests/unit tests/integration`: all green, no `xfail` left from Phase 0.
+- [x] `agents-cli lint`: no new findings in changed files.
+- [x] Re-run [survey/probe_discovery.py](survey/probe_discovery.py); save
       `data/probe-output-after.txt` and compare with the before output.
-- [ ] **Gemini pass after the fix (Q4).** Run discovery (PDF link selection + classification)
+- [x] **Gemini pass after the fix (Q4).** Run discovery (PDF link selection + classification)
       on the 13 seeds with a $0.40 spend guard. Save `data/discovery-check-after.json`.
       *Spends Gemini budget.*
-  - [ ] Every sibling-product table and section labelled `related_product`.
+  - [ ] Every sibling-product table and section labelled `related_product`. *Not met: the
+        Express table is right on all four pages; 7 cross-sell blocks remain (S03).*
   - [ ] Every PDF labelled `current_product` or `shared_terms` selected; no sibling or
-        website-profile PDF selected.
-  - [ ] Agreement with the hand labels recorded per seed; every disagreement listed with its
+        website-profile PDF selected. *Half met: none lost; 4 wrong keeps (S04).*
+  - [x] Agreement with the hand labels recorded per seed; every disagreement listed with its
         reason.
-- [ ] **Cache re-run.** Run the same pass again immediately: every discovery and link-selection
+- [x] **Cache re-run.** Run the same pass again immediately: every discovery and link-selection
       call is a cache hit (0 Gemini calls). *Spends no budget if it passes.*
-- [ ] Write scenarios in `scenarios/` with a `run_scenarios.py`, as in the acquisition and
+- [x] Write scenarios in `scenarios/` with a `run_scenarios.py`, as in the acquisition and
       normalization fixes:
-  - [ ] S01 offline test suite;
-  - [ ] S02 confirmed bugs fixed (the probe);
-  - [ ] S03 offering identity: sibling tables labelled related on the four mortgage pages;
-  - [ ] S04 PDF selection against the labels;
-  - [ ] S05 cache: re-run is all hits; inserting a block reclassifies only its section;
-  - [ ] S06 dated campaign expires without a new Gemini call;
-  - [ ] S07 bad response: batch split, good batches saved, fallback model used;
-  - [ ] S08 projection: no navigation or sibling chunks indexed.
-- [ ] Record the total Gemini spend for Phases 0 and 7 (budget about $1).
-- [ ] Update this document: the status of every item, and the before/after results.
+  - [x] S01 offline test suite;
+  - [x] S02 confirmed bugs fixed (the probe);
+  - [x] S03 offering identity: sibling tables labelled related on the four mortgage pages;
+  - [x] S04 PDF selection against the labels;
+  - [x] S05 cache: re-run is all hits; inserting a block reclassifies only its section;
+  - [x] S06 dated campaign expires without a new Gemini call;
+  - [x] S07 bad response: batch split, good batches saved, fallback model used;
+  - [x] S08 projection: no navigation or sibling chunks indexed.
+- [x] Record the total Gemini spend for Phases 0 and 7 (budget about $1).
+- [x] Update this document: the status of every item, and the before/after results.
+
+#### Phase 7 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 7: validation*. Six of eight scenarios pass;
+S03 and S04 fail on Gemini judgements (below). Summary: [scenario-results.md](scenario-results.md).
+
+**Gemini runs** (all on `.cache-live-2`, `gemini-3.1-flash-lite`, label checker with
+`--pdf-selector gemini --repeat 2`):
+
+1. **Attempt 0: failed, $0.** Every discovery call answered `400 INVALID_ARGUMENT`. Bisecting
+   the response schema with tiny calls showed the Phase 3 member-exception model's `pattern`
+   and length limits, nested in the item, were too much for Gemini's schema support (the same
+   model without constraints is accepted). Fixed: constraints moved to `_check_response`;
+   a test keeps them out of the schema (finding **F1**). No unit test could catch this; they use
+   fakes.
+2. **Round 1: $0.123** ([data/discovery-check-after-round1.json](data/discovery-check-after-round1.json)).
+   Leaks and noise collapsed, but Gemini now called variants the offering covers `related`
+   (the Express page's construction and renovation tables, the online page's secondary-market
+   tariffs), and whole "Terms and conditions" parts `possibly_stale` because they contained a
+   "Previous Terms" link list, and misread a "Last updated on" date as future.
+   Fixes: the `OfferingContext` gains the page's main heading and the text under it
+   (`page_scope`, **F3**), and the instruction says the offering covers every variant they name;
+   a section is judged by most of its members, old-version links are member exceptions;
+   `future` needs quoted evidence too (the field is now `temporal_evidence`), and "last
+   updated" is not an effective date. The PDF link instruction gets the same scope.
+3. **Round 2: $0.327** ([data/discovery-check-after.json](data/discovery-check-after.json)).
+   One batch answered with ~260,000 characters of repeated text, twice; retry and split
+   recovered it, at $0.21 extra (**F2**). Fix: `SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS`
+   (default 8192). Cache re-run: **0 discovery calls, 0 selector calls**, 279 assessments
+   reused.
+
+**Results on the final labels** (every run re-scored with `--rescore` on the same labels;
+[before](data/discovery-check-before-final-labels.json),
+[round 1](data/discovery-check-after-round1-final-labels.json),
+[round 2](data/discovery-check-after-final-labels.json); 1,784 scored blocks and 35 tables):
+
+| | Baseline (Phase 0 code) | Round 1 | Round 2 |
+|---|---|---|---|
+| `leak`: sibling content kept as the offering's | 29 | 2 | 7 |
+| `lost`: the offering's content excluded or called another product | 1 | 33 | 24 |
+| `noise`: navigation kept as current | 377 | 6 | 3 |
+| `stale`: old-edition links kept as current | 77 | 16 | 6 |
+| Express table correct on the 4 mortgage pages | 0 of 4 | 4 of 4 | 4 of 4 |
+| Own tables current | 29 of 29 | 25 of 29 | 28 of 29 |
+| PDFs: own/shared lost · sibling/irrelevant kept (from each run) | 0 · 8 | 0 · 4 | 0 · 4 |
+| PDFs transcribed per full run | 55 | 44 | 44 |
+
+The remaining round-2 `lost` are mostly judgement calls: external links (abcfinance.am, the
+credit bureau, "View available homes", "Apply online") and a vehicle-insurance note that
+Gemini excludes, cross-sell headings it calls related, one old-edition link list it misses,
+and the Express fee schedule "effective from 14.07.2026", which Gemini called future. The
+last one is now fixed deterministically (a quoted date must agree with `future` or
+`possibly_stale`); stored answers are re-scored, so the table above does not include it.
+
+**Label revisions made during Phase 7** (recorded in the labels file's `_about`; every run
+above is scored on the final version): the page's main heading ends the header; the
+credit-line and overdraft "Advantages" card features are `any`; old-edition links are
+`historical` (a new label, failure kind `stale`); "Updated on" stamps are navigation; text
+rules ignore case; product-name tabs on the consumer-loan pages are `any`; a heading block
+is judged as its own section. Each of these fixed a checker or label mistake that the runs
+exposed; none changes what discovery is asked to do.
+
+**Tests and lint.** Full suite: 951 passed, 45 skipped, plus the 4 known key-dependent
+failures; no `xfail` left. `agents-cli lint`: ruff and codespell clean (codespell now skips
+`fix-process/*/data/*`, recorded model output); `ty` reports 46 diagnostics, the same as the
+parent branch `f5c4e44`, after fixing the 3 this branch had added (one was a real bug: the
+end-to-end demonstration's cache import did not pass the new `offering_id`).
+
+**Spend.** $0.71 in all: $0.090 on the superseded capture (Phase 0), $0.173 for two
+baseline runs on `.cache-live-2`, $0.123 round 1, $0.327 round 2, and under $0.01 of
+single-call probes (model availability for Q2, schema bisection).
+
+**Remaining, for the user.**
+1. **Confirm the hand labels** ([data/seed-discovery-labels.json](data/seed-discovery-labels.json))
+   and the Phase 7 revisions. The numbers above depend on them.
+2. **Cross-sell cards (S03).** A deterministic rule could decide most of them: a section
+   whose link points to another catalog offering's seed URL is that offering's cross-sell
+   card, so `related_product` by rule. The catalog already holds every seed URL. Not built:
+   it is a new rule, not in this plan.
+3. **Website-profile PDF (S04).** `web-info-eng.pdf` is linked as "Terms and Conditions" under
+   the loan's own terms; no link-metadata judgement can tell it apart. Options: mark it
+   `unclear`-worthy by instruction so its content is read, or add its file name to the
+   admission off-topic list.
+4. **SD14.** Whether `gemini-3.5-flash-lite` (the fallback) should run at temperature 0.
+5. **First production run.** As listed under Decisions, plus: every page is classified again
+   (policy and prompt version 2, new cache key), the link selection runs once per offering,
+   11 fewer PDFs are transcribed per full run, and every offering's source chunks are
+   re-embedded. Migrations `019` and `020` must be applied first.
+

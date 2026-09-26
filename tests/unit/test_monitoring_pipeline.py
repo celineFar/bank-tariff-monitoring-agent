@@ -113,6 +113,8 @@ def _artifact() -> PageArtifact:
         title="Consumer loan",
         canonical_url=URL,
         markdown="# Consumer loan\n\nConsumer loan rate 13.5%\n",
+        blocks=(),
+        downloadable_documents=(),
     )
 
 

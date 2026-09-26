@@ -78,7 +78,16 @@ validated structured assessments. The model cannot access the repository or SQL.
 `AdkSourceDiscoveryClassifier` is a narrow tool-free ADK agent with a Pydantic output
 schema. It receives only the bounded batches produced by the plan. Every batch
 carries the `OfferingContext` (offering id, display name, catalog names, seed URL,
-page title) that the product association is judged against. Source text is
+page title, and the page's main heading with the text under it) that the product
+association is judged against. The offering covers every variant its page heading
+and text name (primary and secondary market; purchase, construction and renovation;
+residential and commercial property); `related_product` is for products the page
+presents as separate offers. The PDF link selection receives the same context.
+Each call is capped at `SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS` (default
+8192): a runaway answer is cut, fails validation, and is retried or split. The
+nested member-exception model deliberately carries no pattern or length limits:
+Gemini rejects the whole request (400) when it does, so `_check_response` enforces
+them. Source text is
 explicitly treated as untrusted evidence. The classifier must return exactly one
 known source ID per requested item; the application service rejects missing,
 duplicate, or invented IDs.
@@ -118,9 +127,11 @@ whose output rate is $2.50, so this stage's price ceiling is `2.50`.
 ## Temporal status
 
 The classifier extracts explicit effective periods. Content with no date is
-`unknown`, not `possibly_stale`: `possibly_stale` needs `stale_evidence`, a quote
-from the item showing it is out of date, and an answer whose quote is missing or
-not found in the item becomes `unknown`. Dated periods then decide the status on
+`unknown`, not `possibly_stale`: `possibly_stale` and `future` need
+`temporal_evidence`, a quote from the item showing it, and an answer whose quote is
+missing or not found in the item becomes `unknown`. So does one whose quote carries
+dates that contradict it ("effective from 14.07.2026" read as future on
+26.09.2026). A "last updated" stamp is not an effective period. Dated periods then decide the status on
 the run's `as_of` date (the acquisition's retrieval date) for fresh and cached
 assessments alike, with the same rule PDF admission uses: current when a period
 covers the day, historical (`possibly_stale`) when all ended, future when all start

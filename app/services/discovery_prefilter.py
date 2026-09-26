@@ -435,7 +435,7 @@ def _candidate(
     pdf_admission=None,
     pdf_selection=None,
     parent: str | None = None,
-    layout: CandidateLayout = CandidateLayout.CONTENT,
+    layout: CandidateLayout | None = None,
     members: tuple[DiscoveryMember, ...] = (),
     member_context: str = "",
 ) -> DiscoveryCandidate:
@@ -470,7 +470,7 @@ def _candidate(
         selection_reason=selection_reason,
         pdf_admission=pdf_admission,
         pdf_selection=pdf_selection,
-        layout=layout,
+        layout=layout or CandidateLayout.CONTENT,
         members=members,
         member_context=member_context,
     )

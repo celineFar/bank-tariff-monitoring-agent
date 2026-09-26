@@ -123,8 +123,10 @@ downloader receives `settings.http` and the PDF extraction service receives
   `SOURCE_DISCOVERY_ESTIMATED_OUTPUT_TOKENS_PER_ITEM`. Classifier resilience uses
   `SOURCE_DISCOVERY_CLASSIFIER_MAX_ATTEMPTS`,
   `SOURCE_DISCOVERY_CLASSIFIER_BACKOFF_BASE_SECONDS`,
-  `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`, and
-  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`. Whole-run fallback order is
+  `SOURCE_DISCOVERY_CLASSIFIER_MAX_BACKOFF_SECONDS`,
+  `SOURCE_DISCOVERY_CLASSIFIER_RETRY_JITTER_RATIO`, and
+  `SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS` (default `8192` per call; caps a
+  runaway answer). Whole-run fallback order is
   configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`
   (default `gemini-3.5-flash-lite`; the same chain serves the PDF link selection).
   `SOURCE_DISCOVERY_MODEL_NAME` overrides the primary classifier model for this

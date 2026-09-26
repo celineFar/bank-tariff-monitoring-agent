@@ -899,6 +899,9 @@ async def _import_previous_run_caches(
             if reusable:
                 await discovery_repository.save(
                     product=discovery.product,
+                    # Recordings from before the offering scope carry none and,
+                    # like migration 019's old rows, never match an offering.
+                    offering_id=discovery.offering_id or "",
                     policy_version=discovery.policy_version,
                     prompt_version=discovery.prompt_version,
                     model_name=discovery.model_name,

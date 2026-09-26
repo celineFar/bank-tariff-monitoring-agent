@@ -120,7 +120,7 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
         first = inspect.signature(_build_batches).parameters
         target = (
             offering_context_for(bundle, CATALOG[seed])
-            if "offering" in first
+            if "offering" in first and offering_context_for is not None
             else ProductType.MORTGAGE
         )
         batches = _build_batches(target, llm, {}, settings)

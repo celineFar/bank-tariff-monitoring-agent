@@ -190,6 +190,9 @@ def build_application_container(
                     retry_jitter_ratio=(
                         settings.source_discovery.classifier_retry_jitter_ratio
                     ),
+                    max_output_tokens=(
+                        settings.source_discovery.classifier_max_output_tokens
+                    ),
                     usage_repository=model_usage,
                 ),
                 discovery_repository,
@@ -218,6 +221,9 @@ def build_application_container(
                     ),
                     retry_jitter_ratio=(
                         settings.source_discovery.classifier_retry_jitter_ratio
+                    ),
+                    max_output_tokens=(
+                        settings.source_discovery.classifier_max_output_tokens
                     ),
                     usage_repository=model_usage,
                 ),

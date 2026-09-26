@@ -153,6 +153,9 @@ def load_settings(
             classifier_retry_jitter_ratio=(
                 raw.source_discovery_classifier_retry_jitter_ratio
             ),
+            classifier_max_output_tokens=(
+                raw.source_discovery_classifier_max_output_tokens
+            ),
             model_name=raw.source_discovery_model_name,
             fallback_model_names=raw.source_discovery_fallback_model_names,
             max_price_per_million_tokens_usd=(

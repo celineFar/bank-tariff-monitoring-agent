@@ -1,0 +1,43 @@
+{
+  "scenario": "S04",
+  "passed": false,
+  "gemini_attempts": 0,
+  "gemini_cost_usd": 0.0,
+  "wall_seconds": 0.0,
+  "links": 55,
+  "transcribed": 44,
+  "transcribed_before": 55,
+  "own_or_shared_not_selected": [],
+  "sibling_or_irrelevant_selected": [
+    [
+      "consumer_standard",
+      "web-info-eng.pdf",
+      "irrelevant",
+      true
+    ],
+    [
+      "credit_line",
+      "web-info-eng.pdf",
+      "irrelevant",
+      true
+    ],
+    [
+      "mortgage_primary",
+      "terms_flexible_mortgage_eng.pdf",
+      "related_product",
+      true
+    ],
+    [
+      "online_consumer_finance",
+      "web-info.pdf",
+      "irrelevant",
+      true
+    ]
+  ],
+  "selector_usage": {
+    "calls": 12,
+    "input_tokens": 17358,
+    "output_tokens": 3568,
+    "spent_usd": 0.0097
+  }
+}

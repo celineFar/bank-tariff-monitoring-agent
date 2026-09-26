@@ -51,8 +51,10 @@ URL = "https://ameriabank.am/en/personal/loans/mortgage/primary"
 PDF_URL = "https://ameriabank.am/Content/PDF/web-info-eng.pdf"
 
 
-def _offering(offering_id: OfferingId = OfferingId.MORTGAGE_PRIMARY):
+def _offering(offering_id: OfferingId | None = None):
     from app.domain.source_discovery import OfferingContext
+
+    offering_id = offering_id or OfferingId.MORTGAGE_PRIMARY
 
     names = {
         OfferingId.MORTGAGE_PRIMARY: ("Primary Market Mortgage", URL),
@@ -71,7 +73,8 @@ def _offering(offering_id: OfferingId = OfferingId.MORTGAGE_PRIMARY):
     )
 
 
-def _ref(identifier: str, source_type: SourceType = SourceType.PAGE) -> SourceReference:
+def _ref(identifier: str, source_type: SourceType | None = None) -> SourceReference:
+    source_type = source_type or SourceType.PAGE
     return SourceReference(
         source_item_id=identifier,
         locator=SourceLocator(
@@ -86,13 +89,13 @@ def _block(
     text: str,
     *,
     heading_path: tuple[str, ...] = (),
-    block_type: NormalizedBlockType = NormalizedBlockType.PARAGRAPH,
+    block_type: NormalizedBlockType | None = None,
     parent_id: str | None = None,
     **extra,
 ) -> NormalizedBlock:
     return NormalizedBlock(
         id=identifier,
-        type=block_type,
+        type=block_type or NormalizedBlockType.PARAGRAPH,
         raw_text=text,
         text=text,
         heading_path=heading_path,
@@ -764,7 +767,7 @@ def test_sd5_period_status_handles_open_ended_periods() -> None:
 
 
 @pytest.mark.asyncio
-async def test_sd18_stale_evidence_must_be_quoted_from_the_item() -> None:
+async def test_sd18_temporal_evidence_must_be_quoted_from_the_item() -> None:
     page = _page(
         _block("b1", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
         _block(
@@ -776,7 +779,7 @@ async def test_sd18_stale_evidence_must_be_quoted_from_the_item() -> None:
 
     async def status(evidence: str | None) -> TemporalStatus:
         classifier = _Classifier(
-            temporal_status=TemporalStatus.POSSIBLY_STALE, stale_evidence=evidence
+            temporal_status=TemporalStatus.POSSIBLY_STALE, temporal_evidence=evidence
         )
         result = await _service(classifier).discover(_bundle(page), _offering())
         return next(
@@ -966,3 +969,120 @@ def test_sd7_projection_indexes_the_selection_with_its_labels() -> None:
         ["generic_bank_information"],
     ]
     assert chunks[0].metadata["precedence"] == 3
+
+
+def test_sd3_the_response_schema_stays_within_what_gemini_accepts() -> None:
+    """Gemini answers 400 when the nested exception adds constraints (Phase 7)."""
+    schema = DiscoveryBatchResponse.model_json_schema()
+    exception = schema["$defs"]["MemberException"]
+    item = schema["$defs"]["ModelSourceAssessment"]["properties"]["member_exceptions"]
+
+    assert not any(
+        key in field
+        for field in exception["properties"].values()
+        for key in ("pattern", "minLength", "maxLength")
+    )
+    assert "maxItems" not in item
+
+
+def test_sd3_an_exception_without_a_reason_is_rejected() -> None:
+    from app.domain.source_discovery import (
+        DiscoveryPromptItem,
+        MemberException,
+        PromptMember,
+    )
+    from app.services.source_discovery import _check_response
+
+    batch = DiscoveryBatch(
+        id="b",
+        product=ProductType.MORTGAGE,
+        offering=_offering(),
+        items=(
+            DiscoveryPromptItem(
+                source_id="s1",
+                scope=DiscoveryScope.SECTION,
+                source_type=SourceType.PAGE,
+                title="Terms",
+                heading_path=(),
+                content="",
+                members=(
+                    PromptMember(id="m1", text="a"),
+                    PromptMember(id="m2", text="b"),
+                ),
+                mime_type="text/html",
+                extraction_method="browser",
+                quality_score=None,
+            ),
+        ),
+    )
+    answer = ModelSourceAssessment(
+        source_id="s1",
+        product_association=ProductAssociation.CURRENT_PRODUCT,
+        role=InformationRole.PRODUCT_TERMS,
+        relevance=Relevance.RELEVANT,
+        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
+        temporal_status=TemporalStatus.CURRENT,
+        reason="ok",
+        member_exceptions=(
+            MemberException(
+                member_id="m2",
+                product_association=ProductAssociation.RELATED_PRODUCT,
+                role=InformationRole.RELATED_PRODUCT,
+                relevance=Relevance.POSSIBLY_RELEVANT,
+                reason=" ",
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="need a reason"):
+        _check_response(batch, DiscoveryBatchResponse(items=(answer,)))
+
+
+def test_sd1_the_offering_carries_what_its_page_says_it_covers() -> None:
+    from app.domain.source_discovery import page_scope
+
+    page = _page(
+        _block("b0", "Personal", block_type=NormalizedBlockType.LIST, site_chrome=True),
+        _block("b1", "Quick mortgage loan", block_type=NormalizedBlockType.HEADING),
+        _block(
+            "b2",
+            "For you to purchase, construct and renovate your home",
+            heading_path=("Quick mortgage loan",),
+        ),
+    )
+
+    heading, summary = page_scope(page.blocks)
+
+    assert heading == "Quick mortgage loan"
+    assert summary == "For you to purchase, construct and renovate your home"
+
+
+@pytest.mark.asyncio
+async def test_sd18_a_quoted_date_that_contradicts_the_status_is_ignored() -> None:
+    def page(text: str) -> NormalizedDocument:
+        return _page(
+            _block(
+                "b1", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING
+            ),
+            _block("b2", text, heading_path=("Primary", "Fees")),
+        )
+
+    async def status(document, evidence: str) -> TemporalStatus:
+        classifier = _Classifier(
+            temporal_status=TemporalStatus.FUTURE, temporal_evidence=evidence
+        )
+        result = await _service(classifier).discover(
+            _bundle(document), _offering(), as_of=date(2026, 9, 26)
+        )
+        return next(
+            a
+            for a in result.assessments
+            if a.scope is DiscoveryScope.SECTION
+            and a.source_refs[0].source_item_id == "b2"
+        ).temporal_status
+
+    past = page("Loan service fees (effective from 14.07.2026)")
+    later = page("Loan service fees (effective from 14.12.2026)")
+
+    assert await status(past, "effective from 14.07.2026") is TemporalStatus.UNKNOWN
+    assert await status(later, "effective from 14.12.2026") is TemporalStatus.FUTURE

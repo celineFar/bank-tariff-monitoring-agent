@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import date
 from enum import StrEnum
 
@@ -126,13 +127,18 @@ class MemberException(DiscoveryModel):
 
     `member_id` is the member's short id in the prompt item (`m1`, `m2`, ...),
     in the order of the candidate's `member_source_ids`.
+
+    Deliberately unconstrained: this model is part of the classifier's response
+    schema, and Gemini rejects the whole request (400 INVALID_ARGUMENT) when the
+    nested exception carries a pattern or length limits on top of the item's
+    own. `_check_response` enforces them instead.
     """
 
-    member_id: str = Field(pattern=r"^m[1-9][0-9]{0,3}$")
+    member_id: str
     product_association: ProductAssociation
     role: InformationRole
     relevance: Relevance
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str
 
 
 class DiscoveryCandidate(DiscoveryModel):
@@ -186,8 +192,8 @@ class SourceAssessment(DiscoveryModel):
     conditions: tuple[str, ...] = Field(default=(), max_length=50)
     reason: str = Field(min_length=1, max_length=2000)
     member_exceptions: tuple[MemberException, ...] = Field(default=(), max_length=200)
-    # For `possibly_stale`: the item's own words showing it is out of date.
-    stale_evidence: str | None = Field(default=None, max_length=500)
+    # For `possibly_stale` or `future`: the item's own words showing it.
+    temporal_evidence: str | None = Field(default=None, max_length=500)
     decision_source: DecisionSource
     inherited_from: str | None = None
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -221,14 +227,24 @@ class OfferingContext(DiscoveryModel):
     seed_url: HttpUrl
     page_title: str | None = Field(default=None, max_length=1000)
     names: tuple[str, ...] = ()
+    # What the offering's own page says it covers: its main heading and the
+    # text right under it ("For you to purchase, construct and renovate your
+    # home"). The name alone does not tell which variants the offering covers.
+    page_heading: str | None = Field(default=None, max_length=500)
+    page_summary: str | None = Field(default=None, max_length=1000)
 
     @classmethod
     def from_catalog_entry(
-        cls, entry: SeedCatalogEntry, *, page_title: str | None = None
+        cls,
+        entry: SeedCatalogEntry,
+        *,
+        page_title: str | None = None,
+        page_blocks: Sequence[object] = (),
     ) -> OfferingContext:
         names: list[str] = []
         for terms in entry.localized_names.values():
             names.extend((terms.name, *terms.aliases))
+        heading, summary = page_scope(page_blocks)
         return cls(
             offering_id=entry.offering_id.value,
             product=entry.product,
@@ -236,7 +252,38 @@ class OfferingContext(DiscoveryModel):
             seed_url=entry.seed_url,
             page_title=page_title,
             names=tuple(dict.fromkeys(name for name in names if name))[:20],
+            page_heading=heading,
+            page_summary=summary,
         )
+
+
+def page_scope(
+    blocks: Sequence[object], *, limit: int = 800
+) -> tuple[str | None, str | None]:
+    """The page's first heading and the text right under it, outside site chrome.
+
+    Works on acquisition and normalized blocks alike (both have `type`,
+    `text` and `site_chrome`), so the PDF link selection, which runs before
+    normalization, sees the same scope as section classification.
+    """
+    heading: str | None = None
+    parts: list[str] = []
+    size = 0
+    for block in blocks:
+        if getattr(block, "site_chrome", False) or getattr(block, "table_id", None):
+            continue
+        text = " ".join(str(getattr(block, "text", "")).split())
+        if not text:
+            continue
+        if heading is None:
+            if getattr(getattr(block, "type", None), "value", None) == "heading":
+                heading = text[:500]
+            continue
+        if size + len(text) > limit:
+            break
+        parts.append(text)
+        size += len(text) + 3
+    return heading, (" / ".join(parts)[:1000] or None)
 
 
 class PromptMember(DiscoveryModel):
@@ -275,8 +322,9 @@ class ModelSourceAssessment(DiscoveryModel):
     effective_periods: tuple[EffectivePeriod, ...] = Field(default=(), max_length=20)
     conditions: tuple[str, ...] = Field(default=(), max_length=50)
     reason: str = Field(min_length=1, max_length=2000)
-    member_exceptions: tuple[MemberException, ...] = Field(default=(), max_length=200)
-    stale_evidence: str | None = Field(default=None, max_length=500)
+    # No length limit here either (see MemberException); checked after parsing.
+    member_exceptions: tuple[MemberException, ...] = ()
+    temporal_evidence: str | None = Field(default=None, max_length=500)
 
 
 class DiscoveryBatchResponse(DiscoveryModel):

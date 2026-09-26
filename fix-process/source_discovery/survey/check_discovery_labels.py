@@ -18,6 +18,8 @@ Each page block and table is then compared with its label:
 - `related` fails when discovery calls it the current product or `unknown`, since
   extraction treats both as the offering's own evidence (`leak`);
 - `navigation` fails when discovery keeps it as current or unknown (`noise`);
+- `historical` (a link to an old edition) fails when kept as current or unknown
+  (`stale`);
 - `any` is not scored.
 
 PDF links are scored separately: `current_product` and `shared_terms` must be
@@ -36,6 +38,7 @@ import asyncio
 import inspect
 import json
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -151,6 +154,8 @@ def _verdict(expected: str, outcome: str) -> str | None:
     """None when the outcome is acceptable, else the kind of failure."""
     if expected == "any":
         return None
+    if expected == "historical":
+        return "stale" if outcome in {"current", "unknown", "missing"} else None
     if expected == "current":
         return "lost" if outcome in {"excluded", "related", "missing"} else None
     if expected == "related":
@@ -165,9 +170,23 @@ def _block_label(
 ) -> str:
     if chrome or in_footer or before_heading:
         return "navigation"
-    if any(token in block.text for token in spec.get("text_any", ())):
+    if any(
+        block.text.startswith(prefix) for prefix in LABELS.get("navigation_text", ())
+    ):
+        return "navigation"
+    if any(
+        re.search(pattern, block.text, re.IGNORECASE)
+        for pattern in LABELS.get("historical_text", ())
+    ):
+        return "historical"
+    folded = block.text.casefold()
+    if any(token.casefold() in folded for token in spec.get("text_any", ())):
         return "any"
     path = " > ".join(block.heading_path)
+    if block.type.value == "heading":
+        # A heading opens its own section: a cross-sell card's title belongs
+        # to the card, not to the section above it.
+        path = f"{path} > {block.text}" if path else block.text
     for rule in spec["sections"]:
         if "path_endswith" in rule and path.endswith(rule["path_endswith"]):
             return rule["label"]
@@ -183,7 +202,9 @@ async def _discover(service: SourceDiscoveryService, bundle, entry: SeedCatalogE
         from app.domain.source_discovery import OfferingContext
 
         offering = OfferingContext.from_catalog_entry(
-            entry, page_title=bundle.documents[0].name
+            entry,
+            page_title=bundle.documents[0].name,
+            page_blocks=bundle.documents[0].blocks,
         )
         kwargs = {"as_of": AS_OF} if "as_of" in parameters else {}
         return await service.discover(bundle, offering, **kwargs)
@@ -283,7 +304,12 @@ class _LabelSelector:
 
 
 async def _selection_decisions(
-    artifact: PageArtifact, documents, offering, classifier, model: str
+    artifact: PageArtifact,
+    documents,
+    offering,
+    classifier,
+    model: str,
+    repository=None,
 ) -> dict[str, bool]:
     """With PDF link selection: only current, shared and unclear PDFs are kept."""
     from app.services.pdf_link_selection import (
@@ -293,7 +319,7 @@ async def _selection_decisions(
 
     service = PdfLinkSelectionService(
         ((model, classifier),),
-        InMemoryPdfLinkSelectionRepository(),
+        repository or InMemoryPdfLinkSelectionRepository(),
         policy_version="survey",
     )
     selection = await service.select(
@@ -373,7 +399,9 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             plan = await service.plan(
                 bundle,
                 OfferingContext.from_catalog_entry(
-                    catalog[seed], page_title=bundle.documents[0].name
+                    catalog[seed],
+                    page_title=bundle.documents[0].name,
+                    page_blocks=bundle.documents[0].blocks,
                 ),
             )
         else:
@@ -386,13 +414,27 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
     elif guard is not None and estimate > args.max_usd:
         raise SystemExit("estimate exceeds the spend guard; nothing was sent")
 
-    totals = {"lost": 0, "leak": 0, "noise": 0, "scored": 0, "tables_scored": 0}
+    totals = {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "stale": 0,
+        "scored": 0,
+        "tables_scored": 0,
+    }
+    # Shared across seeds and passes, so `--repeat 2` measures the cache.
+    discovery_repository = InMemorySourceDiscoveryRepository()
+    link_repository = None
+    if args.pdf_selector != "admission":
+        from app.services.pdf_link_selection import InMemoryPdfLinkSelectionRepository
+
+        link_repository = InMemoryPdfLinkSelectionRepository()
     for seed, (artifact, bundle) in bundles.items():
         spec = LABELS["seeds"][seed]
         entry = catalog[seed]
         service = SourceDiscoveryService(
             guard,
-            InMemorySourceDiscoveryRepository(),
+            discovery_repository,
             discovery_settings,
             model_name=model,
         )
@@ -417,13 +459,14 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                     for ref in assessment.source_refs:
                         by_item.setdefault(ref.source_item_id, assessment)
         failures: list[dict[str, str]] = []
-        counts = {"lost": 0, "leak": 0, "noise": 0, "scored": 0}
+        counts = {"lost": 0, "leak": 0, "noise": 0, "stale": 0, "scored": 0}
         seen_heading = False
         in_footer = False
         for block in page.blocks:
             if block.table_id:
                 continue
-            if block.heading_path:
+            # The page's main heading ends the header (as in discovery itself).
+            if block.heading_path or block.type.value == "heading":
                 seen_heading = True
             if any(block.text.startswith(marker) for marker in LABELS["footer_from"]):
                 in_footer = True
@@ -498,9 +541,12 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             pdf_selected = await _selection_decisions(
                 artifact,
                 documents,
-                OfferingContext.from_catalog_entry(entry, page_title=artifact.title),
+                OfferingContext.from_catalog_entry(
+                    entry, page_title=artifact.title, page_blocks=artifact.blocks
+                ),
                 _LabelSelector(seed) if args.pdf_selector == "labels" else pdf_guard,
                 model,
+                link_repository,
             )
         pdfs = []
         for name, label in spec["pdfs"].items():
@@ -533,7 +579,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                 for item_id, assessment in by_item.items()
             },
         }
-        for key in ("lost", "leak", "noise", "scored"):
+        for key in ("lost", "leak", "noise", "stale", "scored"):
             totals[key] += counts[key]
         totals["tables_scored"] += sum(
             1 for t in tables if t["expected"] != "unlabelled"
@@ -544,6 +590,41 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             f"tables={[(t['expected'][:3], t['outcome']) for t in tables]} "
             f"pdf_failures={[p['file'] for p in pdfs if p['failure'] not in (None, 'not linked')]}"
         )
+
+    rerun = None
+    if args.repeat > 1 and guard is not None and stored is None:
+        # The same pass again with the same caches: nothing should reach Gemini.
+        calls_before = guard.calls
+        pdf_calls_before = pdf_guard.calls if pdf_guard is not None else 0
+        reused = 0
+        for seed, (artifact, bundle) in bundles.items():
+            entry = catalog[seed]
+            service = SourceDiscoveryService(
+                guard, discovery_repository, discovery_settings, model_name=model
+            )
+            again = await _discover(service, bundle, entry)
+            reused += again.reused_assessment_count
+            if pdf_guard is not None:
+                from app.domain.source_discovery import OfferingContext
+
+                await _selection_decisions(
+                    artifact,
+                    _rebuilt_documents(artifact, parser),
+                    OfferingContext.from_catalog_entry(
+                        entry, page_title=artifact.title, page_blocks=artifact.blocks
+                    ),
+                    pdf_guard,
+                    model,
+                    link_repository,
+                )
+        rerun = {
+            "discovery_calls": guard.calls - calls_before,
+            "pdf_selector_calls": (
+                pdf_guard.calls - pdf_calls_before if pdf_guard is not None else None
+            ),
+            "reused_assessments": reused,
+        }
+        print("cache re-run:", rerun)
 
     pdf_totals = {"lost": 0, "leak": 0}
     for value in seeds.values():
@@ -557,6 +638,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         "estimated_usd": round(estimate, 4),
         "totals": totals,
         "pdf_totals": pdf_totals,
+        "cache_rerun": rerun,
         "seeds": seeds,
     }
     if stored is not None:
@@ -602,6 +684,12 @@ def main() -> None:
     parser.add_argument("--max-usd", type=float, default=0.40)
     parser.add_argument("--label", default=None)
     parser.add_argument("--seed", action="append")
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="run discovery (and selection) again with the same caches; 2 checks reuse",
+    )
     parser.add_argument(
         "--pdf-selector",
         choices=("admission", "labels", "gemini"),
