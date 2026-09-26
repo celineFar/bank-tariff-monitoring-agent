@@ -308,10 +308,22 @@ typed `PdfDownloadError` and never expose a partial document.
 ## Acquisition boundary
 
 Acquisition is deterministic and does not decide what a loan field means. Initial URLs,
-HTTP redirects, browser subrequests, and the final browser URL must pass the same exact
-HTTPS host allowlist. Browser rendering is used only when static content is insufficient
-or the DOM advertises interactive/client-rendered content. It blocks non-GET requests,
-forms, downloads, cross-domain traffic, service workers, and unnecessary heavy assets.
+every hop of an HTTP or browser main-document redirect, browser subrequests, and the
+final browser URL must pass the same exact HTTPS host allowlist (browser resource
+redirects are followed without a per-hop check; Playwright routes only a chain's first
+URL). With the browser enabled, every page is rendered and there is no static fallback:
+a failed render fails the offering. The renderer blocks non-GET requests, forms,
+downloads, cross-domain traffic, service workers, heavy assets, and main-frame
+navigation after load.
+
+Every acquisition passes a completeness gate. `AcquisitionService` enforces an absolute
+floor (main text outside the site header, menus and footer, plus at least one table,
+PDF link or payload); `CompletenessGatedAcquisitionService` compares the artifact's
+`inventory` with the last passing acquisition of the same URL in
+`acquisition_baselines` and fails a sharp drop. Both fail with
+`source.incomplete_content`. A drop keeps failing until an operator runs
+`scripts/reset_acquisition_baseline.py`; only passing acquisitions move the baseline.
+Acquisition warnings are typed codes carried into the source manifest.
 
 The output is an immutable `PageArtifact` containing raw/rendered HTML, Markdown,
 structural blocks, span-aware tables, linked FAQ questions and answers, inline links
@@ -323,10 +335,12 @@ See `docs/acquisition.md` for the complete contract.
 
 The artifact carries two hashes because they answer different questions.
 `content_hash` covers the whole acquisition -- the page plus every document and
-XHR payload reached from it -- and is what change detection compares.
-`page_content_hash` covers only the page's own markup, and is what names the page
-document downstream. Keeping them apart means a revised sibling PDF does not rename
-the page or the evidence quoted from it.
+XHR payload reached from it -- and is the consistency tag normalization, discovery
+and extraction check against each other (change detection compares accepted field
+values, not hashes). `page_content_hash` covers only the page's parsed content --
+never its raw or rendered bytes, which carry per-request ASP.NET tokens -- and is
+what names the page document downstream. Keeping them apart means a revised sibling
+PDF does not rename the page or the evidence quoted from it.
 
 Captured XHR payloads are ordered by `(url, digest)` and deduplicated, never by the
 order in which their bodies finished downloading, and normalized document ids are
@@ -338,7 +352,8 @@ re-extraction.
 
 ### Acquisition freshness
 
-`FreshnessGatedAcquisitionService` wraps `AcquisitionService` and serves the stored
+`FreshnessGatedAcquisitionService` wraps the completeness gate (which wraps
+`AcquisitionService`) and serves the stored
 `PageArtifact` for a seed URL when the last acquisition is younger than
 `ACQUISITION_FRESHNESS_HOURS` (default 1; 0 disables reuse). The most recent
 acquisition per URL lives in `acquisition_snapshots`, replaced rather than
@@ -351,7 +366,13 @@ snapshot; because the reused artifact carries the same hashes as before, each of
 those stages resolves from its own content-addressed cache instead of calling a
 model. Reuse is declined when the stored artifact's linked documents are no longer
 readable from the artifact store, and it is never a fallback for a failed
-acquisition: a fetch that fails fails the offering.
+acquisition: a fetch that fails fails the offering. A partial acquisition (a linked
+PDF failed to download) is used once and not stored for reuse.
+
+Each offering execution records `source_retrieved_at` and `acquisition_reused`
+(migration 018), and the chat's offering outcome carries a `source_note` naming the
+fetch time when the page was reused, so a "no changes" answer from a reused fetch is
+never presented as a fresh check.
 
 Acquisition, parsing, PDF, model, and validation exceptions are translated at the
 pipeline boundary into stable source failure codes while retaining only exception type

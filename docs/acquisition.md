@@ -13,18 +13,80 @@ to the ADK model.
    blocks, heading paths, rowspan/colspan-aware tables, FAQ/accordion relationships,
    inline links, images, and interactive controls with CSS/XPath locators. Both the
    physical table cells and a deterministic logical grid are retained.
-3. Static content is used when it is sufficient. Interactive markup, an application
-   shell, or insufficient text triggers `PlaywrightBrowserRenderer` when enabled.
-4. Browser requests are restricted to allowlisted GET/HEAD URLs. Images, media, fonts,
-   service workers, form submissions, and cross-domain requests are blocked. The
-   renderer opens bounded accordions/tabs/content-revealing controls and captures a
-   bounded set of same-domain textual XHR/fetch responses.
-5. Same-domain PDF links are downloaded through the existing `PdfDownloader` security
-   boundary. A failed linked PDF is recorded as a warning and cannot create a partial
-   document artifact.
-6. Raw HTML, rendered HTML, Markdown, network payloads, and PDFs are written atomically
-   to content-addressed storage. `PageArtifact.content_hash` excludes timestamps and
-   storage paths, so identical source material hashes identically across runs.
+3. When the browser is enabled (the default), every page is rendered by
+   `PlaywrightBrowserRenderer`. The bank's tariff tables, PDF links and data payloads
+   exist only in the rendered page: static HTML carried none of them on any of the 13
+   seeds (survey of 2026-09-26). There is **no static fallback**: a render that fails
+   fails the acquisition with `source.browser_failed` or `source.browser_unavailable`.
+   Static HTML is used only when `ACQUISITION_BROWSER_ENABLED=false`, and must then
+   pass the same completeness floor.
+4. The renderer waits for the page's content to be shown before reading it. The bank
+   fades its whole ASP.NET form in from opacity 0, so the wait watches the element
+   holding the page's text (and the `<h1>` when there is one), and opacity is never
+   treated as hiding: only `display`, `visibility`, `hidden` and zero size are.
+5. Browser requests are restricted to allowlisted GET/HEAD URLs. Images, media, fonts,
+   service workers, form submissions, and cross-domain requests are blocked. After the
+   page has loaded, a main-frame navigation (a clicked button that changes
+   `location`) is answered with an empty 204, which keeps the current document; the
+   page URL is checked again after the interactions. Every hop of the main document's
+   redirect chain is validated against the allowlist. Redirects of page *resources*
+   are followed by the browser without a per-hop check (Playwright routes only the
+   first URL of a chain); their final responses are still host-checked before capture.
+6. The renderer opens bounded accordions/tabs/content-revealing controls and captures
+   same-domain textual XHR/fetch responses within a byte budget. The payload count cap
+   is applied after the captures are deduplicated and sorted, so the kept set never
+   depends on arrival order. Reaching the interaction or payload cap is a typed
+   warning.
+7. **Completeness floor.** Every acquisition must carry at least
+   `ACQUISITION_MIN_MAIN_CONTENT_CHARS` of *main* text -- text outside the site's
+   `header`/`nav`/`footer` and ARIA banner/navigation/contentinfo regions, which alone
+   run to ~9k characters on every bank page -- **and** at least one table, same-host
+   PDF link or captured payload. Otherwise it fails with `source.incomplete_content`
+   and its reasons (for example `main_chars 368 < 1500; no tables, PDF links or
+   payloads`). The counts are kept on the artifact as `PageArtifact.inventory`.
+8. Same-domain PDF links are downloaded through the existing `PdfDownloader` security
+   boundary, up to `ACQUISITION_MAX_LINKED_DOCUMENTS` (40). A failed linked PDF, or
+   links beyond the cap, are recorded as typed warnings
+   (`acquisition.linked_document_failed`, `acquisition.linked_document_cap_reached`)
+   and cannot create a partial document artifact. Acquisition warnings reach the run's
+   source manifest and audit metadata.
+9. Raw HTML, rendered HTML, Markdown, network payloads, and PDFs are written atomically
+   to content-addressed storage.
+
+## Identity
+
+`page_content_hash` names the page document downstream (`page:<hash>`), and so every
+evidence id and extraction-cache key quoted from it. It is built from the **parsed**
+page only -- canonical URL, blocks, tables, links, images and controls -- never from
+the raw or rendered HTML bytes. The bank's pages carry `__VIEWSTATE`,
+`__EVENTVALIDATION` and `__RequestVerificationToken` values that change on every
+request; hashing the bytes gave an unchanged page a new id on every fetch and missed
+every extraction cache. `content_hash` adds the linked documents and payloads; it is a
+consistency tag checked between normalization, discovery and extraction, not the input
+to change detection, which compares accepted field values.
+
+Raw and rendered HTML come from two separate fetches (the static request and the
+browser's own navigation) and can differ in such per-request fields; raw HTML is kept
+for audit only.
+
+## Completeness baseline
+
+`CompletenessGatedAcquisitionService` (wired between the freshness gate and
+acquisition) compares each fresh acquisition's inventory with the last one of the same
+URL that passed, stored in `acquisition_baselines`. A table, PDF-link or payload count
+that falls to zero fails; so does a relative drop of PDF links or main content beyond
+`ACQUISITION_BASELINE_MAX_PDF_LINK_DROP` / `ACQUISITION_BASELINE_MAX_MAIN_CONTENT_DROP`.
+Only a passing acquisition moves the baseline, so a degraded one never becomes the
+reference. A drop keeps failing (`source.incomplete_content`) until an operator, having
+checked that the bank really redesigned the page, runs:
+
+```bash
+uv run python -m scripts.reset_acquisition_baseline <offering_id>
+```
+
+The reset clears the inventory, stamps `reset_by`/`reset_at`, and writes an
+`acquisition.baseline_reset` audit event; the next passing run records a new baseline.
+It is an operator tool only and is never exposed to the model.
 
 ## Ownership and lifecycle
 
@@ -45,10 +107,15 @@ retained as links but are not fetched until a format-specific validator is imple
 
 ## Configuration
 
-The `ACQUISITION_*` environment variables control browser use, minimum useful static
-text, browser timeout/settling, interaction count, network payload count/size, and the
-linked-document budget. General HTTP host, retry, redirect, and byte limits remain in
-the shared HTTP settings.
+The `ACQUISITION_*` environment variables control browser use, the completeness floor
+(`ACQUISITION_MIN_MAIN_CONTENT_CHARS`), the baseline drop thresholds, browser
+timeout/settling, interaction count, network payload count/size, the linked-document
+budget and the freshness window. General HTTP host, retry, redirect, and byte limits
+remain in the shared HTTP settings.
+
+`scripts/survey_acquisition.py` acquires every enabled seed once (no PDF downloads,
+nothing written to the database) and prints each seed's mode, inventory, page id and
+warnings, to compare before and after an acquisition change.
 
 ## Manual demonstration
 
@@ -130,7 +197,7 @@ The final DOM after Playwright:
 
 Compare this with `raw.html` to see what JavaScript or interaction added.
 
-This file is absent when the static HTML was sufficient.
+This file is absent only when the browser is disabled.
 
 ### `page.md`
 
