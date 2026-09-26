@@ -967,3 +967,58 @@ async def test_cancellation_cleanup_failure_never_replaces_the_cancellation() ->
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+class _MenuNormalization(_Normalization):
+    """The page also has a menu block that discovery marks irrelevant."""
+
+    async def normalize(self, artifact):
+        bundle = await super().normalize(artifact)
+        page = bundle.documents[0]
+        menu = NormalizedBlock(
+            id="menu",
+            type=NormalizedBlockType.LIST,
+            raw_text="Cards Deposits Transfers",
+            text="Cards Deposits Transfers",
+            source_refs=(
+                SourceReference(
+                    source_item_id="menu",
+                    locator=SourceLocator(
+                        source_url=URL, source_type=SourceType.PAGE, block_id="menu"
+                    ),
+                ),
+            ),
+        )
+        return bundle.model_copy(
+            update={
+                "documents": (page.model_copy(update={"blocks": (*page.blocks, menu)}),)
+            }
+        )
+
+
+@pytest.mark.xfail(strict=True, reason="SD7 not fixed yet")
+@pytest.mark.asyncio
+async def test_sd7_projection_indexes_only_the_selected_blocks() -> None:
+    events = []
+    publications = _Publications()
+    service = IndexingPipeline(
+        acquisition=_Acquisition(events),
+        normalization=_MenuNormalization(events),
+        discovery=_Discovery(events),
+        extraction=_Extraction(events),
+        projection=KnowledgeProjectionService(),
+        embedder=_Embedder(events),
+        snapshots=_Snapshots(),
+        publications=publications,
+    )
+
+    await service.refresh(_offering(), uuid4(), uuid4())
+
+    source = next(
+        document
+        for document in publications.values[0].documents
+        if document.document_kind.value == "source"
+    )
+    content = "\n".join(chunk.content for chunk in source.chunks)
+    assert "Consumer loan rate 13.5%" in content
+    assert "Cards Deposits Transfers" not in content
