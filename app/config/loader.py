@@ -104,7 +104,6 @@ def load_settings(
         ),
         rag=RagSettings(
             chunk_size_chars=raw.chunk_size_chars,
-            chunk_overlap_chars=raw.chunk_overlap_chars,
             retrieval_top_k=raw.retrieval_top_k,
             retrieval_min_score=raw.retrieval_min_score,
             embedding_max_attempts=raw.embedding_max_attempts,

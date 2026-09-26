@@ -32,10 +32,10 @@ from app.domain.monitoring import (
     SnapshotChangeSet,
     SnapshotStatus,
 )
-from app.repositories.knowledge_store import (
+from app.repositories.knowledge_records import (
     KnowledgeChunkRecord,
     KnowledgeDocumentRecord,
-    PostgresKnowledgeStore,
+    validate_embeddings,
 )
 from app.repositories.structured_projection import publish_structured_projection
 from app.services.telemetry import inject_trace_context
@@ -1590,7 +1590,7 @@ async def _upsert_document(
     *,
     activate: bool,
 ) -> IndexWriteResult:
-    PostgresKnowledgeStore._validate_embeddings(document)
+    validate_embeddings(document)
     version_id = document_version_id(document)
     incoming_chunk_ids = tuple(chunk_id(document, chunk) for chunk in document.chunks)
     await session.execute(
@@ -1642,6 +1642,7 @@ async def _upsert_document(
             final_url=str(document.final_url),
             mime_type=document.mime_type,
             content_sha256=document.content_sha256,
+            projection_sha256=document.projection_sha256,
             retrieved_at=document.retrieved_at,
             extraction_method=document.extraction_method,
             quality_score=document.quality_score,

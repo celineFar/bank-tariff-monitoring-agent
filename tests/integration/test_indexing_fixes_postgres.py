@@ -35,13 +35,16 @@ from app.domain.review import (
 from app.repositories.monitoring import PostgresOfferingPublicationRepository
 from app.repositories.rag_retrieval import HYBRID_SEARCH_SQL
 from app.repositories.reviews import PostgresReviewRepository, ReviewConflictError
-from tests.integration.test_monitoring_repository_postgres import (  # noqa: F401
+from tests.integration import test_monitoring_repository_postgres as repository_tests
+from tests.integration.test_monitoring_repository_postgres import (
     _review_task,
     _running_offering,
     _snapshot,
-    monitoring_database_engine,
-    monitoring_session_factory,
 )
+
+# The PostgreSQL fixtures live in the repository test module (no conftest.py).
+monitoring_database_engine = repository_tests.monitoring_database_engine
+monitoring_session_factory = repository_tests.monitoring_session_factory
 
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
 # The fixture snapshot's evidence cites this document key and URL.
@@ -211,7 +214,6 @@ async def test_ix1_accepted_publication_replaces_the_whole_active_set(
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="IX2: a candidate rewrites live chunks")
 @pytest.mark.asyncio
 async def test_ix2_review_required_run_never_rewrites_live_chunks(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -329,7 +331,9 @@ async def test_ix6_approval_activates_the_summary_it_carries(
         monitoring_session_factory,
         review,
         pending,
-        summary=_summary(pending.run_id, "summary of the reviewed values", embedded=False),
+        summary=_summary(
+            pending.run_id, "summary of the reviewed values", embedded=False
+        ),
     )
 
     assert await _active(monitoring_session_factory) == [
@@ -350,7 +354,9 @@ class _Provider:
         return [tuple(0.02 for _ in range(EMBEDDING_DIMENSIONS)) for _ in contents]
 
 
-@pytest.mark.xfail(strict=True, reason="IX7: chunks cannot be published without vectors")
+@pytest.mark.xfail(
+    strict=True, reason="IX7: chunks cannot be published without vectors"
+)
 @pytest.mark.asyncio
 async def test_ix7_text_only_active_chunks_are_filled_by_embed_missing(
     monitoring_session_factory: async_sessionmaker[AsyncSession],

@@ -19,6 +19,10 @@ from pydantic import (
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 
 EMBEDDING_DIMENSIONS = 768
+# Part of every document version's identity (IX2): bump it when the projection
+# (chunking, rendering, chunk metadata) changes, so the next run stores new
+# versions instead of reusing rows projected by the old code.
+PROJECTION_SCHEMA_VERSION = "2"
 _KNOWLEDGE_NAMESPACE = UUID("8f7205ab-684c-4f2e-a183-e1f14c3bd3ec")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -67,7 +71,18 @@ class KnowledgeChunk(KnowledgeModel):
 
 
 class EmbeddedKnowledgeChunk(KnowledgeChunk):
-    embedding: tuple[float, ...] = Field(min_length=1)
+    # None until embedded: content under review is stored as text only, and a
+    # quota-deferred run publishes before its vectors (IX5, IX7).
+    embedding: tuple[float, ...] | None = None
+
+    @field_validator("embedding")
+    @classmethod
+    def reject_empty_vector(
+        cls, value: tuple[float, ...] | None
+    ) -> tuple[float, ...] | None:
+        if value is not None and not value:
+            raise ValueError("embedding must not be empty")
+        return value
 
 
 class KnowledgeDocument(KnowledgeModel):
@@ -124,9 +139,45 @@ class KnowledgeDocument(KnowledgeModel):
             raise ValueError("chunk ordinals must be unique within a document")
         return self
 
+    @property
+    def projection_sha256(self) -> str:
+        """Hash of the projected chunks (vectors excluded), with the schema version.
+
+        `content_sha256` is the raw source; this is what the index holds. The
+        same bytes projected into other chunks -- another discovery selection,
+        other labels, newer projection code -- are another version (IX2).
+        """
+        payload = {
+            "schema": PROJECTION_SCHEMA_VERSION,
+            "chunks": [
+                chunk.model_dump(mode="json", exclude={"embedding"})
+                for chunk in self.chunks
+            ],
+        }
+        return hashlib.sha256(
+            json.dumps(
+                payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+            ).encode("utf-8")
+        ).hexdigest()
+
 
 class EmbeddedKnowledgeDocument(KnowledgeDocument):
     chunks: tuple[EmbeddedKnowledgeChunk, ...] = Field(min_length=1)
+
+    @classmethod
+    def text_only(cls, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
+        """The document with no vectors yet; `embed_missing` fills them later."""
+        return cls(
+            **document.model_dump(exclude={"chunks"}),
+            chunks=tuple(
+                EmbeddedKnowledgeChunk(**chunk.model_dump())
+                for chunk in document.chunks
+            ),
+        )
+
+    @property
+    def fully_embedded(self) -> bool:
+        return all(chunk.embedding is not None for chunk in self.chunks)
 
 
 class IndexWriteResult(KnowledgeModel):
@@ -138,15 +189,8 @@ class IndexWriteResult(KnowledgeModel):
     versions_retired: int = Field(ge=0)
 
 
-class DocumentVersionSummary(KnowledgeModel):
-    id: UUID
-    content_sha256: str
-    is_active: bool
-    retrieved_at: datetime
-    retired_at: datetime | None
-
-
 def document_version_id(document: KnowledgeDocument) -> UUID:
+    """One version: one projection of one source's bytes, for one offering."""
     identity = "\x1f".join(
         (
             document.bank.lower(),
@@ -155,30 +199,20 @@ def document_version_id(document: KnowledgeDocument) -> UUID:
             document.document_kind.value,
             document.document_key,
             document.content_sha256,
+            document.projection_sha256,
         )
     )
     return uuid5(_KNOWLEDGE_NAMESPACE, identity)
 
 
 def chunk_id(document: KnowledgeDocument, chunk: KnowledgeChunk) -> str:
-    location = json.dumps(
-        {
-            "bank": document.bank.lower(),
-            "checksum": document.content_sha256,
-            "document_key": document.document_key,
-            "document_kind": document.document_kind.value,
-            "offering_id": document.offering_id.value if document.offering_id else None,
-            "ordinal": chunk.ordinal,
-            "page_start": chunk.page_start,
-            "page_end": chunk.page_end,
-            "product": document.product.value,
-            "section": chunk.section,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return hashlib.sha256(location.encode("utf-8")).hexdigest()
+    """A chunk is its version's ordinal; versions are immutable (IX2)."""
+    return version_chunk_id(document_version_id(document), chunk.ordinal)
+
+
+def version_chunk_id(version_id: UUID, ordinal: int) -> str:
+    """`chunk_id` for a version id computed once (hashing a version is O(chunks))."""
+    return hashlib.sha256(f"{version_id}:{ordinal}".encode()).hexdigest()
 
 
 def chunk_content_sha256(content: str) -> str:

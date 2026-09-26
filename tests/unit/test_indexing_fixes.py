@@ -19,6 +19,8 @@ from app.domain.knowledge import KnowledgeChunk, KnowledgeDocument, document_ver
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.normalization import (
+    NormalizedBlock,
+    NormalizedBlockType,
     NormalizedDocument,
     NormalizedSourceBundle,
     NormalizedTable,
@@ -93,7 +95,6 @@ def _knowledge_document(contents: tuple[str, ...]) -> KnowledgeDocument:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="IX2: version identity ignores the projection")
 def test_ix2_same_source_bytes_with_other_chunks_is_another_version() -> None:
     live = _knowledge_document(("Rate 13.5%", "Term 60 months"))
     candidate = _knowledge_document(("Rate 14.0%",))
@@ -292,7 +293,6 @@ def _project_big_table(labels=None):
     return document
 
 
-@pytest.mark.xfail(strict=True, reason="IX10: split table pieces lose their header")
 def test_ix10_every_piece_of_a_split_table_starts_with_title_and_header() -> None:
     document = _project_big_table()
 
@@ -303,7 +303,6 @@ def test_ix10_every_piece_of_a_split_table_starts_with_title_and_header() -> Non
         assert len(chunk.content) <= 600
 
 
-@pytest.mark.xfail(strict=True, reason="IX13: split pieces drop the unit label")
 def test_ix13_pieces_of_an_oversized_labelled_unit_keep_the_label() -> None:
     document = _project_big_table(labels={"fees": _label()})
 
@@ -314,10 +313,50 @@ def test_ix13_pieces_of_an_oversized_labelled_unit_keep_the_label() -> None:
     )
 
 
+def test_ix10_a_chunk_starting_mid_section_opens_with_its_heading_path() -> None:
+    blocks = tuple(
+        NormalizedBlock(
+            id=f"b{index}",
+            type=NormalizedBlockType.PARAGRAPH,
+            raw_text="y" * 400,
+            text="y" * 400,
+            heading_path=("Loan terms", "Repayment"),
+            source_refs=(_ref(f"b{index}"),),
+        )
+        for index in range(4)
+    )
+    document = NormalizedDocument(
+        id="page:0123456789abcdef",
+        name="Consumer loans",
+        source_url=URL,
+        source_type=SourceType.PAGE,
+        mime_type="text/html",
+        content_sha256="a" * 64,
+        extraction_method="browser",
+        blocks=blocks,
+    )
+    (projected,) = KnowledgeProjectionService(max_chunk_chars=900).project_sources(
+        run_id=uuid4(),
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.CONSUMER_STANDARD,
+        bundle=NormalizedSourceBundle(
+            canonical_url=URL,
+            acquisition_content_hash="b" * 64,
+            documents=(document,),
+        ),
+        retrieved_at=NOW,
+        language="en",
+    )
+
+    assert len(projected.chunks) == 2
+    for chunk in projected.chunks:
+        assert chunk.content.startswith("## Loan terms / Repayment\n")
+        assert len(chunk.content) <= 900
+
+
 # IX11 ------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="IX11: summary content carries a timestamp")
 def test_ix11_summary_of_the_same_values_hashes_equal_at_different_times() -> None:
     def summary(created_at: datetime):
         snapshot = SnapshotAttempt(
@@ -352,7 +391,6 @@ def test_ix11_summary_of_the_same_values_hashes_equal_at_different_times() -> No
 # IX14 ------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="IX14: chunk size bounds allow truncation")
 @pytest.mark.parametrize("size", [300, 2500])
 def test_ix14_chunk_size_outside_the_embedding_window_is_rejected(size) -> None:
     with pytest.raises(ValueError):

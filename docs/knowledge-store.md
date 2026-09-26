@@ -44,7 +44,7 @@ The live tests deliberately require an isolated database whose name ends in `_te
 docker compose --profile test up -d db-test
 $env:TEST_DATABASE_URL = `
   "postgresql+asyncpg://tariff:tariff@localhost:5433/tariff_monitor_test"
-uv run pytest tests/integration/test_knowledge_store_postgres.py
+uv run pytest tests/integration/test_knowledge_retrieval_postgres.py
 ```
 
 The suffix guard prevents the test fixture from resetting a development or production

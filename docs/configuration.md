@@ -89,7 +89,7 @@ downloader receives `settings.http` and the PDF extraction service receives
   empty. The container installs `tesseract-ocr`, `tesseract-ocr-hye`, and
   `tesseract-ocr-eng`; a local Windows install additionally needs
   `hye.traineddata` dropped into its `tessdata` directory.
-- **RAG:** `CHUNK_SIZE_CHARS`, `CHUNK_OVERLAP_CHARS`, `RETRIEVAL_TOP_K`, and
+- **RAG:** `CHUNK_SIZE_CHARS` (500–2,000), `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
 - **Embedding retries:** `EMBEDDING_MAX_ATTEMPTS` and
   `EMBEDDING_BACKOFF_BASE_SECONDS` bound retries for transient `5xx` refusals;

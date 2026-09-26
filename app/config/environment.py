@@ -77,7 +77,6 @@ class EnvironmentSettings(BaseSettings):
     ocr_timeout_seconds: float = 60.0
     ocr_tesseract_cmd: str | None = None
     chunk_size_chars: int = 1500
-    chunk_overlap_chars: int = 150
     retrieval_top_k: int = 8
     embedding_max_attempts: int = 3
     embedding_backoff_base_seconds: float = 10.0

@@ -15,10 +15,9 @@ from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
     EmbeddedKnowledgeChunk,
     EmbeddedKnowledgeDocument,
-    IndexWriteResult,
     KnowledgeDocument,
 )
-from app.repositories.contracts import KnowledgeStoreRepository
+from app.repositories.contracts import ChunkEmbeddingRepository
 from app.repositories.embedding_cache import PostgresEmbeddingCache
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
@@ -215,18 +214,16 @@ class KnowledgeIndexer:
     def __init__(
         self,
         embedding_provider: EmbeddingProvider,
-        repository: KnowledgeStoreRepository,
+        embeddings: ChunkEmbeddingRepository | None = None,
         embedding_cache: PostgresEmbeddingCache | None = None,
         usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         self._usage_repository = usage_repository
         self._embedding_provider = embedding_provider
-        self._repository = repository
+        # Only `embed_missing` writes, and only vectors: documents are
+        # published by the offering publication repository (IX15).
+        self._embeddings = embeddings
         self._embedding_cache = embedding_cache
-
-    async def index(self, document: KnowledgeDocument) -> IndexWriteResult:
-        embedded_document = await self.embed(document)
-        return await self._repository.upsert_document(embedded_document)
 
     async def embed(self, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
         try:

@@ -1,7 +1,7 @@
 # Indexing: fix plan
 
 Date: 2026-09-26 · Branch: `fix/indexing` (to create from `integration/process-fixes` at
-`a812f69`) · Status: **in progress** (Phases 0–1 done).
+`a812f69`) · Status: **in progress** (Phases 0–2 done).
 
 The four design choices this plan depends on (D1–D4) were confirmed by the user on
 2026-09-26. The other decisions (D5–D12) are Claude's; each is listed in
@@ -628,23 +628,68 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
 
 ### Phase 2: Version identity and projection (IX2, IX10, IX11, IX13, IX14, IX15)
 
-- [ ] Add `PROJECTION_SCHEMA_VERSION` and `projection_sha256` (computed from the chunks)
+- [x] Add `PROJECTION_SCHEMA_VERSION` and `projection_sha256` (computed from the chunks)
       to `KnowledgeDocument`.
-- [ ] `document_version_id` includes `projection_sha256`; `chunk_id` becomes
+- [x] `document_version_id` includes `projection_sha256`; `chunk_id` becomes
       `sha256(version_id, ordinal)`.
-- [ ] `EmbeddedKnowledgeChunk.embedding` becomes optional; dimension and finite checks
+- [x] `EmbeddedKnowledgeChunk.embedding` becomes optional; dimension and finite checks
       run only when present.
-- [ ] IX13: `_split_unit` carries `label`.
-- [ ] IX10: table pieces repeat title and header; heading breadcrumb on chunks that do
+- [x] IX13: `_split_unit` carries `label`.
+- [x] IX10: table pieces repeat title and header; heading breadcrumb on chunks that do
       not start with a heading; limit counts the prefix.
-- [ ] IX11: drop `As of` from the summary content; add `metadata.as_of`.
-- [ ] IX14: remove `chunk_overlap_chars` (settings, loader, environment, `.env.example`,
+- [x] IX11: drop `As of` from the summary content; add `metadata.as_of`.
+- [x] IX14: remove `chunk_overlap_chars` (settings, loader, environment, `.env.example`,
       docs); bounds `ge=500, le=2000`.
-- [ ] IX15: delete `PostgresKnowledgeStore.upsert_document`, `list_document_versions`,
+- [x] IX15: delete `PostgresKnowledgeStore.upsert_document`, `list_document_versions`,
       `KnowledgeStoreRepository`, `KnowledgeIndexer.index` and their tests; move the
       records and `_validate_embeddings` to `app/repositories/knowledge_records.py`;
       update `runtime.py` wiring.
-- [ ] Record the Phase 2 notes here.
+- [x] Record the Phase 2 notes here.
+
+**Phase 2 notes (done).**
+- **Identity (IX2).** `PROJECTION_SCHEMA_VERSION = "2"` and the
+  `KnowledgeDocument.projection_sha256` property (canonical JSON of the chunks without
+  vectors, plus the schema version) in [app/domain/knowledge.py](../../app/domain/knowledge.py).
+  `document_version_id` includes it; `chunk_id` is `sha256("<version id>:<ordinal>")`,
+  with `version_chunk_id(version_id, ordinal)` for callers that already hold the id
+  (hashing a version is O(chunks), so per-chunk recomputation would be quadratic).
+  `_upsert_document` now writes `projection_sha256`, which alone makes a candidate with
+  other chunks a separate row: **the IX2 Postgres test passes** (its `xfail` removed).
+  The rest of the upsert rewrite (insert-if-absent) is Phase 3.
+- **Optional vectors.** `EmbeddedKnowledgeChunk.embedding: tuple[float, ...] | None`
+  (empty tuple still rejected); `EmbeddedKnowledgeDocument.text_only(document)` and
+  `.fully_embedded`. `validate_embeddings` checks only vectors that are present.
+- **Projection** ([knowledge_projection.py](../../app/services/knowledge_projection.py)):
+  - IX13: `_split_unit` builds pieces with `dataclasses.replace`, so label,
+    locators and `repeat_prefix` carry over.
+  - IX10 tables: `_ProjectionUnit.repeat_prefix` (title + header + separator); each piece
+    repeats it, and the limit counts it. Falls back to no repeat when the prefix is over
+    half the budget (a table with a huge header).
+  - IX10 breadcrumbs: a chunk whose first unit is not a heading, table or summary opens
+    with `## <heading path>` (≤ 200 characters). The grouping and the splitting both
+    reserve its length, so chunks stay within the limit.
+  - IX11: no `As of` line; `metadata.as_of` on the summary document;
+    `summary_schema` is `loan_product_or_snapshot_v2`.
+  - Default `max_chunk_chars` is now 1,500 (was 6,000), matching the runtime setting.
+- **IX14.** `chunk_overlap_chars` removed from `RagSettings`, the env model, the loader,
+  `.env.example` and `docs/configuration.md` (an old `.env` line is ignored: the env model
+  has `extra="ignore"`). `chunk_size_chars` is `ge=500, le=2_000`.
+  `test_config.py` updated.
+- **IX15.** `app/repositories/knowledge_store.py` → `knowledge_records.py` (records,
+  `validate_embeddings`); `PostgresKnowledgeStore`, `KnowledgeStoreRepository`,
+  `DocumentVersionSummary` and `KnowledgeIndexer.index` deleted. `KnowledgeIndexer` is now
+  `(embedding_provider, embeddings=None, embedding_cache=None, usage_repository=None)`;
+  `embeddings` is the new `ChunkEmbeddingRepository` protocol (in `contracts.py`),
+  implemented in Phase 5.
+- **Tests.** `test_knowledge_store_postgres.py` → `test_knowledge_retrieval_postgres.py`:
+  the three writer-semantics tests are deleted (publication tests cover them); the index,
+  hybrid-retrieval, quarantine and SD7 tests insert rows with the new
+  `tests/fixtures/knowledge.py::store_active_document`. `test_knowledge_index.py` tests
+  `embed` directly. New `test_ix10_a_chunk_starting_mid_section_opens_with_its_heading_path`.
+  The Postgres regression module binds the fixtures as module attributes (ruff F811).
+- `docs/architecture.md` still names `PostgresKnowledgeStore`; docs are Phase 6.
+- Suite: 1069 passed, 5 skipped, 11 xfailed (4 known Gemini-key tests excluded); ruff
+  check and format clean.
 
 ### Phase 3: Publication and activation (IX1, IX2, IX12)
 

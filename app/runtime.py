@@ -17,7 +17,6 @@ from app.repositories.acquisition_snapshots import (
     PostgresAcquisitionSnapshotRepository,
 )
 from app.repositories.embedding_cache import PostgresEmbeddingCache
-from app.repositories.knowledge_store import PostgresKnowledgeStore
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
     PostgresRunRepository,
@@ -276,8 +275,7 @@ def build_application_container(
                 settings.rag.embedding_quota_backoff_base_seconds
             ),
         ),
-        PostgresKnowledgeStore(sessions),
-        PostgresEmbeddingCache(sessions),
+        embedding_cache=PostgresEmbeddingCache(sessions),
         usage_repository=model_usage,
     )
     audit_archive = (
