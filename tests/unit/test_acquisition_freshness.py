@@ -218,6 +218,31 @@ async def test_a_partial_acquisition_is_not_stored_and_is_fetched_again() -> Non
 
 
 @pytest.mark.asyncio
+async def test_a_permanently_dead_link_does_not_prevent_reuse() -> None:
+    # A 404 is the same on every fetch: refusing to reuse the acquisition would
+    # refetch the page and every PDF on every run without ever filling the gap.
+    with_dead_link = _artifact(
+        NOW,
+        warnings=(
+            AcquisitionWarning(
+                code=AcquisitionWarningCode.LINKED_DOCUMENT_MISSING,
+                detail="l55: source.not_found",
+            ),
+        ),
+    )
+    acquisition = _Acquisition(with_dead_link)
+    snapshots = _Snapshots()
+    service = _service(acquisition, snapshots)
+
+    await service.acquire(URL)
+    second = await service.acquire(URL)
+
+    assert [url for url, _ in snapshots.saved] == [URL]
+    assert acquisition.calls == [URL]
+    assert second.reused is True
+
+
+@pytest.mark.asyncio
 async def test_a_cap_warning_alone_does_not_prevent_reuse() -> None:
     capped = _artifact(
         NOW,

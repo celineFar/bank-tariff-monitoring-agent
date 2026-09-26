@@ -55,14 +55,24 @@ class FakeHtmlRetriever:
 
 
 class FakePdfDownloader:
-    def __init__(self, *, failing: frozenset[str] = frozenset()) -> None:
+    def __init__(
+        self,
+        *,
+        failing: frozenset[str] = frozenset(),
+        missing: frozenset[str] = frozenset(),
+    ) -> None:
         self.urls: list[str] = []
         self.failing = failing
+        self.missing = missing
 
     async def download(self, candidate) -> DownloadedPdf:
         self.urls.append(candidate.url)
         if candidate.url in self.failing:
             raise PdfDownloadError(PdfDownloadFailure.TIMEOUT, "timed out")
+        if candidate.url in self.missing:
+            raise PdfDownloadError(
+                PdfDownloadFailure.HTTP_STATUS, "not found", status_code=404
+            )
         content = f"%PDF-1.7 official {candidate.url}".encode()
         return DownloadedPdf(
             source_url=candidate.url,
@@ -357,6 +367,28 @@ async def test_a_failed_linked_download_is_a_typed_warning(tmp_path) -> None:
     (warning,) = artifact.warnings
     assert warning.code is AcquisitionWarningCode.LINKED_DOCUMENT_FAILED
     assert warning.detail.endswith("source.timeout")
+
+
+@pytest.mark.asyncio
+async def test_a_dead_linked_document_is_a_missing_warning_not_a_failure(
+    tmp_path,
+) -> None:
+    # Measured 2026-09-26: three historical-terms PDFs linked from two seed
+    # pages return 404 on the bank's site, on every fetch.
+    html = LOAN_PAGE.replace(
+        '<a href="/terms.pdf">Official terms</a>',
+        '<a href="/terms.pdf">Official terms</a><a href="/old.pdf">Old terms</a>',
+    )
+    pdf = FakePdfDownloader(missing=frozenset({"https://ameriabank.am/old.pdf"}))
+
+    artifact = await _service(tmp_path, html, pdf=pdf).acquire(
+        "https://ameriabank.am/loan"
+    )
+
+    assert len(artifact.downloadable_documents) == 1
+    (warning,) = artifact.warnings
+    assert warning.code is AcquisitionWarningCode.LINKED_DOCUMENT_MISSING
+    assert warning.detail.endswith("source.not_found")
 
 
 @pytest.mark.asyncio
