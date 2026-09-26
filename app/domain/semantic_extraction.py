@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -77,10 +78,80 @@ class PropertyMarket(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
+class ConditionDimension(StrEnum):
+    """What a condition is about (SE22).
+
+    A closed set, so the same condition carries the same name from run to run;
+    free text drifted (`card_type` one run, `card_tier` the next) and change
+    detection had to guess pairings.
+    """
+
+    CURRENCY = "currency"
+    CARD_TIER = "card_tier"
+    VARIANT_ID = "variant_id"
+    LOAN_TYPE = "loan_type"
+    BORROWER_TYPE = "borrower_type"
+    RESIDENCY = "residency"
+    PURPOSE = "purpose"
+    TERM_RANGE = "term_range"
+    AMOUNT_RANGE = "amount_range"
+    RATE_TYPE = "rate_type"
+    REPAYMENT_METHOD = "repayment_method"
+    CHANNEL = "channel"
+    PROGRAM = "program"
+    COLLATERAL = "collateral"
+    LOCATION = "location"
+    PROPERTY_MARKET = "property_market"
+    OTHER = "other"
+
+
+# Names a model or an older stored value used for a dimension above.
+_DIMENSION_SYNONYMS: dict[str, ConditionDimension] = {
+    "card": ConditionDimension.CARD_TIER,
+    "card_type": ConditionDimension.CARD_TIER,
+    "type_of_card": ConditionDimension.CARD_TIER,
+    "tier": ConditionDimension.CARD_TIER,
+    "variant": ConditionDimension.VARIANT_ID,
+    "financing_type": ConditionDimension.VARIANT_ID,
+    "customer_type": ConditionDimension.BORROWER_TYPE,
+    "client_type": ConditionDimension.BORROWER_TYPE,
+    "borrower": ConditionDimension.BORROWER_TYPE,
+    "term": ConditionDimension.TERM_RANGE,
+    "loan_term": ConditionDimension.TERM_RANGE,
+    "amount": ConditionDimension.AMOUNT_RANGE,
+    "loan_amount": ConditionDimension.AMOUNT_RANGE,
+    "rate": ConditionDimension.RATE_TYPE,
+    "interest_rate_type": ConditionDimension.RATE_TYPE,
+    "repayment": ConditionDimension.REPAYMENT_METHOD,
+    "region": ConditionDimension.LOCATION,
+    "city": ConditionDimension.LOCATION,
+    "market": ConditionDimension.PROPERTY_MARKET,
+    "condition": ConditionDimension.OTHER,
+}
+
+
 class Condition(ValueModel):
-    dimension: str = Field(min_length=1, max_length=200)
+    dimension: ConditionDimension
     operator: str | None = Field(default=None, max_length=50)
     value: str = Field(min_length=1, max_length=1000)
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonical_dimension(cls, data: Any) -> Any:
+        """Map a known synonym to its dimension; keep an unknown dimension's name
+        in the value under `other`, so nothing is lost and old values load."""
+        if not isinstance(data, dict) or not isinstance(data.get("dimension"), str):
+            return data
+        raw = data["dimension"].strip()
+        key = re.sub(r"[\s-]+", "_", raw.casefold())
+        if key in ConditionDimension._value2member_map_:
+            return {**data, "dimension": key}
+        if key in _DIMENSION_SYNONYMS:
+            return {**data, "dimension": _DIMENSION_SYNONYMS[key].value}
+        value = str(data.get("value", ""))
+        if raw and raw.casefold() not in value.casefold():
+            value = f"{raw}: {value}"
+        return {**data, "dimension": ConditionDimension.OTHER.value, "value": value}
 
 
 class ConditionalValue(ValueModel, Generic[T]):
@@ -462,6 +533,9 @@ class ExtractionBatch(ExtractionModel):
     evidence_mode: str = "full"
     units_left_out: tuple[str, ...] = ()
     budget_limited_fields: tuple[ExtractionField, ...] = ()
+    # The catalog's category for the offering; a model answer that disagrees is
+    # a review, not a different product (SE21).
+    category: str | None = None
 
 
 class ExtractionBatchResponse(ExtractionModel):

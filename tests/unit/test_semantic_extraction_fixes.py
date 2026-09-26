@@ -590,7 +590,6 @@ def test_se4_row_record_carries_its_referenced_note() -> None:
 # --- SE21: the field set follows the offering's category --------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE21: every family field is extracted")
 def test_se21_overdraft_offering_requests_no_collateral() -> None:
     bundle, discovery = _bundle(
         (_block("title", "Overdraft"), _block("terms", "Credit limit AMD 100,000")),
@@ -781,3 +780,74 @@ async def test_se6_budgeted_mode_marks_not_stated_fields_it_had_no_room_for() ->
         item for item in result.validated_fields if item.field is ExtractionField.FEES
     )
     assert "not_stated_budget_limited" in (fees.explanation or "")
+
+
+# --- SE20 / SE21 / SE22: scope from the catalog, fields by category, dimensions ---------
+
+
+def test_se21_catalog_category_defaults_to_the_family_and_must_belong_to_it() -> None:
+    from pydantic import ValidationError as PydanticValidationError
+
+    from app.config.seed_catalog import load_seed_catalog
+    from app.domain.catalog import OfferingCategory
+
+    catalog = {
+        entry.offering_id.value: entry for entry in load_seed_catalog().offerings
+    }
+    assert catalog["overdraft"].category is OfferingCategory.OVERDRAFT
+    assert catalog["credit_line"].category is OfferingCategory.CREDIT_LINE
+    assert catalog["consumer_standard"].category is OfferingCategory.CONSUMER_LOAN
+    assert catalog["mortgage_primary"].category is OfferingCategory.MORTGAGE
+    with pytest.raises(PydanticValidationError, match="does not belong"):
+        catalog["mortgage_primary"].model_validate(
+            {**catalog["mortgage_primary"].model_dump(), "category": "overdraft"}
+        )
+
+
+@pytest.mark.asyncio
+async def test_se21_a_category_that_disagrees_with_the_catalog_is_a_review() -> None:
+    from app.config.seed_catalog import load_seed_catalog
+    from app.domain.source_discovery import OfferingContext
+
+    catalog = load_seed_catalog()
+    entry = next(e for e in catalog.offerings if e.offering_id.value == "overdraft")
+    bundle, discovery = _bundle(
+        (_block("title", "Overdraft"), _block("terms", "Credit limit AMD 100,000")),
+        product=ProductType.CONSUMER_LOAN,
+    )
+    offering = OfferingContext.from_catalog_entry(entry, catalog=catalog)
+
+    class SaysConsumerLoan(ScriptedExtractor):
+        async def extract(self, batch):
+            response = await super().extract(batch)
+            return ExtractionBatchResponse(
+                results=tuple(
+                    item.model_copy(update={"value_json": '"consumer_loan"'})
+                    if item.field is ExtractionField.CATEGORY
+                    else item
+                    for item in response.results
+                )
+            )
+
+    result = await _service(SaysConsumerLoan()).extract(
+        bundle, discovery, retrieved_at=RETRIEVED_AT, offering=offering
+    )
+    assert ExtractionField.CATEGORY in _reviewed_fields(result)
+    plan = await _service(ScriptedExtractor()).plan(bundle, discovery, offering)
+    scope = " ".join(plan.batches[0].target_scope)
+    assert "offering=Overdraft (overdraft)" in scope and "category=overdraft" in scope
+    assert "exclude_as_base" not in scope  # the old URL-gated rule text
+
+
+def test_se22_condition_dimensions_are_canonical() -> None:
+    from app.domain.semantic_extraction import Condition, ConditionDimension
+
+    assert Condition(dimension="card_type", value="Gold").dimension is (
+        ConditionDimension.CARD_TIER
+    )
+    assert Condition(dimension="Currency", value="AMD").dimension is (
+        ConditionDimension.CURRENCY
+    )
+    unknown = Condition(dimension="season", value="summer")
+    assert unknown.dimension is ConditionDimension.OTHER
+    assert unknown.value == "season: summer"

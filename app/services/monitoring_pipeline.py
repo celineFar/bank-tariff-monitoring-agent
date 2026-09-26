@@ -113,6 +113,7 @@ class SemanticExtractionPort(Protocol):
         self,
         bundle: NormalizedSourceBundle,
         discovery: SourceDiscoveryResult,
+        offering: OfferingContext | None = None,
     ) -> SemanticExtractionPlan: ...
 
     async def extract(
@@ -121,6 +122,7 @@ class SemanticExtractionPort(Protocol):
         discovery: SourceDiscoveryResult,
         *,
         retrieved_at,
+        offering: OfferingContext | None = None,
     ) -> SemanticExtractionResult: ...
 
 
@@ -299,7 +301,11 @@ class IndexingPipeline:
             await audit.record_source_discovery(audit_context, bundle, discovery)
         # The plan is captured before extraction: afterwards its batches are
         # cache hits, and the evidence overlay would report them as unsent.
-        plan = await self._audit_plan(bundle, discovery) if audit is not None else None
+        plan = (
+            await self._audit_plan(bundle, discovery, offering_context)
+            if audit is not None
+            else None
+        )
         try:
             extraction = await stage(
                 "semantic_extraction",
@@ -308,6 +314,7 @@ class IndexingPipeline:
                     bundle,
                     discovery,
                     retrieved_at=artifact.retrieved_at,
+                    offering=offering_context,
                 ),
             )
         except OfferingPipelineError as exc:
@@ -452,10 +459,11 @@ class IndexingPipeline:
         self,
         bundle: NormalizedSourceBundle,
         discovery: SourceDiscoveryResult,
+        offering: OfferingContext | None = None,
     ) -> SemanticExtractionPlan | None:
         """Plan deterministically for the audit overlay without failing the run."""
         try:
-            return await self._extraction.plan(bundle, discovery)
+            return await self._extraction.plan(bundle, discovery, offering)
         except Exception:  # pragma: no cover - audit output is best effort
             logger.warning(
                 "Failed to build the semantic-extraction plan for the audit trail",

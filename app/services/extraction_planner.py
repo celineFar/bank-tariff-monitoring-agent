@@ -13,7 +13,7 @@ from app.domain.semantic_extraction import (
     ExtractionBatch,
     ExtractionField,
 )
-from app.domain.source_discovery import ProductAssociation
+from app.domain.source_discovery import OfferingContext, ProductAssociation
 
 _GROUPS: tuple[tuple[str, tuple[ExtractionField, ...]], ...] = (
     (
@@ -110,10 +110,34 @@ class EvidencePacketTooLargeError(ValueError):
         self.ceiling = ceiling
 
 
+# The details each category's product model holds (SE21). Without a category
+# (a caller outside the catalog), the product family's union is asked.
+CATEGORY_FIELDS: dict[str, tuple[ExtractionField, ...]] = {
+    "consumer_loan": (
+        ExtractionField.COLLATERAL,
+        ExtractionField.INCOME_VERIFICATION_REQUIRED,
+        ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED,
+    ),
+    "overdraft": (
+        ExtractionField.CREDIT_LIMIT,
+        ExtractionField.GRACE_PERIOD_DAYS,
+        ExtractionField.REVOLVING,
+        ExtractionField.LINKED_ACCOUNT_OR_CARD,
+    ),
+    "credit_line": (
+        ExtractionField.CREDIT_LIMIT,
+        ExtractionField.GRACE_PERIOD_DAYS,
+        ExtractionField.REVOLVING,
+    ),
+    "mortgage": _PRODUCT_FIELDS[ProductType.MORTGAGE],
+}
+
+
 def field_groups(
-    product: ProductType,
+    product: ProductType, category: str | None = None
 ) -> tuple[tuple[str, tuple[ExtractionField, ...]], ...]:
-    return (*_GROUPS, ("product_details", _PRODUCT_FIELDS[product]))
+    details = CATEGORY_FIELDS[category] if category else _PRODUCT_FIELDS[product]
+    return (*_GROUPS, ("product_details", details))
 
 
 def build_extraction_batches(
@@ -123,6 +147,8 @@ def build_extraction_batches(
     *,
     canonical_url: str | None = None,
     offering_id: str | None = None,
+    category: str | None = None,
+    offering: OfferingContext | None = None,
 ) -> tuple[ExtractionBatch, ...]:
     if not evidence:
         raise ValueError("semantic extraction requires at least one evidence item")
@@ -131,8 +157,9 @@ def build_extraction_batches(
         for item in sorted(evidence, key=lambda item: item.order)
         if item.product_association not in _EXCLUDED_ASSOCIATIONS
     ) or tuple(evidence)
-    groups = field_groups(product)
-    target_scope = _target_scope(product, canonical_url)
+    category = category or (offering.category if offering else None)
+    groups = field_groups(product, str(category) if category else None)
+    target_scope = _target_scope(product, canonical_url, offering, category)
     if settings.evidence_mode == "full":
         characters = sum(len(item.content) for item in usable)
         if characters > settings.max_packet_chars:
@@ -183,6 +210,7 @@ def build_extraction_batches(
                 evidence_mode=settings.evidence_mode,
                 units_left_out=left_out,
                 budget_limited_fields=limited,
+                category=str(category) if category else None,
             )
         )
     return tuple(batches)
@@ -425,15 +453,31 @@ def _score(
     )
 
 
-def _target_scope(product: ProductType, canonical_url: str | None) -> tuple[str, ...]:
+def _target_scope(
+    product: ProductType,
+    canonical_url: str | None,
+    offering: OfferingContext | None = None,
+    category: str | None = None,
+) -> tuple[str, ...]:
+    """Which product the call is about, from the catalog and the page (SE20).
+
+    The same for every offering: no URL-specific rules. Which items belong to
+    another product is discovery's `related_product` label.
+    """
     values = [f"product_family={product.value}"]
+    if category:
+        values.append(f"category={category}")
+    if offering is not None:
+        values.append(f"offering={offering.display_name} ({offering.offering_id})")
+        if offering.names:
+            values.append("also_called=" + "; ".join(offering.names[:8]))
+        for key, value in (
+            ("page_title", offering.page_title),
+            ("page_heading", offering.page_heading),
+            ("page_summary", offering.page_summary),
+        ):
+            if value:
+                values.append(f"{key}={value}")
     if canonical_url:
         values.append(f"canonical_url={canonical_url}")
-        if "/mortgage/primary" in canonical_url.casefold():
-            values.extend(
-                (
-                    "target=base home-purchase mortgage for the primary market",
-                    "exclude_as_base=Express Home, secondary-market, construction, renovation, and developer-program variants",
-                )
-            )
     return tuple(values)

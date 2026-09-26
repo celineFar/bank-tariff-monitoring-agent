@@ -1343,19 +1343,78 @@ anchor uses the word-boundary `mentions_field`.
 
 ### Phase 5: Scope and schema (SE20, SE21, SE22)
 
-- [ ] SE21: add `category` to seed catalog offerings, validated against the family; update
+- [x] SE21: add `category` to seed catalog offerings, validated against the family; update
       [docs/seed-catalog.md](../../docs/seed-catalog.md) and the catalog tests.
-- [ ] SE21: the field set per category; a category disagreeing with the catalog is a review
+- [x] SE21: the field set per category; a category disagreeing with the catalog is a review
       signal.
-- [ ] SE20: delete `_PRIMARY_VARIANT_PATTERN`, `_PRIMARY_OUT_OF_SCOPE`, `_target_scope`'s URL
+- [x] SE20: delete `_PRIMARY_VARIANT_PATTERN`, `_PRIMARY_OUT_OF_SCOPE`, `_target_scope`'s URL
       branch, `_outside_canonical_scope`'s URL branch and `_outside_target_scope`.
-- [ ] SE20: pass the offering context (name, aliases, seed URL, page title, category) into
+- [x] SE20: pass the offering context (name, aliases, seed URL, page title, category) into
       the prompt as the target scope.
-- [ ] SE20: rewrite the instruction with generic rules and neutral examples; no seed product
+- [x] SE20: rewrite the instruction with generic rules and neutral examples; no seed product
       names.
-- [ ] SE22: `Condition.dimension` enum; the prompt asks for values copied from column paths
+- [x] SE22: `Condition.dimension` enum; the prompt asks for values copied from column paths
       and row labels; normalizer maps only exact synonyms (`card_type` → `card_tier`).
-- [ ] Run `check_extraction_labels.py --extractor fake` for plumbing.
+- [x] Run `check_extraction_labels.py --extractor fake` for plumbing.
+
+#### Phase 5 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 5: scope and schema*. Unit suite
+**956 passed**; the SE21 test passes without `xfail`.
+
+**SE21 (category).**
+- `SeedCatalogEntry.category` (`OfferingCategory`): `consumer_loan`, `overdraft`,
+  `credit_line` or `mortgage`. It is validated against the family and defaults to the
+  family's own category, so catalogs without it still load. `overdraft` and
+  `credit_line` declare theirs in `seed_catalog.yaml`.
+- `OfferingContext.category` carries it. It is excluded from serialization, so the
+  discovery prompt and cache are unchanged.
+- `build_extraction_batches(..., category=, offering=)` uses `CATEGORY_FIELDS`:
+  - an overdraft asks credit limit, grace period, revolving and linked card, and no
+    collateral;
+  - a consumer loan asks collateral, income and creditworthiness, and no credit limit;
+  - a mortgage asks what it asked before;
+  - without a category (callers outside the catalog), the family's union as before.
+- A model category that differs from the catalog raises in
+  `_validate_semantic_completeness`, so it is a review. The batch carries `category`.
+- `SemanticExtractionService.plan/extract`, `FallbackSemanticExtractionService`, the
+  pipeline's `SemanticExtractionPort` and `_audit_plan` take `offering`. The pipeline
+  passes the context it already builds for discovery.
+
+**SE20 (no URL rules).**
+- Removed: `_PRIMARY_OUT_OF_SCOPE`, `_outside_target_scope` and their two uses in
+  validation; `_target_scope`'s `/mortgage/primary` branch. `_PRIMARY_VARIANT_PATTERN`
+  and `_outside_canonical_scope` went in Phase 4.
+- The target scope now lists family, category, offering name and id, the catalog's
+  other names, page title, heading and summary, and the canonical URL.
+- The instruction is rewritten without any seed product (no Express, Solar,
+  secondary-market, 6–60 months). It gains:
+  - how to read row records (column path → conditions; a parenthesised type; row
+    notes qualify values);
+  - quotes must contain the value's numbers;
+  - two alternatives never share conditions;
+  - condition values are copied verbatim from the column path, label or note.
+- The prompt and schema versions go to **6**. `models.py` and `environment.py` now
+  agree; they were "4" and "5".
+
+**SE22 (condition dimensions).**
+- `Condition.dimension` is `ConditionDimension`, 17 names including `other`. The JSON
+  Schema sent to the model lists them.
+- The canonical mapping is a `model_validator(mode="before")` on `Condition` itself,
+  not in the normalizer: synonyms map (`card_type` → `card_tier`, `customer_type` →
+  `borrower_type`, …), and an unknown dimension becomes `other` with its name kept in
+  the value (`season: summer`). This way snapshots, cached responses and review
+  decisions stored with free-text dimensions still load.
+- The normalizer's fallback dimension is `other`, not `condition`.
+- The rate guard's fuzzy pairing in `snapshot_lifecycle.py` stays, as the plan says,
+  until history exists in the new form.
+
+**Plumbing.** `check_extraction_labels.py --extractor fake`: 13 category matches, 39
+calls (3 per offering), no errors
+([data/extraction-check-phase5-fake.json](data/extraction-check-phase5-fake.json)).
+
+**Docs.** [docs/seed-catalog.md](../../docs/seed-catalog.md) documents `category`.
+
 
 ### Phase 6: Validation rules (SE17, SE18, SE19)
 

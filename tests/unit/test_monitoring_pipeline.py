@@ -271,7 +271,7 @@ class _Extraction:
     def __init__(self, events):
         self.events = events
 
-    async def plan(self, bundle, discovery):
+    async def plan(self, bundle, discovery, offering=None):
         self.events.append(("plan", discovery.product))
         return SemanticExtractionPlan.model_construct(
             product=discovery.product,
@@ -286,7 +286,7 @@ class _Extraction:
             cache_hits=(),
         )
 
-    async def extract(self, bundle, discovery, *, retrieved_at):
+    async def extract(self, bundle, discovery, *, retrieved_at, offering=None):
         self.events.append(("extract", retrieved_at))
         return _extraction()
 
