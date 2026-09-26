@@ -186,6 +186,8 @@ class SourceAssessment(DiscoveryModel):
     conditions: tuple[str, ...] = Field(default=(), max_length=50)
     reason: str = Field(min_length=1, max_length=2000)
     member_exceptions: tuple[MemberException, ...] = Field(default=(), max_length=200)
+    # For `possibly_stale`: the item's own words showing it is out of date.
+    stale_evidence: str | None = Field(default=None, max_length=500)
     decision_source: DecisionSource
     inherited_from: str | None = None
     input_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -274,6 +276,7 @@ class ModelSourceAssessment(DiscoveryModel):
     conditions: tuple[str, ...] = Field(default=(), max_length=50)
     reason: str = Field(min_length=1, max_length=2000)
     member_exceptions: tuple[MemberException, ...] = Field(default=(), max_length=200)
+    stale_evidence: str | None = Field(default=None, max_length=500)
 
 
 class DiscoveryBatchResponse(DiscoveryModel):
@@ -325,6 +328,9 @@ class SourceDiscoveryResult(DiscoveryModel):
     extraction_context: ExtractionContext
     llm_batch_count: int = Field(ge=0)
     reused_assessment_count: int = Field(ge=0)
+    # Invalid answers asked again, and batches split to isolate one (SD6).
+    batch_retries: int = Field(default=0, ge=0)
+    batch_splits: int = Field(default=0, ge=0)
 
 
 class PdfLinkPromptItem(DiscoveryModel):

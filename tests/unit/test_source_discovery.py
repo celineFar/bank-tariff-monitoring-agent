@@ -29,6 +29,7 @@ from app.domain.source_discovery import (
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
 from app.services.model_pricing import model_sequence
 from app.services.source_discovery import (
+    DiscoveryResponseError,
     FallbackSourceDiscoveryService,
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
@@ -309,8 +310,9 @@ async def test_discovery_rejects_missing_or_invented_classifier_ids() -> None:
         model_name="configured-model",
     )
 
-    with pytest.raises(ValueError, match="response IDs"):
+    with pytest.raises(DiscoveryResponseError, match="no valid answer") as raised:
         await service.discover(_bundle(), OFFERING)
+    assert "response IDs" in str(raised.value.__cause__)
 
 
 @pytest.mark.asyncio
@@ -452,8 +454,10 @@ async def test_discovery_raises_once_every_configured_model_fails() -> None:
 
 
 @pytest.mark.asyncio
-async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> None:
-    """A malformed response is the same on the next model, so do not pay twice."""
+async def test_an_answer_invalid_after_retry_and_split_moves_to_the_next_model() -> (
+    None
+):
+    """A model that cannot answer an item even alone, asked twice, hands over."""
     repository = InMemorySourceDiscoveryRepository()
     successor = _Classifier()
     service = FallbackSourceDiscoveryService(
@@ -463,6 +467,28 @@ async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> N
         )
     )
 
-    with pytest.raises(ValueError):
+    result = await service.discover(_bundle(), OFFERING)
+
+    assert successor.batches
+    assert result.model_name == "successor-model"
+
+
+@pytest.mark.asyncio
+async def test_discovery_does_not_fall_back_after_a_deterministic_failure() -> None:
+    """A failure in our own code is the same on the next model: do not pay twice."""
+
+    class _Broken:
+        async def classify(self, batch):
+            raise TypeError("bug in the caller")
+
+    successor = _Classifier()
+    service = FallbackSourceDiscoveryService(
+        (
+            _service(_Broken(), InMemorySourceDiscoveryRepository(), "first-model"),
+            _service(successor, InMemorySourceDiscoveryRepository(), "successor"),
+        )
+    )
+
+    with pytest.raises(TypeError):
         await service.discover(_bundle(), OFFERING)
     assert not successor.batches

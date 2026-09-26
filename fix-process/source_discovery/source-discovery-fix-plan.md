@@ -311,9 +311,10 @@ source-chunk index feeds the `legacy` path and is re-embedded every run.
 **What happens.** `fallback_model_names = ()`. A persistent 429 or a retired model fails the
 offering after the retries.
 
-**Fix (Q2).** Default `fallback_model_names = ("gemini-2.5-flash-lite",)` in
-`SourceDiscoverySettings` and in `.env.example`. It is $0.10 in / $0.40 out, inside the $1.50
-cap, and has its own quota. A startup test checks that the chain passes the price cap.
+**Fix (Q2, revised).** Default `fallback_model_names = ("gemini-3.5-flash-lite",)` in
+`SourceDiscoverySettings`, the environment defaults and `.env.example`, with the discovery price
+cap raised to $2.50 (its output rate). It has its own quota. A test checks that the default chain
+passes the price cap. (The first choice, `gemini-2.5-flash-lite`, answers 404 to this key.)
 PDF extraction and semantic extraction also have no fallback; that is noted, not changed here.
 
 ## SD9. Site header and footer are recognised by English words
@@ -511,7 +512,7 @@ instruction or the code prevents it.
 | # | Question | Answer | Status | Affects |
 |---|---|---|---|---|
 | Q1 | Where should Gemini decide which PDFs belong to the offering? | **By title first**: Gemini selects from link metadata before transcription; unclear PDFs are transcribed and classified on content. AGENTS.md gains a line. | decided | SD2, SD4, SD12 |
-| Q2 | Which fallback model for discovery? | **`gemini-2.5-flash-lite`**, within the current $1.50 cap. | decided | SD8 |
+| Q2 | Which fallback model for discovery? | First answer: `gemini-2.5-flash-lite`. **Revised 2026-09-26 (Phase 5):** that model answers 404 "no longer available to new users" to this project's key, so the user chose **`gemini-3.5-flash-lite` with the discovery price cap raised to $2.50**. | decided (revised) | SD8 |
 | Q3 | Include the RAG and evidence-merging work? | **Only the selection bug and chunk labels.** Evidence merging and cross-document chunk de-duplication get their own plan. | decided | SD7 |
 | Q4 | How to validate? | **Small Gemini budget**: offline tests with a fake classifier, plus up to three real discovery passes over the 13 seeds (before, after, cache re-run), about $1 in total, checked against hand labels. | decided | Phase 0, Phase 7 |
 | Q5 | How do section members go through classification? | **One call per section with exceptions**; long sections are split, never cut. | decided | SD3 |
@@ -940,19 +941,82 @@ pass on the scratch database. `ruff` clean.
 
 ### Phase 5: Reliability (SD5, SD18, SD6, SD8, SD13, SD14)
 
-- [ ] SD5: shared `temporal_status_at(periods, as_of)`; `pdf_admission.py` uses it; applied to
+- [x] SD5: shared `temporal_status_at(periods, as_of)`; `pdf_admission.py` uses it; applied to
       fresh and cached Gemini assessments with dated periods.
-- [ ] SD18: instruction rule for undated content; `stale_evidence` in the response;
+- [x] SD18: instruction rule for undated content; `stale_evidence` in the response;
       `possibly_stale` without evidence found in the item becomes `unknown`.
-- [ ] SD6: save per batch; retry once, then split down to single items;
+- [x] SD6: save per batch; retry once, then split down to single items;
       `DiscoveryResponseError` counts as a fallback error.
-- [ ] SD6: `max_concurrent_batches` setting (default 3), results in batch order; retries and
+- [x] SD6: `max_concurrent_batches` setting (default 3), results in batch order; retries and
       splits counted in usage.
-- [ ] SD8: default fallback `gemini-2.5-flash-lite` in settings and `.env.example`; startup
-      test that the chain passes the price cap.
-- [ ] SD13: SDK retry attempts 1 for the discovery classifier and the PDF link selector.
-- [ ] SD14: temperature flag per model in the model registry; used by the classifier; logged.
-- [ ] Remove the matching `xfail` markers.
+- [x] SD8: default fallback `gemini-3.5-flash-lite` (Q2 revised) with a $2.50 cap in
+      settings, environment defaults and `.env.example`; test that the chain passes the cap.
+- [x] SD13: SDK retry attempts 1 for the discovery classifier and the PDF link selector.
+- [x] SD14: temperature flag per model in the model registry; used by the classifier; logged.
+- [x] Remove the matching `xfail` markers.
+
+#### Phase 5 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 5: reliability*.
+
+**Q2 had to be revisited.** One minimal call each (under $0.001) showed `gemini-2.5-flash-lite`
+answers `404 … no longer available to new users` to this project's key, while
+`gemini-3.5-flash-lite`, `gemini-3.7-flash` and `gemini-3.8-flash` answer. The user chose
+`gemini-3.5-flash-lite` and a $2.50 discovery cap.
+
+**Correction to Phase 2.** The version bump to `2` only changed `SourceDiscoverySettings`; the
+environment layer ([environment.py](../../app/config/environment.py)), which the loader passes
+through, still defaulted both versions to `"1"`. Fixed here, with the new fallback, cap and
+concurrency defaults. The Phase 2 unit tests built settings directly and did not notice; the
+new SD8 test loads real settings.
+
+**What changed.**
+- **SD5.** [effective_periods.py](../../app/domain/effective_periods.py) holds one
+  `period_status(periods, as_of)` for PDF admission and discovery. It now handles open-ended
+  periods ("valid until …", "effective from …"); for admission's closed ranges the result is
+  unchanged (the 114-case PDF gate still passes). Discovery applies it to every Gemini
+  assessment, fresh or cached, when `as_of` is given (the pipeline passes the retrieval date)
+  and the periods carry dates. The cache keeps the model's raw answer.
+- **SD18.** The instruction says undated content on the live page is `unknown`, and
+  `possibly_stale` needs a quote in the new `stale_evidence` field. `_settle_temporal` turns a
+  `possibly_stale` answer whose quote is missing or not in the item's text (title, context,
+  members; case and spacing ignored) into `unknown`, before the date rule.
+- **SD6.** Batches run concurrently (`SOURCE_DISCOVERY_MAX_CONCURRENT_BATCHES`, default 3) and
+  every one runs to the end; results keep batch order. Each valid batch is saved as soon as
+  it is checked. An invalid answer (bad JSON, schema error, wrong ids, a bad member
+  exception, no final response) is asked once more, then the batch is split in halves down
+  to single items; a single item still invalid raises `DiscoveryResponseError`. Retries and
+  splits are counted in `SourceDiscoveryResult.batch_retries` / `batch_splits` and logged.
+- **Fallback errors.** A shared `ModelResponseError` (base of `DiscoveryResponseError` and
+  the link selector's `PdfLinkResponseError`) counts as a fallback error, like `APIError`.
+  This reverses the old documented rule "a malformed response fails the offering without
+  paying for the next model": the old rule applied to a first bad answer; the new error is
+  raised only after retry and split isolated one item the model cannot answer. A failure in
+  our own code (any other exception) still does not fall back; the test for that now uses a
+  `TypeError`.
+- **SD13.** Both structured classifiers make one SDK attempt; the application loop owns
+  retries. At most 3 calls per batch per model (the default `max_attempts`).
+- **SD14.** `DEFAULT_TEMPERATURE_MODELS` and `uses_zero_temperature()` in
+  [model_pricing.py](../../app/services/model_pricing.py) replace the hard-coded set; the
+  classifier logs the temperature it uses and exposes it. The list is unchanged, so the new
+  fallback `gemini-3.5-flash-lite` runs at the provider's default temperature, as it would
+  have before: the reason for that exception is still unrecorded.
+- **Docs.** [docs/source-discovery.md](../../docs/source-discovery.md) (retries, splits,
+  fallback, new "Temporal status" section) and [docs/configuration.md](../../docs/configuration.md)
+  (new setting, defaults, offering in the cache key).
+
+**Tests.** The SD5, SD6 (×2) and SD18 regression tests pass; markers removed. New: open-ended
+periods; stale evidence quoted from the item vs not; batch order under concurrency when the
+first batch answers last; the default chain passes the cap; one SDK attempt and per-model
+temperature; response errors count as fallback errors. The two old discovery tests that
+encoded the old rule were rewritten: an invalid id now surfaces as `DiscoveryResponseError`
+(its cause names the ids), and an answer invalid after retry and split moves to the next
+model. Full suite: 945 passed, 44 skipped, 1 xfailed (SD7, Phase 6), plus the 4 known
+key-dependent failures. `ruff` clean.
+
+**Remaining.** Why `gemini-3.8-flash` and `gemini-3.5-flash-lite` run without temperature 0 is
+unknown; if it was only a guess, removing them from `DEFAULT_TEMPERATURE_MODELS` makes the
+fallback deterministic too. Left for the user to decide.
 
 ### Phase 6: One selection path (SD7)
 

@@ -31,6 +31,7 @@ from app.domain.source_discovery import (
     PdfLinkPromptItem,
 )
 from app.services.discovery_classifier import (
+    ModelResponseError,
     StructuredAdkClassifier,
     is_model_fallback_error,
 )
@@ -150,7 +151,7 @@ class InMemoryPdfLinkSelectionRepository:
             self._values[(*key, choice.link_fingerprint)] = choice
 
 
-class PdfLinkResponseError(ValueError):
+class PdfLinkResponseError(ModelResponseError):
     """The selector's answer did not name every link exactly once."""
 
 

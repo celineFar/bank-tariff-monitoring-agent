@@ -83,35 +83,52 @@ explicitly treated as untrusted evidence. The classifier must return exactly one
 known source ID per requested item; the application service rejects missing,
 duplicate, or invented IDs.
 
-The Google SDK performs its own bounded request retries. The classifier adds a
-second bounded application-level retry loop for status codes 429, 500, 502, 503,
-and 504, using exponential backoff and jitter. Authentication, permission, schema,
-and validation failures are not retried. After a model exhausts retryable failures,
-the run restarts complete discovery with the next explicitly configured
-`SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` entry. This applies to the worker's
-pipeline and to the demonstration alike: a provider error on any configured
-model — including the permanent 404 a retired model id answers — moves the run
-to the next model rather than failing the offering with `source.model_failed`.
-A deterministic failure such as a malformed or mismatched response is not a
-model-availability problem, so it fails the offering without paying for the
-next model. Each model keeps its own assessment cache namespace and is the
-`model_name` stored with the rows it produced, so whole-run fallback avoids
-mixing model decisions within one accepted result. The worker logs every model
-transition; the demonstration also announces them on the console and records
-failures, retries, usage, and cost per model in `model_attempts.json`.
+Retries have one owner: the Google SDK makes a single attempt, and the classifier's
+application-level loop retries status codes 429, 500, 502, 503, and 504 with
+exponential backoff and jitter (at most `SOURCE_DISCOVERY_CLASSIFIER_MAX_ATTEMPTS`
+calls per batch per model). Authentication and permission failures are not
+retried. An answer that breaks the contract (invalid JSON, a missing, repeated or
+invented id, an exception naming a member the item did not show) is asked once
+more; if it is still invalid, the batch is split in halves, down to single items.
+Batches run concurrently (`SOURCE_DISCOVERY_MAX_CONCURRENT_BATCHES`), every valid
+batch is saved as soon as it is checked, and results keep batch order. A model that
+cannot answer one item validly even alone and asked twice raises
+`DiscoveryResponseError`.
+
+After a model exhausts retryable failures, or raises `DiscoveryResponseError`, the
+run restarts complete discovery with the next `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`
+entry. This applies to the worker's pipeline and to the demonstration alike: a
+provider error on any configured model — including the permanent 404 a retired
+model id answers — moves the run to the next model rather than failing the offering
+with `source.model_failed`. A failure in the application's own code is not handed
+over. Each model keeps its own assessment cache namespace and is the `model_name`
+stored with the rows it produced, so whole-run fallback avoids mixing model
+decisions within one accepted result. The worker logs every model transition; the
+demonstration also announces them on the console and records failures, retries,
+usage, and cost per model in `model_attempts.json`.
 
 Because the classifier's output is schema-bound rather than free prose, this
 stage runs on its own cheap model instead of the global `MODEL_NAME`:
 `SOURCE_DISCOVERY_MODEL_NAME` defaults to `gemini-3.1-flash-lite`, falls back to
 `MODEL_NAME` only when explicitly unset, and runs with thinking disabled.
 `gemini-2.5-flash-lite` held this slot until the provider stopped serving it to
-new users on 2026-09-22. `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES` is empty by
-default because the named successor, `gemini-3.5-flash-lite`, prices output
-above this stage's `1.50` ceiling; configuring it means raising that ceiling
-deliberately.
+new users on 2026-09-22 (it answers 404). The fallback is `gemini-3.5-flash-lite`,
+whose output rate is $2.50, so this stage's price ceiling is `2.50`.
+
+## Temporal status
+
+The classifier extracts explicit effective periods. Content with no date is
+`unknown`, not `possibly_stale`: `possibly_stale` needs `stale_evidence`, a quote
+from the item showing it is out of date, and an answer whose quote is missing or
+not found in the item becomes `unknown`. Dated periods then decide the status on
+the run's `as_of` date (the acquisition's retrieval date) for fresh and cached
+assessments alike, with the same rule PDF admission uses: current when a period
+covers the day, historical (`possibly_stale`) when all ended, future when all start
+later, time-bounded otherwise. A cached "valid until 31.10.2026" therefore becomes
+stale on 1 November without a new model call.
 
 Before live execution, every primary and fallback model is checked against
-`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `1.50`). If either
+`SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `2.50`). If either
 its current input or output price exceeds the ceiling, the run stops before
 making an API request.
 

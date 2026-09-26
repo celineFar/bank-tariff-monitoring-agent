@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
 
+from google.genai.errors import APIError
+
 from app.config import SourceDiscoverySettings
 from app.domain.acquisition import SourceType
+from app.domain.effective_periods import PeriodStatus, period_status
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle, SourceReference
 from app.domain.pdf_extraction import (
@@ -31,6 +36,7 @@ from app.domain.source_discovery import (
     ExtractionContext,
     ExtractionContextItem,
     InformationRole,
+    ModelSourceAssessment,
     OfferingContext,
     PriorAssessment,
     ProductAssociation,
@@ -42,7 +48,10 @@ from app.domain.source_discovery import (
     TemporalStatus,
 )
 from app.repositories.contracts import SourceDiscoveryRepository
-from app.services.discovery_classifier import is_model_fallback_error
+from app.services.discovery_classifier import (
+    ModelResponseError,
+    is_model_fallback_error,
+)
 from app.services.discovery_prefilter import build_discovery_candidates
 from app.services.failure_mapping import describe_failure
 from app.services.model_call_usage import (
@@ -308,43 +317,77 @@ class SourceDiscoveryService:
         candidate_by_id = {
             candidate.source_id: candidate for candidate in plan.llm_candidates
         }
-        llm_assessments: list[SourceAssessment] = []
-        for batch in plan.batches:
-            assert self._classifier is not None
-            response = await self._classifier.classify(batch)
-            _check_response(batch, response)
-            for item in response.items:
-                candidate = candidate_by_id[item.source_id]
-                llm_assessments.append(
-                    SourceAssessment(
-                        **item.model_dump(),
-                        document_id=candidate.document_id,
-                        scope=candidate.scope,
-                        decision_source=DecisionSource.LLM,
-                        input_fingerprint=candidate.content_fingerprint,
-                        structural_fingerprint=candidate.structural_fingerprint,
-                        source_refs=candidate.source_refs,
-                    )
-                )
+        counters = _BatchCounters()
+        semaphore = asyncio.Semaphore(self._settings.max_concurrent_batches)
 
-        if llm_assessments:
+        async def run(batch: DiscoveryBatch) -> list[SourceAssessment]:
+            async with semaphore:
+                assert self._classifier is not None
+                answered = await _classify_resilient(self._classifier, batch, counters)
+            assessments = [
+                SourceAssessment(
+                    **item.model_dump(),
+                    document_id=candidate_by_id[item.source_id].document_id,
+                    scope=candidate_by_id[item.source_id].scope,
+                    decision_source=DecisionSource.LLM,
+                    input_fingerprint=candidate_by_id[
+                        item.source_id
+                    ].content_fingerprint,
+                    structural_fingerprint=candidate_by_id[
+                        item.source_id
+                    ].structural_fingerprint,
+                    source_refs=candidate_by_id[item.source_id].source_refs,
+                )
+                for item in answered
+            ]
+            # Saved as soon as checked: a later batch failing must not throw
+            # away what earlier batches paid for.
             await self._repository.save(
                 product=product,
                 offering_id=offering.offering_id,
                 policy_version=plan.policy_version,
                 prompt_version=plan.prompt_version,
                 model_name=plan.model_name,
-                assessments=llm_assessments,
+                assessments=assessments,
+            )
+            return assessments
+
+        # Every batch runs to the end, so each good one is saved even when
+        # another fails; results keep batch order, whatever the timing.
+        outcomes = await asyncio.gather(
+            *(run(batch) for batch in plan.batches), return_exceptions=True
+        )
+        failures = [
+            outcome for outcome in outcomes if isinstance(outcome, BaseException)
+        ]
+        if failures:
+            raise failures[0]
+        llm_assessments = [
+            assessment
+            for outcome in outcomes
+            if not isinstance(outcome, BaseException)
+            for assessment in outcome
+        ]
+        if counters.retries or counters.splits:
+            logger.warning(
+                "Source discovery for %s needed %s batch retries and %s splits",
+                offering.offering_id,
+                counters.retries,
+                counters.splits,
             )
 
-        direct = (
-            *plan.deterministic_assessments,
-            *plan.cache_hits,
-            *llm_assessments,
-        )
         candidates_by_id = {
             candidate.source_id: candidate for candidate in all_candidates
         }
+        direct = (
+            *plan.deterministic_assessments,
+            *(
+                _settle_temporal(
+                    assessment, candidates_by_id[assessment.source_id], as_of
+                )
+                for assessment in (*plan.cache_hits, *llm_assessments)
+            ),
+        )
         inherited = _inherited_assessments(direct, candidates_by_id, bundle)
         context = _build_extraction_context(product, direct, candidates_by_id)
         return SourceDiscoveryResult(
@@ -358,6 +401,8 @@ class SourceDiscoveryService:
             extraction_context=context,
             llm_batch_count=len(plan.batches),
             reused_assessment_count=len(plan.cache_hits),
+            batch_retries=counters.retries,
+            batch_splits=counters.splits,
         )
 
 
@@ -680,6 +725,116 @@ def _build_batches(
             )
         )
     return tuple(batches)
+
+
+class DiscoveryResponseError(ModelResponseError):
+    """A model could not answer one item validly, even alone and asked twice.
+
+    Counts as a fallback error: the next configured model gets a turn.
+    """
+
+
+@dataclass
+class _BatchCounters:
+    retries: int = 0
+    splits: int = 0
+
+
+async def _classify_resilient(
+    classifier: SourceDiscoveryClassifier,
+    batch: DiscoveryBatch,
+    counters: _BatchCounters,
+) -> list[ModelSourceAssessment]:
+    """Answer a batch; on an invalid answer, ask again, then split it in halves.
+
+    A provider error (`APIError`) is not an invalid answer: the classifier has
+    already retried it, and it goes to the fallback chain unchanged.
+    """
+    last: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            response = await classifier.classify(batch)
+            _check_response(batch, response)
+            return list(response.items)
+        except APIError:
+            raise
+        except (ValueError, RuntimeError) as exc:
+            last = exc
+            if attempt == 1:
+                counters.retries += 1
+            logger.warning(
+                "Invalid source-discovery answer for batch %s (%s items, attempt %s): %s",
+                batch.id,
+                len(batch.items),
+                attempt,
+                describe_failure(exc),
+            )
+    if len(batch.items) == 1:
+        raise DiscoveryResponseError(
+            f"no valid answer for {batch.items[0].source_id} after two attempts"
+        ) from last
+    counters.splits += 1
+    middle = len(batch.items) // 2
+    halves = (batch.items[:middle], batch.items[middle:])
+    answered: list[ModelSourceAssessment] = []
+    for suffix, items in zip("ab", halves, strict=True):
+        answered.extend(
+            await _classify_resilient(
+                classifier,
+                batch.model_copy(update={"id": f"{batch.id}.{suffix}", "items": items}),
+                counters,
+            )
+        )
+    return answered
+
+
+def _settle_temporal(
+    assessment: SourceAssessment,
+    candidate: DiscoveryCandidate,
+    as_of: date | None,
+) -> SourceAssessment:
+    """Deterministic checks on the model's temporal status, fresh or cached.
+
+    - `possibly_stale` needs evidence: a quote from the item itself that shows
+      it is out of date (SD18). Without one, undated content is `unknown`.
+    - Dated effective periods decide the status on `as_of`, so a cached
+      "valid until 31.10.2026" becomes stale on 1 November without a new call
+      (SD5).
+    """
+    status = assessment.temporal_status
+    if status is TemporalStatus.POSSIBLY_STALE and not _quoted_in(
+        assessment.stale_evidence, candidate
+    ):
+        status = TemporalStatus.UNKNOWN
+    if as_of is not None:
+        dated = period_status(assessment.effective_periods, as_of)
+        if dated is not None:
+            status = {
+                PeriodStatus.CURRENT: TemporalStatus.CURRENT,
+                PeriodStatus.HISTORICAL: TemporalStatus.POSSIBLY_STALE,
+                PeriodStatus.FUTURE: TemporalStatus.FUTURE,
+                PeriodStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
+            }[dated]
+    if status is assessment.temporal_status:
+        return assessment
+    return assessment.model_copy(update={"temporal_status": status})
+
+
+def _quoted_in(quote: str | None, candidate: DiscoveryCandidate) -> bool:
+    if not quote or not quote.strip():
+        return False
+    text = "\n".join(
+        (
+            candidate.title,
+            candidate.context_text,
+            *(member.text for member in candidate.members),
+        )
+    )
+    return _normalized(quote) in _normalized(text)
+
+
+def _normalized(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 def _check_response(batch: DiscoveryBatch, response: DiscoveryBatchResponse) -> None:

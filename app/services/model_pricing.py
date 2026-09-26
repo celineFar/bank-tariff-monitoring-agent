@@ -112,6 +112,18 @@ MODEL_PRICE_CATALOG: dict[str, tuple[ModelPrice, ...]] = {
 }
 
 
+# Models the structured classifiers run at the provider's default temperature
+# instead of 0. Kept from the classifier's original hard-coded list; the reason
+# was not recorded (it came in with the price-cap change, f837030). A new model
+# is listed here once, if it needs the same.
+DEFAULT_TEMPERATURE_MODELS = frozenset({"gemini-3.8-flash", "gemini-3.5-flash-lite"})
+
+
+def uses_zero_temperature(model: str) -> bool:
+    """Whether structured classifiers call `model` with temperature 0."""
+    return model not in DEFAULT_TEMPERATURE_MODELS
+
+
 def get_model_price(model: str, *, on_date: date | None = None) -> ModelPrice:
     effective_date = on_date or date.today()
     for price in MODEL_PRICE_CATALOG.get(model, ()):

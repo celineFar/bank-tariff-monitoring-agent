@@ -242,7 +242,6 @@ async def test_sd4_a_pdf_with_no_content_is_decided_by_rule() -> None:
 # --- SD5 ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SD5 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd5_a_dated_campaign_expires_without_a_new_call() -> None:
     classifier = _Classifier(
@@ -314,7 +313,6 @@ def _many_sections_page() -> NormalizedDocument:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="SD6 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd6_an_invalid_batch_is_retried_and_split() -> None:
     classifier = _FlakyClassifier("Section 2 text", failures=2)
@@ -327,7 +325,6 @@ async def test_sd6_an_invalid_batch_is_retried_and_split() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="SD6 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd6_good_batches_are_saved_when_one_batch_fails() -> None:
     from app.services.source_discovery import DiscoveryResponseError
@@ -432,7 +429,6 @@ def test_sd11_same_heading_under_different_parents_is_structurally_distinct() ->
 # --- SD18 --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SD18 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd18_undated_content_is_not_stale_without_evidence() -> None:
     classifier = _Classifier(temporal_status=TemporalStatus.POSSIBLY_STALE)
@@ -692,8 +688,11 @@ async def test_sd3_a_member_exception_overrides_inheritance_and_selection() -> N
 async def test_sd3_an_exception_naming_a_foreign_member_is_rejected() -> None:
     service = _service(_ExceptionClassifier(member_id="m9"))
 
-    with pytest.raises(ValueError, match="unknown or repeated members"):
+    from app.services.source_discovery import DiscoveryResponseError
+
+    with pytest.raises(DiscoveryResponseError) as raised:
         await service.discover(_bundle(_cross_sell_page()), _offering())
+    assert "unknown or repeated members" in str(raised.value.__cause__)
 
 
 def test_sd3_a_table_item_shows_every_row_label() -> None:
@@ -729,3 +728,129 @@ def test_sd3_a_table_item_shows_every_row_label() -> None:
 
     assert "Label 40" in candidate.context_text
     assert len(candidate.context_text) <= 3000 + 10
+
+
+# --- Phase 5: reliability (SD5, SD18, SD6, SD8, SD13, SD14) -------------------------
+
+
+def test_sd5_period_status_handles_open_ended_periods() -> None:
+    from app.domain.effective_periods import PeriodStatus, period_status
+
+    def period(start=None, end=None):
+        return EffectivePeriod(raw="x", start=start, end=end)
+
+    today = date(2026, 10, 1)
+    assert period_status((), today) is None
+    assert period_status((period(),), today) is None
+    assert (
+        period_status((period(end=date(2026, 10, 31)),), today) is PeriodStatus.CURRENT
+    )
+    assert (
+        period_status((period(start=date(2026, 7, 14)),), today) is PeriodStatus.CURRENT
+    )
+    assert (
+        period_status((period(end=date(2026, 9, 30)),), today)
+        is PeriodStatus.HISTORICAL
+    )
+    assert (
+        period_status((period(start=date(2026, 11, 1)),), today) is PeriodStatus.FUTURE
+    )
+    assert (
+        period_status(
+            (period(end=date(2026, 9, 1)), period(start=date(2026, 12, 1))), today
+        )
+        is PeriodStatus.TIME_BOUNDED
+    )
+
+
+@pytest.mark.asyncio
+async def test_sd18_stale_evidence_must_be_quoted_from_the_item() -> None:
+    page = _page(
+        _block("b1", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
+        _block(
+            "b2",
+            "Previous terms of the loan, archived in 2024",
+            heading_path=("Primary", "Old Terms"),
+        ),
+    )
+
+    async def status(evidence: str | None) -> TemporalStatus:
+        classifier = _Classifier(
+            temporal_status=TemporalStatus.POSSIBLY_STALE, stale_evidence=evidence
+        )
+        result = await _service(classifier).discover(_bundle(page), _offering())
+        return next(
+            a
+            for a in result.assessments
+            if a.scope is DiscoveryScope.SECTION
+            and a.source_refs[0].source_item_id == "b2"
+        ).temporal_status
+
+    assert await status("previous terms of the loan") is TemporalStatus.POSSIBLY_STALE
+    assert await status("valid until 01.01.2020") is TemporalStatus.UNKNOWN
+    assert await status(None) is TemporalStatus.UNKNOWN
+
+
+class _SlowFirstClassifier(_Classifier):
+    """The first batch answers last."""
+
+    async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
+        import asyncio
+
+        if batch.id == "batch_000":
+            await asyncio.sleep(0.05)
+        return await super().classify(batch)
+
+
+@pytest.mark.asyncio
+async def test_sd6_concurrent_batches_keep_batch_order() -> None:
+    classifier = _SlowFirstClassifier()
+    service = _service(classifier, max_items_per_batch=2, max_concurrent_batches=3)
+
+    result = await service.discover(_bundle(_many_sections_page()), _offering())
+
+    order = [
+        a.source_refs[0].source_item_id
+        for a in result.assessments
+        if a.scope is DiscoveryScope.SECTION
+    ]
+    assert order == [f"b{index}" for index in range(1, 7)]
+
+
+def test_sd8_the_default_discovery_models_pass_the_price_cap() -> None:
+    from app.config import load_settings
+    from app.services.model_pricing import enforce_model_price_cap, model_sequence
+
+    settings = load_settings().source_discovery
+
+    models = model_sequence(settings.model_name, settings.fallback_model_names)
+
+    assert models == ("gemini-3.1-flash-lite", "gemini-3.5-flash-lite")
+    enforce_model_price_cap(
+        models,
+        max_price_per_million_tokens_usd=settings.max_price_per_million_tokens_usd,
+    )
+
+
+def test_sd13_sd14_the_sdk_makes_one_attempt_and_temperature_is_per_model() -> None:
+    from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
+    from app.services.pdf_link_selection import AdkPdfLinkClassifier
+
+    primary = AdkSourceDiscoveryClassifier("gemini-3.1-flash-lite", api_key="k")
+    fallback = AdkPdfLinkClassifier("gemini-3.5-flash-lite", api_key="k")
+
+    for classifier in (primary, fallback):
+        model = classifier._runner.agent.model
+        assert model.retry_options.attempts == 1
+    assert primary.temperature == 0
+    assert fallback.temperature is None
+
+
+def test_sd6_a_link_selector_that_cannot_answer_hands_over() -> None:
+    from app.services.discovery_classifier import is_model_fallback_error
+    from app.services.pdf_link_selection import PdfLinkResponseError
+    from app.services.source_discovery import DiscoveryResponseError
+
+    assert is_model_fallback_error(PdfLinkResponseError("ids"))
+    assert is_model_fallback_error(DiscoveryResponseError("ids"))
+    assert not is_model_fallback_error(ValueError("bug"))

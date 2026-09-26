@@ -5,6 +5,7 @@ from datetime import date
 from urllib.parse import unquote, urlsplit
 
 from app.domain.acquisition import DocumentArtifact
+from app.domain.effective_periods import period_status
 from app.domain.pdf_extraction import (
     PdfAdmission,
     PdfAdmissionRelevance,
@@ -197,19 +198,9 @@ def _temporal_status(
     historical_matches: tuple[str, ...],
     as_of: date,
 ) -> PdfTemporalStatus:
-    if periods:
-        if any(
-            period.start is not None
-            and period.end is not None
-            and period.start <= as_of <= period.end
-            for period in periods
-        ):
-            return PdfTemporalStatus.CURRENT
-        if all(period.end is not None and period.end < as_of for period in periods):
-            return PdfTemporalStatus.HISTORICAL
-        if all(period.start is not None and period.start > as_of for period in periods):
-            return PdfTemporalStatus.FUTURE
-        return PdfTemporalStatus.TIME_BOUNDED
+    status = period_status(periods, as_of)
+    if status is not None:
+        return PdfTemporalStatus(status.value)
     if historical_matches:
         return PdfTemporalStatus.HISTORICAL
     return PdfTemporalStatus.UNKNOWN

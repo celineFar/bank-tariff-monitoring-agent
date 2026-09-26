@@ -136,6 +136,7 @@ def load_settings(
             max_items_per_batch=raw.source_discovery_max_items_per_batch,
             max_chars_per_item=raw.source_discovery_max_chars_per_item,
             max_chars_per_batch=raw.source_discovery_max_chars_per_batch,
+            max_concurrent_batches=raw.source_discovery_max_concurrent_batches,
             estimated_chars_per_input_token=(
                 raw.source_discovery_estimated_chars_per_input_token
             ),
