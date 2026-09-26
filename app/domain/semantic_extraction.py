@@ -351,7 +351,8 @@ class EvidenceCitation(ExtractionModel):
     source_item_id: str = Field(min_length=1, max_length=200)
     source_url: HttpUrl
     source_type: SourceType
-    quote: str = Field(min_length=1, max_length=1500)
+    # A reviewer's override quotes the whole passage they were shown (RV11).
+    quote: str = Field(min_length=1, max_length=4000)
     section: str | None = Field(default=None, max_length=1000)
     locator: SourceLocator
     authority: Authority

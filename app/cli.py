@@ -17,7 +17,7 @@ import re
 import secrets
 import socket
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from time import monotonic
 from typing import Any
@@ -54,6 +54,12 @@ from app.services.monitoring_progress import (
     PipelineProgress,
     ProgressKind,
     stage_label,
+)
+from app.services.review_evidence import (
+    DisplayPassage,
+    DisplayUnit,
+    ReviewDisplay,
+    ReviewDisplayService,
 )
 from app.services.review_input import (
     ReviewInputError,
@@ -387,6 +393,7 @@ class ChatSession:
         owner: str,
         runs: Any = None,
         renderer: ProgressRenderer | None = None,
+        displays: ReviewDisplayService | None = None,
     ) -> None:
         self.runner = runner
         self.sessions = sessions
@@ -396,6 +403,7 @@ class ChatSession:
         self.owner = owner
         self.runs = runs
         self.renderer = renderer or ProgressRenderer()
+        self.displays = displays
         self._invocation_id: str | None = None
 
     async def events(self) -> list[Event]:
@@ -499,7 +507,9 @@ class ChatSession:
             )
         position = int(request.payload.get("position") or 1)
         total = int(request.payload.get("total") or 1)
-        decision = await _ask_review_decision(view, position, total)
+        decision = await _ask_review_decision(
+            view, position, total, await self._display(view)
+        )
         reply = ReviewDecisionInput.model_validate(
             decision.model_dump(mode="json", exclude_none=True)
         )
@@ -567,6 +577,17 @@ class ChatSession:
                 return event.invocation_id
         return None
 
+    async def _display(self, view: ReviewPromptView) -> ReviewDisplay | None:
+        """The review's units, read from the database (RV9); without them the
+        reviewer still sees the seed passages the pause carries."""
+        if self.displays is None:
+            return None
+        try:
+            return await self.displays.load(view.review_id)
+        except Exception:
+            logger.warning("could not load review %s", view.review_id, exc_info=True)
+            return None
+
     @staticmethod
     def _view(request: PendingReview) -> ReviewPromptView | None:
         if request.payload.get("kind") != "tariff_review":
@@ -577,66 +598,51 @@ class ChatSession:
             return None
 
 
-# --- review input (unchanged from the pre-redesign CLI) -------------------------
+# --- review input -------------------------------------------------------------------
 
 
-def _ordered_evidence(item: object) -> tuple[object, ...]:
-    field = item.issue_scope.replace("_", " ").casefold()
-    candidate_references = {
-        reference
-        for candidate in item.candidates
-        for reference in candidate.evidence_references
-    }
-
-    def rank(evidence: object) -> int:
-        excerpt = evidence.excerpt.casefold()
-        if evidence.evidence_id in candidate_references:
-            return 0
-        if f"row: {field}" in excerpt:
-            return 1
-        if field in excerpt:
-            return 2
-        return 3
-
-    return tuple(sorted(item.evidence, key=rank))
-
-
-def _relevant_evidence(item: object) -> tuple[object, ...]:
-    field = item.issue_scope.replace("_", " ").casefold()
-    references = {
-        reference
-        for candidate in item.candidates
-        for reference in candidate.evidence_references
-    }
-
-    def mentions_field(excerpt: str) -> bool:
-        text = excerpt.casefold()
-        if field == "term":
-            return bool(
-                re.search(
-                    r"\bterm\s*\(months?\)|\bindefinite term\b",
-                    text,
-                )
-            )
-        return field in text
-
+def _passages(
+    item: object, display: ReviewDisplay | None
+) -> tuple[DisplayPassage, ...]:
+    """The passages the reviewer is shown: the review's units, or -- without
+    access to the review's snapshot -- the seed excerpts the pause carries."""
+    if display is not None:
+        return display.shown
     return tuple(
-        evidence
-        for evidence in _ordered_evidence(item)
-        if evidence.evidence_id in references or mentions_field(evidence.excerpt)
+        DisplayPassage(
+            evidence_id=evidence.evidence_id,
+            content=evidence.excerpt,
+            seed=True,
+            section=getattr(evidence, "section", None),
+            source_url=evidence.source_url,
+            page=evidence.page,
+        )
+        for evidence in item.evidence
     )
 
 
+def _passage_text(number: int, passage: DisplayPassage) -> tuple[Text, Text]:
+    """A numbered passage, whole (RV11); the rows that put its unit in the
+    review are marked."""
+    label = Text(f"{'▶' if passage.seed else ' '} {number}", style="bold cyan")
+    location = passage.source_url or ""
+    if passage.page:
+        location += f" · page {passage.page}"
+    body = Text(f"{location}\n", style="dim") if location else Text()
+    body.append(passage.content)
+    return label, body
+
+
 def _show_review(
-    item: object, index: int, total: int, *, all_evidence: bool = False
+    item: object, index: int, total: int, display: ReviewDisplay | None = None
 ) -> None:
     heading = (
         f"Review {index}/{total} · {item.offering_id.value} · "
         f"{item.issue_scope} ({item.reason.value})"
     )
     guidance = (
-        f"No valid {item.issue_scope.replace('_', ' ')} was extracted. "
-        "Check the passage and enter the correct value, or reject this snapshot."
+        f"No {item.issue_scope.replace('_', ' ')} was extracted. Check the "
+        "passages and enter the correct value, or reject this snapshot."
         if item.reason.value == "missing_required_field"
         else item.guidance
     )
@@ -656,40 +662,90 @@ def _show_review(
                 str(number), Text(json.dumps(candidate.value, ensure_ascii=False))
             )
         console.print(candidates)
-    relevant = _relevant_evidence(item)
-    evidence_items = _ordered_evidence(item) if all_evidence else relevant
-    if evidence_items:
-        evidence_table = Table(
-            title="All captured passages"
-            if all_evidence
-            else "Passages matching this field",
-            show_lines=True,
+    number = 0
+    units = (
+        display.units
+        if display is not None
+        else (
+            (DisplayUnit("passage", "Passages", _passages(item, None), 0, "seed"),)
+            if item.evidence
+            else ()
         )
-        evidence_table.add_column("#", style="cyan")
-        evidence_table.add_column("Source and passage", overflow="fold")
-        for number, evidence in enumerate(evidence_items, start=1):
-            location = f" · page {evidence.page}" if evidence.page else ""
-            source = Text(f"{evidence.source_url}{location}\n", style="dim")
-            source.append(evidence.excerpt[:400].replace("\n", " "))
-            evidence_table.add_row(str(number), source)
-        console.print(evidence_table)
-    else:
-        _notice("No captured passage directly mentions this field.", tone="yellow")
-    if not all_evidence and len(relevant) < len(item.evidence):
+    )
+    for unit in units:
+        table = Table(
+            title=f"{unit.kind.title()}: {unit.title}"[:200],
+            show_lines=True,
+            show_header=False,
+        )
+        table.add_column("#", no_wrap=True)
+        table.add_column("Passage", overflow="fold")
+        for passage in unit.passages:
+            number += 1
+            table.add_row(*_passage_text(number, passage))
+        console.print(table)
+        if unit.omitted:
+            _notice(
+                f"{unit.omitted} more passages of this {unit.kind} are not shown; "
+                "type ? to read the sources.",
+                tone="yellow",
+            )
+    if not number:
         _notice(
-            f"{len(item.evidence) - len(relevant)} other captured passages; "
-            "type ? to inspect all.",
+            "No captured passage is labelled for this field. Type ? to read the "
+            "selected sources, or all to list every passage.",
+            tone="yellow",
+        )
+    if display is not None and display.unknown_ids:
+        _notice(
+            f"Gemini cited {len(display.unknown_ids)} passage(s) that do not exist "
+            "in the captured sources.",
             tone="yellow",
         )
 
 
+def _show_sources(item: object, display: ReviewDisplay | None) -> None:
+    """`?`: the selected sources as captured, in a pager (RV10)."""
+    if display is not None and display.selected_sources_markdown:
+        with console.pager(styles=True):
+            console.print(Markdown(display.selected_sources_markdown))
+        return
+    _notice(
+        "This snapshot has no saved source text; listing every captured passage.",
+        tone="yellow",
+    )
+    _show_all(item, display)
+
+
+def _show_all(
+    item: object, display: ReviewDisplay | None
+) -> tuple[DisplayPassage, ...]:
+    """`all`: every passage of the snapshot, numbered, for citing one the
+    review's units do not show (logged as a ranking miss, RV13)."""
+    passages = display.all_passages if display is not None else _passages(item, None)
+    table = Table(title="All captured passages", show_lines=True, show_header=False)
+    table.add_column("#", no_wrap=True)
+    table.add_column("Passage", overflow="fold")
+    for number, passage in enumerate(passages, start=1):
+        label, body = _passage_text(number, replace(passage, seed=False))
+        table.add_row(label, body)
+    console.print(table)
+    return passages
+
+
 def _review_value(
-    field: ExtractionField, raw: str, *, evidence: tuple[object, ...] = ()
+    field: ExtractionField, raw: str, *, evidence: tuple[DisplayPassage, ...] = ()
 ) -> object:
     """Read a reviewer's typed answer with the shared deterministic parser."""
     return parse_review_field_text(
-        field, raw, excerpts=tuple(item.excerpt for item in evidence)
+        field, raw, excerpts=tuple(item.content for item in evidence)
     )
+
+
+def _supports(field: ExtractionField, raw: str, passage: DisplayPassage) -> bool:
+    if field is ExtractionField.TERM:
+        return term_supported_by_passage(raw, passage.content)
+    return raw.casefold() in passage.content.casefold()
 
 
 def _entry_format(issue_scope: str) -> str:
@@ -704,8 +760,10 @@ def _entry_format(issue_scope: str) -> str:
     return field_format.help_text
 
 
-async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDecision:
-    _show_review(item, index, total)
+async def _ask_review_decision(
+    item: object, index: int, total: int, display: ReviewDisplay | None = None
+) -> ReviewDecision:
+    _show_review(item, index, total, display)
     allowed = set(item.allowed_decisions)
     options = []
     if ReviewDecisionType.APPROVE in allowed:
@@ -717,11 +775,14 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
     if ReviewDecisionType.REJECT_ALL in allowed:
         options.append("type reject_all to discard this run")
     _notice(
-        "You can " + ", ".join(options) + ". Type ? to inspect every passage.",
+        "You can "
+        + ", ".join(options)
+        + ". Type ? to read the selected sources, all to list every passage.",
         tone="yellow",
     )
     if ReviewDecisionType.OVERRIDE in allowed:
         _notice(_entry_format(item.issue_scope), tone="cyan")
+    shown = _passages(item, display)
     while True:
         raw = (
             await _ainput(
@@ -731,7 +792,10 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
         if raw.lower() in {"quit", "exit"}:
             raise EOFError
         if raw == "?":
-            _show_review(item, index, total, all_evidence=True)
+            _show_sources(item, display)
+            continue
+        if raw.lower() == "all":
+            _show_all(item, display)
             continue
         if raw.lower() == "reject_all" and ReviewDecisionType.REJECT_ALL in allowed:
             return ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL)
@@ -767,53 +831,51 @@ async def _ask_review_decision(item: object, index: int, total: int) -> ReviewDe
             continue
         try:
             field = ExtractionField(item.issue_scope)
-            value = _review_value(field, raw, evidence=_relevant_evidence(item))
+            value = _review_value(field, raw, evidence=shown)
         except ReviewInputError as exc:
             _error(f"Invalid {field.value.replace('_', ' ')}", str(exc))
             continue
         except ValueError as exc:
             _error("Invalid value", str(exc))
             continue
-        relevant = _relevant_evidence(item)
-        if not relevant:
-            _notice(
-                "Inspect all passages (?) and choose a supporting source.",
-                tone="yellow",
-            )
-            evidence_items = _ordered_evidence(item)
-        else:
-            evidence_items = relevant
-        if not evidence_items:
+        choices = shown
+        if not choices:
+            _notice("Choose the passage that supports this value.", tone="yellow")
+            choices = _show_all(item, display)
+        if not choices:
             _error(
                 "No evidence",
                 "This field cannot be overridden without captured evidence.",
             )
             continue
-        if len(evidence_items) == 1 and (
-            term_supported_by_passage(raw, evidence_items[0].excerpt)
-            if field is ExtractionField.TERM
-            else raw.casefold() in evidence_items[0].excerpt.casefold()
-        ):
-            selected = evidence_items[0]
-            _notice("Using the displayed official passage as support.", tone="yellow")
+        supporting = [p for p in choices if _supports(field, raw, p)]
+        if len(supporting) == 1:
+            selected = supporting[0]
+            _notice(
+                f"Using passage {choices.index(selected) + 1}, which states it, "
+                "as support.",
+                tone="yellow",
+            )
         else:
             while True:
                 number_text = (
                     await _ainput(
-                        f"[bold yellow]Supporting passage (1-{len(evidence_items)})[/] [yellow]>[/] ",
+                        f"[bold yellow]Supporting passage (1-{len(choices)}, or all)[/] "
+                        "[yellow]>[/] ",
                     )
                 ).strip()
                 if number_text.lower() in {"quit", "exit"}:
                     raise EOFError
                 if number_text == "?":
-                    _show_review(item, index, total, all_evidence=True)
+                    _show_sources(item, display)
                     continue
-                if number_text.isdigit() and 1 <= int(number_text) <= len(
-                    evidence_items
-                ):
-                    selected = evidence_items[int(number_text) - 1]
+                if number_text.lower() == "all":
+                    choices = _show_all(item, display)
+                    continue
+                if number_text.isdigit() and 1 <= int(number_text) <= len(choices):
+                    selected = choices[int(number_text) - 1]
                     if field is ExtractionField.TERM and not term_supported_by_passage(
-                        raw, selected.excerpt
+                        raw, selected.content
                     ):
                         _error(
                             "Unsupported term",
@@ -922,6 +984,7 @@ async def chat(
         owner=owner,
         runs=container.runs,
         renderer=ProgressRenderer(verbose=verbose),
+        displays=getattr(container, "review_display", None),
     )
     try:
         heading = f'Ameria Tariff Chat · conversation "{session_name}"'

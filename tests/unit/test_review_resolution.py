@@ -345,7 +345,7 @@ def test_candidate_with_conditions_requires_an_override() -> None:
                 reason="typed",
                 evidence_reference="evidence-elsewhere",
             ),
-            "cited evidence is not part of this review",
+            "cited evidence is not part of this snapshot",
         ),
         (
             ReviewDecisionInput(decision_type="override", override_value="13%"),
@@ -634,12 +634,24 @@ async def test_reject_all_pending_reports_a_failing_run_and_keeps_going() -> Non
 )
 def test_review_view_is_bounded_and_reason_specific(reason, expected) -> None:
     run = _run()
-    task = _review(run, reason=reason).model_copy(
+    evidence_id = "ev_1234567890abcdef12345678"
+    task = _review(
+        run,
+        reason=reason,
+        candidates=(
+            ReviewCandidate(
+                candidate_id="candidate-1",
+                field="interest_rate",
+                value="12.5%",
+                evidence_references=(evidence_id,),
+            ),
+        ),
+    ).model_copy(
         update={
             "evidence": {
                 "items": [
                     {
-                        "evidence_id": "ev_1234567890abcdef12345678",
+                        "evidence_id": evidence_id,
                         "document_id": "document-1",
                         "section": "Rates",
                         "content": "x" * 2000,
@@ -660,32 +672,44 @@ def test_review_view_is_bounded_and_reason_specific(reason, expected) -> None:
     assert view.offering_id is OfferingId.OVERDRAFT
     assert view.evidence[0].page == 4
     assert view.evidence[0].section == "Rates"
-    assert len(view.evidence[0].excerpt) == 1500
+    # The model sees a trimmed excerpt; the reviewer's terminal shows the whole.
+    assert len(view.evidence[0].excerpt) == 600
 
 
-def test_review_view_prioritizes_field_passages_before_the_limit() -> None:
+def test_review_view_carries_at_most_five_seed_passages_from_the_stored_set() -> None:
     run = _run()
-    context = [
+    passages = [
         {
-            "evidence_id": f"context-{index}",
-            "content": "Nominal interest rate 15%",
-            "locator": {"source_url": "https://example.com/r.pdf"},
+            "evidence_id": f"ev_{index:024x}",
+            "content": f"Fee item {index}: AMD {index},000",
+            "locator": {"source_url": "https://example.com/fees.pdf"},
         }
-        for index in range(25)
+        for index in range(12)
     ]
-    term = {
-        "evidence_id": "term-after-context",
-        "content": "Row: Term (months) | Indefinite term (until requested back)",
-        "locator": {"source_url": "https://example.com/term.pdf"},
-    }
+    ids = tuple(item["evidence_id"] for item in passages)
     task = _review(
-        run, "term", reason=ReviewReason.MISSING_REQUIRED_FIELD, candidates=()
-    ).model_copy(update={"evidence": {"items": [*context, term]}})
+        run, "fees", reason=ReviewReason.MISSING_REQUIRED_FIELD, candidates=()
+    ).model_copy(
+        update={
+            "evidence": {
+                "set": {
+                    "units": [
+                        {
+                            "kind": "table",
+                            "key": "doc|table:t1",
+                            "evidence_ids": list(ids),
+                            "seed_ids": list(ids[2:10]),
+                            "why": "batch",
+                        }
+                    ]
+                }
+            }
+        }
+    )
 
-    view = build_review_view(task)
+    view = build_review_view(task, passages)
 
-    assert len(view.evidence) == 20
-    assert view.evidence[0].evidence_id == "term-after-context"
+    assert [item.evidence_id for item in view.evidence] == list(ids[2:7])
 
 
 @pytest.mark.parametrize(

@@ -69,6 +69,7 @@ from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
 from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
 from app.services.rag_retrieval import RagRetriever
 from app.services.review_decisions import ReviewDecisionService
+from app.services.review_evidence import ReviewDisplayService
 from app.services.review_resolution import ReviewResolutionService
 from app.services.run_service import RunService
 from app.services.semantic_extraction import (
@@ -107,6 +108,8 @@ class ApplicationContainer:
     request_resolver: RequestResolver
     current_tariff_service: CurrentTariffService
     tariff_history_service: TariffHistoryService
+    # The reviewer's terminal reads a review's units through this (RV9).
+    review_display: ReviewDisplayService | None = None
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -372,6 +375,7 @@ def build_application_container(
         decisions=ReviewDecisionService(
             reviews, snapshots, memory=PostgresReviewDecisionMemory(sessions)
         ),
+        snapshots=snapshots,
     )
     owner = monitoring_owner or process_owner("api")
     monitoring_node = build_monitoring_node(
@@ -407,4 +411,5 @@ def build_application_container(
         monitoring_node=monitoring_node,
         monitoring_owner=owner,
         tariff_pipeline=tariff_pipeline,
+        review_display=ReviewDisplayService(reviews, snapshots),
     )

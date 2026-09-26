@@ -143,9 +143,6 @@ def _snapshot(result, previous=None):
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RV4/RV7: reviews copy the catalog, drop signal refs"
-)
 @pytest.mark.asyncio
 async def test_rv4_review_stores_the_signals_evidence_set_not_the_catalog() -> None:
     from app.services.monitoring_pipeline import _review_tasks
@@ -249,9 +246,6 @@ def test_rv8_current_tariffs_payload_has_no_evidence_or_values() -> None:
 # --- RV9: bounded units; the model gets only the seeds -----------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RV9: no display units; the view sends 20 passages"
-)
 @pytest.mark.asyncio
 async def test_rv9_large_table_is_windowed_and_the_model_view_is_trimmed() -> None:
     from app.services.monitoring_pipeline import _review_tasks
@@ -446,3 +440,40 @@ async def test_optional_field_missing_from_the_answer_is_extraction_invalid() ->
     assert signal["reason"] == "extraction_invalid"
     assert "candidates" not in signal
     assert signal["failed_checks"]
+
+
+@pytest.mark.asyncio
+async def test_rv5_selecting_geminis_value_resolves_the_field() -> None:
+    from app.domain.monitoring import SnapshotStatus
+    from app.services.monitoring_pipeline import _review_tasks
+    from app.services.review_decisions import ReviewDecisionService
+    from app.services.review_resolution import build_review_view, review_policy
+    from tests.unit.test_multi_review_approval import _Reviews, _Snapshots
+
+    result = await _result(_long_page(), _CitesUnknownEvidence())
+    snapshot = _snapshot(result).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED}
+    )
+    task = next(t for t in _review_tasks(snapshot) if t.issue_scope == "interest_rate")
+    allowed, _ = review_policy(task.reason)
+    view = build_review_view(task, snapshot.evidence)
+    assert ReviewDecisionType.SELECT_CANDIDATE in allowed
+    assert "Gemini proposed" in view.guidance and "check failed" in view.guidance
+    snapshots = _Snapshots(snapshot)
+    reviews = _Reviews([task], snapshots)
+
+    await ReviewDecisionService(reviews, snapshots).apply(
+        task.id,
+        ReviewDecision(
+            decision_type=ReviewDecisionType.SELECT_CANDIDATE,
+            candidate_id=task.candidates[0].candidate_id,
+        ),
+        reviewer="analyst",
+    )
+
+    (update,) = reviews.updates
+    rate = update.normalized_tariff["interest_rate"]
+    assert rate["value"][0]["value"]["min"] == "14"
+    assert all(
+        s["issue_scope"] != "interest_rate" for s in update.validation["review_signals"]
+    )

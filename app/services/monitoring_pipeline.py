@@ -62,6 +62,7 @@ from app.services.monitoring_progress import (
     report_safely,
 )
 from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
+from app.services.review_evidence import cited_evidence_set, evidence_items
 from app.services.snapshot_lifecycle import (
     build_snapshot_attempt,
     compare_accepted_snapshots,
@@ -878,11 +879,17 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
                         },
                     )
                 )
-        evidence: dict[str, object] = {"items": list(snapshot.evidence)}
+        # References, not a copy of the snapshot's evidence (RV7): the passages'
+        # content is read from the snapshot, which never changes once created.
+        evidence: dict[str, object] = {
+            "set": _signal_evidence_set(snapshot, raw_signal)
+        }
+        for key in ("failed_checks", "proposed_value"):
+            if raw_signal.get(key):
+                evidence[key] = raw_signal[key]
         # A rate signal carries the jump it detected, and nothing else on the
-        # review does: it has no candidates, and its evidence is the whole
-        # snapshot's. Without this the reviewer is asked to confirm a change
-        # without being told its size.
+        # review does: it has no candidates. Without this the reviewer is asked
+        # to confirm a change without being told its size.
         if all(key in raw_signal for key in ("previous", "current")):
             evidence["rate_change"] = {
                 "previous": str(raw_signal["previous"]),
@@ -911,6 +918,20 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
             )
         )
     return tuple(tasks)
+
+
+def _signal_evidence_set(snapshot, signal: dict) -> dict:
+    """The signal's evidence set; a signal stored before sets existed gets one
+    from its references (RV4)."""
+    raw = signal.get("evidence_set")
+    if isinstance(raw, dict):
+        return raw
+    references = signal.get("evidence_references")
+    return cited_evidence_set(
+        evidence_items(snapshot.evidence),
+        [str(item) for item in references] if isinstance(references, list) else [],
+        why="cited",
+    ).model_dump(mode="json")
 
 
 def _manifest_item(

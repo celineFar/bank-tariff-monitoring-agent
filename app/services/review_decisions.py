@@ -24,6 +24,7 @@ from app.domain.semantic_extraction import (
 )
 from app.repositories.contracts import MonitoringSnapshotRepository, ReviewRepository
 from app.repositories.review_memory import ReviewDecisionMemory
+from app.services.review_evidence import PASSAGE_MAX_CHARS, review_passages
 from app.services.semantic_extraction import (
     assemble_reviewed_loan_product,
     validate_review_field_value,
@@ -62,7 +63,6 @@ class ReviewDecisionService:
         if decision.decision_type is ReviewDecisionType.REJECT_ALL:
             return await self._reviews.reject(review_id, reviewer=reviewer)
 
-        evidence_items = _evidence_items(task)
         selected = None
         if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
             selected = next(
@@ -75,11 +75,6 @@ class ReviewDecisionService:
             )
             if selected is None:
                 raise ValueError("selected candidate is outside the review scope")
-            if not set(selected.evidence_references) <= evidence_items.keys():
-                raise ValueError("selected candidate references unavailable evidence")
-        elif decision.decision_type is ReviewDecisionType.OVERRIDE:
-            if decision.evidence_reference not in evidence_items:
-                raise ValueError("override evidence is outside the review scope")
         elif (
             decision.decision_type is ReviewDecisionType.APPROVE
             and task.reason
@@ -94,6 +89,16 @@ class ReviewDecisionService:
         snapshot = await self._snapshots.get(task.snapshot_id)
         if snapshot is None:
             raise LookupError(str(task.snapshot_id))
+        evidence_items = _evidence_items(task, snapshot)
+        if selected is not None and not (
+            set(selected.evidence_references) <= evidence_items.keys()
+        ):
+            raise ValueError("selected candidate references unavailable evidence")
+        if (
+            decision.decision_type is ReviewDecisionType.OVERRIDE
+            and decision.evidence_reference not in evidence_items
+        ):
+            raise ValueError("override evidence is outside the review scope")
         if snapshot.status is not SnapshotStatus.REVIEW_REQUIRED:
             raise ValueError("candidate snapshot is no longer reviewable")
 
@@ -309,14 +314,15 @@ def _remembered(
     )
 
 
-def _evidence_items(task: ReviewTask) -> dict[str, dict[str, Any]]:
-    raw_items = task.evidence.get("items", [])
-    if not isinstance(raw_items, list):
-        return {}
+def _evidence_items(
+    task: ReviewTask, snapshot: SnapshotAttempt
+) -> dict[str, dict[str, Any]]:
+    """Every passage a decision may cite: the snapshot's evidence (RV7), or the
+    copy a review row written before this change carries."""
     return {
         str(item["evidence_id"]): item
-        for item in raw_items
-        if isinstance(item, dict) and item.get("evidence_id") is not None
+        for item in review_passages(task, snapshot.evidence)
+        if item.get("evidence_id") is not None
     }
 
 
@@ -395,7 +401,7 @@ def _citation(
         source_item_id=raw["source_item_id"],
         source_url=raw["locator"]["source_url"],
         source_type=raw["locator"]["source_type"],
-        quote=quote or content[:1500],
+        quote=quote or content[:PASSAGE_MAX_CHARS],
         section=raw.get("section"),
         locator=raw["locator"],
         authority=raw["authority"],

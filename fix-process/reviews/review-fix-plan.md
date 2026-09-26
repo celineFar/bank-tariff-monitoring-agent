@@ -405,14 +405,55 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 
 ### Phase 2: How reviews store and show it (RV7, RV9, RV11)
 
-- [ ] RV7: `_review_tasks` stores `{"set": …, "rate_change": …}`; `build_review_view` and
+- [x] RV7: `_review_tasks` stores `{"set": …, "rate_change": …}`; `build_review_view` and
       `ReviewDecisionService` read passage content from the snapshot's evidence; old rows
       with `items` still work.
-- [ ] RV9: the review pause payload carries ≤ 5 seed passages (600 characters); the CLI
+- [x] RV9: the review pause payload carries ≤ 5 seed passages (600 characters); the CLI
       renders the units (rows numbered, seeds marked) from its own repositories.
-- [ ] RV11: the CLI shows whole passages (up to 4,000 characters); the saved override quote
+- [x] RV11: the CLI shows whole passages (up to 4,000 characters); the saved override quote
       uses the same limit.
-- [ ] Delete the three rankers and both `term` special cases.
+- [x] Delete the three rankers and both `term` special cases.
+
+**Phase 2 notes (done).**
+- **RV7.** `_review_tasks` stores `{"set", "rate_change", "failed_checks",
+  "proposed_value"}`; no `items`. A signal stored before sets existed gets a set built
+  from its `evidence_references` (`_signal_evidence_set`). Passage content comes from
+  the snapshot: `review_passages(task, snapshot.evidence)` returns the row's own
+  `items` for rows written before this change, else the snapshot's evidence.
+  `ReviewResolutionService(snapshots=)` gained `passages(task)`; `prompt_view` and
+  `validate` take the passages (the node loads them once per review).
+  `ReviewDecisionService` loads the snapshot first and resolves citations against it;
+  the candidate-exists and approve-allowed checks still run before any read.
+- **Scope of a citation.** An override may cite **any passage of the snapshot**, not
+  only the shown units (the old scope was the full copy in `items`, so this keeps the
+  same reach); citing outside the units is logged in Phase 3 (RV13).
+- **RV9.** The pause payload (`build_review_view`) carries guidance, candidates and
+  ≤ 5 seed excerpts of ≤ 600 characters (`model_excerpts`). The CLI loads the review's
+  units itself through `ReviewDisplayService` (container field `review_display`,
+  passed to `ChatSession(displays=)`); without it (tests, or a load error) it shows the
+  pause's excerpts. Units print as numbered rows, seeds marked `▶`, with
+  "*n* more passages … not shown". `all` lists every passage of the snapshot for
+  citing one outside the units; `?` shows the selected sources (Markdown from
+  Phase 3, else the `all` list). With one shown passage that literally states the
+  typed value, it is used as support without asking (before: only when exactly one
+  passage was shown).
+- **Rows written before this change** whose items are not valid catalog records (ids
+  outside `ev_<24 hex>`, as in the demo script and fixtures) cannot be grouped into
+  units: each cited item becomes its own `passage` unit. A `missing_required_field`
+  row of that kind with no parsable items shows no passages (use `all`).
+- **RV11.** The CLI prints whole passages up to 4,000 characters; the override check
+  (`_evidence_excerpt`) uses the same 4,000; the saved citation quotes up to 4,000.
+  **Correction to the plan:** the stored citation limit was 1,500, not 4,000;
+  `EvidenceCitation.quote` is raised to 4,000 so all three agree. The model's
+  excerpt stays at 600.
+- **Deleted:** `_ordered_evidence`, `_relevant_evidence` (CLI), the `rank` in
+  `build_review_view`, and both `term` regex special cases. `term_supported_by_passage`
+  stays: it checks support, it does not rank.
+- `extraction_invalid` guidance names the value and up to 3 failed checks
+  ("Gemini proposed …; check failed: …"). Test: selecting Gemini's value resolves the
+  field and clears its signal.
+- Suite: 1054 passed, 5 skipped, 4 xfailed (Phases 3–4); the 4 known Gemini-key
+  failures.
 
 ### Phase 3: `?` and ranking misses (RV10, RV13)
 

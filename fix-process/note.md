@@ -94,3 +94,15 @@ Decisions the review-process report left open, taken without asking (plan table 
   `TEST_DATABASE_URL=postgresql+asyncpg://tariff:tariff@localhost:5434/tariff_acquisition_test`
   (local test container); without it they skip.
 
+### Reviews Phase 2 decisions (2026-09-26)
+
+- **Override scope = the whole snapshot.** A reviewer may cite any passage of the
+  snapshot (as before, when the review copied all of it); a citation outside the shown
+  units is allowed and logged (RV13). Restricting to the units would block the
+  reviewer exactly when ranking missed.
+- **Citation quote limit 4,000.** The plan assumed the stored citation already allowed
+  4,000 characters; it allowed 1,500. `EvidenceCitation.quote` now allows 4,000 so
+  the displayed passage, the override check and the saved quote are the same text.
+- **Old rows with non-catalog items** show each cited item as its own passage; no
+  keyword fallback for uncited ones.
+

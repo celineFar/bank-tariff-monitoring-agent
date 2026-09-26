@@ -16,8 +16,12 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
 
-from app.domain.review import ReviewEvidenceSet, ReviewEvidenceUnit
+from pydantic import ValidationError
+
+from app.domain.review import ReviewEvidenceSet, ReviewEvidenceUnit, ReviewTask
 from app.domain.semantic_extraction import EvidenceItem, ExtractionField
 from app.services.extraction_planner import (
     build_units,
@@ -275,3 +279,197 @@ def model_excerpts(
         if len(excerpts) == MODEL_SEED_PASSAGES:
             break
     return tuple(excerpts)
+
+
+def review_passages(
+    task: ReviewTask, snapshot_evidence: Sequence[dict[str, Any]]
+) -> tuple[dict[str, Any], ...]:
+    """The passages a review's references resolve against.
+
+    A review stores references; their content is the snapshot's evidence, which
+    never changes after the snapshot is created (RV7). A row written before this
+    change carries its own copy (`items`), which is used as is.
+    """
+    items = task.evidence.get("items")
+    if isinstance(items, list):
+        return tuple(item for item in items if isinstance(item, dict))
+    return tuple(item for item in snapshot_evidence if isinstance(item, dict))
+
+
+def review_evidence_set(
+    task: ReviewTask,
+    passages: Sequence[dict[str, Any]],
+    *,
+    rank_gap: float = 0.05,
+) -> ReviewEvidenceSet:
+    """The review's stored set; for a row written before sets existed, the set
+    the signal would have carried, built from what the row has (R04)."""
+    raw = task.evidence.get("set")
+    if isinstance(raw, dict):
+        try:
+            return ReviewEvidenceSet.model_validate(raw)
+        except ValidationError:
+            pass
+    catalog = evidence_items(passages)
+    references = [
+        reference
+        for candidate in task.candidates
+        for reference in candidate.evidence_references
+    ]
+    if references:
+        evidence_set = cited_evidence_set(catalog, references, why="candidate")
+        # Items stored before evidence became catalog records cannot be grouped
+        # into units; each cited one is shown as its own passage.
+        stored = {str(raw.get("evidence_id")) for raw in passages}
+        loose = [i for i in evidence_set.unknown_ids if i in stored]
+        if not loose:
+            return evidence_set
+        return ReviewEvidenceSet(
+            units=(
+                *evidence_set.units,
+                *(
+                    ReviewEvidenceUnit(
+                        kind="passage",
+                        key=evidence_id,
+                        evidence_ids=(evidence_id,),
+                        seed_ids=(evidence_id,),
+                        why="candidate",
+                    )
+                    for evidence_id in loose
+                ),
+            )[:10],
+            unknown_ids=tuple(i for i in evidence_set.unknown_ids if i not in stored),
+        )
+    try:
+        field = ExtractionField(task.issue_scope)
+    except ValueError:
+        return ReviewEvidenceSet()
+    return field_evidence_set(catalog, field, read_ids=None, rank_gap=rank_gap)
+
+
+def evidence_items(passages: Sequence[dict[str, Any]]) -> tuple[EvidenceItem, ...]:
+    """Stored evidence as catalog items, in reading order; unreadable rows are
+    skipped (they can still be cited by ID, but not grouped into units)."""
+    items: list[EvidenceItem] = []
+    for index, raw in enumerate(passages):
+        try:
+            item = EvidenceItem.model_validate(raw)
+        except ValidationError:
+            continue
+        # Rows stored before SE8 have no reading order; their list order is it.
+        items.append(
+            item if "order" in raw else item.model_copy(update={"order": index})
+        )
+    return tuple(items)
+
+
+# --- what the reviewer's terminal shows (RV9, RV11) ------------------------------
+
+
+@dataclass(frozen=True)
+class DisplayPassage:
+    evidence_id: str
+    content: str
+    seed: bool
+    section: str | None
+    source_url: str | None
+    page: int | None
+
+
+@dataclass(frozen=True)
+class DisplayUnit:
+    kind: str
+    title: str
+    passages: tuple[DisplayPassage, ...]
+    omitted: int
+    why: str
+
+
+@dataclass(frozen=True)
+class ReviewDisplay:
+    """A review's units with their passages, for the reviewer (never the model)."""
+
+    units: tuple[DisplayUnit, ...]
+    unknown_ids: tuple[str, ...]
+    # Every passage of the snapshot, for citing one outside the units (RV13).
+    all_passages: tuple[DisplayPassage, ...]
+    selected_sources_markdown: str | None = None
+
+    @property
+    def shown(self) -> tuple[DisplayPassage, ...]:
+        return tuple(p for unit in self.units for p in unit.passages)
+
+    @property
+    def seeds(self) -> tuple[DisplayPassage, ...]:
+        return tuple(p for p in self.shown if p.seed)
+
+
+def build_review_display(
+    task: ReviewTask,
+    snapshot_evidence: Sequence[dict[str, Any]],
+    *,
+    selected_sources_markdown: str | None = None,
+) -> ReviewDisplay:
+    passages = review_passages(task, snapshot_evidence)
+    evidence_set = review_evidence_set(task, passages)
+    by_id = {str(raw["evidence_id"]): raw for raw in passages if raw.get("evidence_id")}
+    units: list[DisplayUnit] = []
+    for unit in evidence_set.units:
+        seeds = set(unit.seed_ids)
+        shown = tuple(
+            _display_passage(by_id[i], seed=i in seeds)
+            for i in unit.evidence_ids
+            if i in by_id
+        )
+        if not shown:
+            continue
+        units.append(
+            DisplayUnit(
+                kind=unit.kind,
+                title=next((p.section for p in shown if p.section), None)
+                or unit.key.split("|", 1)[-1],
+                passages=shown,
+                omitted=unit.omitted,
+                why=unit.why,
+            )
+        )
+    return ReviewDisplay(
+        units=tuple(units),
+        unknown_ids=evidence_set.unknown_ids,
+        all_passages=tuple(_display_passage(raw, seed=False) for raw in passages),
+        selected_sources_markdown=selected_sources_markdown,
+    )
+
+
+def _display_passage(raw: dict[str, Any], *, seed: bool) -> DisplayPassage:
+    locator = raw.get("locator") if isinstance(raw.get("locator"), dict) else {}
+    page = locator.get("pdf_page")
+    return DisplayPassage(
+        evidence_id=str(raw.get("evidence_id")),
+        content=str(raw.get("content", ""))[:PASSAGE_MAX_CHARS],
+        seed=seed,
+        section=str(raw["section"]) if raw.get("section") else None,
+        source_url=str(locator["source_url"]) if locator.get("source_url") else None,
+        page=page if isinstance(page, int) else None,
+    )
+
+
+class ReviewDisplayService:
+    """Loads a review's display through the repositories, for the CLI (RV9)."""
+
+    def __init__(self, reviews: Any, snapshots: Any) -> None:
+        self._reviews = reviews
+        self._snapshots = snapshots
+
+    async def load(self, review_id: UUID) -> ReviewDisplay | None:
+        task = await self._reviews.get(review_id)
+        if task is None:
+            return None
+        snapshot = await self._snapshots.get(task.snapshot_id)
+        return build_review_display(
+            task,
+            snapshot.evidence if snapshot is not None else (),
+            selected_sources_markdown=getattr(
+                snapshot, "selected_sources_markdown", None
+            ),
+        )

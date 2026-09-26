@@ -244,10 +244,12 @@ def build_monitoring_node(
             for task in pending:
                 position = ordered.index(task.id) + 1 if task.id in ordered else 1
                 attempt, reply = _latest_reply(resume, run.id, task.id)
+                passages = await resolution.passages(task)
                 if reply is None:
                     yield _review_request(
                         resolution,
                         task,
+                        passages,
                         run_id=run.id,
                         attempt=1,
                         position=position,
@@ -256,7 +258,7 @@ def build_monitoring_node(
                     return
                 try:
                     decision = resolution.validate(
-                        task, ReviewDecisionInput.model_validate(reply)
+                        task, ReviewDecisionInput.model_validate(reply), passages
                     )
                     await resolution.apply(task, decision, reviewer=ctx.user_id)
                 except ValidationError as exc:
@@ -268,6 +270,7 @@ def build_monitoring_node(
                     yield _review_request(
                         resolution,
                         task,
+                        passages,
                         run_id=run.id,
                         attempt=attempt + 1,
                         position=position,
@@ -279,6 +282,7 @@ def build_monitoring_node(
                     yield _review_request(
                         resolution,
                         task,
+                        passages,
                         run_id=run.id,
                         attempt=attempt + 1,
                         position=position,
@@ -373,6 +377,7 @@ def _latest_reply(
 def _review_request(
     resolution: ReviewResolutionService,
     task: ReviewTask,
+    passages: tuple[dict[str, Any], ...],
     *,
     run_id: UUID,
     attempt: int,
@@ -380,7 +385,7 @@ def _review_request(
     total: int,
     rejected: ReviewInputRejected | None = None,
 ) -> RequestInput:
-    view = resolution.prompt_view(task)
+    view = resolution.prompt_view(task, passages)
     payload: dict[str, Any] = {
         "kind": "tariff_review",
         "view": view.model_dump(mode="json"),
