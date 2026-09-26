@@ -99,10 +99,6 @@ BLOCK_RULES: tuple[tuple[str, F | None], ...] = (
     (r"mandatory valuation", F.COLLATERAL),
 )
 
-GROUP_OF = {field: group for group, fields in ep._GROUPS for field in fields}
-MARKERS = re.compile(r"[¹²³⁴⁵⁶⁷⁸⁹⁰*]")
-SUPERSCRIPT_DIGITS = str.maketrans("¹²³⁴⁵⁶⁷⁸⁹⁰", "1234567890")
-
 
 def norm(text: str) -> str:
     return " ".join(text.split()).casefold()
@@ -154,34 +150,17 @@ def facts_for(seed: str, blocks) -> list[dict]:
     return facts
 
 
-def _ranked(field, evidence, roles, canonical):
-    return [
-        item
-        for item in sorted(
-            evidence,
-            key=lambda item: (
-                -ep._field_score(item, field, roles, canonical),
-                item.precedence,
-                item.document_id,
-                item.source_item_id,
-            ),
-        )
-        if ep.field_has_evidence_marker(field, item)
-        and not ep._outside_canonical_scope(item, canonical)
-    ]
-
-
-async def run(label: str | None, pdfs: bool) -> None:
+async def run(label: str | None, pdfs: bool, mode: str | None) -> None:
     settings = load_settings()
     limits = settings.semantic_extraction
+    if mode is not None:
+        limits = limits.model_copy(update={"evidence_mode": mode})
     parser = HtmlArtifactParser(settings.http.allowed_source_hosts)
     catalog = replay.catalog()
     attempts = replay.forbid_gemini()
     stored = await replay.stored_transcriptions() if pdfs else None
     rows: list[dict] = []
     seeds: dict[str, dict] = {}
-    ties = {"over_quota_fields": 0, "cut_inside_tie": 0}
-    footnotes = {"references": 0, "note_absent": 0}
     for seed in GT["seeds"]:
         replayed = await replay.load_seed(seed, parser, catalog, stored_pdfs=stored)
         entry, bundle, discovery = replayed.entry, replayed.bundle, replayed.discovery
@@ -189,16 +168,13 @@ async def run(label: str | None, pdfs: bool) -> None:
         evidence = build_evidence_catalog(
             build_selected_source_bundle(bundle, discovery), discovery
         )
-        batches = {
-            batch.group: batch
-            for batch in ep.build_extraction_batches(
-                entry.product, evidence, limits, canonical_url=canonical
-            )
-        }
+        batches = ep.build_extraction_batches(
+            entry.product, evidence, limits, canonical_url=canonical
+        )
         own = [
             item
             for item in evidence
-            if item.product_association not in {ProductAssociation.RELATED_PRODUCT}
+            if item.product_association is not ProductAssociation.RELATED_PRODUCT
         ]
         seeds[seed] = {
             "product": entry.product.value,
@@ -208,48 +184,18 @@ async def run(label: str | None, pdfs: bool) -> None:
             "pdfs_added": replayed.pdfs_added,
             "pdfs_missing": replayed.pdfs_missing,
             "items_in_any_batch": len(
-                {item.evidence_id for b in batches.values() for item in b.evidence}
+                {item.evidence_id for b in batches for item in b.evidence}
             ),
             "batches": {
-                group: {
+                batch.group: {
                     "items": len(batch.evidence),
                     "evidence_chars": sum(len(item.content) for item in batch.evidence),
                     "prompt_chars": len(build_extraction_prompt(batch)),
+                    "units_left_out": list(batch.units_left_out),
                 }
-                for group, batch in batches.items()
+                for batch in batches
             },
         }
-        # Score ties at each field's quota cut.
-        for group, batch in batches.items():
-            roles = ep._ROLE_GROUPS[group]
-            quota = max(2, -(-limits.max_items_per_batch // len(batch.fields)))
-            for field in batch.fields:
-                scores = [
-                    ep._field_score(item, field, roles, canonical)
-                    for item in _ranked(field, evidence, roles, canonical)
-                ]
-                if len(scores) > quota:
-                    ties["over_quota_fields"] += 1
-                    ties["cut_inside_tie"] += scores[quota] == scores[quota - 1]
-        # Footnotes referenced by a batched row but absent from that batch.
-        notes: dict[str, dict[str, str]] = defaultdict(dict)
-        for item in evidence:
-            if match := re.match(r"(t\d+):note:", item.source_item_id):
-                marker = item.content[:1].translate(SUPERSCRIPT_DIGITS)
-                notes[match.group(1)][marker] = item.evidence_id
-        for batch in batches.values():
-            ids = {item.evidence_id for item in batch.evidence}
-            for item in batch.evidence:
-                if not (match := re.match(r"(t\d+):row:", item.source_item_id)):
-                    continue
-                row_text = item.content.split("Row:", 1)[-1]
-                for marker in set(MARKERS.findall(row_text)):
-                    note = notes[match.group(1)].get(
-                        marker.translate(SUPERSCRIPT_DIGITS)
-                    )
-                    if note:
-                        footnotes["references"] += 1
-                        footnotes["note_absent"] += note not in ids
         # Ground-truth facts.
         page_text = [norm(block.text) for block in bundle.documents[0].blocks] + [
             norm(" | ".join(cell.text for cell in row.cells))
@@ -258,9 +204,9 @@ async def run(label: str | None, pdfs: bool) -> None:
         ]
         for fact in facts_for(seed, bundle.documents[0].blocks):
             field = fact["field"]
-            group = GROUP_OF.get(field, "product_details")
-            if field not in batches[group].fields:
-                continue
+            calls = [batch for batch in batches if field in batch.fields]
+            if not calls:
+                continue  # not extracted for this product family
             needles = [norm(needle) for needle in fact["needles"]]
             carriers = [
                 item
@@ -273,53 +219,49 @@ async def run(label: str | None, pdfs: bool) -> None:
                     for item in evidence
                     if all(n in norm(item.content) for n in needles[1:])
                 ]
-            roles = ep._ROLE_GROUPS[group]
-            ranked = _ranked(field, evidence, roles, canonical)
-            in_batch = {item.evidence_id for item in batches[group].evidence}
-            best = None
-            for item in carriers:
-                rank = next(
-                    (
-                        n
-                        for n, r in enumerate(ranked, 1)
-                        if r.evidence_id == item.evidence_id
-                    ),
-                    None,
+            sent = [
+                item
+                for item in carriers
+                if all(
+                    item.evidence_id in {e.evidence_id for e in call.evidence}
+                    for call in calls
                 )
-                candidate = (item.evidence_id in in_batch, -(rank or 9999), item, rank)
-                if best is None or candidate[:2] > best[:2]:
-                    best = candidate
-            if best is None:
+            ]
+            sibling = bool(carriers) and all(
+                item.product_association is ProductAssociation.RELATED_PRODUCT
+                for item in carriers
+            )
+            if not carriers:
                 on_page = any(
                     all(n in text for n in (needles[1:] or needles))
                     for text in page_text
                 )
                 status = "not_in_catalog" if on_page else "not_on_page"
-            elif best[0]:
+            elif sibling:
+                # Another offering's fact: excluded, or sent only in the marked
+                # "other products" block, never as the offering's own evidence.
+                status = "sibling_in_related_block" if sent else "sibling_excluded"
+            elif sent:
                 status = "selected"
-            elif best[2].product_association is ProductAssociation.RELATED_PRODUCT:
-                status = "sibling_excluded"
-            elif not ep.field_has_evidence_marker(field, best[2]):
-                status = "no_marker"
             else:
-                status = "ranked_out"
+                status = "not_selected"
+            best = (sent or carriers or [None])[0]
             rows.append(
                 {
                     "seed": seed,
                     "field": field.value,
-                    "group": group,
+                    "call": calls[0].group,
                     "label": fact["label"][:80],
                     "status": status,
-                    "rank": best[3] if best else None,
-                    "candidates": len(ranked),
-                    "association": best[2].product_association.value if best else None,
-                    "source_item_id": best[2].source_item_id if best else None,
-                    "section": best[2].section if best else None,
+                    "association": best.product_association.value if best else None,
+                    "source_item_id": best.source_item_id if best else None,
+                    "section": best.section if best else None,
                 }
             )
 
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
+        print(f"evidence mode: {limits.evidence_mode}; pdfs: {pdfs}")
         print(f"{'seed':32} {'product':13} items chars own_chars in_batches")
         for seed, value in seeds.items():
             print(
@@ -328,7 +270,7 @@ async def run(label: str | None, pdfs: bool) -> None:
                 f"{value['items_in_any_batch']:10}"
             )
         status = Counter(row["status"] for row in rows)
-        current = [row for row in rows if row["status"] != "sibling_excluded"]
+        current = [row for row in rows if not row["status"].startswith("sibling")]
         print(f"\nground-truth facts: {len(rows)} {dict(status)}")
         print(
             f"current-product facts reaching their batch: {status['selected']}/"
@@ -339,23 +281,22 @@ async def run(label: str | None, pdfs: bool) -> None:
             by_field[row["field"]][row["status"]] += 1
         for field, counts in sorted(by_field.items()):
             print(f"  {field:24} {dict(counts)}")
-        print(
-            f"\nquota cut inside a score tie: {ties['cut_inside_tie']} of "
-            f"{ties['over_quota_fields']} over-quota fields"
-        )
-        print(
-            f"row->footnote references in batches: {footnotes['references']}; "
-            f"note absent from the same batch: {footnotes['note_absent']}"
-        )
         prompt = [
             b["prompt_chars"] for s in seeds.values() for b in s["batches"].values()
         ]
         chars = [
             b["evidence_chars"] for s in seeds.values() for b in s["batches"].values()
         ]
+        calls = [len(s["batches"]) for s in seeds.values()]
+        per_offering = [
+            sum(b["prompt_chars"] for b in s["batches"].values())
+            for s in seeds.values()
+        ]
         print(
-            f"batch evidence chars {min(chars)}-{max(chars)}; "
-            f"prompt chars {min(prompt)}-{max(prompt)}"
+            f"calls per offering {min(calls)}-{max(calls)}; batch evidence chars "
+            f"{min(chars)}-{max(chars)}; prompt chars per call {min(prompt)}-"
+            f"{max(prompt)}; prompt chars per offering {min(per_offering)}-"
+            f"{max(per_offering)} (total {sum(per_offering)})"
         )
         print(f"gemini attempts: {len(attempts)}")
     print(out.getvalue())
@@ -364,7 +305,7 @@ async def run(label: str | None, pdfs: bool) -> None:
         data.mkdir(exist_ok=True)
         (data / f"evidence-recall-{label}.json").write_text(
             json.dumps(
-                {"seeds": seeds, "ties": ties, "footnotes": footnotes, "facts": rows},
+                {"mode": limits.evidence_mode, "seeds": seeds, "facts": rows},
                 indent=1,
                 ensure_ascii=False,
                 default=str,
@@ -381,8 +322,14 @@ def main() -> None:
         action="store_true",
         help="add the seeds' current and shared PDFs from stored transcriptions",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("full", "budgeted"),
+        default=None,
+        help="evidence mode (default: the configured one)",
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.label, args.pdfs))
+    asyncio.run(run(args.label, args.pdfs, args.mode))
 
 
 if __name__ == "__main__":

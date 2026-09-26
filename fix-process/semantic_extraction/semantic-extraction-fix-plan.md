@@ -804,10 +804,10 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 - [x] Write [survey/probe_evidence_recall.py](survey/probe_evidence_recall.py) and save
       [data/probe-output-before.txt](data/probe-output-before.txt) and
       [data/evidence-recall-before.json](data/evidence-recall-before.json) (no Gemini).
-- [ ] Extend the probe:
+- [x] Extend the probe:
   - [x] a `--pdfs` option that adds PDF evidence, replaying stored transcriptions from
         `pdf_extraction_cache` (as normalization S06) and refusing any model call;
-  - [ ] the new selection modes as they land (`--mode full|budgeted`).
+  - [x] the new selection modes as they land (`--mode full|budgeted`).
 - [x] **Field-level labels (Q9).** For each of the 13 seeds, record in
       `data/seed-extraction-labels.json` the expected value, with its source, for:
   - [x] `product_name`, `category`, `loan_amount`, `interest_rate`, `effective_rate`,
@@ -1251,23 +1251,95 @@ The catalog is sorted by it, no longer by precedence.
 
 ### Phase 4: Selection modes (SE6, SE7, SE5)
 
-- [ ] Add `evidence_mode` (`full` | `budgeted`), `max_packet_chars` (200,000) and
+- [x] Add `evidence_mode` (`full` | `budgeted`), `max_packet_chars` (200,000) and
       `budget_chars` (16,000) to `SemanticExtractionSettings`; remove `max_items_per_batch`,
       `max_evidence_chars_per_item` and `max_chars_per_batch`. Document them in
       [docs/configuration.md](../../docs/configuration.md).
-- [ ] `full`: the whole selected evidence per call, own items first, related items in a
+- [x] `full`: the whole selected evidence per call, own items first, related items in a
       marked block; fail with `semantic_extraction.packet_too_large` above the ceiling.
-- [ ] `full`: 3-call layout (Q10) behind a constant, so S10 can compare with 6.
-- [ ] `budgeted`: units (whole table or section; tables over the unit limit split by row
+- [x] `full`: 3-call layout (Q10) behind a constant, so S10 can compare with 6.
+- [x] `budgeted`: units (whole table or section; tables over the unit limit split by row
       group with header levels repeated); label-only word-boundary scoring with
       inverse-frequency weights; per-field guarantee, then by score; ties by document order.
-- [ ] Move keyword lists into `app/domain/extraction_terms.py`; delete `_field_score`,
+- [x] Move keyword lists into `app/domain/extraction_terms.py`; delete `_field_score`,
       `field_has_evidence_marker` and the per-row quota.
-- [ ] SE7: no character cuts; budgeted splits mark `[part i of n; continues]`.
-- [ ] Record in the result: mode, units sent, units left out for budget.
-- [ ] Probe pass criteria: `full` sends 100% of current-product ground-truth facts to every
+- [x] SE7: no character cuts; budgeted splits mark `[part i of n; continues]`.
+- [x] Record in the result: mode, units sent, units left out for budget.
+- [x] Probe pass criteria: `full` sends 100% of current-product ground-truth facts to every
       call that extracts the field; `budgeted` ≥ 95%, with no sibling facts in the offering's
       own block.
+
+#### Phase 4 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 4: selection modes*. Unit suite
+**952 passed**; the SE20 and SE11-budgeted tests pass without `xfail`.
+
+**Settings.** `SEMANTIC_EXTRACTION_EVIDENCE_MODE` (`full`), `…_MAX_PACKET_CHARS`
+(200,000) and `…_BUDGET_CHARS` (16,000) replace the three per-batch limits, in
+`.env.example`, `environment.py`, `loader.py`, `models.py` and `docs/configuration.md`.
+
+**Full mode.**
+- Every call gets all selected evidence except navigation and historical or future
+  versions. Related-product items are rendered last, in the marked block.
+- Three calls (`FULL_MODE_CALLS`): identity + core financial; fees, repayment and
+  eligibility; documents + category details.
+- Above the ceiling it raises `EvidencePacketTooLargeError`
+  (`semantic_extraction.packet_too_large: N > ceiling`), mapped to
+  `source.size_rejected`.
+
+**Budgeted mode**, in the same three calls. Two departures from the plan, both
+measured:
+- **Selection works on items within units, not only whole units.** Whole-unit
+  selection reached only 73% (six calls) or 69% (three calls): one long tariff table,
+  labelled for many fields, took the whole budget. The final rule:
+  - each field gets an equal share of the budget, spent on items *labelled* for it
+    (row label, column path, key, section), breadth-first over its top 3 units;
+  - then whole units by score, taking a unit's labelled items when it does not fit;
+  - related units only with room left.
+
+  Table rows are self-contained records since Phase 3 (column paths, notes, rate
+  types), so taking some rows of a table loses no context. That was the reason the
+  plan asked for whole units (SE5).
+- **No `[part i of n]` marker in the content.** Items are never cut, so a partial
+  unit is recorded instead: `units_left_out` lists `key [partial]` on the batch and in
+  `SemanticExtractionResult.units_left_out`.
+- Scores use whole-word term matches with inverse unit frequency, on labels only.
+  Ties go by reading order.
+- `not_stated` for a field whose labelled items were left out gets
+  `not_stated_budget_limited` in its explanation.
+
+**Code removed.** `FIELD_KEYWORDS`, `_ROLE_GROUPS`, `_field_score`,
+`field_has_evidence_marker`, `select_evidence_for_fields`, the per-row quota, and
+`_outside_canonical_scope` (with `_PRIMARY_VARIANT_PATTERN`, ahead of Phase 5, since
+nothing called it any more). Terms live in `app/domain/extraction_terms.py`, extended
+with the labels Phase 0 found missing: `financing limit`, `fine`, `penalty`,
+`cashing`, `minimum payment`, `prepayment`, `actual interest rate`, … The product-name
+anchor uses the word-boundary `mentions_field`.
+
+**Prompt size.**
+- Contracts lose their generated `title` keys.
+- Consecutive items that share source, association and section print one `==`
+  header.
+- **Full mode's total prompt over the 13 seeds fell from 2.23M to 1.68M characters**
+  on the same evidence.
+
+**Measured (S03, [data/probe-output-phase4-full.txt](data/probe-output-phase4-full.txt),
+[…-budgeted.txt](data/probe-output-phase4-budgeted.txt), `-pdfs` variants):**
+
+| Mode | Evidence | Current-product facts sent | Prompt characters, 13 seeds |
+|---|---|---|---|
+| before (Phase 0) | page | 119/152 (78%) | — |
+| full | page | **153/153 (100%)** | 1,676,558 |
+| budgeted | page | **147/153 (96%)** | 862,345 (**51%** of full) |
+| full | page + 10 replayed PDFs | **158/158 (100%)** | 2,346,581 |
+| budgeted | page + 10 replayed PDFs | 146/158 (92%) | 914,217 (39%) |
+
+- Sibling facts: all 45 go to the marked related block (full) or are excluded
+  (budgeted). None is in the offering's own block.
+- S10 asks budgeted ≤ 50% of full's input. Page-only it is 51%; a 15,000 budget gives
+  50.1% at the same recall. The ratio is set by the small offerings, where both modes
+  send everything. So the default stays at the plan's 16,000.
+
 
 ### Phase 5: Scope and schema (SE20, SE21, SE22)
 

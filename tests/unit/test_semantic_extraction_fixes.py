@@ -102,11 +102,13 @@ def _table(
     notes: tuple[tuple[str, str], ...] = (
         ("3", "Other terms can be applied for scoring-based loans."),
     ),
+    stub_columns: int = 0,
 ) -> NormalizedTable:
     return NormalizedTable(
         id=table_id,
         title="Tariffs",
         headers=("Section", "Item", "Terms"),
+        stub_columns=stub_columns,
         rows=tuple(
             NormalizedTableRow(
                 id=f"{table_id}:row:{index}",
@@ -482,9 +484,6 @@ async def test_se11_heading_rename_changes_the_cache_key() -> None:
     assert (await _fingerprints(*before)).isdisjoint(await _fingerprints(*after))
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE11: no budgeted mode; filler is in the cache key"
-)
 @pytest.mark.asyncio
 async def test_se11_unrelated_unit_does_not_change_budgeted_cache_keys() -> None:
     settings = SemanticExtractionSettings(evidence_mode="budgeted")
@@ -613,9 +612,6 @@ def test_se21_overdraft_offering_requests_no_collateral() -> None:
 # --- SE20: no URL-gated scope rules ----------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE20: '/mortgage/primary' URLs drop current evidence"
-)
 @pytest.mark.asyncio
 async def test_se20_primary_offering_gets_no_url_gated_exclusion() -> None:
     blocks = (
@@ -716,3 +712,72 @@ async def test_se24_unusable_answer_is_asked_once_more_then_fails() -> None:
     with pytest.raises(SemanticExtractionCallError) as failure:
         await extractor.extract(batch)
     assert failure.value.raw_response == "{"
+
+
+# --- SE6: evidence modes ----------------------------------------------------------------
+
+
+def test_se6_full_mode_sends_all_evidence_and_fails_loudly_above_the_ceiling() -> None:
+    from app.services.extraction_planner import EvidencePacketTooLargeError
+    from app.services.failure_mapping import source_failure_code
+
+    bundle, discovery = _mortgage_bundle("Interest rate 14%; loan amount AMD 3,000,000")
+    evidence = build_evidence_catalog(bundle, discovery)
+    batches = build_extraction_batches(
+        ProductType.MORTGAGE, evidence, SemanticExtractionSettings(), canonical_url=URL
+    )
+    assert len(batches) == 3
+    assert all(len(batch.evidence) == len(evidence) for batch in batches)
+
+    huge = _mortgage_bundle("Rate 14%. " + "x" * 12_000)
+    with pytest.raises(EvidencePacketTooLargeError) as failure:
+        build_extraction_batches(
+            ProductType.MORTGAGE,
+            build_evidence_catalog(*huge),
+            SemanticExtractionSettings(max_packet_chars=10_000, budget_chars=2000),
+            canonical_url=URL,
+        )
+    assert "semantic_extraction.packet_too_large" in str(failure.value)
+    assert (
+        source_failure_code(failure.value, stage="semantic_extraction").value
+        == "source.size_rejected"
+    )
+
+
+@pytest.mark.asyncio
+async def test_se6_budgeted_mode_marks_not_stated_fields_it_had_no_room_for() -> None:
+    rows = tuple(
+        ("Loan terms", f"Fee {index}", "AMD " + "9" * 40) for index in range(80)
+    )
+    bundle, discovery = _bundle(
+        (_block("title", "Mortgage loan"),),
+        (
+            _table("t1", rows=rows, notes=(), stub_columns=2),
+            _table(
+                "t2",
+                rows=(("Fees", "Service fee", "AMD 5,000"),),
+                notes=(),
+                stub_columns=2,
+            ),
+        ),
+    )
+    settings = SemanticExtractionSettings(evidence_mode="budgeted", budget_chars=2000)
+    result = await _service(ScriptedExtractor(), settings=settings).extract(
+        bundle, discovery, retrieved_at=RETRIEVED_AT
+    )
+    fees_batch = next(
+        batch
+        for batch in (
+            await _service(ScriptedExtractor(), settings=settings).plan(
+                bundle, discovery
+            )
+        ).batches
+        if ExtractionField.FEES in batch.fields
+    )
+    assert fees_batch.evidence_mode == "budgeted"
+    assert fees_batch.units_left_out
+    assert ExtractionField.FEES in fees_batch.budget_limited_fields
+    fees = next(
+        item for item in result.validated_fields if item.field is ExtractionField.FEES
+    )
+    assert "not_stated_budget_limited" in (fees.explanation or "")

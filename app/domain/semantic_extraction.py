@@ -456,6 +456,12 @@ class ExtractionBatch(ExtractionModel):
     canonical_url: HttpUrl | None = None
     target_scope: tuple[str, ...] = ()
     repair_context_json: str | None = Field(default=None, max_length=100_000)
+    # How the evidence was chosen (SE6): `full` sends all selected evidence;
+    # `budgeted` sends whole labelled units within a budget and records the
+    # units it left out and the fields some left-out unit was labelled for.
+    evidence_mode: str = "full"
+    units_left_out: tuple[str, ...] = ()
+    budget_limited_fields: tuple[ExtractionField, ...] = ()
 
 
 class ExtractionBatchResponse(ExtractionModel):
@@ -532,3 +538,7 @@ class SemanticExtractionResult(ExtractionModel):
     validated_fields: tuple[ValidatedFieldResult, ...] = ()
     review_items: tuple[ExtractionReviewItem, ...] = ()
     reused_batch_count: int = Field(ge=0)
+    # How evidence was chosen (SE6), and per call the labelled units a budgeted
+    # run left out (empty in full mode).
+    evidence_mode: str = "full"
+    units_left_out: dict[str, tuple[str, ...]] = Field(default_factory=dict)

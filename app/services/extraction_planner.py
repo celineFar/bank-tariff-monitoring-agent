@@ -3,15 +3,17 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from dataclasses import dataclass
 
 from app.config import SemanticExtractionSettings
+from app.domain.extraction_terms import FIELD_TERMS, term_pattern
 from app.domain.models import ProductType
 from app.domain.semantic_extraction import (
     EvidenceItem,
     ExtractionBatch,
     ExtractionField,
 )
-from app.domain.source_discovery import InformationRole, ProductAssociation
+from app.domain.source_discovery import ProductAssociation
 
 _GROUPS: tuple[tuple[str, tuple[ExtractionField, ...]], ...] = (
     (
@@ -68,173 +70,50 @@ _PRODUCT_FIELDS: dict[ProductType, tuple[ExtractionField, ...]] = {
     ),
 }
 
-_ROLE_GROUPS: dict[str, frozenset[InformationRole]] = {
-    "identity": frozenset(
-        {InformationRole.PRODUCT_DESCRIPTION, InformationRole.PRODUCT_TERMS}
-    ),
-    "core_financial": frozenset(
-        {InformationRole.PRODUCT_TERMS, InformationRole.PRICING}
-    ),
-    "fees_and_repayment": frozenset(
-        {InformationRole.FEES, InformationRole.REPAYMENT, InformationRole.PRODUCT_TERMS}
-    ),
-    "eligibility_and_documents": frozenset(
-        {
-            InformationRole.ELIGIBILITY,
-            InformationRole.DOCUMENTS,
-            InformationRole.FAQ,
-            InformationRole.PRODUCT_TERMS,
-            InformationRole.CAMPAIGN_TERMS,
-        }
-    ),
-    "required_documents": frozenset(
-        {InformationRole.DOCUMENTS, InformationRole.PRODUCT_TERMS}
-    ),
-    "product_details": frozenset(
-        {
-            InformationRole.PRODUCT_TERMS,
-            InformationRole.ELIGIBILITY,
-            InformationRole.PRICING,
-            InformationRole.DOCUMENTS,
-        }
-    ),
-}
+# Full mode sends the whole packet with every call, so input cost grows with the
+# number of calls: the field groups are asked in three calls (Q10).
+# How many of a field's best units share its budget before the rest.
+_BREADTH = 3
+# A line this short, or the part before its colon, is a label.
+_LABEL_CHARS = 80
 
-# Retrieval terms only: they rank evidence and never manufacture a value.
-FIELD_KEYWORDS: dict[ExtractionField, tuple[str, ...]] = {
-    ExtractionField.PRODUCT_NAME: (
-        "product name",
-        "loan name",
-        "mortgage loan",
-        "consumer loan",
-        "consumer finance",
-    ),
-    ExtractionField.FORMAL_TERMS_NAMES: (
-        "information summary",
-        "terms and conditions",
-        "loan terms",
-        "tariff",
-    ),
-    ExtractionField.VARIANTS: (
-        "types of financing",
-        "consumer finance for goods",
-        "consumer finance for services",
-        "solar energy systems",
-        "financing type",
-    ),
-    ExtractionField.CATEGORY: (
-        "mortgage",
-        "consumer loan",
-        "consumer finance",
-        "overdraft",
-        "credit line",
-    ),
-    ExtractionField.PURPOSE: ("purpose", "purchase", "refinancing"),
-    ExtractionField.LOAN_AMOUNT: (
-        "minimum and maximum loan",
-        "loan amount",
-        "loan limit",
-        "maximum amount",
-        "minimum amount",
-    ),
-    ExtractionField.INTEREST_RATE: (
-        "annual interest rate",
-        "nominal interest",
-        "interest rate",
-    ),
-    ExtractionField.EFFECTIVE_RATE: (
-        "annual percentage rate",
-        "effective interest",
-        "apr",
-    ),
-    ExtractionField.TERM: ("term (months)", "loan term", "term in months", "duration"),
-    ExtractionField.FEES: (
-        "fee",
-        "commission",
-        "charge",
-        "service fee",
-        "disbursement fee",
-    ),
-    ExtractionField.REPAYMENT: (
-        "repayment method",
-        "forms of loan repayment",
-        "annuity",
-        "differentiated",
-    ),
-    ExtractionField.ELIGIBILITY: (
-        "eligibility",
-        "eligible",
-        "customer's personal details",
-        "borrower",
-    ),
-    ExtractionField.RESIDENCY_REQUIREMENTS: ("residency", "resident", "non-resident"),
-    ExtractionField.AGE_REQUIREMENTS: ("age", "years old", "borrower's age"),
-    ExtractionField.APPLICATION_CHANNEL: (
-        "application channel",
-        "apply online",
-        "online application",
-        "applying at",
-        "seller's premises",
-        "company's premises",
-        "remote consumer finance system",
-        "company website",
-        "application via",
-    ),
-    ExtractionField.REQUIRED_DOCUMENTS: (
-        "required documents",
-        "documents required",
-        "loan application",
-    ),
-    ExtractionField.SPECIAL_CONDITIONS: (
-        "special conditions",
-        "other terms",
-        "subsid",
-        "developer",
-    ),
-    ExtractionField.COLLATERAL: (
-        "eligible collateral",
-        "security",
-        "pledge",
-        "collateral",
-    ),
-    ExtractionField.INCOME_VERIFICATION_REQUIRED: (
-        "income verification",
-        "proof of income",
-        "income document",
-        "income statement",
-    ),
-    ExtractionField.CREDITWORTHINESS_ASSESSMENT_REQUIRED: (
-        "creditworthiness assessment",
-        "assessment of creditworthiness",
-        "creditworthiness criteria",
-    ),
-    ExtractionField.PROPERTY_MARKET: (
-        "primary market",
-        "secondary market",
-        "property market",
-    ),
-    ExtractionField.DOWN_PAYMENT_PCT: ("minimum down payment", "down payment"),
-    ExtractionField.LTV_PCT: ("loan-to-value", "ltv ratio", "ltv"),
-    ExtractionField.PROPERTY_REQUIREMENTS: (
-        "property requirements",
-        "real estate",
-        "property abroad",
-    ),
-    ExtractionField.CREDIT_LIMIT: ("credit limit", "maximum limit", "minimum limit"),
-    ExtractionField.GRACE_PERIOD_DAYS: ("grace period", "interest-free period"),
-    ExtractionField.REVOLVING: ("revolving", "renewable credit"),
-    ExtractionField.LINKED_ACCOUNT_OR_CARD: (
-        "linked account",
-        "linked card",
-        "payment card",
-    ),
-}
-
-_PRIMARY_VARIANT_PATTERN = re.compile(
-    r"(?:express|secondary[\s_-]*market|construction[\s_-]*loan|"
-    r"renovation[\s_-]*loan|flexible[\s_-]*opportunit)",
-    re.IGNORECASE,
+FULL_MODE_CALLS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("identity_and_core", ("identity", "core_financial")),
+    ("terms_and_eligibility", ("fees_and_repayment", "eligibility_and_documents")),
+    ("documents_and_details", ("required_documents", "product_details")),
 )
+
+# Never evidence for a value, in either mode.
+_EXCLUDED_ASSOCIATIONS = frozenset(
+    {
+        ProductAssociation.GLOBAL_NAVIGATION,
+        ProductAssociation.HISTORICAL_VERSION,
+        ProductAssociation.FUTURE_VERSION,
+    }
+)
+
+
+class EvidencePacketTooLargeError(ValueError):
+    """The offering's selected evidence exceeds the full-mode ceiling.
+
+    Raised instead of cutting anything: the operator either raises
+    `SEMANTIC_EXTRACTION_MAX_PACKET_CHARS` or switches the offering's run to the
+    budgeted mode.
+    """
+
+    def __init__(self, characters: int, ceiling: int) -> None:
+        super().__init__(
+            "semantic_extraction.packet_too_large: "
+            f"{characters} evidence characters > {ceiling}"
+        )
+        self.characters = characters
+        self.ceiling = ceiling
+
+
+def field_groups(
+    product: ProductType,
+) -> tuple[tuple[str, tuple[ExtractionField, ...]], ...]:
+    return (*_GROUPS, ("product_details", _PRODUCT_FIELDS[product]))
 
 
 def build_extraction_batches(
@@ -247,17 +126,26 @@ def build_extraction_batches(
 ) -> tuple[ExtractionBatch, ...]:
     if not evidence:
         raise ValueError("semantic extraction requires at least one evidence item")
-    definitions = (*_GROUPS, ("product_details", _PRODUCT_FIELDS[product]))
+    usable = tuple(
+        item
+        for item in sorted(evidence, key=lambda item: item.order)
+        if item.product_association not in _EXCLUDED_ASSOCIATIONS
+    ) or tuple(evidence)
+    groups = field_groups(product)
     target_scope = _target_scope(product, canonical_url)
+    if settings.evidence_mode == "full":
+        characters = sum(len(item.content) for item in usable)
+        if characters > settings.max_packet_chars:
+            raise EvidencePacketTooLargeError(characters, settings.max_packet_chars)
+        plans = [(name, fields, usable, (), ()) for name, fields in _calls(groups)]
+    else:
+        units = build_units(usable, canonical_url)
+        plans = [
+            (name, fields, *select_units(fields, units, settings.budget_chars))
+            for name, fields in _calls(groups)
+        ]
     batches: list[ExtractionBatch] = []
-    for group, fields in definitions:
-        selected = select_evidence_for_fields(
-            group,
-            fields,
-            evidence,
-            settings,
-            canonical_url=canonical_url,
-        )
+    for group, fields, selected, left_out, limited in plans:
         fingerprint = hashlib.sha256(
             "\x1e".join(
                 (
@@ -292,148 +180,248 @@ def build_extraction_batches(
                 content_fingerprint=fingerprint,
                 canonical_url=canonical_url,
                 target_scope=target_scope,
+                evidence_mode=settings.evidence_mode,
+                units_left_out=left_out,
+                budget_limited_fields=limited,
             )
         )
     return tuple(batches)
 
 
-def select_evidence_for_fields(
-    group: str,
-    fields: tuple[ExtractionField, ...],
-    evidence: tuple[EvidenceItem, ...],
-    settings: SemanticExtractionSettings,
-    *,
-    canonical_url: str | None = None,
-) -> tuple[EvidenceItem, ...]:
-    """Select evidence with a guaranteed quota for every requested field."""
-
-    roles = _ROLE_GROUPS[group]
-    per_field_limit = max(2, math.ceil(settings.max_items_per_batch / len(fields)))
-    selected: list[EvidenceItem] = []
-    selected_ids: set[str] = set()
-    characters = 0
-
-    def add(item: EvidenceItem, *, content_limit: int | None = None) -> bool:
-        nonlocal characters
-        if item.evidence_id in selected_ids:
-            return False
-        limit = settings.max_evidence_chars_per_item
-        if content_limit is not None:
-            limit = min(limit, max(1, content_limit))
-        content = item.content[:limit]
-        if selected and characters + len(content) > settings.max_chars_per_batch:
-            return False
-        selected.append(item.model_copy(update={"content": content}))
-        selected_ids.add(item.evidence_id)
-        characters += len(content)
-        return True
-
-    ranked_by_field = {
-        field: tuple(
-            item
-            for item in sorted(
-                evidence,
-                key=lambda item: (
-                    -_field_score(item, field, roles, canonical_url),
-                    item.precedence,
-                    item.document_id,
-                    item.source_item_id,
-                ),
-            )
-            if field_has_evidence_marker(field, item)
-            and not _outside_canonical_scope(item, canonical_url)
+def _calls(
+    groups: tuple[tuple[str, tuple[ExtractionField, ...]], ...],
+) -> list[tuple[str, tuple[ExtractionField, ...]]]:
+    """The field groups merged into the three calls of `FULL_MODE_CALLS`."""
+    by_group = dict(groups)
+    calls = [
+        (
+            name,
+            tuple(field for group in members for field in by_group.get(group, ())),
         )
-        for field in fields
+        for name, members in FULL_MODE_CALLS
+    ]
+    return [(name, fields) for name, fields in calls if fields]
+
+
+@dataclass(frozen=True)
+class EvidenceUnit:
+    """A whole table (its rows and notes) or a whole section's blocks."""
+
+    key: str
+    items: tuple[EvidenceItem, ...]
+    labels: str
+    related: bool
+    canonical: bool
+
+    @property
+    def order(self) -> int:
+        return self.items[0].order
+
+    @property
+    def characters(self) -> int:
+        return sum(len(item.content) for item in self.items)
+
+
+def build_units(
+    evidence: tuple[EvidenceItem, ...], canonical_url: str | None = None
+) -> tuple[EvidenceUnit, ...]:
+    grouped: dict[str, list[EvidenceItem]] = {}
+    for item in evidence:
+        related = item.product_association is ProductAssociation.RELATED_PRODUCT
+        table = re.split(r":(?:row|note):", item.source_item_id, maxsplit=1)
+        container = (
+            f"table:{table[0]}" if len(table) == 2 else f"section:{item.section or ''}"
+        )
+        key = f"{item.document_id}|{container}|{'related' if related else 'own'}"
+        grouped.setdefault(key, []).append(item)
+    canonical = (canonical_url or "").rstrip("/").casefold()
+    return tuple(
+        sorted(
+            (
+                EvidenceUnit(
+                    key=key,
+                    items=tuple(items),
+                    labels=" \n ".join(
+                        dict.fromkeys(
+                            label for item in items for label in _labels(item)
+                        )
+                    ),
+                    related=key.endswith("|related"),
+                    canonical=bool(canonical)
+                    and str(items[0].locator.source_url).rstrip("/").casefold()
+                    == canonical,
+                )
+                for key, items in grouped.items()
+            ),
+            key=lambda unit: unit.order,
+        )
+    )
+
+
+def _labels(item: EvidenceItem) -> list[str]:
+    """What names an item: its section, row labels, column paths and keys --
+    never its body text (a disclosure that mentions "annual interest rate" is not
+    about the rate)."""
+    labels = [item.section or ""]
+    for raw in item.content.splitlines():
+        line = raw.strip()
+        if not line or line == "Notes:":
+            continue
+        if line.startswith("Section:"):
+            labels.append(line.removeprefix("Section:"))
+        elif "→" in line:
+            labels.append(line.split("→", 1)[0])
+        elif ":" in line and len(line.split(":", 1)[0]) <= _LABEL_CHARS:
+            labels.append(line.split(":", 1)[0])
+        elif len(line) <= _LABEL_CHARS:
+            labels.append(line)
+    return [label.strip() for label in labels if label and label.strip()]
+
+
+def select_units(
+    fields: tuple[ExtractionField, ...],
+    units: tuple[EvidenceUnit, ...],
+    budget: int,
+) -> tuple[tuple[EvidenceItem, ...], tuple[str, ...], tuple[ExtractionField, ...]]:
+    """Evidence for one call within `budget` characters, chosen by labels.
+
+    1. Each field gets an equal share of the budget, spent on the items
+       labelled for it (a row "Loan disbursement fee", a section "Loan service
+       fees"), from its best units down. So one long table labelled for many
+       fields cannot crowd out another field's only table.
+    2. The rest of the budget takes whole units by score, best first; a unit
+       that does not fit contributes its items labelled for the call's fields.
+    3. Related-product units only with room left.
+
+    Items are whole records, never cut (SE7); ties go by reading order. Returns
+    the items in reading order, the units left out (`[partial]` when some of
+    their items were), and the fields that a left-out item was labelled for.
+    """
+    weights = _term_weights(units)
+    scores = {
+        unit.key: {field: _score(unit, field, weights) for field in fields}
+        for unit in units
+    }
+    item_labels = {
+        item.evidence_id: " ".join(_labels(item))
+        for unit in units
+        for item in unit.items
     }
 
-    # First pass reserves room for the strongest item for every field. This is
-    # what prevents a long interest-rate table from crowding term or amount out.
-    for index, field in enumerate(fields):
-        ranked = ranked_by_field[field]
-        if not ranked:
-            continue
-        remaining_fields = max(1, len(fields) - index)
-        reserved = (settings.max_chars_per_batch - characters) // remaining_fields
-        add(ranked[0], content_limit=reserved)
+    def labelled(item: EvidenceItem, field: ExtractionField) -> bool:
+        text = item_labels[item.evidence_id]
+        return any(term_pattern(term).search(text) for term in FIELD_TERMS[field])
 
+    def rank(unit: EvidenceUnit, field: ExtractionField | None = None) -> tuple:
+        score = scores[unit.key][field] if field else max(scores[unit.key].values())
+        return (unit.related, -score, not unit.canonical, unit.order)
+
+    chosen: dict[str, EvidenceItem] = {}
+    used = 0
+
+    def choose(item: EvidenceItem, limit: int) -> bool:
+        nonlocal used
+        if item.evidence_id in chosen:
+            return True
+        size = len(item.content)
+        if used + size > limit and chosen:
+            return False
+        chosen[item.evidence_id] = item
+        used += size
+        return True
+
+    own = [unit for unit in units if not unit.related]
+    share = budget // max(len(fields), 1)
     for field in fields:
-        ranked = ranked_by_field[field]
-        field_count = 0
-        for item in ranked:
-            if add(item):
-                field_count += 1
-            if (
-                field_count >= per_field_limit
-                or len(selected) >= settings.max_items_per_batch
-            ):
-                break
-        if len(selected) >= settings.max_items_per_batch:
-            break
-
-    ranked_context = sorted(
-        evidence,
-        key=lambda item: (
-            -max(_field_score(item, field, roles, canonical_url) for field in fields),
-            item.precedence,
-            item.document_id,
-            item.source_item_id,
-        ),
+        candidates = sorted(
+            (unit for unit in own if scores[unit.key][field] > 0),
+            key=lambda unit: rank(unit, field),
+        )
+        # Breadth first: the field's top units split its share, so the second
+        # table labelled for it (a fee schedule after the tariff table) is read
+        # too; what they leave is spent in rank order.
+        top = candidates[:_BREADTH]
+        spent = 0
+        for unit in top:
+            unit_share = share // len(top)
+            unit_spent = 0
+            for item in unit.items:
+                size = len(item.content)
+                if labelled(item, field) and unit_spent + size <= unit_share:
+                    if choose(item, budget):
+                        unit_spent += size
+            spent += unit_spent
+        for unit in candidates:
+            for item in unit.items:
+                size = len(item.content)
+                if (
+                    item.evidence_id not in chosen
+                    and labelled(item, field)
+                    and spent + size <= share
+                    and choose(item, budget)
+                ):
+                    spent += size
+    positive = sorted(
+        (unit for unit in units if max(scores[unit.key].values()) > 0), key=rank
     )
-    for item in ranked_context:
-        if len(selected) >= settings.max_items_per_batch:
-            break
-        if _outside_canonical_scope(item, canonical_url):
+    for unit in positive:
+        remaining = [item for item in unit.items if item.evidence_id not in chosen]
+        if sum(len(item.content) for item in remaining) <= budget - used:
+            for item in remaining:
+                choose(item, budget)
             continue
-        add(item)
-
-    if not selected:
-        add(evidence[0])
-    return tuple(selected)
-
-
-def field_has_evidence_marker(field: ExtractionField, item: EvidenceItem) -> bool:
-    text = f"{item.section or ''} {item.content}".casefold()
-    return any(keyword.casefold() in text for keyword in FIELD_KEYWORDS[field])
-
-
-def _field_score(
-    item: EvidenceItem,
-    field: ExtractionField,
-    roles: frozenset[InformationRole],
-    canonical_url: str | None,
-) -> int:
-    text = f"{item.section or ''} {item.content}".casefold()
-    keyword_score = sum(
-        2 + min(3, keyword.count(" "))
-        for keyword in FIELD_KEYWORDS[field]
-        if keyword.casefold() in text
+        for item in remaining:
+            if any(labelled(item, field) for field in fields):
+                choose(item, budget)
+    if not chosen and units:
+        first = min(units, key=lambda unit: (not unit.canonical, unit.order))
+        for item in first.items:
+            choose(item, budget)
+    left_out_units = [
+        unit
+        for unit in positive
+        if any(item.evidence_id not in chosen for item in unit.items)
+    ]
+    left_out = tuple(
+        f"{unit.key} [partial]"
+        if any(item.evidence_id in chosen for item in unit.items)
+        else unit.key
+        for unit in left_out_units
     )
-    association_score = {
-        ProductAssociation.CURRENT_PRODUCT: 14,
-        ProductAssociation.UNKNOWN: 2,
-        ProductAssociation.GENERIC_BANK_INFORMATION: -4,
-        ProductAssociation.RELATED_PRODUCT: -14,
-        ProductAssociation.GLOBAL_NAVIGATION: -20,
-        ProductAssociation.HISTORICAL_VERSION: -30,
-        ProductAssociation.FUTURE_VERSION: -30,
-    }[item.product_association]
-    source_url = str(item.locator.source_url).casefold()
-    canonical_score = (
-        (24 if field is ExtractionField.PRODUCT_NAME else 8)
-        if canonical_url
-        and source_url.rstrip("/") == canonical_url.casefold().rstrip("/")
-        else 0
+    limited = tuple(
+        field
+        for field in fields
+        if any(
+            labelled(item, field) and item.evidence_id not in chosen
+            for unit in left_out_units
+            for item in unit.items
+        )
     )
-    variant_penalty = 0
-    if _outside_canonical_scope(item, canonical_url):
-        variant_penalty = 24
-    return (
-        keyword_score
-        + (6 if item.role in roles else 0)
-        + max(0, 5 - item.precedence)
-        + association_score
-        + canonical_score
-        - variant_penalty
+    items = tuple(sorted(chosen.values(), key=lambda item: item.order))
+    return items, left_out, limited
+
+
+def _term_weights(units: tuple[EvidenceUnit, ...]) -> dict[str, float]:
+    """Inverse unit frequency: a term on every unit ("loan") counts for little."""
+    count = len(units)
+    weights: dict[str, float] = {}
+    for terms in FIELD_TERMS.values():
+        for term in terms:
+            if term in weights:
+                continue
+            pattern = term_pattern(term)
+            frequency = sum(1 for unit in units if pattern.search(unit.labels))
+            weights[term] = math.log((count + 1) / (frequency + 0.5))
+    return weights
+
+
+def _score(
+    unit: EvidenceUnit, field: ExtractionField, weights: dict[str, float]
+) -> float:
+    return sum(
+        max(weights[term], 0.0)
+        for term in FIELD_TERMS[field]
+        if term_pattern(term).search(unit.labels)
     )
 
 
@@ -449,17 +437,3 @@ def _target_scope(product: ProductType, canonical_url: str | None) -> tuple[str,
                 )
             )
     return tuple(values)
-
-
-def _outside_canonical_scope(item: EvidenceItem, canonical_url: str | None) -> bool:
-    if item.product_association in {
-        ProductAssociation.RELATED_PRODUCT,
-        ProductAssociation.GLOBAL_NAVIGATION,
-        ProductAssociation.HISTORICAL_VERSION,
-        ProductAssociation.FUTURE_VERSION,
-    }:
-        return True
-    if not canonical_url or "/mortgage/primary" not in canonical_url.casefold():
-        return False
-    scope_text = f"{item.locator.source_url} {item.section or ''}"
-    return _PRIMARY_VARIANT_PATTERN.search(scope_text) is not None

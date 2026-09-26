@@ -116,9 +116,9 @@ class EnvironmentSettings(BaseSettings):
     source_discovery_max_price_per_million_tokens_usd: float = 2.5
     semantic_extraction_schema_version: str = "5"
     semantic_extraction_prompt_version: str = "5"
-    semantic_extraction_max_evidence_chars_per_item: int = 5000
-    semantic_extraction_max_chars_per_batch: int = 20_000
-    semantic_extraction_max_items_per_batch: int = 20
+    semantic_extraction_evidence_mode: str = "full"
+    semantic_extraction_max_packet_chars: int = 200_000
+    semantic_extraction_budget_chars: int = 16_000
     semantic_extraction_thinking_budget: int = 0
     semantic_extraction_max_output_tokens: int = 16_384
     semantic_extraction_max_repairs_per_run: int = 3

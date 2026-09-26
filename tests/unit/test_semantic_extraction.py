@@ -469,9 +469,10 @@ async def test_service_assembles_product_and_reuses_exact_cached_batches() -> No
 
     assert first.loan_product.product_name.value == "Consumer loan"
     assert first.loan_product.category.value == "consumer_loan"
-    assert first_calls == 6
+    # Full evidence mode asks the field groups in three calls (SE6, Q10).
+    assert first_calls == 3
     assert extractor.calls == first_calls
-    assert second.reused_batch_count == 6
+    assert second.reused_batch_count == 3
 
 
 class InvalidRateExtractor(FakeExtractor):
@@ -544,7 +545,7 @@ async def test_invalid_field_shape_gets_bounded_repair_and_cached() -> None:
         output.batch_id.endswith("__repair_term") for output in first.raw_batch_outputs
     )
     original_batch = next(
-        batch for batch in extractor.batches if batch.group == "core_financial"
+        batch for batch in extractor.batches if batch.group == "identity_and_core"
     )
     repair_batch = next(
         batch for batch in extractor.batches if batch.id.endswith("__repair_term")
@@ -553,9 +554,9 @@ async def test_invalid_field_shape_gets_bounded_repair_and_cached() -> None:
         item.evidence_id for item in original_batch.evidence
     }
     assert repair_batch.repair_context_json is not None
-    assert calls_after_first == 7
+    assert calls_after_first == 4
     assert extractor.calls == calls_after_first
-    assert second.reused_batch_count == 6
+    assert second.reused_batch_count == 3
 
 
 class SelectivelyFailingExtractor(FakeExtractor):
@@ -594,7 +595,12 @@ async def test_common_rate_shape_is_adapted_without_losing_valid_fields() -> Non
         ExtractionField.PRODUCT_NAME,
     }
     assert result.loan_product.interest_rate.value[0].value.min == 20
-    assert result.raw_batch_outputs[1].normalization_notes
+    rate_output = next(
+        output
+        for output in result.raw_batch_outputs
+        if output.group == "identity_and_core"
+    )
+    assert rate_output.normalization_notes
 
     next_plan = await service.plan(bundle, discovery)
     assert all(

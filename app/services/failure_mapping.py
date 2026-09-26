@@ -14,6 +14,7 @@ from app.services.browser_renderer import (
     BrowserRenderingError,
     BrowserRenderingFailure,
 )
+from app.services.extraction_planner import EvidencePacketTooLargeError
 from app.services.html_retriever import (
     HtmlRetrievalError,
     HtmlRetrievalFailure,
@@ -106,6 +107,8 @@ def source_failure_code(exc: Exception, *, stage: str) -> SourceFailureCode:
             return _BROWSER_FAILURES[current.reason]
         if isinstance(current, ValidationError):
             return SourceFailureCode.MALFORMED_STRUCTURED_OUTPUT
+        if isinstance(current, EvidencePacketTooLargeError):
+            return SourceFailureCode.SIZE_REJECTED
         current = current.__cause__ or current.__context__
 
     if stage == "pdf_extraction":

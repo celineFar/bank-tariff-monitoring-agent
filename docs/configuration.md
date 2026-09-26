@@ -142,10 +142,17 @@ downloader receives `settings.http` and the PDF extraction service receives
   deliberately invalidates the corresponding cached assessments.
 - **Semantic extraction:** `SEMANTIC_EXTRACTION_SCHEMA_VERSION`,
   `SEMANTIC_EXTRACTION_PROMPT_VERSION`,
-  `SEMANTIC_EXTRACTION_MAX_EVIDENCE_CHARS_PER_ITEM`,
-  `SEMANTIC_EXTRACTION_MAX_CHARS_PER_BATCH`, and
-  `SEMANTIC_EXTRACTION_MAX_ITEMS_PER_BATCH`. Schema, prompt, model, product, and
-  selected-evidence fingerprints jointly define exact extraction-batch cache reuse.
+  `SEMANTIC_EXTRACTION_EVIDENCE_MODE` (`full`, the default, or `budgeted`),
+  `SEMANTIC_EXTRACTION_MAX_PACKET_CHARS` (default `200000`) and
+  `SEMANTIC_EXTRACTION_BUDGET_CHARS` (default `16000`). In `full` mode every call
+  reads the offering's whole selected evidence, in reading order, in three calls;
+  an offering whose evidence exceeds the packet ceiling fails with
+  `source.size_rejected` (`semantic_extraction.packet_too_large`) rather than being
+  cut. In `budgeted` mode each field group's call reads whole tables and sections
+  chosen by their labels (headings, row labels, column paths), within the budget;
+  the run records which units were left out. Nothing is ever cut mid-item.
+  Schema, prompt, model, product, and selected-evidence fingerprints jointly define
+  exact extraction-batch cache reuse.
   `SEMANTIC_EXTRACTION_THINKING_BUDGET` (default `0`) sets the model thinking
   budget for extraction and its repairs; raise it only if bounded reasoning
   measurably improves extraction quality. Extraction always runs at temperature 0.

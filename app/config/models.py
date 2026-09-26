@@ -5,6 +5,7 @@ import logging
 import re
 from enum import StrEnum
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -386,9 +387,14 @@ class SemanticExtractionSettings(SettingsGroup):
     fallback_model_names: tuple[str, ...] = ()
     schema_version: str = Field(default="4", min_length=1, max_length=50)
     prompt_version: str = Field(default="4", min_length=1, max_length=50)
-    max_evidence_chars_per_item: int = Field(default=5000, ge=500, le=20_000)
-    max_chars_per_batch: int = Field(default=20_000, ge=1000, le=100_000)
-    max_items_per_batch: int = Field(default=20, ge=1, le=100)
+    # `full`: every call reads the offering's whole selected evidence (SE6).
+    # `budgeted`: whole tables and sections chosen by their labels within
+    # `budget_chars` per call -- cheaper, for very large offerings.
+    evidence_mode: Literal["full", "budgeted"] = "full"
+    # Full mode fails an offering above this many evidence characters, loudly,
+    # instead of cutting anything.
+    max_packet_chars: int = Field(default=200_000, ge=10_000, le=2_000_000)
+    budget_chars: int = Field(default=16_000, ge=2000, le=200_000)
     thinking_budget: int = Field(default=0, ge=-1, le=24_576)
     # Caps each answer; a cut answer is asked once more, then goes to review.
     max_output_tokens: int = Field(default=16_384, ge=1024, le=65_536)
@@ -408,9 +414,9 @@ class SemanticExtractionSettings(SettingsGroup):
 
     @model_validator(mode="after")
     def validate_batch_limits(self) -> SemanticExtractionSettings:
-        if self.max_evidence_chars_per_item > self.max_chars_per_batch:
+        if self.budget_chars > self.max_packet_chars:
             raise ValueError(
-                "semantic extraction item character limit must not exceed batch limit"
+                "semantic extraction budget must not exceed the packet ceiling"
             )
         return self
 

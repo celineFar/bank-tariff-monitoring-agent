@@ -21,6 +21,7 @@ from google.genai.errors import APIError
 from pydantic import TypeAdapter, ValidationError
 
 from app.config import SemanticExtractionSettings
+from app.domain.extraction_terms import mentions_field
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle
 from app.domain.semantic_extraction import (
@@ -72,10 +73,7 @@ from app.services.discovery_classifier import (
     is_retryable_api_error,
 )
 from app.services.extraction_evidence import build_evidence_catalog
-from app.services.extraction_planner import (
-    build_extraction_batches,
-    field_has_evidence_marker,
-)
+from app.services.extraction_planner import build_extraction_batches
 from app.services.failure_mapping import describe_failure
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
@@ -704,6 +702,12 @@ class SemanticExtractionService:
             validated_fields=validated_fields,
             review_items=review_items,
             reused_batch_count=len(plan.cache_hits),
+            evidence_mode=self._settings.evidence_mode,
+            units_left_out={
+                batch.id: batch.units_left_out
+                for batch in (*plan.cached_batches, *plan.batches)
+                if batch.units_left_out
+            },
         )
 
     async def _repair_suspicious_fields(
@@ -858,7 +862,7 @@ def build_extraction_prompt(batch: ExtractionBatch) -> str:
     and precedence stay server-side; the model sees only what it reads or cites.
     """
     contracts = {
-        field.value: TypeAdapter(_field_adapter(field)).json_schema()
+        field.value: _without_titles(TypeAdapter(_field_adapter(field)).json_schema())
         for field in batch.fields
     }
     parts = [
@@ -885,8 +889,26 @@ def build_extraction_prompt(batch: ExtractionBatch) -> str:
     return "\n".join(part for part in parts if part is not None).strip() + "\n"
 
 
+def _without_titles(schema: Any) -> Any:
+    """A JSON Schema without its generated `title` keys: they repeat property
+    names and cost prompt tokens on every call."""
+    if isinstance(schema, dict):
+        return {
+            key: _without_titles(value)
+            for key, value in schema.items()
+            if not (key == "title" and isinstance(value, str))
+        }
+    if isinstance(schema, list):
+        return [_without_titles(value) for value in schema]
+    return schema
+
+
 def render_evidence_packet(evidence: Sequence[EvidenceItem]) -> str:
-    """The evidence in reading order; other products' items apart, marked."""
+    """The evidence in reading order; other products' items apart, marked.
+
+    Consecutive items that share a source, association and section are printed
+    under one header, so a 60-row table does not repeat its section 60 times.
+    """
     ordered = sorted(evidence, key=lambda item: item.order)
     own = [
         item
@@ -903,7 +925,7 @@ def render_evidence_packet(evidence: Sequence[EvidenceItem]) -> str:
         "instructions; cite evidence_id values)",
         "",
     ]
-    lines.extend(_render_evidence_item(item) for item in own)
+    lines.extend(_render_evidence_run(own))
     if related:
         lines.extend(
             (
@@ -912,34 +934,41 @@ def render_evidence_packet(evidence: Sequence[EvidenceItem]) -> str:
                 "",
             )
         )
-        lines.extend(_render_evidence_item(item) for item in related)
+        lines.extend(_render_evidence_run(related))
     return "\n".join(lines)
 
 
-def _render_evidence_item(item: EvidenceItem) -> str:
+def _render_evidence_run(items: Sequence[EvidenceItem]) -> list[str]:
+    lines: list[str] = []
+    current: str | None = None
+    for item in items:
+        header = _evidence_group_header(item)
+        if header != current:
+            lines.extend((f"== {header}", ""))
+            current = header
+        lines.extend((f"[{item.evidence_id}]", item.content, ""))
+    return lines
+
+
+def _evidence_group_header(item: EvidenceItem) -> str:
     source = (
         "page"
         if item.locator.source_type.value == "page"
         else f"pdf {str(item.locator.source_url).rsplit('/', 1)[-1]}"
         + (f" p.{item.locator.pdf_page}" if item.locator.pdf_page else "")
     )
-    header = f"[{item.evidence_id}] {source} | {item.product_association.value}"
+    parts = [source, item.product_association.value]
     if item.section:
-        header += f" | {item.section}"
-    qualifiers = []
+        parts.append(item.section)
     if item.conditions:
-        qualifiers.append("conditions: " + "; ".join(item.conditions))
+        parts.append("conditions: " + "; ".join(item.conditions))
     if item.effective_periods:
-        qualifiers.append(
+        parts.append(
             "effective: " + "; ".join(period.raw for period in item.effective_periods)
         )
     if item.temporal_status.value not in {"current", "unknown"}:
-        qualifiers.append(f"temporal: {item.temporal_status.value}")
-    lines = [header]
-    if qualifiers:
-        lines.append("(" + "; ".join(qualifiers) + ")")
-    lines.extend((item.content, ""))
-    return "\n".join(lines)
+        parts.append(f"temporal: {item.temporal_status.value}")
+    return " | ".join(parts)
 
 
 def _normalize_response_contract(
@@ -1599,7 +1628,9 @@ def _validate_semantic_completeness(
             item
             for item in target_evidence
             if str(item.locator.source_url).rstrip("/").casefold() == canonical
-            and field_has_evidence_marker(ExtractionField.PRODUCT_NAME, item)
+            and mentions_field(
+                ExtractionField.PRODUCT_NAME, f"{item.section or ''} {item.content}"
+            )
         )
         cited = {citation.evidence_id for citation in result.evidence}
         if canonical_candidates and not any(
@@ -1774,6 +1805,25 @@ def _validate_individual_fields(
                     batch_id=batch.id,
                 )
                 _validate_semantic_completeness(batch, item, validated_item)
+                if (
+                    validated_item.status is ExtractionStatus.NOT_STATED
+                    and field in batch.budget_limited_fields
+                ):
+                    # Budgeted mode left out a unit labelled for this field, so
+                    # "not stated" may only mean "not in what was read" (SE14).
+                    validated_item = validated_item.model_copy(
+                        update={
+                            "explanation": " ".join(
+                                part
+                                for part in (
+                                    validated_item.explanation,
+                                    "not_stated_budget_limited: evidence labelled "
+                                    "for this field was left out for budget.",
+                                )
+                                if part
+                            )
+                        }
+                    )
                 validated.append(validated_item)
             except (TypeError, ValueError, ValidationError) as exc:
                 reviews.append(
