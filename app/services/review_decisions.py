@@ -8,6 +8,7 @@ from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.review import (
     ReviewDecision,
     ReviewDecisionType,
+    ReviewEvidenceSet,
     ReviewReason,
     ReviewSnapshotUpdate,
     ReviewTask,
@@ -113,6 +114,9 @@ class ReviewDecisionService:
                 evidence_items,
                 selected,
             )
+        miss = _citation_outside_shown_units(task, decision)
+        if miss is not None:
+            update = update.model_copy(update={"audit_events": (miss,)})
         approved = await self._reviews.approve_with_snapshot(
             review_id,
             decision,
@@ -323,6 +327,35 @@ def _evidence_items(
         str(item["evidence_id"]): item
         for item in review_passages(task, snapshot.evidence)
         if item.get("evidence_id") is not None
+    }
+
+
+def _citation_outside_shown_units(
+    task: ReviewTask, decision: ReviewDecision
+) -> dict[str, Any] | None:
+    """An override citing a passage the review's units did not show: a direct
+    measure of the evidence set missing what the reviewer needed (RV13).
+
+    Only for reviews that store their set; rows written before it showed a
+    ranked copy of everything, so "outside" has no meaning there.
+    """
+    if decision.decision_type is not ReviewDecisionType.OVERRIDE:
+        return None
+    raw = task.evidence.get("set")
+    if not isinstance(raw, dict):
+        return None
+    evidence_set = ReviewEvidenceSet.model_validate(raw)
+    if decision.evidence_reference in evidence_set.shown_ids:
+        return None
+    return {
+        "event_type": "review_citation_outside_shown_units",
+        "payload": {
+            "review_id": str(task.id),
+            "reason": task.reason.value,
+            "field": task.issue_scope,
+            "evidence_id": decision.evidence_reference,
+            "shown_units": [unit.key for unit in evidence_set.units],
+        },
     }
 
 

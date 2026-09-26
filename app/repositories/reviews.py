@@ -337,6 +337,28 @@ class PostgresReviewRepository:
                     "canonical_sha256": update.canonical_sha256,
                 },
             )
+            for event in update.audit_events:
+                # Written with the decision, so a logged ranking miss (RV13)
+                # always belongs to a decision that was committed.
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO audit_events (
+                            run_id, offering_execution_id, event_type, payload
+                        )
+                        VALUES (
+                            :run_id, :offering_execution_id, :event_type,
+                            CAST(:payload AS jsonb)
+                        )
+                        """
+                    ),
+                    {
+                        "run_id": current.run_id,
+                        "offering_execution_id": current.offering_execution_id,
+                        "event_type": str(event["event_type"]),
+                        "payload": _json(event.get("payload") or {}),
+                    },
+                )
             unresolved = await session.scalar(
                 text(
                     """

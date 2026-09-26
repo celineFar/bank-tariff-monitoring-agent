@@ -457,10 +457,30 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 
 ### Phase 3: `?` and ranking misses (RV10, RV13)
 
-- [ ] RV10: migration `022` adds `tariff_snapshots.selected_sources_markdown`; the pipeline
+- [x] RV10: migration `022` adds `tariff_snapshots.selected_sources_markdown`; the pipeline
       renders the selected bundle; the repository reads and writes it; the CLI's `?` opens
       it in the pager.
-- [ ] RV13: the decision service writes `review_citation_outside_shown_units`.
+- [x] RV13: the decision service writes `review_citation_outside_shown_units`.
+
+**Phase 3 notes (done).**
+- **RV10.** `SnapshotAttempt.selected_sources_markdown` (excluded from dumps) is set by
+  the pipeline from `render_normalized_markdown(build_selected_source_bundle(...))`
+  (the same selected bundle the RAG projection indexes, now built once) and written by
+  `_insert_snapshot`. Migration 022 adds the column. The general snapshot reads do not
+  map it (they already carry the large `evidence`); `PostgresSnapshotRepository.
+  selected_sources_markdown(id)` fetches it, and `ReviewDisplayService` calls it. The
+  CLI's `?` pages it through `rich`'s pager; a snapshot written before the migration
+  has none and `?` lists every passage instead.
+- **RV13.** `ReviewDecisionService` adds a `review_citation_outside_shown_units` event
+  (review id, reason, field, cited evidence id, shown unit keys) to
+  `ReviewSnapshotUpdate.audit_events` when an **override** cites a passage outside the
+  review's stored units. The repository writes `update.audit_events` into
+  `audit_events` in the decision's transaction. Rows without a stored set (written
+  before this change) are never logged: they had no bounded "shown" set.
+- Tests: pipeline saves the selection's Markdown (SD7 test); Postgres round trip of the
+  column and the audit event; CLI `?` with and without Markdown; inside-units override
+  writes no event.
+- Suite: 1060 passed, 5 skipped, 2 xfailed (Phase 4); the 4 known Gemini-key failures.
 
 ### Phase 4: Model payloads and attribution (RV8, RV12)
 

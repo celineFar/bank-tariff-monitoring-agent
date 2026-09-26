@@ -269,9 +269,6 @@ async def test_rv9_large_table_is_windowed_and_the_model_view_is_trimmed() -> No
 # --- RV10: `?` content is saved with the snapshot ----------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RV10: no selected-sources Markdown on the snapshot"
-)
 @pytest.mark.asyncio
 async def test_rv10_snapshot_keeps_the_selected_sources_markdown() -> None:
     result = await _result(_long_page())
@@ -320,7 +317,6 @@ async def test_rv12_model_call_during_a_run_records_the_run() -> None:
 # --- RV13: a citation outside the shown units is logged ----------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RV13: ranking misses are not recorded")
 @pytest.mark.asyncio
 async def test_rv13_override_citing_outside_the_shown_units_is_audited() -> None:
     from app.domain.monitoring import SnapshotStatus
@@ -477,3 +473,30 @@ async def test_rv5_selecting_geminis_value_resolves_the_field() -> None:
     assert all(
         s["issue_scope"] != "interest_rate" for s in update.validation["review_signals"]
     )
+
+
+@pytest.mark.asyncio
+async def test_rv13_override_citing_a_shown_passage_is_not_audited() -> None:
+    from app.domain.monitoring import SnapshotStatus
+    from app.services.monitoring_pipeline import _review_tasks
+    from app.services.review_decisions import ReviewDecisionService
+    from tests.unit.test_multi_review_approval import _Reviews, _Snapshots
+
+    result = await _result(_long_page())
+    snapshot = _snapshot(result).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED}
+    )
+    task = next(t for t in _review_tasks(snapshot) if t.issue_scope == "interest_rate")
+    snapshots = _Snapshots(snapshot)
+    reviews = _Reviews([task], snapshots)
+    await ReviewDecisionService(reviews, snapshots).apply(
+        task.id,
+        ReviewDecision(
+            decision_type=ReviewDecisionType.OVERRIDE,
+            override_value="14%",
+            reason="Read from the table.",
+            evidence_reference=_row(result, "Annual interest rate").evidence_id,
+        ),
+        reviewer="analyst",
+    )
+    assert reviews.updates[0].audit_events == ()

@@ -61,6 +61,7 @@ from app.services.monitoring_progress import (
     ProgressSink,
     report_safely,
 )
+from app.services.normalized_renderer import render_normalized_markdown
 from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
 from app.services.review_evidence import cited_evidence_set, evidence_items
 from app.services.snapshot_lifecycle import (
@@ -366,6 +367,7 @@ class IndexingPipeline:
                 before_run_id=run_id,
             ),
         )
+        selected_bundle = build_selected_source_bundle(bundle, discovery)
         snapshot = build_snapshot_attempt(
             run_id=run_id,
             offering_execution_id=offering_execution_id,
@@ -378,6 +380,7 @@ class IndexingPipeline:
                 self._large_rate_change_percentage_points
             ),
             review_rank_gap=self._review_rank_gap,
+            selected_sources_markdown=render_normalized_markdown(selected_bundle),
         )
         # The same selection extraction used: the RAG index holds only what
         # source discovery selected for this offering, with its labels.
@@ -386,7 +389,7 @@ class IndexingPipeline:
             run_id=run_id,
             product=offering.product,
             offering_id=offering.offering_id,
-            bundle=build_selected_source_bundle(bundle, discovery),
+            bundle=selected_bundle,
             retrieved_at=artifact.retrieved_at,
             language=offering.language or artifact.language or "en",
             labels=selection.items,

@@ -1007,6 +1007,10 @@ async def test_sd7_projection_indexes_only_the_selected_blocks() -> None:
     content = "\n".join(chunk.content for chunk in source.chunks)
     assert "Consumer loan rate 13.5%" in content
     assert "Cards Deposits Transfers" not in content
+    # The reviewer's `?` shows the same selection (RV10).
+    markdown = publications.values[0].snapshot.selected_sources_markdown
+    assert "Consumer loan rate 13.5%" in markdown
+    assert "Cards Deposits Transfers" not in markdown
 
 
 class _PdfSelection:

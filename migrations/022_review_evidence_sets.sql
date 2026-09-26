@@ -13,3 +13,9 @@ DROP INDEX IF EXISTS human_reviews_active_scope_uq;
 CREATE UNIQUE INDEX IF NOT EXISTS human_reviews_active_scope_reason_uq
     ON human_reviews (product, offering_id, issue_scope, reason_code)
     WHERE status = 'pending';
+
+-- The selected sources as Markdown, saved with each snapshot so the reviewer's
+-- `?` shows exactly what extraction read (RV10). Never sent to the model.
+-- Snapshots written before this migration have none.
+ALTER TABLE tariff_snapshots
+    ADD COLUMN IF NOT EXISTS selected_sources_markdown text;

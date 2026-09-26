@@ -466,10 +466,12 @@ class ReviewDisplayService:
         if task is None:
             return None
         snapshot = await self._snapshots.get(task.snapshot_id)
+        markdown = getattr(snapshot, "selected_sources_markdown", None)
+        read_markdown = getattr(self._snapshots, "selected_sources_markdown", None)
+        if markdown is None and snapshot is not None and read_markdown is not None:
+            markdown = await read_markdown(snapshot.id)
         return build_review_display(
             task,
             snapshot.evidence if snapshot is not None else (),
-            selected_sources_markdown=getattr(
-                snapshot, "selected_sources_markdown", None
-            ),
+            selected_sources_markdown=markdown,
         )

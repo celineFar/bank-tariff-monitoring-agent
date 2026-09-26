@@ -684,3 +684,23 @@ async def _in_memory_session_service():
 
 async def _raises_unexpectedly(*args, **kwargs) -> None:
     raise AttributeError("'NoneType' object has no attribute 'run_async'")
+
+
+def test_cli_question_mark_pages_the_saved_sources(monkeypatch, capsys) -> None:
+    from contextlib import nullcontext
+
+    paged = []
+    monkeypatch.setattr(
+        cli.console, "pager", lambda **kwargs: paged.append(kwargs) or nullcontext()
+    )
+    cli._show_sources(_item(), _display(markdown="# Overdraft\n\nRate: 14% a year\n"))
+
+    assert paged and "Rate: 14% a year" in capsys.readouterr().out
+
+
+def test_cli_question_mark_without_saved_sources_lists_every_passage(capsys) -> None:
+    passage = _passage("only", "Repayment: monthly")
+    cli._show_sources(_item(), _display(all_passages=(passage,)))
+
+    output = capsys.readouterr().out
+    assert "no saved source text" in output and "Repayment: monthly" in output

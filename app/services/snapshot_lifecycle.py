@@ -115,6 +115,7 @@ def build_snapshot_attempt(
     previous_accepted_snapshot: SnapshotAttempt | None = None,
     large_rate_change_percentage_points: Decimal = Decimal("3"),
     review_rank_gap: float = 0.05,
+    selected_sources_markdown: str | None = None,
 ) -> SnapshotAttempt:
     review_signals = detect_review_signals(result, rank_gap=review_rank_gap)
     accepted = extraction_is_acceptable(result) and not review_signals
@@ -181,6 +182,7 @@ def build_snapshot_attempt(
         previous_accepted_snapshot_id=previous_accepted_snapshot_id,
         created_at=created_at,
         accepted_at=created_at if accepted else None,
+        selected_sources_markdown=selected_sources_markdown,
     )
 
 
