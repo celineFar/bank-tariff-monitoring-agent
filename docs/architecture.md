@@ -61,14 +61,14 @@ shell, or SQL tool.
 - `app/domain/`: validated tariff/evidence models and pure business rules.
 - `app/services/`: pipeline orchestration interfaces and deterministic application
   services. `AcquisitionService` combines restricted static HTML retrieval, faithful
-  structural parsing, conditional Playwright rendering, bounded same-domain network
-  capture, content-addressed artifact storage, and linked-PDF retrieval. `PdfDownloader`
+  structural parsing, conditional Playwright rendering, content-addressed artifact
+  storage, and linked-PDF retrieval (network responses are not captured). `PdfDownloader`
   uses an injected, caller-owned HTTP client and returns
   immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
-  checks complete. `StructuralNormalizationService` converts the acquired page,
-  linked PDFs, and captured API payloads into one uniform evidence-linked bundle;
-  HTML table reconstruction, scalar recognition, PDF admission/input-mode probing,
-  and JSON-path flattening remain deterministic. PDF bytes cross only the tool-free,
+  checks complete. `StructuralNormalizationService` converts the acquired page
+  and linked PDFs into one uniform evidence-linked bundle (captured network payloads
+  are not normalized); HTML table reconstruction, scalar recognition, and PDF
+  admission/input-mode probing remain deterministic. PDF bytes cross only the tool-free,
   strict-schema Gemini PDF extraction boundary.
 - `app/repositories/`: persistence interfaces and PostgreSQL implementations,
   including the transactional pgvector knowledge store and durable review repository.
@@ -317,8 +317,9 @@ downloads, cross-domain traffic, service workers, heavy assets, and main-frame
 navigation after load.
 
 Every acquisition passes a completeness gate. `AcquisitionService` enforces an absolute
-floor (main text outside the site header, menus and footer, plus at least one table,
-PDF link or payload); `CompletenessGatedAcquisitionService` compares the artifact's
+floor (main text outside the site header, menus and footer, plus at least one table
+or PDF link -- or, for a page that publishes its terms as text, at least
+`ACQUISITION_MIN_MAIN_CONTENT_CHARS_WITHOUT_STRUCTURE` characters of main text); `CompletenessGatedAcquisitionService` compares the artifact's
 `inventory` with the last passing acquisition of the same URL in
 `acquisition_baselines` and fails a sharp drop. Both fail with
 `source.incomplete_content`. A drop keeps failing until an operator runs
@@ -328,24 +329,22 @@ Acquisition warnings are typed codes carried into the source manifest.
 The output is an immutable `PageArtifact` containing raw/rendered HTML, Markdown,
 structural blocks, span-aware tables, linked FAQ questions and answers, inline links
 with their original `href` and fragment targets,
-image/control metadata, downloaded PDFs, bounded textual XHR/fetch payloads, source
-locators, timestamps, and two deterministic content hashes. Raw bytes are stored
+image/control metadata, downloaded PDFs, source locators, timestamps, and two deterministic content hashes. Raw bytes are stored
 under SHA-256-derived paths; source-controlled strings never become filesystem paths.
 See `docs/acquisition.md` for the complete contract.
 
 The artifact carries two hashes because they answer different questions.
-`content_hash` covers the whole acquisition -- the page plus every document and
-XHR payload reached from it -- and is the consistency tag normalization, discovery
+`content_hash` covers the whole acquisition -- the page plus every document
+reached from it -- and is the consistency tag normalization, discovery
 and extraction check against each other (change detection compares accepted field
-values, not hashes). `page_content_hash` covers only the page's parsed content --
-never its raw or rendered bytes, which carry per-request ASP.NET tokens -- and is
-what names the page document downstream. Keeping them apart means a revised sibling
+values, not hashes). `page_content_hash` covers only the page's parsed content
+outside the site header, navigation and footer -- never its raw or rendered bytes,
+which carry per-request ASP.NET tokens, nor site chrome, whose late-loading modules
+differ between renders -- and is what names the page document downstream. Keeping them apart means a revised sibling
 PDF does not rename the page or the evidence quoted from it.
 
-Captured XHR payloads are ordered by `(url, digest)` and deduplicated, never by the
-order in which their bodies finished downloading, and normalized document ids are
-addressed by content (`api:<digest>`, `document:<digest>`) rather than by list
-position. Both rules exist for the same reason: every evidence id, and therefore
+Normalized document ids are addressed by content (`document:<digest>`) rather than by
+list position, because every evidence id, and therefore
 every semantic-extraction cache key, hashes the document id alongside the text it
 quotes, so an identity that drifts over unchanged content silently costs a full
 re-extraction.
@@ -388,31 +387,45 @@ Acquisition preserves what each source delivered; structural normalization makes
 that material safe and predictable for chunking and evidence-bound extraction. Its
 immutable `NormalizedSourceBundle` contains normalized documents, blocks, rectangular
 tables, notes, scalar candidates, source references, quality scores, and typed
-warnings. It never assigns tariff-field meaning.
+warnings. It never assigns tariff-field meaning. An HTML page's quality score is the
+share of its seed baseline (`app/config/normalization_baseline.json`: the tables,
+header rows, sections, row labels, footnotes and text blocks recorded for that page,
+without tariff values) that the bundle still contains; missing structure raises
+`BASELINE_MISMATCH`. A page with no baseline is not scored.
 
 HTML tables are reconstructed from cell coordinates and rowspan/colspan metadata,
-with phantom columns and duplicate carry-only rows removed. A deterministic probe
+with phantom columns and carry-only rows removed; the table normalizer owns the
+title, header rows, in-table section labels (carried on each row as `section` and
+into the row's evidence text) and footnotes (whose markers stay in their evidence
+text). Invented headers and dropped repeat rows raise `AMBIGUOUS_TABLE`. A deterministic probe
 records each PDF page as machine-readable, image-only, mixed, or unknown; its
 extracted text is not used as business evidence, but the classification is what
 routes a page to the OCR fallback described below. Before any model call, deterministic link
 metadata decides admission: a document with no product-relevant term that matches an
 off-topic marker is admitted as irrelevant, and (unless `PDF_EXTRACTION_SKIP_HISTORICAL`
 is disabled) a document whose metadata resolves to a historical temporal status is also
-skipped. Skipped documents yield an empty `pdf_skipped` normalized document and never
-reach the model. Otherwise a tool-free ADK agent sends the original PDF
+skipped. Skipped documents yield an empty `pdf_skipped` normalized document, raise
+`PDF_SKIPPED_HISTORICAL`/`PDF_SKIPPED_IRRELEVANT`, and never reach the model. The
+link context admission reads is the link's own row, list item or paragraph. Otherwise a tool-free ADK agent sends the original PDF
 bytes to Gemini and requires page-complete blocks, rectangular tables, notes, and
-footnotes. PDF outputs retain page locators and are cached by source hash, schema,
-prompt, model, and admission/probe fingerprint. Captured JSON leaves retain exact JSON paths. Raw source text
+footnotes. PDF outputs retain page locators (table cells cite themselves by id) and are
+cached by source hash, schema, prompt, model, and admission/probe fingerprint.
+Only `PdfExtractionError` (unreadable file, no model, all models failed) becomes a
+normalization warning; any other exception fails the normalization stage.
+`StructuralNormalizationService` requires both its artifact reader and its PDF
+extractor; offline tools pass `NoPdfExtractor`. Raw source text
 and acquisition locators remain attached throughout, so later chunks and extracted
 values can cite the original evidence rather than a rendered Markdown approximation.
 
-A scanned page is the one case that needs a second engine. When the probe called a
-page `image_only` and the model returned no block and no table for it, that page —
+A scanned page is the one case that needs a second engine. When the probe found no
+usable text layer on a page (`image_only`, or `unknown`) and the model returned no
+block and no table for it, that page —
 and only that page — is rendered by `PdfiumPageRasterizer` and read by
 `TesseractOcrTranscriber` (`app/services/pdf_rasterizer.py`,
 `app/services/ocr_transcriber.py`). The same stage is the recovery path when every
-configured Gemini model has failed, so a document degrades to a marked OCR
-transcription instead of yielding nothing. OCR is deterministic application code,
+configured Gemini model has failed, or no Gemini key is configured, so a document
+degrades to a marked OCR transcription instead of yielding nothing. OCR-filled pages
+raise `PDF_OCR_FILLED`; a text-layer page left empty raises `PDF_PAGE_EMPTY`. OCR is deterministic application code,
 never a model tool; it is bounded by page count, a pixel budget, and a per-page
 timeout; and a page below the configured confidence floor emits no blocks rather
 than plausible-looking text. Its blocks carry `ocr:tesseract:<version>` and an
@@ -425,7 +438,7 @@ See `docs/normalization.md` for the complete contract and inspection workflow.
 ## Source discovery boundary
 
 `SourceDiscoveryService` consumes only the normalized bundle. It groups page blocks,
-tables, PDFs, and API payloads into bounded classification units; applies deterministic
+tables, and PDFs into bounded classification units; applies deterministic
 rules; reuses content-addressed PostgreSQL assessments; and sends only unresolved
 semantic cases to a tool-free ADK classifier with strict structured output. Child
 blocks and JSON leaves inherit their container decision, so model use scales with

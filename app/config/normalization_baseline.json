@@ -1,0 +1,1554 @@
+{
+ "pages": [
+  {
+   "offering_id": "consumer_standard",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Consumer loan not secured by property",
+     "title": "Consumer loan not secured by property",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "Annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Term (months)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Loan disbursement fee",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Cashing of the loan amount by the borrower",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Other terms related to the interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Late payment fines and penalties",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Security",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Required documents",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "*",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "1",
+       "starts": "In case of applications for scoring-based loans"
+      },
+      {
+       "marker": "2",
+       "starts": "The annual percentage rate (APR) may differ"
+      }
+     ]
+    },
+    {
+     "find": "filed together with loan application",
+     "title": "Required documents",
+     "header_row": null,
+     "min_rows": 2,
+     "rows": [
+      {
+       "label": "Required documents filed together with loan application",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Documents required after initial approval",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "No fee for cash withdrawal"
+    },
+    {
+     "text": "There are no other mandatory fees for the loans not secured by collateral and guarantee"
+    }
+   ]
+  },
+  {
+   "offering_id": "credit_line",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Type of credit card",
+     "title": null,
+     "header_row": [
+      "Type of credit card",
+      "VISA Classic/Master Card Standard",
+      "Master Card Gold/VISA Gold",
+      "VISA Infinite, Mastercard World Elite"
+     ],
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "Minimum and maximum credit limits",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Increase of credit limit of card",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Grace period",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Minimum payment required",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Lump-sum fee for failure to make required minimum monthly payment when due",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Late payment fines and penalties",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "*",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "If the loan application is considered outside the scoring system"
+      },
+      {
+       "marker": "3",
+       "starts": "Other terms can be applied"
+      },
+      {
+       "marker": "4",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "5",
+       "starts": "For credit cards issued after January 2015"
+      },
+      {
+       "marker": "6",
+       "starts": "This service is available"
+      }
+     ]
+    },
+    {
+     "find": "filed together with loan application",
+     "title": "Required documents",
+     "header_row": null,
+     "min_rows": 2,
+     "rows": [
+      {
+       "label": "Required documents filed together with loan application",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Documents required after initial approval",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Indefinite term (until requested back)"
+    }
+   ]
+  },
+  {
+   "offering_id": "overdraft",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Card type",
+     "title": null,
+     "header_row": [
+      "Card type",
+      "Arca Classic",
+      "Mastercard Gold/VISA Gold"
+     ],
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "Minimum and total maximum credit limits",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Minimum payment required",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Increase of credit limit of card",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Early repayment fee",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "*",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "If the loan application is considered outside the scoring system"
+      },
+      {
+       "marker": "3",
+       "starts": "Other terms can be applied"
+      },
+      {
+       "marker": "4",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "5",
+       "starts": "This service is available"
+      }
+     ]
+    },
+    {
+     "find": "filed together with loan application",
+     "title": "Required documents",
+     "header_row": null,
+     "min_rows": 2,
+     "rows": [
+      {
+       "label": "Required documents filed together with loan application",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Documents required after initial approval",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Indefinite term (until requested back)"
+    }
+   ]
+  },
+  {
+   "offering_id": "online_consumer_finance",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Customer Personal Information",
+     "title": null,
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "Customer Age",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Financing Limit",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Term (months)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Prepayment",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Maximum Loan-to-Collateral Ratio",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Documents",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "With the MyAmeria app",
+     "title": null,
+     "header_row": [
+      "Payment Method",
+      "Fee"
+     ],
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "Cash payment at the bank",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "With the MyAmeria app",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Online via the Bank",
+     "title": null,
+     "header_row": [
+      "Payment Method",
+      "Commission Fee"
+     ],
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "By cash payment at the Bank",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Online via the Bank",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": []
+  },
+  {
+   "offering_id": "mortgage_online",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/online"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Tariffs in the case of the primary market",
+     "title": "Tariffs in the case of the primary market",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.3. Term (months)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.7. Minimum down payment",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.6. Lump sum disbursement fee",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "Attention! The offer of the agreement"
+      },
+      {
+       "marker": "3",
+       "starts": "Attention! The adjustable nominal interest rate"
+      },
+      {
+       "marker": "4",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "5",
+       "starts": "The list of developers is determined by the Bank"
+      }
+     ]
+    },
+    {
+     "find": "Tariffs in the case of the secondary market",
+     "title": "Tariffs in the case of the secondary market",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.7. Minimum down payment",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "5.3. Location of the real estate to be pledged",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Pledged property is subject to mandatory valuation"
+    },
+    {
+     "text": "Submit your online application"
+    }
+   ]
+  },
+  {
+   "offering_id": "mortgage_primary",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/primary"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Home Purchase Loan (primary market)",
+     "title": "Home Purchase Loan (primary market)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.2. Minimum and maximum loan limits",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.7. Nominal annual interest rate",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.9. Nominal annual interest rate",
+       "section": "Term and interest rate in case of online refinancing",
+       "has_value": true
+      },
+      {
+       "label": "3.10. Annual percentage rate (APR)",
+       "section": "Term and interest rate in case of online refinancing",
+       "has_value": true
+      },
+      {
+       "label": "3.12. Lump sum disbursement fee",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "8. Early repayment fee",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "Depending on the creditworthiness of the borrower"
+      },
+      {
+       "marker": "3",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "4",
+       "starts": "Attention! The adjustable nominal interest rate"
+      }
+     ]
+    },
+    {
+     "find": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "2.2. Minimum and maximum loan limit",
+       "section": "General requirements to loan facilities",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.2. Term (months)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Insurance Companies Cooperating with Ameriabank and Related Fees"
+    }
+   ]
+  },
+  {
+   "offering_id": "mortgage_secondary_market",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/secondary-market"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Home Purchase Loan (secondary market)",
+     "title": "Home Purchase Loan (secondary market)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.9. Nominal annual interest rate",
+       "section": "Term and interest rate in case of online refinance loans",
+       "has_value": true
+      },
+      {
+       "label": "3.10. Annual percentage rate (APR)",
+       "section": "Term and interest rate in case of online refinance loans",
+       "has_value": true
+      },
+      {
+       "label": "3.12. Minimum down payment",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "2",
+       "starts": "Depending on the creditworthiness of the borrower"
+      },
+      {
+       "marker": "3",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "4",
+       "starts": "Attention! The adjustable nominal interest rate"
+      }
+     ]
+    },
+    {
+     "find": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "2.2. Minimum and maximum loan limit",
+       "section": "General requirements to loan facilities",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.2. Term (months)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": []
+  },
+  {
+   "offering_id": "mortgage_commercial",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/commercial-mortgage"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Loan for Purchase of Commercial Real Estate",
+     "title": "Loan for Purchase of Commercial Real Estate",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.2. Minimum and maximum loan limits",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.7. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.8. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.11. Minimum down payment",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "9. Early repayment fee",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "Depending on the creditworthiness of the borrower"
+      },
+      {
+       "marker": "3",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "4",
+       "starts": "Geodetic measurement is required"
+      }
+     ]
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "The client will pay for the following services:"
+    }
+   ]
+  },
+  {
+   "offering_id": "mortgage_construction",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/construction-mortgage"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Construction of residential property, or",
+     "title": "Home Construction Loan",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.9. Nominal annual interest rate",
+       "section": "Term and interest rate in case of online refinance loans",
+       "has_value": true
+      },
+      {
+       "label": "3.10. Annual percentage rate (APR)",
+       "section": "Term and interest rate in case of online refinance loans",
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Construction of commercial property",
+     "title": "Loan for construction of commercial real estate",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.7. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "2.2. Minimum and maximum loan limit",
+       "section": "General requirements to loan facilities",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.2. Term (months)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Term extension for mortgage/investment loans",
+     "title": "service fee",
+     "header_row": [
+      "Purpose",
+      "Rates and Fees (AMD)"
+     ],
+     "min_rows": 12,
+     "rows": [
+      {
+       "label": "Term extension for mortgage/investment loans",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the borrower/co-borrower/guarantor",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Change of the loan repayment date",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Provision of loan before submitting to the Bank the document certifying state registration",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Revision/modification of another loan term not specified in this document",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": []
+  },
+  {
+   "offering_id": "mortgage_renovation",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/renovation-mortgage"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Renovation of residential property, or",
+     "title": null,
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": "Term and interest rate",
+       "has_value": true
+      },
+      {
+       "label": "3.9. Nominal annual interest rate",
+       "section": "Term and interest rate in case of online refinance loans",
+       "has_value": true
+      },
+      {
+       "label": "3.10. Annual percentage rate (APR)",
+       "section": "Term and interest rate in case of online refinance loans",
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Renovation of commercial property",
+     "title": null,
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "3.4. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "3.5. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "2.2. Minimum and maximum loan limit",
+       "section": "General requirements to loan facilities",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "1. Express Home Purchase Loan (primary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "2. Express Home Purchase Loan (secondary market)",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "3. Express Home Construction Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      },
+      {
+       "label": "1.2. Term (months)",
+       "section": "4. Express Home Renovation Loan",
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Actual percentage rate"
+    }
+   ]
+  },
+  {
+   "offering_id": "mortgage_express",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/express-loan"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "1. Express Home Purchase Loan (primary market)",
+     "title": "Express Home Purchase Loan (primary market)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "1.2. Term (months)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.5. Minimum down payment",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "2. Express Home Purchase Loan (secondary market)",
+     "title": "Express Home Purchase Loan (secondary market)",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.5. Minimum down payment",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "3. Express Home Construction Loan",
+     "title": "Express Home Construction Loan",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    },
+    {
+     "find": "4. Express Home Renovation Loan",
+     "title": "Express Home Renovation Loan",
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "1.2. Term (months)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.3. Nominal annual interest rate",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "1.4. Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "Attention! The offer of the agreement"
+      },
+      {
+       "marker": "2",
+       "starts": "Attention! The adjustable nominal interest rate"
+      },
+      {
+       "marker": "3",
+       "starts": "The list of developers is determined by the Bank"
+      }
+     ]
+    }
+   ],
+   "blocks": []
+  },
+  {
+   "offering_id": "mortgage_no_income_verification",
+   "urls": [
+    "https://ameriabank.am/en/personal/loans/mortgage/no-income-verification"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [
+    {
+     "find": "Promoting sales of mortgage loans",
+     "title": null,
+     "header_row": null,
+     "min_rows": 0,
+     "rows": [
+      {
+       "label": "Campaign term",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Annual percentage rate (APR)",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Collateral-related costs",
+       "section": null,
+       "has_value": true
+      },
+      {
+       "label": "Incentive and its payment",
+       "section": null,
+       "has_value": true
+      }
+     ],
+     "notes": []
+    }
+   ],
+   "blocks": []
+  },
+  {
+   "offering_id": "mortgage_diaspora",
+   "urls": [
+    "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora"
+   ],
+   "recorded_on": "2026-09-26",
+   "tables": [],
+   "blocks": [
+    {
+     "text": "Flexible financing for the Diaspora"
+    },
+    {
+     "text": "How to apply for the loan?"
+    },
+    {
+     "text": "Frequently asked questions"
+    },
+    {
+     "text": "Do I need to be an Armenian citizen to apply?"
+    }
+   ]
+  }
+ ]
+}

@@ -44,9 +44,8 @@ def test_writes_manual_inspection_bundle_under_one_output_directory(tmp_path) ->
         tables=(),
         links=(),
         downloadable_documents=(),
-        network_payloads=(),
         retrieved_at=datetime(2026, 9, 18, tzinfo=UTC),
-        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0, payloads=0),
+        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0),
         content_hash="a" * 64,
         page_content_hash="b" * 64,
     )

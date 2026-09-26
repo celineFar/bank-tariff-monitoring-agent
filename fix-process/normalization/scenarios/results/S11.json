@@ -1,0 +1,65 @@
+{
+ "scenario": "S11",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 18.8
+ },
+ "pages_with_the_notice": 10,
+ "pages": {
+  "consumer_standard": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "credit_line": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_commercial": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_construction": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_express": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_no_income_verification": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_online": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_renovation": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "mortgage_secondary_market": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  },
+  "overdraft": {
+   "notice_removed": true,
+   "same_page_id_without_notice": true,
+   "content_edit_renames": true
+  }
+ }
+}

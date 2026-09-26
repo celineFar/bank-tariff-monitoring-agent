@@ -7,9 +7,6 @@ from app.config import AcquisitionSettings
 from app.domain.acquisition import (
     AcquisitionMode,
     AcquisitionWarningCode,
-    NetworkPayload,
-    SourceLocator,
-    SourceType,
 )
 from app.domain.monitoring import SourceFailureCode
 from app.services.acquisition import (
@@ -131,31 +128,14 @@ def _service(tmp_path, html: str, *, settings=None, browser=None, pdf=None):
     )
 
 
-def _rendered(html: str, *, payloads=(), **extra) -> RenderedPage:
+def _rendered(html: str, **extra) -> RenderedPage:
     return RenderedPage(
         final_url="https://ameriabank.am/loan",
         html=html,
         title=None,
         visible_text="",
         interactions=extra.pop("interactions", 0),
-        network_payloads=tuple(payloads),
         **extra,
-    )
-
-
-def _payload(url: str, body: str) -> NetworkPayload:
-    return NetworkPayload(
-        url=url,
-        method="GET",
-        status_code=200,
-        mime_type="application/json",
-        body_text=body,
-        size_bytes=len(body.encode()),
-        sha256=hashlib.sha256(body.encode()).hexdigest(),
-        retrieved_at=NOW,
-        locator=SourceLocator(
-            source_url=url, source_type=SourceType.API, json_path="$"
-        ),
     )
 
 
@@ -192,16 +172,14 @@ async def test_static_acquisition_preserves_content_and_downloads_pdf(tmp_path) 
 
 
 @pytest.mark.asyncio
-async def test_rendered_page_supplies_the_dom_and_network_payload(tmp_path) -> None:
-    payload = _payload("https://ameriabank.am/api/terms", '{"rate": 13}')
+async def test_rendered_page_supplies_the_dom(tmp_path) -> None:
     rendered_html = """
     <html><body><h1>Consumer loan</h1>
     <p>Expanded terms: annual rate 13% and term up to 60 months.</p>
+    <a href="/terms.pdf">Terms</a>
     </body></html>
     """
-    browser = FakeBrowserRenderer(
-        _rendered(rendered_html, payloads=(payload,), interactions=1)
-    )
+    browser = FakeBrowserRenderer(_rendered(rendered_html, interactions=1))
 
     artifact = await _service(
         tmp_path,
@@ -213,8 +191,7 @@ async def test_rendered_page_supplies_the_dom_and_network_payload(tmp_path) -> N
     assert artifact.acquisition_mode is AcquisitionMode.BROWSER
     assert artifact.rendered_html == rendered_html
     assert "Expanded terms" in artifact.markdown
-    assert artifact.network_payloads[0].artifact is not None
-    assert artifact.inventory.payloads == 1
+    assert artifact.inventory.pdf_links == 1
     assert artifact.interactions == 1
     assert browser.calls == ["https://ameriabank.am/loan"]
 
@@ -247,7 +224,9 @@ async def test_an_empty_render_fails_instead_of_falling_back_to_static(
         )
 
     assert caught.value.reason is AcquisitionFailure.INCOMPLETE_CONTENT
-    assert "no tables, PDF links or payloads" in caught.value.reasons
+    assert any(
+        reason.startswith("no tables or PDF links") for reason in caught.value.reasons
+    )
     assert (
         source_failure_code(caught.value, stage="acquisition")
         is SourceFailureCode.INCOMPLETE_CONTENT
@@ -333,7 +312,20 @@ async def test_text_without_any_tariff_structure_is_incomplete(tmp_path) -> None
     with pytest.raises(AcquisitionError) as caught:
         await _service(tmp_path, html).acquire("https://ameriabank.am/loan")
 
-    assert caught.value.reasons == ("no tables, PDF links or payloads",)
+    assert caught.value.reasons == (
+        "no tables or PDF links, and main_chars 599 < 3000",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_long_text_page_without_tables_or_pdfs_passes(tmp_path) -> None:
+    # A campaign landing page (mortgage_diaspora) publishes its terms as text.
+    html = "<html><body><main><p>" + "Long prose. " * 300 + "</p></main></body></html>"
+
+    artifact = await _service(tmp_path, html).acquire("https://ameriabank.am/loan")
+
+    assert artifact.inventory.tables == artifact.inventory.pdf_links == 0
+    assert artifact.inventory.main_chars >= 3000
 
 
 @pytest.mark.asyncio
@@ -389,35 +381,6 @@ async def test_a_dead_linked_document_is_a_missing_warning_not_a_failure(
     (warning,) = artifact.warnings
     assert warning.code is AcquisitionWarningCode.LINKED_DOCUMENT_MISSING
     assert warning.detail.endswith("source.not_found")
-
-
-@pytest.mark.asyncio
-async def test_the_payload_cap_keeps_the_same_payloads_whatever_the_arrival_order(
-    tmp_path,
-) -> None:
-    payloads = [
-        _payload(f"https://ameriabank.am/api/{index:02d}", f'{{"n": {index}}}')
-        for index in range(30)
-    ]
-    settings = AcquisitionSettings(
-        browser_enabled=True, min_main_content_chars=5, max_network_payloads=25
-    )
-    page = "<html><body><main><p>Loan terms.</p></main></body></html>"
-
-    kept = []
-    for order in (payloads, list(reversed(payloads))):
-        artifact = await _service(
-            tmp_path,
-            page,
-            settings=settings,
-            browser=FakeBrowserRenderer(_rendered(page, payloads=order)),
-        ).acquire("https://ameriabank.am/loan")
-        kept.append([payload.sha256 for payload in artifact.network_payloads])
-        (warning,) = artifact.warnings
-        assert warning.code is AcquisitionWarningCode.PAYLOAD_CAP_REACHED
-
-    assert kept[0] == kept[1]
-    assert len(kept[0]) == 25
 
 
 @pytest.mark.asyncio

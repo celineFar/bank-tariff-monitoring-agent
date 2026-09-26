@@ -1,40 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-import hashlib
-from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 from urllib.parse import urldefrag
 
 from app.config import AcquisitionSettings, HttpSettings
-from app.domain.acquisition import NetworkPayload, SourceLocator, SourceType
 from app.security.urls import DisallowedSourceUrl, validate_source_url
-
-
-def order_network_payloads(
-    captured: Sequence[NetworkPayload], *, limit: int | None
-) -> tuple[NetworkPayload, ...]:
-    """Order captures by content rather than by whichever body downloaded first.
-
-    Playwright delivers each response on its own task, so the append order of
-    `captured` is a race between concurrent body downloads. Every identity
-    downstream is positional -- the acquisition content hash folds the payload
-    digests in order, `api:` document ids carry the list index, and evidence ids
-    hash the document id -- so an arrival-ordered list makes two acquisitions of
-    byte-identical content disagree and miss every content-addressed cache.
-    Sorting by (url, digest) makes the same set of responses produce the same
-    list on every run. Duplicate captures of one endpoint collapse, because a
-    repeated body is one document, not several. A `limit` applies after the
-    sort, so the payloads it keeps are the same on every run.
-    """
-    unique: dict[tuple[str, str], NetworkPayload] = {}
-    for payload in captured:
-        unique.setdefault((str(payload.url), payload.sha256), payload)
-    ordered = sorted(unique.values(), key=lambda item: (str(item.url), item.sha256))
-    return tuple(ordered[:limit])
 
 
 class BrowserRenderingFailure(StrEnum):
@@ -61,10 +33,7 @@ class RenderedPage:
     title: str | None
     visible_text: str
     interactions: int
-    network_payloads: tuple[NetworkPayload, ...]
     interaction_cap_reached: bool = False
-    # Responses skipped because the capture byte budget was already spent.
-    payloads_over_budget: int = 0
 
 
 class BrowserRenderer(Protocol):
@@ -332,69 +301,6 @@ class PlaywrightBrowserRenderer:
         from playwright.async_api import Error as PlaywrightError
         from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-        captured: list[NetworkPayload] = []
-        captured_bytes = 0
-        capture_tasks: set[asyncio.Task[None]] = set()
-        # The byte budget bounds memory; the payload count is capped only after
-        # the captures are deduplicated and sorted, so which payloads survive
-        # never depends on the order their bodies finished downloading.
-        byte_budget = (
-            self._settings.max_network_payloads
-            * self._settings.max_network_payload_bytes
-        )
-
-        async def capture_response(response: Any) -> None:
-            nonlocal captured_bytes
-            request = response.request
-            if request.resource_type not in {"xhr", "fetch"} or request.method != "GET":
-                return
-            if response.status < 200 or response.status >= 300:
-                return
-            try:
-                payload_url = validate_source_url(
-                    response.url, self._http.allowed_source_hosts
-                )
-            except DisallowedSourceUrl:
-                return
-            mime_type = (
-                response.headers.get("content-type", "").split(";", 1)[0].lower()
-            )
-            if not (
-                mime_type == "application/json"
-                or mime_type.endswith("+json")
-                or mime_type.startswith("text/")
-            ):
-                return
-            try:
-                body = await response.body()
-            except PlaywrightError:
-                return
-            if len(body) > self._settings.max_network_payload_bytes:
-                return
-            if captured_bytes + len(body) > byte_budget:
-                progress.payloads_over_budget += 1
-                return
-            captured_bytes += len(body)
-            body_text = body.decode("utf-8", errors="replace")
-            checksum = hashlib.sha256(body).hexdigest()
-            captured.append(
-                NetworkPayload(
-                    url=payload_url,
-                    method=request.method,
-                    status_code=response.status,
-                    mime_type=mime_type,
-                    body_text=body_text,
-                    size_bytes=len(body),
-                    sha256=checksum,
-                    retrieved_at=datetime.now(UTC),
-                    locator=SourceLocator(
-                        source_url=payload_url,
-                        source_type=SourceType.API,
-                        json_path="$" if "json" in mime_type else None,
-                    ),
-                )
-            )
-
         context = await browser.new_context(
             user_agent=self._http.user_agent,
             accept_downloads=False,
@@ -411,12 +317,6 @@ class PlaywrightBrowserRenderer:
 
         await page.route("**/*", route_request)
 
-        def schedule_capture(response: Any) -> None:
-            task = asyncio.create_task(capture_response(response))
-            capture_tasks.add(task)
-            task.add_done_callback(capture_tasks.discard)
-
-        page.on("response", schedule_capture)
         progress.phase = BrowserRenderingFailure.NAVIGATION
         try:
             response = await page.goto(url, wait_until="domcontentloaded")
@@ -453,8 +353,6 @@ class PlaywrightBrowserRenderer:
                 BrowserRenderingFailure.NAVIGATION,
                 "The page changed its address while it was being expanded",
             )
-        if capture_tasks:
-            await asyncio.gather(*tuple(capture_tasks), return_exceptions=True)
         html = await page.content()
         if len(html.encode("utf-8")) > self._http.max_download_bytes:
             raise BrowserRenderingError(
@@ -463,7 +361,6 @@ class PlaywrightBrowserRenderer:
             )
         visible_text = await page.locator("body").inner_text()
         title = (await page.title()).strip() or None
-        payloads = order_network_payloads(captured, limit=None)
         return RenderedPage(
             final_url=final_url,
             html=html,
@@ -471,8 +368,6 @@ class PlaywrightBrowserRenderer:
             visible_text=visible_text,
             interactions=interactions,
             interaction_cap_reached=interaction_cap_reached,
-            network_payloads=payloads,
-            payloads_over_budget=progress.payloads_over_budget,
         )
 
     async def expand_and_mark(self, page: Any) -> tuple[int, bool]:
@@ -593,4 +488,3 @@ class _RouteDecision(StrEnum):
 @dataclass(slots=True)
 class _RenderProgress:
     phase: BrowserRenderingFailure = BrowserRenderingFailure.UNAVAILABLE
-    payloads_over_budget: int = 0

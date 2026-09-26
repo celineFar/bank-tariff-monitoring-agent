@@ -1,0 +1,158 @@
+{
+ "total": 348,
+ "failed": 77,
+ "seeds": {
+  "consumer_standard": {
+   "checks": 32,
+   "failed": 1,
+   "failures": [
+    "table[Consumer loan not secured by property] title repeated as note 'Consumer loan not secured by property ¹'"
+   ]
+  },
+  "credit_line": {
+   "checks": 32,
+   "failed": 1,
+   "failures": [
+    "table[Type of credit card] headers ('Section', 'Item', 'Terms 1', 'Terms 2', 'Terms 3', 'Terms 4', 'Terms 5') != ['Type of credit card', 'VISA Classic/Master Card Standard', 'Master Card Gold/VISA Gold', 'VISA Infinite, Mastercard World Elite']"
+   ]
+  },
+  "overdraft": {
+   "checks": 29,
+   "failed": 0,
+   "failures": []
+  },
+  "online_consumer_finance": {
+   "checks": 21,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_online": {
+   "checks": 31,
+   "failed": 2,
+   "failures": [
+    "no block with 'Pledged property is subject to mandatory valuation'",
+    "no block with 'Submit your online application'"
+   ]
+  },
+  "mortgage_primary": {
+   "checks": 38,
+   "failed": 18,
+   "failures": [
+    "table[Home Purchase Loan (primary market)] title 'Tariffs' lacks 'Home Purchase Loan (primary market)'",
+    "table[Home Purchase Loan (primary market)] row ['3.4. Nominal annual interest rate', '13.5%'] section [''] lacks 'Term and interest rate'",
+    "table[Home Purchase Loan (primary market)] row ['3.5. Annual percentage rate (APR)', '14.39-15.76%'] section [''] lacks 'Term and interest rate'",
+    "table[Home Purchase Loan (primary market)] row ['3.7. Nominal annual interest rate', 'Fixed component 5.5%'] section [''] lacks 'Term and interest rate'",
+    "table[Home Purchase Loan (primary market)] row ['3.9. Nominal annual interest rate', 'Fixed component 5.25%'] section [''] lacks 'Term and interest rate in case of online refinancing'",
+    "table[Home Purchase Loan (primary market)] row ['3.10. Annual percentage rate (APR)', '14.35-15.74%'] section [''] lacks 'Term and interest rate in case of online refinancing'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['2.2. Minimum and maximum loan limit', 'AMD 3,000,000-100,000,000'] section [''] lacks 'General requirements to loan facilities'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.25% + variable component'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.08-15.57%'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.66-17.11%'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.2. Term (months)', '1.2.1. 61-240'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] title repeated as note 'Express Home Mortgage Loan (Purchase, Co'",
+    "no block with 'Insurance Companies Cooperating with Ameriabank and Related Fees'"
+   ]
+  },
+  "mortgage_secondary_market": {
+   "checks": 34,
+   "failed": 16,
+   "failures": [
+    "table[Home Purchase Loan (secondary market)] title 'Tarifs' lacks 'Home Purchase Loan (secondary market)'",
+    "table[Home Purchase Loan (secondary market)] row ['3.4. Nominal annual interest rate', '14.0%'] section [''] lacks 'Term and interest rate'",
+    "table[Home Purchase Loan (secondary market)] row ['3.5. Annual percentage rate (APR)', '14.97-17.21%'] section [''] lacks 'Term and interest rate'",
+    "table[Home Purchase Loan (secondary market)] row ['3.9. Nominal annual interest rate', 'Fixed component 5.75%'] section [''] lacks 'Term and interest rate in case of online refinance loans'",
+    "table[Home Purchase Loan (secondary market)] row ['3.10. Annual percentage rate (APR)', '14.92-17.17%'] section [''] lacks 'Term and interest rate in case of online refinance loans'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['2.2. Minimum and maximum loan limit', 'AMD 3,000,000-100,000,000'] section [''] lacks 'General requirements to loan facilities'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.25% + variable component'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.08-15.57%'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.66-17.11%'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.2. Term (months)', '1.2.1. 61-240'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] title repeated as note 'Express Home Mortgage Loan (Purchase, Co'"
+   ]
+  },
+  "mortgage_commercial": {
+   "checks": 25,
+   "failed": 2,
+   "failures": [
+    "table[Loan for Purchase of Commercial Real Est] title repeated as note 'Loan for Purchase of Commercial Real Est'",
+    "no block with 'The client will pay for the following services:'"
+   ]
+  },
+  "mortgage_construction": {
+   "checks": 35,
+   "failed": 15,
+   "failures": [
+    "table[Construction of residential property, or] row ['3.4. Nominal annual interest rate', '14.0%'] section [''] lacks 'Term and interest rate'",
+    "table[Construction of residential property, or] row ['3.5. Annual percentage rate (APR)', '14.95-16.21%'] section [''] lacks 'Term and interest rate'",
+    "table[Construction of residential property, or] row ['3.9. Nominal annual interest rate', 'Fixed component 5.75%'] section [''] lacks 'Term and interest rate in case of online refinance loans'",
+    "table[Construction of residential property, or] row ['3.10. Annual percentage rate (APR)', '14.93-16.19%'] section [''] lacks 'Term and interest rate in case of online refinance loans'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['2.2. Minimum and maximum loan limit', 'AMD 3,000,000-100,000,000'] section [''] lacks 'General requirements to loan facilities'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.25% + variable component'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.08-15.57%'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.66-17.11%'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.2. Term (months)', '1.2.1. 61-240'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] title repeated as note 'Express Home Mortgage Loan (Purchase, Co'"
+   ]
+  },
+  "mortgage_renovation": {
+   "checks": 28,
+   "failed": 16,
+   "failures": [
+    "table[Renovation of residential property, or] row ['3.4. Nominal annual interest rate', '14.0%'] section [''] lacks 'Term and interest rate'",
+    "table[Renovation of residential property, or] row ['3.5. Annual percentage rate (APR)', '14.95-16.21%'] section [''] lacks 'Term and interest rate'",
+    "table[Renovation of residential property, or] row ['3.9. Nominal annual interest rate', 'Fixed component 5.75%'] section [''] lacks 'Term and interest rate in case of online refinance loans'",
+    "table[Renovation of residential property, or] row ['3.10. Annual percentage rate (APR)', '14.93-16.19%'] section [''] lacks 'Term and interest rate in case of online refinance loans'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['2.2. Minimum and maximum loan limit', 'AMD 3,000,000-100,000,000'] section [''] lacks 'General requirements to loan facilities'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.25% + variable component'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.08-15.57%'] section [''] lacks '1. Express Home Purchase Loan (primary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.66-17.11%'] section [''] lacks '2. Express Home Purchase Loan (secondary market)'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '3. Express Home Construction Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.3. Nominal annual interest rate', 'Fixed component 5.75% + variable component'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.4. Annual percentage rate (APR)', '14.65-15.9%'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] row ['1.2. Term (months)', '1.2.1. 61-240'] section [''] lacks '4. Express Home Renovation Loan'",
+    "table[Express Home Mortgage Loan (Purchase, Co] title repeated as note 'Express Home Mortgage Loan (Purchase, Co'",
+    "no block with 'Actual percentage rate'"
+   ]
+  },
+  "mortgage_express": {
+   "checks": 30,
+   "failed": 5,
+   "failures": [
+    "table not found: '1. Express Home Purchase Loan (primary market)'",
+    "table not found: '2. Express Home Purchase Loan (secondary market)'",
+    "table not found: '3. Express Home Construction Loan'",
+    "table not found: '4. Express Home Renovation Loan'",
+    "no block with '06.08.2026'"
+   ]
+  },
+  "mortgage_no_income_verification": {
+   "checks": 10,
+   "failed": 1,
+   "failures": [
+    "no block with '01.07.2026'"
+   ]
+  },
+  "mortgage_diaspora": {
+   "checks": 3,
+   "failed": 0,
+   "failures": []
+  }
+ }
+}

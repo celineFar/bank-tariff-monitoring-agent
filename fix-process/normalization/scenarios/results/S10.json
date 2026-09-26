@@ -1,0 +1,668 @@
+{
+ "scenario": "S10",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 27.8
+ },
+ "distinct_pdfs": 91,
+ "skipped_by_admission": 62,
+ "admitted": 29,
+ "admitted_with_stored_transcription": 9,
+ "reusable_from_cache": 1,
+ "would_be_transcribed": 28,
+ "pages_to_transcribe": 125,
+ "stored_but_fingerprint_changed": [
+  "Loan_tariffs_eng.pdf",
+  "insured-properties.pdf",
+  "Floating_Agreement_eng.pdf",
+  "mortgage_personal_express_eng.pdf",
+  "terms_mortgage_lending_campaign_eng.pdf",
+  "mortgage_personal_purchase_eng.pdf",
+  "Overdraft_unsecured_eng.pdf",
+  "unsecured_overdraft_eng.pdf"
+ ],
+ "pdfs": [
+  {
+   "file": "Consumer_loan_unsecured_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Consumer_unsecured_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "web-info-eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "Loan_tariffs_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "Consumer_loan_unsecured_24.10.2024_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 8
+  },
+  {
+   "file": "Consumer_loan_unsecured_01.10.2024_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 8
+  },
+  {
+   "file": "Consumer_loan_unsecured_09.09.2024_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 8
+  },
+  {
+   "file": "Consumer_loan_unsecured_03.06.24_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 8
+  },
+  {
+   "file": "Consumer_unsecured_ed64_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "Consumer_unsecured_ed63_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "Consumer_unsecured_ed62_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "Consumer_unsecured_ed60_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "Credit_line_unsecured_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "unsecured_credit_line_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "Credit_line_unsecured_23.02.26_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Credit_line_unsecured_14.07.2025_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Credit_line_unsecured_20.01.2025_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 10
+  },
+  {
+   "file": "Credit_line_unsecured_24.10.24_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "unsecured_credit_line_ed68_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "unsecured_credit_line_ed67_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "unsecured_credit_line_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "insured-properties.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 1
+  },
+  {
+   "file": "mortgage_commercial_purchase_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "Floating_Agreement_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_purchase_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_purchase_ed62_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_purchase_ed61_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_purchase_ed60_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortage_personal_construction_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortgage_commercial_construction_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_personal_express_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "terms_mortgage_lending_campaign_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortage_personal_construction_ed71_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortage_personal_construction_ed69_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortage_personal_construction_ed67_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortage_personal_construction_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortage_personal_construction_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_construction_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_construction_ed62_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_construction_ed61_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "Loan_tariffs_14.07.26_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "no-verification-mortgage-eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortgage_personal_online_purchase_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_secondary_purchase_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_purchase_ed71_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_purchase_ed69_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_purchase_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortgage_personal_online_purchase_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_secondary_purchase_ed71_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_secondary_purchase_ed69_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_online_secondary_purchase_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortgage_personal_online_secondary_purchase_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortgage_personal_online_secondary_purchase_ed64_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortgage_personal_purchase_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 6
+  },
+  {
+   "file": "terms_flexible_mortgage_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": true,
+   "pages": 1
+  },
+  {
+   "file": "mortgage_personal_purchase_ed71_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_personal_purchase_ed69_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_personal_purchase_ed67_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_personal_purchase_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_personal_purchase_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_personal_purchase_ed64_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortage_personal_renovation_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 6
+  },
+  {
+   "file": "mortgage_commercial_renovation_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "renovation_loan_special_offer_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  },
+  {
+   "file": "mortage_personal_renovation_ed71_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortage_personal_renovation_ed69_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortage_personal_renovation_ed67_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortage_personal_renovation_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortage_personal_renovation_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 3
+  },
+  {
+   "file": "mortgage_commercial_renovation_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortgage_commercial_renovation_ed61_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortage_personal_purchase_Secondary_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 6
+  },
+  {
+   "file": "mortage_personal_purchase_Secondary_ed71_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 6
+  },
+  {
+   "file": "mortage_personal_purchase_Secondary_ed69_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortage_personal_purchase_Secondary_ed67_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "mortage_personal_purchase_Secondary_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "mortage_personal_purchase_Secondary_ed65_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 5
+  },
+  {
+   "file": "Payment_terminals_arm.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 6
+  },
+  {
+   "file": "Leaflet_consumer_finance_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 8
+  },
+  {
+   "file": "web-info.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 4
+  },
+  {
+   "file": "basic_conditions_of_installment_financing-service_eng.pdf",
+   "skipped": false,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Leaflet_consumer_finance_ed2_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 8
+  },
+  {
+   "file": "Overdraft_unsecured_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "unsecured_overdraft_eng.pdf",
+   "skipped": false,
+   "stored_transcription": true,
+   "stored_fingerprint_still_matches": false,
+   "pages": 1
+  },
+  {
+   "file": "Overdraft_unsecured_23.02.26_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Overdraft_unsecured_14.07.2025_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Overdraft_unsecured_20.01.2025_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "Overdraft_unsecured_24.10.2024_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 9
+  },
+  {
+   "file": "unsecured_overdraft_ed68_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 1
+  },
+  {
+   "file": "unsecured_overdraft_ed67_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 1
+  },
+  {
+   "file": "unsecured_overdraft_ed66_eng.pdf",
+   "skipped": true,
+   "stored_transcription": false,
+   "stored_fingerprint_still_matches": false,
+   "pages": 2
+  }
+ ]
+}

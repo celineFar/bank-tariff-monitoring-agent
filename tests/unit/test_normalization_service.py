@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +15,11 @@ from app.domain.acquisition import (
     TableArtifact,
     TableCellArtifact,
 )
-from app.services.normalization import StructuralNormalizationService
+from app.services.artifact_store import FileSystemArtifactStore
+from app.services.normalization import (
+    NoPdfExtractor,
+    StructuralNormalizationService,
+)
 
 
 @pytest.mark.asyncio
@@ -79,14 +84,16 @@ async def test_service_preserves_table_and_link_relationships() -> None:
         tables=(table,),
         links=(link,),
         downloadable_documents=(),
-        network_payloads=(),
         retrieved_at=datetime.now(UTC),
-        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0, payloads=0),
+        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0),
         content_hash="a" * 64,
         page_content_hash="b" * 64,
     )
 
-    bundle = await StructuralNormalizationService().normalize(artifact)
+    bundle = await StructuralNormalizationService(
+        artifact_reader=FileSystemArtifactStore(Path(".")),
+        pdf_extractor=NoPdfExtractor(),
+    ).normalize(artifact)
 
     document = bundle.documents[0]
     assert document.blocks[0].table_id == "t1"

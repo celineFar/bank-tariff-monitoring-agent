@@ -1,0 +1,71 @@
+{
+ "total": 352,
+ "failed": 0,
+ "seeds": {
+  "consumer_standard": {
+   "checks": 32,
+   "failed": 0,
+   "failures": []
+  },
+  "credit_line": {
+   "checks": 32,
+   "failed": 0,
+   "failures": []
+  },
+  "overdraft": {
+   "checks": 29,
+   "failed": 0,
+   "failures": []
+  },
+  "online_consumer_finance": {
+   "checks": 21,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_online": {
+   "checks": 31,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_primary": {
+   "checks": 38,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_secondary_market": {
+   "checks": 34,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_commercial": {
+   "checks": 25,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_construction": {
+   "checks": 35,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_renovation": {
+   "checks": 28,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_express": {
+   "checks": 30,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_no_income_verification": {
+   "checks": 10,
+   "failed": 0,
+   "failures": []
+  },
+  "mortgage_diaspora": {
+   "checks": 7,
+   "failed": 0,
+   "failures": []
+  }
+ }
+}

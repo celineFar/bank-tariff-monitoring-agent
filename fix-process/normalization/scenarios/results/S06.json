@@ -1,0 +1,124 @@
+{
+ "scenario": "S06",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 8.3
+ },
+ "stored_transcriptions": 10,
+ "replay_hits": 34,
+ "documents": {
+  "7b405d165676": {
+   "seed": "consumer_standard",
+   "name": "Loan service fees",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 6,
+   "tables": 1,
+   "cells": 24,
+   "cells_citing_themselves": 24,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "c9465a0d1c77": {
+   "seed": "mortgage_commercial",
+   "name": "6.1.1.2. where the address of the pledged real estate is included in the list of",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 0,
+   "tables": 1,
+   "cells": 10,
+   "cells_citing_themselves": 10,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "eca03d247e60": {
+   "seed": "mortgage_commercial",
+   "name": "On the Procedure for Setting, Calculation and Revision of the Floating (Adjustab",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 50,
+   "tables": 1,
+   "cells": 14,
+   "cells_citing_themselves": 14,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "175e5d151b3d": {
+   "seed": "mortgage_construction",
+   "name": "Terms of express Home Mortgage Loan (Purchase, Construction and Renovation)",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 4,
+   "tables": 7,
+   "cells": 144,
+   "cells_citing_themselves": 144,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "af53ff31bab9": {
+   "seed": "mortgage_construction",
+   "name": "Terms of residential and commercial real estate mortgage lending (including refi",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 3,
+   "tables": 2,
+   "cells": 21,
+   "cells_citing_themselves": 21,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "db6b470de92a": {
+   "seed": "mortgage_primary",
+   "name": "Terms of the loan for purchase of residential real estate from primary market",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 0,
+   "tables": 6,
+   "cells": 122,
+   "cells_citing_themselves": 122,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "0367c52044e0": {
+   "seed": "mortgage_primary",
+   "name": "Mortgage lending terms and conditions for purchase of residential real estate at",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 7,
+   "tables": 4,
+   "cells": 14,
+   "cells_citing_themselves": 14,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "3472fe8d3966": {
+   "seed": "overdraft",
+   "name": "Informational summary of unsecured overdraft",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 62,
+   "tables": 6,
+   "cells": 62,
+   "cells_citing_themselves": 62,
+   "headers_clean": true,
+   "warnings": []
+  },
+  "64566c7add62": {
+   "seed": "overdraft",
+   "name": "Lending terms for individuals / Card overdrafts",
+   "method": "gemini_pdf:gemini-3.1-flash-lite",
+   "quality_score": 1.0,
+   "blocks": 8,
+   "tables": 1,
+   "cells": 39,
+   "cells_citing_themselves": 39,
+   "headers_clean": true,
+   "warnings": []
+  }
+ }
+}

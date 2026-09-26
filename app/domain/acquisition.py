@@ -63,6 +63,10 @@ class ContentBlock(AcquisitionModel):
     link_ids: tuple[str, ...] = ()
     locator: SourceLocator
     visible: bool
+    # The table this block stands for, when `type` is TABLE.
+    table_id: str | None = None
+    # A `dt` and its `dd` values, when `type` is KEY_VALUE and they were paired.
+    key_value: tuple[str, str] | None = None
 
 
 class TableCellArtifact(AcquisitionModel):
@@ -72,7 +76,12 @@ class TableCellArtifact(AcquisitionModel):
     rowspan: int = Field(default=1, ge=1)
     colspan: int = Field(default=1, ge=1)
     tag: str = Field(pattern=r"^(td|th)$")
+    # A column header: a `th` (not a row header) or any cell in `thead`.
     is_header: bool = False
+    # A `th` that labels its own row (`scope="row"`, or beside `td` cells).
+    row_header: bool = False
+    # All of the cell's text is bold (`strong`/`b`).
+    bold: bool = False
     text: str
     markdown: str
     link_ids: tuple[str, ...] = ()
@@ -82,6 +91,10 @@ class TableCellArtifact(AcquisitionModel):
 class TableArtifact(AcquisitionModel):
     id: str = Field(min_length=1, max_length=100)
     caption: str | None = None
+    # The tab or accordion title the browser recorded for the table.
+    context_title: str | None = None
+    # The parser's display title (context title plus first full-width row),
+    # used for its own Markdown. Normalization derives the title from the cells.
     title: str | None = None
     column_count: int = Field(default=0, ge=0)
     headers: tuple[str, ...] = ()
@@ -109,6 +122,9 @@ class LinkArtifact(AcquisitionModel):
     same_allowlisted_source: bool
     downloadable: bool
     locator: SourceLocator
+    # The text of the link's own table row, list item, paragraph or
+    # definition: what describes this link and no other.
+    context_text: str = Field(default="", max_length=2000)
 
 
 class ImageArtifact(AcquisitionModel):
@@ -176,27 +192,6 @@ class DocumentArtifact(AcquisitionModel):
         return normalized
 
 
-class NetworkPayload(AcquisitionModel):
-    url: HttpUrl
-    method: str = Field(min_length=1, max_length=20)
-    status_code: int = Field(ge=100, le=599)
-    mime_type: str = Field(min_length=1, max_length=255)
-    body_text: str
-    size_bytes: int = Field(ge=0)
-    sha256: str
-    retrieved_at: datetime
-    locator: SourceLocator
-    artifact: StoredArtifact | None = None
-
-    @field_validator("sha256")
-    @classmethod
-    def validate_sha256(cls, value: str) -> str:
-        normalized = value.lower()
-        if not _SHA256.fullmatch(normalized):
-            raise ValueError("sha256 must be a lowercase SHA-256 hex digest")
-        return normalized
-
-
 class AcquisitionInventory(AcquisitionModel):
     """What an acquisition found, counted for the completeness gate.
 
@@ -208,7 +203,6 @@ class AcquisitionInventory(AcquisitionModel):
     main_chars: int = Field(ge=0)
     tables: int = Field(ge=0)
     pdf_links: int = Field(ge=0)
-    payloads: int = Field(ge=0)
 
 
 class AcquisitionWarningCode(StrEnum):
@@ -244,7 +238,6 @@ class PageArtifact(AcquisitionModel):
     images: tuple[ImageArtifact, ...] = ()
     interactive_controls: tuple[InteractiveControlArtifact, ...] = ()
     downloadable_documents: tuple[DocumentArtifact, ...]
-    network_payloads: tuple[NetworkPayload, ...]
     stored_artifacts: tuple[StoredArtifact, ...] = ()
     warnings: tuple[AcquisitionWarning, ...] = ()
     inventory: AcquisitionInventory

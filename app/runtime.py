@@ -55,6 +55,7 @@ from app.services.model_pricing import enforce_model_price_cap, model_sequence
 from app.services.monitoring_node import build_monitoring_node
 from app.services.monitoring_pipeline import IndexingPipeline, TariffPipeline
 from app.services.normalization import StructuralNormalizationService
+from app.services.normalization_baseline import load_normalization_baseline
 from app.services.ocr_transcriber import TesseractOcrTranscriber
 from app.services.pdf_extraction import GeminiPdfExtractionService
 from app.services.pdf_rasterizer import PdfiumPageRasterizer
@@ -145,6 +146,7 @@ def build_application_container(
     artifacts = FileSystemArtifactStore(settings.application.artifact_temp_dir)
     snapshots = PostgresSnapshotRepository(sessions)
     normalization = StructuralNormalizationService(
+        baseline=load_normalization_baseline(),
         artifact_reader=artifacts,
         pdf_extractor=GeminiPdfExtractionService(
             settings.pdf_extraction,

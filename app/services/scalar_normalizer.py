@@ -6,7 +6,9 @@ from decimal import Decimal, InvalidOperation
 
 from app.domain.normalization import NormalizedScalar, ScalarKind
 
-_NUMBER = r"\d+(?:[\s,]\d{3})*(?:[.,]\d+)?"
+# Digit groups may be split by spaces or a comma, never by a line break: a
+# number ends where its line ends.
+_NUMBER = r"\d+(?:[ \u00a0\u202f,]\d{3})*(?:[.,]\d+)?"
 _CURRENCY = r"(?:AMD|USD|EUR|֏|\$|€|դրամ|drams?|US\s+dollars?|dollars?|euros?)"
 _UNIT = rf"(?:%|{_CURRENCY}|months?|years?|days?)"
 _RANGE_RE = re.compile(
@@ -45,9 +47,17 @@ _ISO_DATE_RE = re.compile(
 _DMY_DATE_RE = re.compile(
     r"\b(?P<day>\d{1,2})[./](?P<month>\d{1,2})[./](?P<year>(?:19|20)\d{2})\b"
 )
+_MONTH_NAMES = (
+    r"January|February|March|April|May|June|July|August|September|October|"
+    r"November|December"
+)
 _MONTH_DATE_RE = re.compile(
-    r"\b(?P<month_name>January|February|March|April|May|June|July|August|"
-    r"September|October|November|December)\s+(?P<day>\d{1,2}),?\s+"
+    rf"\b(?P<month_name>{_MONTH_NAMES})\s+(?P<day>\d{{1,2}}),?\s+"
+    r"(?P<year>(?:19|20)\d{2})\b",
+    re.IGNORECASE,
+)
+_DAY_MONTH_DATE_RE = re.compile(
+    rf"\b(?P<day>\d{{1,2}})\s+(?P<month_name>{_MONTH_NAMES}),?\s+"
     r"(?P<year>(?:19|20)\d{2})\b",
     re.IGNORECASE,
 )
@@ -105,25 +115,15 @@ _MONTHS = {
 
 
 def extract_scalar_candidates(text: str) -> tuple[NormalizedScalar, ...]:
-    """Find syntax-level scalar candidates without assigning tariff semantics."""
+    """Find syntax-level scalar candidates without assigning tariff semantics.
+
+    Dates are matched first: "01.03.2024 - 31.12.2024" is two dates, not the
+    range 3.2024..31.12.
+    """
     candidates: list[tuple[int, int, NormalizedScalar]] = []
     occupied: list[tuple[int, int]] = []
 
-    for pattern, builder in (
-        (_PREFIX_RANGE_RE, _range_scalar),
-        (_REPEATED_UNIT_RANGE_RE, _range_scalar),
-        (_RANGE_RE, _range_scalar),
-        (_COMPARISON_RE, _comparison_scalar),
-    ):
-        for match in pattern.finditer(text):
-            if _overlaps(match.span(), occupied):
-                continue
-            scalar = builder(match)
-            if scalar is not None:
-                candidates.append((match.start(), match.end(), scalar))
-                occupied.append(match.span())
-
-    for pattern in (_ISO_DATE_RE, _DMY_DATE_RE, _MONTH_DATE_RE):
+    for pattern in (_ISO_DATE_RE, _DMY_DATE_RE, _MONTH_DATE_RE, _DAY_MONTH_DATE_RE):
         for match in pattern.finditer(text):
             if _overlaps(match.span(), occupied):
                 continue
@@ -145,6 +145,20 @@ def extract_scalar_candidates(text: str) -> tuple[NormalizedScalar, ...]:
             )
             candidates.append((match.start(), match.end(), scalar))
             occupied.append(match.span())
+
+    for pattern, builder in (
+        (_PREFIX_RANGE_RE, _range_scalar),
+        (_REPEATED_UNIT_RANGE_RE, _range_scalar),
+        (_RANGE_RE, _range_scalar),
+        (_COMPARISON_RE, _comparison_scalar),
+    ):
+        for match in pattern.finditer(text):
+            if _overlaps(match.span(), occupied):
+                continue
+            scalar = builder(match)
+            if scalar is not None:
+                candidates.append((match.start(), match.end(), scalar))
+                occupied.append(match.span())
 
     for pattern in (_PREFIX_VALUE_RE, _VALUE_RE):
         for match in pattern.finditer(text):
@@ -174,7 +188,8 @@ def extract_scalar_candidates(text: str) -> tuple[NormalizedScalar, ...]:
 def _range_scalar(match: re.Match[str]) -> NormalizedScalar | None:
     minimum = _decimal(match.group("minimum"))
     maximum = _decimal(match.group("maximum"))
-    if minimum is None or maximum is None:
+    if minimum is None or maximum is None or minimum > maximum:
+        # "10 - 5%" is not a range; the parts may still be read as values.
         return None
     return NormalizedScalar(
         raw=match.group("raw"),
@@ -200,12 +215,13 @@ def _comparison_scalar(match: re.Match[str]) -> NormalizedScalar | None:
 
 
 def _decimal(value: str) -> Decimal | None:
-    compact = value.replace(" ", "")
+    compact = re.sub(r"[ \u00a0\u202f]", "", value)
     if compact.count(",") == 1 and "." not in compact:
-        right = compact.rsplit(",", 1)[1]
-        compact = (
-            compact.replace(",", ".") if len(right) != 3 else compact.replace(",", "")
-        )
+        left, right = compact.split(",")
+        # One comma is a thousands separator only before exactly three digits
+        # and after a non-zero integer part: "1,000" but "0,125" and "12,5".
+        thousands = len(right) == 3 and left.lstrip("0") != ""
+        compact = compact.replace(",", "") if thousands else compact.replace(",", ".")
     else:
         compact = compact.replace(",", "")
     try:

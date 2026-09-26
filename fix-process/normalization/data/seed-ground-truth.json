@@ -1,0 +1,1297 @@
+{
+ "_about": "What HTML normalization should produce for each seed page, recorded 2026-09-26 from the pages captured by survey/capture_seeds.py and read with survey/dom_inventory.py (a plain BeautifulSoup walk, not the parser under test). Checked by survey/check_ground_truth.py. Table facts: 'find' picks the table (a substring of its title, cells or notes); 'title' must appear in the table title; 'header_row' lists the real column headers (null = the table has no header row, so headers may be invented but must be flagged); each 'facts' entry lists substrings that must all appear in ONE normalized row, and 'section' (when given) must appear in that row's section label; 'notes' are footnotes that must be notes with that marker and text start. Block facts: 'text' must appear in some block; 'heading' (when given) must appear in that block's heading path. Whitespace is collapsed before comparing.",
+ "templates": {
+  "service_fees": {
+   "find": "Term extension for mortgage/investment loans",
+   "title": "service fee",
+   "header_row": [
+    "Purpose",
+    "Rates and Fees (AMD)"
+   ],
+   "facts": [
+    {
+     "row": [
+      "Term extension for mortgage/investment loans",
+      "0.1% of the outstanding loan amount, minimum AMD 50,000"
+     ]
+    },
+    {
+     "row": [
+      "Change of the borrower/co-borrower/guarantor",
+      "AMD 50,000"
+     ]
+    },
+    {
+     "row": [
+      "Change of the loan repayment date",
+      "AMD 10,000"
+     ]
+    },
+    {
+     "row": [
+      "Provision of loan before submitting to the Bank the document certifying state registration",
+      "AMD 25,000 (per issue)"
+     ]
+    },
+    {
+     "row": [
+      "Revision/modification of another loan term not specified in this document",
+      "minimum AMD 10,000"
+     ]
+    }
+   ],
+   "min_rows": 12
+  },
+  "required_documents_2col": {
+   "find": "filed together with loan application",
+   "title": "Required documents",
+   "header_row": null,
+   "facts": [
+    {
+     "row": [
+      "Required documents filed together with loan application",
+      "Loan application",
+      "ID (original)"
+     ]
+    },
+    {
+     "row": [
+      "Documents required after initial approval",
+      "Proof of employment and/or other income"
+     ]
+    }
+   ],
+   "min_rows": 2
+  },
+  "express_home": {
+   "find": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+   "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+   "header_row": null,
+   "facts": [
+    {
+     "row": [
+      "2.2. Minimum and maximum loan limit",
+      "AMD 3,000,000-100,000,000"
+     ],
+     "section": "General requirements to loan facilities"
+    },
+    {
+     "row": [
+      "1.3. Nominal annual interest rate",
+      "Fixed component 5.25% + variable component"
+     ],
+     "section": "1. Express Home Purchase Loan (primary market)"
+    },
+    {
+     "row": [
+      "1.4. Annual percentage rate (APR)",
+      "14.08-15.57%"
+     ],
+     "section": "1. Express Home Purchase Loan (primary market)"
+    },
+    {
+     "row": [
+      "1.3. Nominal annual interest rate",
+      "Fixed component 5.75% + variable component"
+     ],
+     "section": "2. Express Home Purchase Loan (secondary market)"
+    },
+    {
+     "row": [
+      "1.4. Annual percentage rate (APR)",
+      "14.66-17.11%"
+     ],
+     "section": "2. Express Home Purchase Loan (secondary market)"
+    },
+    {
+     "row": [
+      "1.3. Nominal annual interest rate",
+      "Fixed component 5.75% + variable component"
+     ],
+     "section": "3. Express Home Construction Loan"
+    },
+    {
+     "row": [
+      "1.4. Annual percentage rate (APR)",
+      "14.65-15.9%"
+     ],
+     "section": "3. Express Home Construction Loan"
+    },
+    {
+     "row": [
+      "1.3. Nominal annual interest rate",
+      "Fixed component 5.75% + variable component"
+     ],
+     "section": "4. Express Home Renovation Loan"
+    },
+    {
+     "row": [
+      "1.4. Annual percentage rate (APR)",
+      "14.65-15.9%"
+     ],
+     "section": "4. Express Home Renovation Loan"
+    },
+    {
+     "row": [
+      "1.2. Term (months)",
+      "1.2.1. 61-240"
+     ],
+     "section": "4. Express Home Renovation Loan"
+    }
+   ]
+  },
+  "mortgage_notes_primary": [
+   {
+    "marker": "1",
+    "starts": "These terms have been previously known"
+   },
+   {
+    "marker": "2",
+    "starts": "Depending on the creditworthiness of the borrower"
+   },
+   {
+    "marker": "3",
+    "starts": "The annual percentage rate (APR) may differ"
+   },
+   {
+    "marker": "4",
+    "starts": "Attention! The adjustable nominal interest rate"
+   }
+  ]
+ },
+ "seeds": {
+  "consumer_standard": {
+   "tables": [
+    {
+     "find": "Consumer loan not secured by property",
+     "title": "Consumer loan not secured by property",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "Annual interest rate",
+        "Fixed 20%"
+       ]
+      },
+      {
+       "row": [
+        "Term (months)",
+        "60 months"
+       ]
+      },
+      {
+       "row": [
+        "Annual percentage rate (APR)",
+        "22.2-23.09%"
+       ]
+      },
+      {
+       "row": [
+        "Loan disbursement fee",
+        "0.5% of loan amount or AMD 20,000"
+       ]
+      },
+      {
+       "row": [
+        "Cashing of the loan amount by the borrower",
+        "Free"
+       ]
+      },
+      {
+       "row": [
+        "Other terms related to the interest rate",
+        "In case of other deviations, the interest rate may be increased by 0.25%"
+       ]
+      },
+      {
+       "row": [
+        "Late payment fines and penalties",
+        "0.13 % of overdue loan"
+       ]
+      },
+      {
+       "row": [
+        "Security",
+        "Guarantee",
+        "at least 50% of the borrower's income"
+       ]
+      },
+      {
+       "row": [
+        "Required documents",
+        "ID (original)"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "*",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "1",
+       "starts": "In case of applications for scoring-based loans"
+      },
+      {
+       "marker": "2",
+       "starts": "The annual percentage rate (APR) may differ"
+      }
+     ]
+    },
+    {
+     "template": "required_documents_2col"
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 100,000 - AMD 20 million"
+    },
+    {
+     "text": "Up to 60 months"
+    },
+    {
+     "text": "No fee for cash withdrawal"
+    },
+    {
+     "text": "There are no other mandatory fees for the loans not secured by collateral and guarantee"
+    }
+   ]
+  },
+  "credit_line": {
+   "tables": [
+    {
+     "find": "Type of credit card",
+     "title": null,
+     "header_row": [
+      "Type of credit card",
+      "VISA Classic/Master Card Standard",
+      "Master Card Gold/VISA Gold",
+      "VISA Infinite, Mastercard World Elite"
+     ],
+     "facts": [
+      {
+       "row": [
+        "Minimum and maximum credit limits",
+        "AMD: 100,000-100,000,000"
+       ]
+      },
+      {
+       "row": [
+        "Increase of credit limit of card",
+        "AMD 5,000"
+       ]
+      },
+      {
+       "row": [
+        "Interest rate",
+        "AMD: 21%",
+        "AMD: 20%",
+        "AMD: 19%"
+       ]
+      },
+      {
+       "row": [
+        "Annual percentage rate (APR)",
+        "AMD: 23.13 %",
+        "AMD: 21.92 %",
+        "AMD: 20.73 %"
+       ]
+      },
+      {
+       "row": [
+        "Grace period",
+        "Up to 51 days"
+       ]
+      },
+      {
+       "row": [
+        "Minimum payment required",
+        "10% of utilized amount"
+       ]
+      },
+      {
+       "row": [
+        "Lump-sum fee for failure to make required minimum monthly payment when due",
+        "AMD 5,000"
+       ]
+      },
+      {
+       "row": [
+        "Late payment fines and penalties",
+        "0.13 % of overdue loan"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "*",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "If the loan application is considered outside the scoring system"
+      },
+      {
+       "marker": "3",
+       "starts": "Other terms can be applied"
+      },
+      {
+       "marker": "4",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "5",
+       "starts": "For credit cards issued after January 2015"
+      },
+      {
+       "marker": "6",
+       "starts": "This service is available"
+      }
+     ]
+    },
+    {
+     "template": "required_documents_2col"
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 100,000 -15 mln"
+    },
+    {
+     "text": "Indefinite term (until requested back)"
+    }
+   ]
+  },
+  "overdraft": {
+   "tables": [
+    {
+     "find": "Card type",
+     "title": null,
+     "header_row": [
+      "Card type",
+      "Arca Classic",
+      "Mastercard Gold/VISA Gold"
+     ],
+     "facts": [
+      {
+       "row": [
+        "Minimum and total maximum credit limits",
+        "AMD: 100,000-100,000,000"
+       ]
+      },
+      {
+       "row": [
+        "Interest rate",
+        "AMD: 21%",
+        "AMD: 20%"
+       ]
+      },
+      {
+       "row": [
+        "Annual percentage rate (APR)",
+        "AMD: 23.13 %",
+        "AMD: 21.92 %"
+       ]
+      },
+      {
+       "row": [
+        "Minimum payment required",
+        "3% of utilized amount"
+       ]
+      },
+      {
+       "row": [
+        "Increase of credit limit of card",
+        "AMD 5,000"
+       ]
+      },
+      {
+       "row": [
+        "Early repayment fee",
+        "N/A"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "*",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "If the loan application is considered outside the scoring system"
+      },
+      {
+       "marker": "3",
+       "starts": "Other terms can be applied"
+      },
+      {
+       "marker": "4",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "5",
+       "starts": "This service is available"
+      }
+     ]
+    },
+    {
+     "template": "required_documents_2col"
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 100,000 -15 mln"
+    },
+    {
+     "text": "Indefinite term (until requested back)"
+    }
+   ]
+  },
+  "online_consumer_finance": {
+   "tables": [
+    {
+     "find": "Customer Personal Information",
+     "title": null,
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "Customer Age",
+        "20 - 66"
+       ]
+      },
+      {
+       "row": [
+        "Financing Limit",
+        "Minimum: 50,000 AMD",
+        "Maximum: 1,500,000 AMD"
+       ]
+      },
+      {
+       "row": [
+        "Term (months)",
+        "6 - 24 months"
+       ]
+      },
+      {
+       "row": [
+        "Prepayment",
+        "Not applicable"
+       ]
+      },
+      {
+       "row": [
+        "Maximum Loan-to-Collateral Ratio",
+        "100%"
+       ]
+      },
+      {
+       "row": [
+        "Documents",
+        "Identity document"
+       ]
+      }
+     ]
+    },
+    {
+     "find": "With the MyAmeria app",
+     "title": null,
+     "header_row": [
+      "Payment Method",
+      "Fee"
+     ],
+     "facts": [
+      {
+       "row": [
+        "Cash payment at the bank",
+        "500 AMD (per transaction)"
+       ]
+      },
+      {
+       "row": [
+        "With the MyAmeria app",
+        "0 AMD"
+       ]
+      }
+     ]
+    },
+    {
+     "find": "Online via the Bank",
+     "title": null,
+     "header_row": [
+      "Payment Method",
+      "Commission Fee"
+     ],
+     "facts": [
+      {
+       "row": [
+        "By cash payment at the Bank",
+        "500 AMD (per transaction)"
+       ]
+      },
+      {
+       "row": [
+        "Online via the Bank",
+        "0 AMD"
+       ]
+      }
+     ]
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 50.000 - 1.500.000"
+    },
+    {
+     "text": "6 - 24 months"
+    }
+   ]
+  },
+  "mortgage_online": {
+   "tables": [
+    {
+     "find": "AMD 3,000,000 - AMD 100,000,000",
+     "title": "Tariffs in the case of the primary market",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.3. Term (months)",
+        "61-360"
+       ]
+      },
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "Fixed component 5% + variable component"
+       ]
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "13.83 - 15.65%"
+       ]
+      },
+      {
+       "row": [
+        "3.7. Minimum down payment",
+        "At least 10% of the purchase price"
+       ]
+      },
+      {
+       "row": [
+        "3.6. Lump sum disbursement fee",
+        "N/A"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "Attention! The offer of the agreement"
+      },
+      {
+       "marker": "3",
+       "starts": "Attention! The adjustable nominal interest rate"
+      },
+      {
+       "marker": "4",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "5",
+       "starts": "The list of developers is determined by the Bank"
+      }
+     ]
+    },
+    {
+     "find": "AMD 3,000,000 - AMD 50,000,000",
+     "title": "Tariffs in the case of the secondary market",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "Fixed component 5.5% + variable component"
+       ]
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.37 - 16.67%"
+       ]
+      },
+      {
+       "row": [
+        "3.7. Minimum down payment",
+        "At least 20% of the purchase price"
+       ]
+      },
+      {
+       "row": [
+        "5.3. Location of the real estate to be pledged",
+        "Yerevan"
+       ]
+      }
+     ]
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Pledged property is subject to mandatory valuation"
+    },
+    {
+     "text": "Submit your online application"
+    },
+    {
+     "text": "12.9%"
+    }
+   ]
+  },
+  "mortgage_primary": {
+   "tables": [
+    {
+     "find": "Home Purchase Loan (primary market)",
+     "title": "Home Purchase Loan (primary market)",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.2. Minimum and maximum loan limits",
+        "AMD 3,000,000 - AMD 150,000,000",
+        "USD 5,000 - USD 300,000"
+       ]
+      },
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "13.5%",
+        "11.0%",
+        "8.5%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.39-15.76%",
+        "11.6-13.56%",
+        "8.86-10.71%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.7. Nominal annual interest rate",
+        "Fixed component 5.5%",
+        "Fixed component 8%",
+        "Fixed component 7%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.9. Nominal annual interest rate",
+        "Fixed component 5.25%"
+       ],
+       "section": "Term and interest rate in case of online refinancing"
+      },
+      {
+       "row": [
+        "3.10. Annual percentage rate (APR)",
+        "14.35-15.74%",
+        "10.47-12.39%",
+        "8.3-10.12%"
+       ],
+       "section": "Term and interest rate in case of online refinancing"
+      },
+      {
+       "row": [
+        "3.12. Lump sum disbursement fee",
+        "1% of the loan amount or AMD 1 million"
+       ]
+      },
+      {
+       "row": [
+        "8. Early repayment fee",
+        "8.1.1. At any time during a contractual year"
+       ]
+      }
+     ],
+     "notes": "mortgage_notes_primary"
+    },
+    {
+     "template": "express_home"
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 3-150 million"
+    },
+    {
+     "text": "Insurance Companies Cooperating with Ameriabank and Related Fees"
+    }
+   ]
+  },
+  "mortgage_secondary_market": {
+   "tables": [
+    {
+     "find": "Home Purchase Loan (secondary market)",
+     "title": "Home Purchase Loan (secondary market)",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "14.0%",
+        "11.5%",
+        "9.0%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.97-17.21%",
+        "12.17-15.39%",
+        "9.42-12.45%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.9. Nominal annual interest rate",
+        "Fixed component 5.75%"
+       ],
+       "section": "Term and interest rate in case of online refinance loans"
+      },
+      {
+       "row": [
+        "3.10. Annual percentage rate (APR)",
+        "14.92-17.17%",
+        "11.03-14.18%",
+        "8.85-11.84%"
+       ],
+       "section": "Term and interest rate in case of online refinance loans"
+      },
+      {
+       "row": [
+        "3.12. Minimum down payment",
+        "At least 5% of the purchase price"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "2",
+       "starts": "Depending on the creditworthiness of the borrower"
+      },
+      {
+       "marker": "3",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "4",
+       "starts": "Attention! The adjustable nominal interest rate"
+      }
+     ]
+    },
+    {
+     "template": "express_home"
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 3-150 million"
+    },
+    {
+     "text": "from 5%"
+    }
+   ]
+  },
+  "mortgage_commercial": {
+   "tables": [
+    {
+     "find": "Loan for Purchase of Commercial Real Estate",
+     "title": "Loan for Purchase of Commercial Real Estate",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.2. Minimum and maximum loan limits",
+        "AMD 3,000,000 - AMD 150,000,000",
+        "EUR 5,000 - EUR 300,000"
+       ]
+      },
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "14.0%",
+        "11.5%",
+        "9.0%"
+       ]
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.97-17.21%",
+        "12.17-15.39%",
+        "9.42-12.45%"
+       ]
+      },
+      {
+       "row": [
+        "3.7. Nominal annual interest rate",
+        "Fixed component 6%",
+        "Fixed component 8.5%",
+        "Fixed component 7.5%"
+       ]
+      },
+      {
+       "row": [
+        "3.8. Annual percentage rate (APR)",
+        "14.92-17.17%",
+        "11.03-14.18%",
+        "8.85-11.84%"
+       ]
+      },
+      {
+       "row": [
+        "3.11. Minimum down payment",
+        "At least 5% of the purchase price"
+       ]
+      },
+      {
+       "row": [
+        "9. Early repayment fee",
+        "5% of prepaid amount"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "These terms have been previously known"
+      },
+      {
+       "marker": "2",
+       "starts": "Depending on the creditworthiness of the borrower"
+      },
+      {
+       "marker": "3",
+       "starts": "The annual percentage rate (APR) may differ"
+      },
+      {
+       "marker": "4",
+       "starts": "Geodetic measurement is required"
+      }
+     ]
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 3-150 million"
+    },
+    {
+     "text": "13.84% - 16.03%"
+    },
+    {
+     "text": "The client will pay for the following services:"
+    }
+   ]
+  },
+  "mortgage_construction": {
+   "tables": [
+    {
+     "find": "Construction of residential property, or",
+     "title": "Home Construction Loan",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "14.0%",
+        "11.5%",
+        "9.0%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.95-16.21%",
+        "12.15-13.95%",
+        "9.4-11.1%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.9. Nominal annual interest rate",
+        "Fixed component 5.75%"
+       ],
+       "section": "Term and interest rate in case of online refinance loans"
+      },
+      {
+       "row": [
+        "3.10. Annual percentage rate (APR)",
+        "14.93-16.19%",
+        "11.02-12.78%",
+        "8.84-10.51%"
+       ],
+       "section": "Term and interest rate in case of online refinance loans"
+      }
+     ]
+    },
+    {
+     "find": "Construction of commercial property",
+     "title": "Loan for construction of commercial real estate",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "14.0%",
+        "11.5%",
+        "9.0%"
+       ]
+      },
+      {
+       "row": [
+        "3.7. Nominal annual interest rate",
+        "Fixed component 6%",
+        "Fixed component 8.5%",
+        "Fixed component 7.5%"
+       ]
+      }
+     ]
+    },
+    {
+     "template": "express_home"
+    },
+    {
+     "template": "service_fees"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 3 - 150 million"
+    },
+    {
+     "text": "12.9%"
+    }
+   ]
+  },
+  "mortgage_renovation": {
+   "tables": [
+    {
+     "find": "Renovation of residential property, or",
+     "title": null,
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "14.0%",
+        "11.5%",
+        "9.0%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.95-16.21%",
+        "12.15-13.95%",
+        "9.4-11.1%"
+       ],
+       "section": "Term and interest rate"
+      },
+      {
+       "row": [
+        "3.9. Nominal annual interest rate",
+        "Fixed component 5.75%"
+       ],
+       "section": "Term and interest rate in case of online refinance loans"
+      },
+      {
+       "row": [
+        "3.10. Annual percentage rate (APR)",
+        "14.93-16.19%",
+        "11.02-12.78%",
+        "8.84-10.51%"
+       ],
+       "section": "Term and interest rate in case of online refinance loans"
+      }
+     ]
+    },
+    {
+     "find": "Renovation of commercial property",
+     "title": null,
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "3.4. Nominal annual interest rate",
+        "14.0%",
+        "11.5%",
+        "9.0%"
+       ]
+      },
+      {
+       "row": [
+        "3.5. Annual percentage rate (APR)",
+        "14.95-16.21%",
+        "12.15-13.95%",
+        "9.4-11.1%"
+       ]
+      }
+     ]
+    },
+    {
+     "template": "express_home"
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 3 - 150 million"
+    },
+    {
+     "text": "13.82-15.06%"
+    },
+    {
+     "text": "Actual percentage rate"
+    }
+   ]
+  },
+  "mortgage_express": {
+   "tables": [
+    {
+     "find": "1. Express Home Purchase Loan (primary market)",
+     "title": "Express Home Purchase Loan (primary market)",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "1.2. Term (months)",
+        "61-360"
+       ]
+      },
+      {
+       "row": [
+        "1.3. Nominal annual interest rate",
+        "Fixed component 5.25% + variable component"
+       ]
+      },
+      {
+       "row": [
+        "1.4. Annual percentage rate (APR)",
+        "14.08-15.57%"
+       ]
+      },
+      {
+       "row": [
+        "1.5. Minimum down payment",
+        "At least 10% of the purchase price"
+       ]
+      }
+     ]
+    },
+    {
+     "find": "2. Express Home Purchase Loan (secondary market)",
+     "title": "Express Home Purchase Loan (secondary market)",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "1.3. Nominal annual interest rate",
+        "Fixed component 5.75% + variable component"
+       ]
+      },
+      {
+       "row": [
+        "1.4. Annual percentage rate (APR)",
+        "14.66-17.11%"
+       ]
+      },
+      {
+       "row": [
+        "1.5. Minimum down payment",
+        "At least 5% of the purchase price"
+       ]
+      }
+     ]
+    },
+    {
+     "find": "3. Express Home Construction Loan",
+     "title": "Express Home Construction Loan",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "1.3. Nominal annual interest rate",
+        "Fixed component 5.75% + variable component"
+       ]
+      },
+      {
+       "row": [
+        "1.4. Annual percentage rate (APR)",
+        "14.65-15.9%"
+       ]
+      }
+     ]
+    },
+    {
+     "find": "4. Express Home Renovation Loan",
+     "title": "Express Home Renovation Loan",
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "1.2. Term (months)",
+        "61-240"
+       ]
+      },
+      {
+       "row": [
+        "1.3. Nominal annual interest rate",
+        "Fixed component 5.75% + variable component"
+       ]
+      },
+      {
+       "row": [
+        "1.4. Annual percentage rate (APR)",
+        "14.65-15.9%"
+       ]
+      }
+     ],
+     "notes": [
+      {
+       "marker": "1",
+       "starts": "Attention! The offer of the agreement"
+      },
+      {
+       "marker": "2",
+       "starts": "Attention! The adjustable nominal interest rate"
+      },
+      {
+       "marker": "3",
+       "starts": "The list of developers is determined by the Bank"
+      }
+     ]
+    }
+   ],
+   "blocks": [
+    {
+     "text": "AMD 3 - 100 million"
+    },
+    {
+     "text": "13.67 - 13.68%"
+    },
+    {
+     "text": "06.08.2026"
+    }
+   ]
+  },
+  "mortgage_no_income_verification": {
+   "tables": [
+    {
+     "find": "Promoting sales of mortgage loans",
+     "title": null,
+     "header_row": null,
+     "facts": [
+      {
+       "row": [
+        "Campaign term",
+        "From July 1, 2026 until and inclusive December 30, 2026"
+       ]
+      },
+      {
+       "row": [
+        "Annual percentage rate (APR)",
+        "12.05-12.45%",
+        "13.67-13.68%"
+       ]
+      },
+      {
+       "row": [
+        "Collateral-related costs",
+        "covered by the Bank",
+        "covered by the Customer"
+       ]
+      },
+      {
+       "row": [
+        "Incentive and its payment",
+        "1% of the lo"
+       ]
+      }
+     ]
+    }
+   ],
+   "blocks": [
+    {
+     "text": "Up to AMD 100 million"
+    },
+    {
+     "text": "13.67 – 13.68%"
+    },
+    {
+     "text": "01.07.2026"
+    }
+   ]
+  },
+  "mortgage_diaspora": {
+   "tables": [],
+   "blocks": [
+    {
+     "text": "Loan amount up to 150 mln"
+    },
+    {
+     "text": "Down payment from 10%"
+    },
+    {
+     "text": "Nominal interest rate from 13.5%"
+    },
+    {
+     "text": "Flexible financing for the Diaspora"
+    },
+    {
+     "text": "How to apply for the loan?"
+    },
+    {
+     "text": "Frequently asked questions"
+    },
+    {
+     "text": "Do I need to be an Armenian citizen to apply?"
+    }
+   ]
+  }
+ }
+}

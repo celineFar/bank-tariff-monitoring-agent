@@ -1,0 +1,62 @@
+{
+ "scenario": "S02",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 2.6
+ },
+ "cases": {
+  "N6 merged table text": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N6 card title": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N1 row-header table": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N3 amount kept in note": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N10 title not repeated": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N9 single column rows": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N13 no false list items": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N8 nested table": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N2 sections": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N7 heading leak": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N4 bare div text": {
+   "reproduced_before": true,
+   "fixed_now": true
+  },
+  "N14 dt/dd pair": {
+   "reproduced_before": true,
+   "fixed_now": true
+  }
+ }
+}

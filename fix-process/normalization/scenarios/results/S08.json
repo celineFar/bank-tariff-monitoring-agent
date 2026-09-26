@@ -1,0 +1,133 @@
+{
+ "scenario": "S08",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 4.0
+ },
+ "seeds": {
+  "consumer_standard": {
+   "evidence_items": 227,
+   "row_items": 36,
+   "rows_with_section_line": 0,
+   "note_items": 3,
+   "notes_with_marker_shown": 3,
+   "longest_table_section_label": 118,
+   "same_evidence_ids_across_captures": true
+  },
+  "credit_line": {
+   "evidence_items": 218,
+   "row_items": 36,
+   "rows_with_section_line": 0,
+   "note_items": 7,
+   "notes_with_marker_shown": 7,
+   "longest_table_section_label": 58,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_commercial": {
+   "evidence_items": 232,
+   "row_items": 58,
+   "rows_with_section_line": 0,
+   "note_items": 4,
+   "notes_with_marker_shown": 4,
+   "longest_table_section_label": 110,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_construction": {
+   "evidence_items": 365,
+   "row_items": 172,
+   "rows_with_section_line": 87,
+   "note_items": 12,
+   "notes_with_marker_shown": 12,
+   "longest_table_section_label": 109,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_diaspora": {
+   "evidence_items": 101,
+   "row_items": 0,
+   "rows_with_section_line": 0,
+   "note_items": 0,
+   "notes_with_marker_shown": 0,
+   "longest_table_section_label": 0,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_express": {
+   "evidence_items": 148,
+   "row_items": 40,
+   "rows_with_section_line": 0,
+   "note_items": 3,
+   "notes_with_marker_shown": 3,
+   "longest_table_section_label": 93,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_no_income_verification": {
+   "evidence_items": 120,
+   "row_items": 12,
+   "rows_with_section_line": 0,
+   "note_items": 0,
+   "notes_with_marker_shown": 0,
+   "longest_table_section_label": 73,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_online": {
+   "evidence_items": 293,
+   "row_items": 79,
+   "rows_with_section_line": 0,
+   "note_items": 9,
+   "notes_with_marker_shown": 9,
+   "longest_table_section_label": 125,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_primary": {
+   "evidence_items": 337,
+   "row_items": 128,
+   "rows_with_section_line": 89,
+   "note_items": 8,
+   "notes_with_marker_shown": 8,
+   "longest_table_section_label": 127,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_renovation": {
+   "evidence_items": 349,
+   "row_items": 160,
+   "rows_with_section_line": 87,
+   "note_items": 12,
+   "notes_with_marker_shown": 12,
+   "longest_table_section_label": 107,
+   "same_evidence_ids_across_captures": true
+  },
+  "mortgage_secondary_market": {
+   "evidence_items": 335,
+   "row_items": 127,
+   "rows_with_section_line": 88,
+   "note_items": 8,
+   "notes_with_marker_shown": 8,
+   "longest_table_section_label": 129,
+   "same_evidence_ids_across_captures": true
+  },
+  "online_consumer_finance": {
+   "evidence_items": 134,
+   "row_items": 20,
+   "rows_with_section_line": 0,
+   "note_items": 0,
+   "notes_with_marker_shown": 0,
+   "longest_table_section_label": 105,
+   "same_evidence_ids_across_captures": true
+  },
+  "overdraft": {
+   "evidence_items": 167,
+   "row_items": 32,
+   "rows_with_section_line": 0,
+   "note_items": 6,
+   "notes_with_marker_shown": 6,
+   "longest_table_section_label": 93,
+   "same_evidence_ids_across_captures": true
+  }
+ },
+ "sample_row": "Section: Term and interest rate\nHeaders: Section | Item | Terms 1 | Terms 2 | Terms 3\nRow: 3. Loan terms | 3.4. Nominal annual interest rate² | 3.4.1. Fixed | 3.4.2. Fixed | 3.4.3. Fixed",
+ "sample_note": "¹ These terms have been previously known as Retail Lending Terms and Conditions under code 11RBD PL 72-03-01. Some of the Bank documents may contain references to these terms and conditions under the former name and code."
+}

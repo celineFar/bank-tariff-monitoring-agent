@@ -613,3 +613,77 @@ def _normalize_via(
     from app.services.pdf_extraction import _normalize
 
     return _normalize(document, plan, response, "gemini-test")
+
+
+# --------------------------------------------------------------------------
+# Normalization fix plan: N28 (wider fill-in) and N15 (no key)
+# --------------------------------------------------------------------------
+
+
+def _blank_pdf() -> bytes:
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_an_empty_page_with_no_text_layer_and_no_image_is_sent_to_ocr() -> None:
+    """Text drawn as vector shapes has neither a text layer nor an image."""
+    content = _blank_pdf()
+    document = _document(content)
+    transcriber = FakeTranscriber()
+    service = _service(transcriber=transcriber, rasterizer=FakeRasterizer())
+
+    plan = service.plan(document, content, document_id="doc-vector")
+    assert plan.input_probe.pages[0].input_mode is PdfInputMode.UNKNOWN
+    _, _, sources = await service._apply_ocr(
+        document,
+        plan,
+        _normalize_via(service, document, plan, _empty_response(1)),
+        content,
+    )
+
+    assert transcriber.calls == [1]
+    assert sources == ((1, PdfTranscriptionSource.OCR),)
+
+
+@pytest.mark.asyncio
+async def test_without_a_gemini_key_ocr_still_reads_a_scanned_pdf() -> None:
+    content = SCANNED.read_bytes()
+    service = GeminiPdfExtractionService(
+        PdfExtractionSettings(),
+        InMemoryPdfExtractionRepository(),
+        api_key=None,
+        ocr_settings=OcrSettings(),
+        ocr_transcriber=FakeTranscriber(),
+        rasterizer=FakeRasterizer(),
+    )
+
+    outcome = await service.extract(_document(content), content, document_id="doc-9")
+
+    assert outcome.model_name is None
+    assert is_ocr_method(outcome.normalized_document.extraction_method)
+
+
+@pytest.mark.asyncio
+async def test_without_a_gemini_key_or_ocr_the_model_is_reported_missing() -> None:
+    from app.services.pdf_extraction import PdfModelUnavailable
+
+    content = SCANNED.read_bytes()
+    service = GeminiPdfExtractionService(
+        PdfExtractionSettings(),
+        InMemoryPdfExtractionRepository(),
+        api_key=None,
+        ocr_settings=OcrSettings(),
+        ocr_transcriber=FakeTranscriber(available=False),
+        rasterizer=FakeRasterizer(),
+    )
+
+    with pytest.raises(PdfModelUnavailable):
+        await service.extract(_document(content), content, document_id="doc-10")

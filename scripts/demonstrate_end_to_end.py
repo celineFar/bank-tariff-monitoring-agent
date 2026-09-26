@@ -800,7 +800,6 @@ def _write_acquisition_artifacts(artifact: PageArtifact, directory: Path) -> Non
         ("documents.json", artifact.downloadable_documents),
         ("images.json", artifact.images),
         ("interactive_controls.json", artifact.interactive_controls),
-        ("network_payloads.json", artifact.network_payloads),
     ):
         _write_json(directory / name, values)
     if artifact.raw_html is not None:

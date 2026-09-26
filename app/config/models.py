@@ -201,11 +201,14 @@ class AcquisitionSettings(SettingsGroup):
     # static-only pages carry 75-1,179 such characters, the thinnest real render
     # (a campaign page) 3,294.
     min_main_content_chars: int = Field(default=1_500, ge=0, le=100_000)
+    # A page with no table and no PDF link passes the floor only with this much
+    # main text (a campaign page that publishes its terms as text).
+    min_main_content_chars_without_structure: int = Field(
+        default=3_000, ge=0, le=100_000
+    )
     browser_navigation_timeout_seconds: float = Field(default=30, gt=0, le=120)
     browser_settle_milliseconds: int = Field(default=750, ge=0, le=10_000)
     max_interactions: int = Field(default=100, ge=0, le=100)
-    max_network_payloads: int = Field(default=25, ge=0, le=200)
-    max_network_payload_bytes: int = Field(default=2 * 1024 * 1024, gt=0)
     max_linked_documents: int = Field(default=40, ge=0, le=50)
     # How long an acquisition stays usable. Within the window a run reuses the
     # stored page artifact instead of fetching the bank again; 0 disables reuse

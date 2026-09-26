@@ -27,13 +27,13 @@ def compare_inventory(
 ) -> tuple[str, ...]:
     """Why `current` is a sharp drop from the last good acquisition, or ().
 
-    A structure the page had and no longer has -- tables, PDF links, data
-    payloads -- always fails: that is what a half-rendered page looks like.
+    A structure the page had and no longer has -- tables, PDF links -- always
+    fails: that is what a half-rendered page looks like.
     PDF links and main content also fail on a large relative drop. Growth never
     fails; small shrinkage is ordinary editing.
     """
     reasons: list[str] = []
-    for name in ("tables", "pdf_links", "payloads"):
+    for name in ("tables", "pdf_links"):
         before, after = getattr(baseline, name), getattr(current, name)
         if before and not after:
             reasons.append(f"{name} {before} -> 0")

@@ -51,9 +51,6 @@ def write_inspection_bundle(
     (output_directory / "interactive_controls.json").write_text(
         _models_json(artifact.interactive_controls), encoding="utf-8"
     )
-    (output_directory / "network_payloads.json").write_text(
-        _models_json(artifact.network_payloads), encoding="utf-8"
-    )
     if artifact.raw_html is not None:
         (output_directory / "raw.html").write_text(artifact.raw_html, encoding="utf-8")
     if artifact.rendered_html is not None:
@@ -119,7 +116,6 @@ def _summary(artifact: PageArtifact) -> str:
         f"Documents: {len(artifact.downloadable_documents)}",
         f"Images: {len(artifact.images)}",
         f"Interactive controls: {len(artifact.interactive_controls)}",
-        f"Network payloads: {len(artifact.network_payloads)}",
         f"Warnings: {len(artifact.warnings)}",
         *(f"- {warning}" for warning in artifact.warnings),
     )

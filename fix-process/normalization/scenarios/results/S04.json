@@ -1,0 +1,145 @@
+{
+ "scenario": "S04",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 137,
+  "browser_renders": 13,
+  "megabytes_held": 29.27,
+  "wall_seconds": 227.3
+ },
+ "acquisition_failures": {},
+ "comparison": {
+  "consumer_standard": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "credit_line": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_commercial": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_construction": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_diaspora": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_express": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_no_income_verification": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_online": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_primary": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_renovation": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "mortgage_secondary_market": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "online_consumer_finance": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  },
+  "overdraft": {
+   "same_page_id": true,
+   "same_content_hash": true,
+   "same_normalized_page": true,
+   "same_warnings": true,
+   "quality_scores": [
+    1.0,
+    1.0
+   ]
+  }
+ }
+}

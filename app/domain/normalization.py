@@ -76,10 +76,18 @@ class ScalarKind(StrEnum):
 
 class NormalizationWarningCode(StrEnum):
     ARTIFACT_UNAVAILABLE = "ARTIFACT_UNAVAILABLE"
-    INVALID_JSON = "INVALID_JSON"
     AMBIGUOUS_TABLE = "AMBIGUOUS_TABLE"
     PDF_MODEL_REQUIRED = "PDF_MODEL_REQUIRED"
     PDF_MODEL_FAILED = "PDF_MODEL_FAILED"
+    # Deliberate skips, from link metadata alone; the message gives the basis.
+    PDF_SKIPPED_HISTORICAL = "PDF_SKIPPED_HISTORICAL"
+    PDF_SKIPPED_IRRELEVANT = "PDF_SKIPPED_IRRELEVANT"
+    # Pages with a text layer that the transcription returned nothing for.
+    PDF_PAGE_EMPTY = "PDF_PAGE_EMPTY"
+    # Pages whose content came from local OCR instead of Gemini.
+    PDF_OCR_FILLED = "PDF_OCR_FILLED"
+    # The page lost structure its seed baseline records (quality score < 1).
+    BASELINE_MISMATCH = "BASELINE_MISMATCH"
 
 
 class SourceReference(NormalizationModel):
@@ -122,6 +130,9 @@ class NormalizedTableCell(NormalizationModel):
 class NormalizedTableRow(NormalizationModel):
     id: str = Field(min_length=1, max_length=200)
     cells: tuple[NormalizedTableCell, ...] = Field(min_length=1)
+    # The in-table section label(s) the row sits under ("USD loans",
+    # "Loan terms > Term and interest rate"), when the table has any.
+    section: str | None = None
 
 
 class NormalizedNote(NormalizationModel):

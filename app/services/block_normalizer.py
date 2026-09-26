@@ -25,6 +25,10 @@ def normalize_block(
             fields["title"] = lines[0]
         if len(lines) > 1:
             fields["body"] = "\n".join(lines[1:])
+    elif block.type is ContentBlockType.KEY_VALUE and block.key_value is not None:
+        key, value = (normalize_multiline_text(part) for part in block.key_value)
+        if key and value:
+            fields = {"key": key, "value": value}
     elif block.type is ContentBlockType.KEY_VALUE:
         key, separator, value = text.partition(":")
         if separator and normalize_text(key) and normalize_text(value):

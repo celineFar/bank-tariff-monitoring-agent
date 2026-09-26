@@ -62,13 +62,14 @@ def load_settings(
         acquisition=AcquisitionSettings(
             browser_enabled=raw.acquisition_browser_enabled,
             min_main_content_chars=raw.acquisition_min_main_content_chars,
+            min_main_content_chars_without_structure=(
+                raw.acquisition_min_main_content_chars_without_structure
+            ),
             browser_navigation_timeout_seconds=(
                 raw.acquisition_browser_navigation_timeout_seconds
             ),
             browser_settle_milliseconds=(raw.acquisition_browser_settle_milliseconds),
             max_interactions=raw.acquisition_max_interactions,
-            max_network_payloads=raw.acquisition_max_network_payloads,
-            max_network_payload_bytes=raw.acquisition_max_network_payload_bytes,
             max_linked_documents=raw.acquisition_max_linked_documents,
             freshness_hours=raw.acquisition_freshness_hours,
             baseline_max_pdf_link_drop=raw.acquisition_baseline_max_pdf_link_drop,

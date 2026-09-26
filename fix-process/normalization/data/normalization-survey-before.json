@@ -1,0 +1,916 @@
+{
+ "consumer_standard": {
+  "blocks": 183,
+  "block_types": {
+   "list": 86,
+   "heading": 14,
+   "paragraph": 69,
+   "accordion": 11,
+   "table": 3
+  },
+  "main_chars": 18502,
+  "tables": 3,
+  "table_rows_total": 36,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 4,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 22,
+    "notes": 4,
+    "notes_with_marker": 3,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Required documents",
+    "headers": [
+     "Column 1",
+     "Column 2"
+    ],
+    "headers_inferred": true,
+    "rows": 2,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "credit_line": {
+  "blocks": 170,
+  "block_types": {
+   "list": 82,
+   "heading": 17,
+   "paragraph": 58,
+   "accordion": 10,
+   "table": 3
+  },
+  "main_chars": 19665,
+  "tables": 3,
+  "table_rows_total": 38,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 7,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Credit line unsecured",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3",
+     "Terms 4",
+     "Terms 5"
+    ],
+    "headers_inferred": true,
+    "rows": 24,
+    "notes": 7,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Required documents",
+    "headers": [
+     "Column 1",
+     "Column 2"
+    ],
+    "headers_inferred": true,
+    "rows": 2,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loans service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_commercial": {
+  "blocks": 164,
+  "block_types": {
+   "list": 110,
+   "heading": 11,
+   "paragraph": 41,
+   "table": 2
+  },
+  "main_chars": 24825,
+  "tables": 2,
+  "table_rows_total": 71,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 5,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tariffs — Loan for Purchase of Commercial Real Estate",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 59,
+    "notes": 5,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Loan service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 3,
+  "uncovered_text_chars": 272,
+  "uncovered_examples": [
+   "The client will pay for the following services:",
+   "Documents required after initial approval",
+   "ATTENTION! “YOUR FINANCIAL DATABASE” IS AN ELECTRONIC SYSTEM AIMED AT FACILITATING SEARCHING AND COMPARISON OF THE SERVICES OFFERED TO INDIVIDUALS AND MAKING THE CHOICE EASIER FOR YOU."
+  ],
+  "dom_tables": 2,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_construction": {
+  "blocks": 175,
+  "block_types": {
+   "list": 118,
+   "heading": 11,
+   "paragraph": 42,
+   "table": 4
+  },
+  "main_chars": 47725,
+  "tables": 4,
+  "table_rows_total": 180,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 3,
+  "notes_total": 18,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Home Construction Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 63,
+    "notes": 5,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Loan for construction of commercial real estate",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 57,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t4",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 3,
+  "uncovered_text_chars": 272,
+  "uncovered_examples": [
+   "Documents required after initial approval",
+   "The client will pay for the following services:",
+   "ATTENTION! “YOUR FINANCIAL DATABASE” IS AN ELECTRONIC SYSTEM AIMED AT FACILITATING SEARCHING AND COMPARISON OF THE SERVICES OFFERED TO INDIVIDUALS AND MAKING THE CHOICE EASIER FOR YOU."
+  ],
+  "dom_tables": 4,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_diaspora": {
+  "blocks": 99,
+  "block_types": {
+   "list": 52,
+   "heading": 15,
+   "paragraph": 22,
+   "card": 4,
+   "accordion": 6
+  },
+  "main_chars": 3294,
+  "tables": 0,
+  "table_rows_total": 0,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 0,
+  "notes_total": 0,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 0,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_express": {
+  "blocks": 102,
+  "block_types": {
+   "list": 54,
+   "heading": 14,
+   "paragraph": 30,
+   "table": 4
+  },
+  "main_chars": 8360,
+  "tables": 4,
+  "table_rows_total": 40,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 4,
+  "notes_total": 7,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Express Home Purchase Loan (primary market)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 1,
+    "notes_with_marker": 1,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Express Home Purchase Loan (secondary market)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 1,
+    "notes_with_marker": 1,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Express Home Construction Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 1,
+    "notes_with_marker": 1,
+    "sections": []
+   },
+   {
+    "id": "t4",
+    "title": "Express Home Renovation Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 4,
+  "uncovered_text_chars": 54,
+  "uncovered_examples": [
+   "See the branch map",
+   "See the map",
+   "Update on",
+   "06.08.2026 11:12"
+  ],
+  "dom_tables": 4,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_no_income_verification": {
+  "blocks": 101,
+  "block_types": {
+   "list": 51,
+   "heading": 25,
+   "paragraph": 24,
+   "table": 1
+  },
+  "main_chars": 4774,
+  "tables": 1,
+  "table_rows_total": 12,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 0,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Terms",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2"
+    ],
+    "headers_inferred": true,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 6,
+  "uncovered_text_chars": 88,
+  "uncovered_examples": [
+   "View available homes",
+   "View available homes",
+   "View now",
+   "View addresses",
+   "Updated on",
+   "01.07.2026 17:51"
+  ],
+  "dom_tables": 1,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_online": {
+  "blocks": 194,
+  "block_types": {
+   "list": 100,
+   "heading": 18,
+   "paragraph": 67,
+   "accordion": 6,
+   "table": 3
+  },
+  "main_chars": 27869,
+  "tables": 3,
+  "table_rows_total": 76,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 9,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tariffs in the case of the primary market",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3",
+     "Terms 4",
+     "Terms 5",
+     "Terms 6",
+     "Terms 7",
+     "Terms 8",
+     "Terms 9"
+    ],
+    "headers_inferred": true,
+    "rows": 34,
+    "notes": 5,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Tariffs in the case of the secondary market",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 30,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 9,
+  "uncovered_text_chars": 1034,
+  "uncovered_examples": [
+   "Sign up now",
+   "Submit your online application, provide all required information following approval of the loan and sign the agreements online.",
+   "To finalize the transaction you will only need to visit the notary’s office*. You can apply for a loan together with a co-borrower, inviting the latter to join the loan application. The co-borrower will simply need to accept the invitation and complete the same steps.",
+   "Try now",
+   "Sign-up now",
+   "Pledged property is subject to mandatory valuation by one of the companies cooperating with the Bank, at the customer's choice. The valuation value of the property is 13,000 - 30,000 AMD depending on the type of property. In individual cases, the valuation fee for large property is set on a contractual basis. The list of valuation companies cooperating with the Bank for this loan is presented below.",
+   "ATTENTION! “YOUR FINANCIAL DATABASE” IS AN ELECTRONIC SYSTEM AIMED AT FACILITATING SEARCHING AND COMPARISON OF THE SERVICES OFFERED TO INDIVIDUALS AND MAKING THE CHOICE EASIER FOR YOU.",
+   "Updated on",
+   "06.08.26 14:42"
+  ],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_primary": {
+  "blocks": 192,
+  "block_types": {
+   "list": 113,
+   "heading": 14,
+   "paragraph": 62,
+   "table": 3
+  },
+  "main_chars": 40870,
+  "tables": 3,
+  "table_rows_total": 123,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 15,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tariffs",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 63,
+    "notes": 6,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 5,
+  "uncovered_text_chars": 343,
+  "uncovered_examples": [
+   "Sign up",
+   "Insurance Companies Cooperating with Ameriabank and Related Fees",
+   "The client will pay for the following services:",
+   "Documents required after initial approval",
+   "ATTENTION! “YOUR FINANCIAL DATABASE” IS AN ELECTRONIC SYSTEM AIMED AT FACILITATING SEARCHING AND COMPARISON OF THE SERVICES OFFERED TO INDIVIDUALS AND MAKING THE CHOICE EASIER FOR YOU."
+  ],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_renovation": {
+  "blocks": 169,
+  "block_types": {
+   "list": 115,
+   "heading": 11,
+   "paragraph": 40,
+   "table": 3
+  },
+  "main_chars": 44878,
+  "tables": 3,
+  "table_rows_total": 169,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 3,
+  "notes_total": 18,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Home Renovation Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 63,
+    "notes": 5,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Loan for renovation of commercial real estate",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 58,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 5,
+  "uncovered_text_chars": 315,
+  "uncovered_examples": [
+   "Renovation calculator",
+   "Actual percentage rate",
+   "Documents required after initial approval",
+   "The client will pay for the following services:",
+   "ATTENTION! “YOUR FINANCIAL DATABASE” IS AN ELECTRONIC SYSTEM AIMED AT FACILITATING SEARCHING AND COMPARISON OF THE SERVICES OFFERED TO INDIVIDUALS AND MAKING THE CHOICE EASIER FOR YOU."
+  ],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 152,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_secondary_market": {
+  "blocks": 192,
+  "block_types": {
+   "list": 114,
+   "heading": 14,
+   "paragraph": 61,
+   "table": 3
+  },
+  "main_chars": 39992,
+  "tables": 3,
+  "table_rows_total": 124,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 15,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tarifs",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 64,
+    "notes": 6,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 4,
+  "uncovered_text_chars": 286,
+  "uncovered_examples": [
+   "Sign up online",
+   "The client will pay for the following services:",
+   "Documents required after initial approval",
+   "ATTENTION! “YOUR FINANCIAL DATABASE” IS AN ELECTRONIC SYSTEM AIMED AT FACILITATING SEARCHING AND COMPARISON OF THE SERVICES OFFERED TO INDIVIDUALS AND MAKING THE CHOICE EASIER FOR YOU."
+  ],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "online_consumer_finance": {
+  "blocks": 114,
+  "block_types": {
+   "list": 55,
+   "heading": 9,
+   "paragraph": 19,
+   "card": 28,
+   "table": 3
+  },
+  "main_chars": 7711,
+  "tables": 3,
+  "table_rows_total": 21,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 0,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Terms of installment financing for the purchase of goods",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2"
+    ],
+    "headers_inferred": true,
+    "rows": 13,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Payment methods",
+    "headers": [
+     "Payment Method",
+     "Fee"
+    ],
+    "headers_inferred": false,
+    "rows": 4,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Credit history and score",
+    "headers": [
+     "Payment Method",
+     "Commission Fee"
+    ],
+    "headers_inferred": false,
+    "rows": 4,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 1,
+  "uncovered_text_chars": 14,
+  "uncovered_examples": [
+   "www.fininfo.am"
+  ],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "overdraft": {
+  "blocks": 127,
+  "block_types": {
+   "list": 65,
+   "heading": 14,
+   "paragraph": 35,
+   "accordion": 10,
+   "table": 3
+  },
+  "main_chars": 13218,
+  "tables": 3,
+  "table_rows_total": 33,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 6,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Overdrafts via Cards not secured with property (unsecured)",
+    "headers": [
+     "Card type ¹",
+     "",
+     "Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Master Card Standard Digital",
+     "",
+     "Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital,Mastercard World/VISA Platinum, VISA Platinum Digital/ Mastercard World Digital, Visa Signature , Visa Signature Digital",
+     "",
+     ""
+    ],
+    "headers_inferred": false,
+    "rows": 19,
+    "notes": 6,
+    "notes_with_marker": 6,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Required documents",
+    "headers": [
+     "Column 1",
+     "Column 2"
+    ],
+    "headers_inferred": true,
+    "rows": 2,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loans service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ }
+}

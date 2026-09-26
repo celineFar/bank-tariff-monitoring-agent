@@ -17,7 +17,7 @@ NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 SETTINGS = AcquisitionSettings()
 
 # The Overdraft page as measured live on 2026-09-26.
-OVERDRAFT = AcquisitionInventory(main_chars=13_136, tables=3, pdf_links=10, payloads=17)
+OVERDRAFT = AcquisitionInventory(main_chars=13_136, tables=3, pdf_links=10)
 
 
 def _inventory(**changes) -> AcquisitionInventory:
@@ -35,7 +35,7 @@ def test_growth_passes() -> None:
 
 
 def test_small_shrinkage_passes() -> None:
-    edited = _inventory(pdf_links=9, main_chars=11_000, payloads=15)
+    edited = _inventory(pdf_links=9, main_chars=11_000)
 
     assert compare_inventory(OVERDRAFT, edited, SETTINGS) == ()
 
@@ -46,10 +46,14 @@ def test_tables_disappearing_fails() -> None:
     )
 
 
-def test_payloads_disappearing_fails() -> None:
-    assert compare_inventory(OVERDRAFT, _inventory(payloads=0), SETTINGS) == (
-        "payloads 17 -> 0",
+def test_a_baseline_stored_with_a_payload_count_still_loads_and_ignores_it() -> None:
+    # Baselines written before payload capture was removed carry a "payloads"
+    # count; it is ignored, so no page fails "payloads 17 -> 0".
+    stored = AcquisitionInventory.model_validate(
+        {"main_chars": 13_136, "tables": 3, "pdf_links": 10, "payloads": 17}
     )
+
+    assert compare_inventory(stored, OVERDRAFT, SETTINGS) == ()
 
 
 def test_losing_half_the_pdf_links_fails() -> None:
@@ -73,9 +77,7 @@ def test_losing_most_main_content_fails() -> None:
 
 
 def test_a_structure_the_page_never_had_is_not_required() -> None:
-    campaign = AcquisitionInventory(
-        main_chars=3_294, tables=0, pdf_links=0, payloads=17
-    )
+    campaign = AcquisitionInventory(main_chars=3_294, tables=0, pdf_links=0)
 
     assert compare_inventory(campaign, campaign, SETTINGS) == ()
 
@@ -97,7 +99,6 @@ class _Acquisition:
             tables=(),
             links=(),
             downloadable_documents=(),
-            network_payloads=(),
             inventory=self.inventory,
             retrieved_at=NOW,
             content_hash="a" * 64,

@@ -16,8 +16,8 @@ from app.services.acquisition_errors import AcquisitionError
 
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
 NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
-GOOD = AcquisitionInventory(main_chars=13_136, tables=3, pdf_links=10, payloads=17)
-REDESIGNED = AcquisitionInventory(main_chars=9_000, tables=0, pdf_links=4, payloads=17)
+GOOD = AcquisitionInventory(main_chars=13_136, tables=3, pdf_links=10)
+REDESIGNED = AcquisitionInventory(main_chars=9_000, tables=0, pdf_links=4)
 
 
 class _Acquisition:
@@ -37,7 +37,6 @@ class _Acquisition:
             tables=(),
             links=(),
             downloadable_documents=(),
-            network_payloads=(),
             inventory=self.inventory,
             retrieved_at=NOW,
             content_hash="a" * 64,

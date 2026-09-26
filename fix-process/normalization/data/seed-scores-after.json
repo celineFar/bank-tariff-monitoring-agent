@@ -1,0 +1,129 @@
+{
+ "consumer_standard": {
+  "page_id": "page:fa7787eedd41013c",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 12
+  },
+  "baseline_failures": [],
+  "evidence_items": 227
+ },
+ "credit_line": {
+  "page_id": "page:e5c7cf178e5d4895",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 11
+  },
+  "baseline_failures": [],
+  "evidence_items": 218
+ },
+ "mortgage_commercial": {
+  "page_id": "page:2c40680072fa21a3",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 8
+  },
+  "baseline_failures": [],
+  "evidence_items": 232
+ },
+ "mortgage_construction": {
+  "page_id": "page:f4401758400c03d5",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 3,
+   "PDF_MODEL_REQUIRED": 15
+  },
+  "baseline_failures": [],
+  "evidence_items": 365
+ },
+ "mortgage_diaspora": {
+  "page_id": "page:9765bd1bf5a50a9f",
+  "quality_score": 1.0,
+  "warning_codes": {},
+  "baseline_failures": [],
+  "evidence_items": 101
+ },
+ "mortgage_express": {
+  "page_id": "page:3e55a562dbe6f678",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 4,
+   "PDF_MODEL_REQUIRED": 3
+  },
+  "baseline_failures": [],
+  "evidence_items": 148
+ },
+ "mortgage_no_income_verification": {
+  "page_id": "page:8d668f34df775644",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 1
+  },
+  "baseline_failures": [],
+  "evidence_items": 120
+ },
+ "mortgage_online": {
+  "page_id": "page:ba74517c724e0725",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 15
+  },
+  "baseline_failures": [],
+  "evidence_items": 293
+ },
+ "mortgage_primary": {
+  "page_id": "page:3bcfe4cfad6d2e24",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 13
+  },
+  "baseline_failures": [],
+  "evidence_items": 337
+ },
+ "mortgage_renovation": {
+  "page_id": "page:43bf764fe4a4ecfe",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 3,
+   "PDF_MODEL_REQUIRED": 13
+  },
+  "baseline_failures": [],
+  "evidence_items": 349
+ },
+ "mortgage_secondary_market": {
+  "page_id": "page:0785e3a37bf49fb2",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 11
+  },
+  "baseline_failures": [],
+  "evidence_items": 335
+ },
+ "online_consumer_finance": {
+  "page_id": "page:e04e4c2ee61683bd",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 5
+  },
+  "baseline_failures": [],
+  "evidence_items": 134
+ },
+ "overdraft": {
+  "page_id": "page:76e1bb6e1ed54d8a",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 10
+  },
+  "baseline_failures": [],
+  "evidence_items": 167
+ }
+}

@@ -10,7 +10,10 @@ from pydantic import BaseModel
 from app.domain.acquisition import PageArtifact
 from app.domain.normalization import NormalizedSourceBundle
 from app.services.artifact_store import FileSystemArtifactStore
-from app.services.normalization import StructuralNormalizationService
+from app.services.normalization import (
+    NoPdfExtractor,
+    StructuralNormalizationService,
+)
 from app.services.normalized_renderer import render_normalized_markdown
 
 
@@ -74,6 +77,7 @@ async def demonstrate(case_path: Path) -> Path:
     artifact_root = artifact_path.parent / "artifacts"
     service = StructuralNormalizationService(
         artifact_reader=FileSystemArtifactStore(artifact_root),
+        pdf_extractor=NoPdfExtractor(),
     )
     bundle = await service.normalize(artifact)
     return write_normalization_bundle(

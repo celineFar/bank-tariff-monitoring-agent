@@ -15,16 +15,94 @@ from app.domain.normalization import (
     NormalizedDocument,
     NormalizedLink,
     NormalizedSourceBundle,
+    NormalizedTable,
     SourceReference,
 )
-from app.services.api_payload_normalizer import normalize_network_payload
+from app.domain.pdf_extraction import PdfAdmissionRelevance
 from app.services.block_normalizer import normalize_block
-from app.services.pdf_extraction import GeminiPdfExtractionService
-from app.services.table_normalizer import normalize_table
+from app.services.normalization_baseline import NormalizationBaseline, score_page
+from app.services.pdf_extraction import (
+    PdfExtractionError,
+    PdfExtractionOutcome,
+    PdfModelUnavailable,
+    PdfTranscriptionFailed,
+    PdfUnreadable,
+    empty_text_pages,
+    ocr_filled_pages,
+)
+from app.services.table_normalizer import normalize_table_with_report
+
+_PDF_FAILURE_CODES = {
+    PdfUnreadable: NormalizationWarningCode.ARTIFACT_UNAVAILABLE,
+    PdfModelUnavailable: NormalizationWarningCode.PDF_MODEL_REQUIRED,
+    PdfTranscriptionFailed: NormalizationWarningCode.PDF_MODEL_FAILED,
+}
+
+
+def _outcome_warnings(
+    outcome: PdfExtractionOutcome, document_id: str
+) -> list[NormalizationWarning]:
+    """What a successful (or deliberately skipped) PDF outcome should report."""
+    warnings: list[NormalizationWarning] = []
+    admission = outcome.plan.admission
+    if outcome.normalized_document.extraction_method == "pdf_skipped":
+        irrelevant = admission.relevance is PdfAdmissionRelevance.IRRELEVANT
+        warnings.append(
+            NormalizationWarning(
+                code=(
+                    NormalizationWarningCode.PDF_SKIPPED_IRRELEVANT
+                    if irrelevant
+                    else NormalizationWarningCode.PDF_SKIPPED_HISTORICAL
+                ),
+                source_id=document_id,
+                message=(
+                    f"Not transcribed ({admission.relevance.value}/"
+                    f"{admission.temporal_status.value}): "
+                    + ("; ".join(admission.decision_basis) or admission.reason)
+                )[:2000],
+            )
+        )
+        return warnings
+    if pages := empty_text_pages(outcome):
+        warnings.append(
+            NormalizationWarning(
+                code=NormalizationWarningCode.PDF_PAGE_EMPTY,
+                source_id=document_id,
+                message=(
+                    "Pages with a text layer came back empty from transcription: "
+                    + ", ".join(str(page) for page in pages)
+                ),
+            )
+        )
+    if pages := ocr_filled_pages(outcome):
+        warnings.append(
+            NormalizationWarning(
+                code=NormalizationWarningCode.PDF_OCR_FILLED,
+                source_id=document_id,
+                message="Pages read by local OCR: " + ", ".join(str(p) for p in pages),
+            )
+        )
+    return warnings
 
 
 class ArtifactReader(Protocol):
     async def read(self, artifact: StoredArtifact) -> bytes: ...
+
+
+class PdfExtractor(Protocol):
+    async def extract(
+        self, document: DocumentArtifact, content: bytes, *, document_id: str
+    ) -> PdfExtractionOutcome: ...
+
+
+class NoPdfExtractor:
+    """For offline tools that normalize pages without Gemini: every linked PDF
+    is reported as `PDF_MODEL_REQUIRED` instead of being transcribed."""
+
+    async def extract(
+        self, document: DocumentArtifact, content: bytes, *, document_id: str
+    ) -> PdfExtractionOutcome:
+        raise PdfModelUnavailable("No PDF extractor is configured")
 
 
 class StructuralNormalizationService:
@@ -33,21 +111,38 @@ class StructuralNormalizationService:
     def __init__(
         self,
         *,
-        artifact_reader: ArtifactReader | None = None,
-        pdf_extractor: GeminiPdfExtractionService | None = None,
+        artifact_reader: ArtifactReader,
+        pdf_extractor: PdfExtractor,
+        baseline: NormalizationBaseline | None = None,
     ) -> None:
         self._artifact_reader = artifact_reader
         self._pdf_extractor = pdf_extractor
+        self._baseline = baseline
 
     async def normalize(self, artifact: PageArtifact) -> NormalizedSourceBundle:
         warnings: list[NormalizationWarning] = []
-        normalized_tables = tuple(normalize_table(table) for table in artifact.tables)
-        table_ids = iter(table.id for table in normalized_tables)
+        page_id = f"page:{artifact.page_content_hash[:16]}"
+        normalized_tables: list[NormalizedTable] = []
+        for table in artifact.tables:
+            normalized_table, reasons = normalize_table_with_report(table)
+            normalized_tables.append(normalized_table)
+            if reasons:
+                warnings.append(
+                    NormalizationWarning(
+                        code=NormalizationWarningCode.AMBIGUOUS_TABLE,
+                        source_id=f"{page_id}:{table.id}",
+                        message="; ".join(reasons)[:2000],
+                    )
+                )
+        # Artifacts stored before blocks carried their table id fall back to
+        # document order, which the parser kept for table blocks and tables.
+        positional_ids = iter(table.id for table in normalized_tables)
         blocks = []
         for block in artifact.blocks:
-            table_id = (
-                next(table_ids, None) if block.type is ContentBlockType.TABLE else None
-            )
+            table_id = None
+            if block.type is ContentBlockType.TABLE:
+                positional_id = next(positional_ids, None)
+                table_id = block.table_id or positional_id
             blocks.append(
                 normalize_block(
                     block,
@@ -58,16 +153,18 @@ class StructuralNormalizationService:
 
         documents: list[NormalizedDocument] = [
             NormalizedDocument(
-                id=f"page:{artifact.page_content_hash[:16]}",
+                id=page_id,
                 name=artifact.title or str(artifact.canonical_url),
                 source_url=artifact.canonical_url,
                 source_type=SourceType.PAGE,
                 mime_type="text/html",
                 content_sha256=artifact.page_content_hash,
                 extraction_method=artifact.acquisition_mode.value,
-                quality_score=1.0,
+                # Scored against the page's seed baseline below; a page with no
+                # baseline is not measured rather than claimed perfect.
+                quality_score=None,
                 blocks=tuple(blocks),
-                tables=normalized_tables,
+                tables=tuple(normalized_tables),
                 links=tuple(
                     NormalizedLink(
                         id=link.id,
@@ -91,6 +188,30 @@ class StructuralNormalizationService:
             )
         ]
 
+        page_baseline = (
+            self._baseline.for_urls(
+                str(artifact.url), str(artifact.canonical_url), str(artifact.final_url)
+            )
+            if self._baseline is not None
+            else None
+        )
+        if page_baseline is not None:
+            result = score_page(documents[0], page_baseline)
+            documents[0] = documents[0].model_copy(
+                update={"quality_score": result.score}
+            )
+            if result.failures:
+                warnings.append(
+                    NormalizationWarning(
+                        code=NormalizationWarningCode.BASELINE_MISMATCH,
+                        source_id=page_id,
+                        message=(
+                            f"{len(result.failures)} of {result.checks} baseline "
+                            "checks failed: " + "; ".join(result.failures)
+                        )[:2000],
+                    )
+                )
+
         # Document ids are content-addressed, never positional: a new link
         # appearing earlier on the page must not rename the documents after it,
         # because every evidence id -- and so every extraction-cache key --
@@ -101,16 +222,6 @@ class StructuralNormalizationService:
             if document_id in seen_document_ids:
                 continue
             seen_document_ids.add(document_id)
-            if self._artifact_reader is None:
-                documents.append(self._empty_pdf_document(source_document, document_id))
-                warnings.append(
-                    NormalizationWarning(
-                        code=NormalizationWarningCode.ARTIFACT_UNAVAILABLE,
-                        source_id=document_id,
-                        message="No artifact reader was configured for the linked document",
-                    )
-                )
-                continue
             try:
                 content = await self._artifact_reader.read(source_document.artifact)
             except Exception as exc:
@@ -123,39 +234,26 @@ class StructuralNormalizationService:
                     )
                 )
                 continue
-            if self._pdf_extractor is None:
-                documents.append(self._empty_pdf_document(source_document, document_id))
-                warnings.append(
-                    NormalizationWarning(
-                        code=NormalizationWarningCode.PDF_MODEL_REQUIRED,
-                        source_id=document_id,
-                        message="No Gemini PDF extractor was configured",
-                    )
-                )
-                continue
             try:
                 outcome = await self._pdf_extractor.extract(
                     source_document, content, document_id=document_id
                 )
-            except Exception as exc:
+            except PdfExtractionError as exc:
+                # Only the extractor's own, expected failures become warnings;
+                # anything else is a bug and fails the normalization stage.
                 documents.append(self._empty_pdf_document(source_document, document_id))
                 warnings.append(
                     NormalizationWarning(
-                        code=NormalizationWarningCode.PDF_MODEL_FAILED,
+                        code=_PDF_FAILURE_CODES.get(
+                            type(exc), NormalizationWarningCode.PDF_MODEL_FAILED
+                        ),
                         source_id=document_id,
-                        message=f"Gemini PDF extraction failed: {exc}",
+                        message=f"PDF transcription failed: {exc}",
                     )
                 )
                 continue
             documents.append(outcome.normalized_document)
-
-        for payload in artifact.network_payloads:
-            document, payload_warnings = normalize_network_payload(payload)
-            if document.id in seen_document_ids:
-                continue
-            seen_document_ids.add(document.id)
-            documents.append(document)
-            warnings.extend(payload_warnings)
+            warnings.extend(_outcome_warnings(outcome, document_id))
 
         return NormalizedSourceBundle(
             canonical_url=artifact.canonical_url,

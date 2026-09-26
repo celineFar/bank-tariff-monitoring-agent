@@ -1,0 +1,311 @@
+{
+ "consumer_standard": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 18615,
+   "tables": 3,
+   "pdf_links": 12
+  },
+  "page_id": "page:bf8d39b8946fbc26",
+  "content_hash": "04a5cc5991e04e71",
+  "page_digest": "42450cf43389db98",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 12
+  },
+  "baseline_failures": [],
+  "pdfs": 12,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "credit_line": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 19797,
+   "tables": 3,
+   "pdf_links": 11
+  },
+  "page_id": "page:e1795cd1e69e4a3a",
+  "content_hash": "a5ca11e89e38c661",
+  "page_digest": "baf81aef9e280758",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 11
+  },
+  "baseline_failures": [],
+  "pdfs": 11,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_commercial": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 25291,
+   "tables": 2,
+   "pdf_links": 9
+  },
+  "page_id": "page:d2bb93fe70ff104e",
+  "content_hash": "2e09484c342a05ce",
+  "page_digest": "9f3a3edb01f2d5fb",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 8
+  },
+  "baseline_failures": [],
+  "pdfs": 8,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_construction": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 48449,
+   "tables": 4,
+   "pdf_links": 16
+  },
+  "page_id": "page:0c7ccbfabb0d61d5",
+  "content_hash": "e801c0448041f92b",
+  "page_digest": "a955c65918c14b38",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 3,
+   "PDF_MODEL_REQUIRED": 15
+  },
+  "baseline_failures": [],
+  "pdfs": 15,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_diaspora": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 3298,
+   "tables": 0,
+   "pdf_links": 0
+  },
+  "page_id": "page:eb433f618c0ce6f1",
+  "content_hash": "9b505effc18d8386",
+  "page_digest": "d76170a0e95a02bf",
+  "quality_score": 1.0,
+  "warning_codes": {},
+  "baseline_failures": [],
+  "pdfs": 0,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_express": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 8497,
+   "tables": 4,
+   "pdf_links": 3
+  },
+  "page_id": "page:c2edf57d1ccee0a3",
+  "content_hash": "ddb9e48c35942ff0",
+  "page_digest": "82a3830191ae0e76",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 4,
+   "PDF_MODEL_REQUIRED": 3
+  },
+  "baseline_failures": [],
+  "pdfs": 3,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_no_income_verification": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 4915,
+   "tables": 1,
+   "pdf_links": 1
+  },
+  "page_id": "page:0e72bd311da68eae",
+  "content_hash": "f8f1aac9c293d23a",
+  "page_digest": "33f3515673e19838",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 1
+  },
+  "baseline_failures": [],
+  "pdfs": 1,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_online": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 29098,
+   "tables": 3,
+   "pdf_links": 17
+  },
+  "page_id": "page:b43321855aee0f21",
+  "content_hash": "70aebe3722dedc4f",
+  "page_digest": "640ae3973f19e0e8",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 15
+  },
+  "baseline_failures": [],
+  "pdfs": 15,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_primary": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 41564,
+   "tables": 3,
+   "pdf_links": 14
+  },
+  "page_id": "page:e950ec1929ec2339",
+  "content_hash": "9882c5feaf46992d",
+  "page_digest": "ce791f0f728fdc46",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 13
+  },
+  "baseline_failures": [],
+  "pdfs": 13,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_renovation": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 45621,
+   "tables": 3,
+   "pdf_links": 14
+  },
+  "page_id": "page:9ff755a3d5d01d66",
+  "content_hash": "36ea23f59beea5a9",
+  "page_digest": "a43fe4d23a413d9b",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 3,
+   "PDF_MODEL_REQUIRED": 13
+  },
+  "baseline_failures": [],
+  "pdfs": 13,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "mortgage_secondary_market": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 40626,
+   "tables": 3,
+   "pdf_links": 12
+  },
+  "page_id": "page:ae2e53a55708e852",
+  "content_hash": "715a034f606440f5",
+  "page_digest": "8dabefd47fc8b39c",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 2,
+   "PDF_MODEL_REQUIRED": 11
+  },
+  "baseline_failures": [],
+  "pdfs": 11,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "online_consumer_finance": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 7778,
+   "tables": 3,
+   "pdf_links": 5
+  },
+  "page_id": "page:aba3d6f4cad52544",
+  "content_hash": "01224d356b683caa",
+  "page_digest": "c5e96c1b56ae09b6",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 5
+  },
+  "baseline_failures": [],
+  "pdfs": 5,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ },
+ "overdraft": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 13305,
+   "tables": 3,
+   "pdf_links": 10
+  },
+  "page_id": "page:f34f52d676ec3e74",
+  "content_hash": "127ab2056f3a24b3",
+  "page_digest": "6b2e5b4c6ae262f0",
+  "quality_score": 1.0,
+  "warning_codes": {
+   "AMBIGUOUS_TABLE": 1,
+   "PDF_MODEL_REQUIRED": 10
+  },
+  "baseline_failures": [],
+  "pdfs": 10,
+  "pdfs_unlabelled": 0,
+  "current_pdfs_skipped": [],
+  "same_page_id": true,
+  "same_content_hash": true,
+  "same_normalized_page": true,
+  "second_quality_score": 1.0
+ }
+}

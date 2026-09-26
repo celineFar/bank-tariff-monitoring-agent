@@ -33,9 +33,8 @@ def _artifact(retrieved_at: datetime, content_hash: str) -> PageArtifact:
         tables=(),
         links=(),
         downloadable_documents=(),
-        network_payloads=(),
         retrieved_at=retrieved_at,
-        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0, payloads=0),
+        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0),
         content_hash=content_hash,
         page_content_hash="b" * 64,
     )

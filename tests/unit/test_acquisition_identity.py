@@ -8,37 +8,23 @@ misses and the run pays for a full re-extraction.
 
 import hashlib
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from app.config import AcquisitionSettings
-from app.domain.acquisition import NetworkPayload, SourceLocator, SourceType
 from app.services.acquisition import AcquisitionService
 from app.services.artifact_store import FileSystemArtifactStore
-from app.services.browser_renderer import RenderedPage, order_network_payloads
+from app.services.browser_renderer import RenderedPage
 from app.services.html_parser import HtmlArtifactParser
 from app.services.html_retriever import RetrievedHtml
-from app.services.normalization import StructuralNormalizationService
+from app.services.normalization import (
+    NoPdfExtractor,
+    StructuralNormalizationService,
+)
 from app.services.pdf_downloader import DownloadedPdf, PdfProvenanceHeaders
 
 NOW = datetime(2026, 9, 18, tzinfo=UTC)
-
-
-def _payload(path: str, body: str) -> NetworkPayload:
-    url = f"https://ameriabank.am/api/{path}"
-    return NetworkPayload(
-        url=url,
-        method="GET",
-        status_code=200,
-        mime_type="application/json",
-        body_text=body,
-        size_bytes=len(body.encode()),
-        sha256=hashlib.sha256(body.encode()).hexdigest(),
-        retrieved_at=NOW,
-        locator=SourceLocator(
-            source_url=url, source_type=SourceType.API, json_path="$"
-        ),
-    )
 
 
 class _Retriever:
@@ -78,8 +64,7 @@ class _PdfDownloader:
 
 
 class _Browser:
-    def __init__(self, payloads: tuple[NetworkPayload, ...], html: str) -> None:
-        self._payloads = payloads
+    def __init__(self, html: str) -> None:
         self._html = html
 
     async def render(self, url: str) -> RenderedPage:
@@ -89,7 +74,6 @@ class _Browser:
             title="Overdraft",
             visible_text="Expanded terms",
             interactions=1,
-            network_payloads=self._payloads,
         )
 
 
@@ -104,58 +88,6 @@ def _service(tmp_path, html: str, *, browser=None, pdf=None) -> AcquisitionServi
         ),
         browser_renderer=browser,
     )
-
-
-def test_capture_order_does_not_change_the_payload_list() -> None:
-    first = _payload("terms", '{"rate": 13}')
-    second = _payload("fees", '{"fee": 10}')
-    third = _payload("limits", '{"max": 15}')
-
-    arrived_one = order_network_payloads([first, second, third], limit=25)
-    arrived_another = order_network_payloads([third, first, second], limit=25)
-
-    assert arrived_one == arrived_another
-
-
-def test_a_payload_captured_twice_becomes_one_document() -> None:
-    once = _payload("terms", '{"rate": 13}')
-
-    assert order_network_payloads([once, once], limit=25) == (once,)
-
-
-@pytest.mark.asyncio
-async def test_payload_arrival_order_does_not_rename_the_page(tmp_path) -> None:
-    raw = """
-    <html><body><button aria-expanded="false">See more</button>
-    <p>Initial official content long enough.</p></body></html>
-    """
-    rendered = """
-    <html><body><h1>Overdraft</h1>
-    <p>Expanded terms: annual rate 13% and term up to 60 months.</p>
-    </body></html>
-    """
-    payloads = (
-        _payload("terms", '{"rate": 13}'),
-        _payload("fees", '{"fee": 10}'),
-    )
-    normalizer = StructuralNormalizationService()
-
-    forwards = await _service(
-        tmp_path, raw, browser=_Browser(payloads, rendered)
-    ).acquire("https://ameriabank.am/overdraft")
-    backwards = await _service(
-        tmp_path, raw, browser=_Browser(tuple(reversed(payloads)), rendered)
-    ).acquire("https://ameriabank.am/overdraft")
-
-    assert forwards.content_hash == backwards.content_hash
-    assert forwards.page_content_hash == backwards.page_content_hash
-    forwards_ids = [
-        item.id for item in (await normalizer.normalize(forwards)).documents
-    ]
-    backwards_ids = [
-        item.id for item in (await normalizer.normalize(backwards)).documents
-    ]
-    assert forwards_ids == backwards_ids
 
 
 @pytest.mark.asyncio
@@ -192,7 +124,10 @@ async def test_document_ids_are_addressed_by_content_not_position(tmp_path) -> N
         '<a href="/terms.pdf">Official terms</a>',
         '<a href="/leaflet.pdf">Leaflet</a><a href="/terms.pdf">Official terms</a>',
     )
-    normalizer = StructuralNormalizationService()
+    normalizer = StructuralNormalizationService(
+        artifact_reader=FileSystemArtifactStore(Path(".")),
+        pdf_extractor=NoPdfExtractor(),
+    )
 
     before = await normalizer.normalize(
         await _service(tmp_path, without).acquire("https://ameriabank.am/overdraft")
@@ -250,7 +185,7 @@ async def test_per_request_tokens_in_the_rendered_page_do_not_rename_it(
     for view_state, token in (("BwyBTnZQdPsd", "DnwM91"), ("4YXJM+soRSFc", "8Keo3O")):
         html = _aspnet_page(view_state, token)
         pages.append(
-            await _service(tmp_path, html, browser=_Browser((), html)).acquire(
+            await _service(tmp_path, html, browser=_Browser(html)).acquire(
                 "https://ameriabank.am/overdraft"
             )
         )
@@ -270,3 +205,64 @@ async def test_a_changed_visible_value_renames_the_page(tmp_path) -> None:
     ).acquire("https://ameriabank.am/overdraft")
 
     assert before.page_content_hash != after.page_content_hash
+
+
+PAGE_WITH_CHROME = """
+<html><body>
+<header><nav><a href="/en/about">About Bank</a></nav></header>
+<main><h1>Consumer loan</h1>
+<table><tr><td>Annual interest rate</td><td>Fixed 20%</td></tr></table>
+<a href="/terms.pdf">Terms</a></main>
+<footer><div class="footer-content">{notice}<a href="/en/contacts">Contacts</a></div></footer>
+</body></html>
+"""
+
+
+@pytest.mark.asyncio
+async def test_a_late_footer_module_does_not_rename_the_page(tmp_path) -> None:
+    # Finding F1 of the normalization scenarios: the consumer-loan page's footer
+    # notice sometimes arrives after the render has finished.
+    without = PAGE_WITH_CHROME.format(notice="")
+    with_notice = PAGE_WITH_CHROME.format(
+        notice="<p>Dear User,</p><p>If you find any discrepancies, consider the "
+        "Armenian version as prevailing.</p>"
+    )
+
+    first = await _service(tmp_path, without, browser=_Browser(without)).acquire(
+        "https://ameriabank.am/loan"
+    )
+    second = await _service(
+        tmp_path, with_notice, browser=_Browser(with_notice)
+    ).acquire("https://ameriabank.am/loan")
+
+    assert first.page_content_hash == second.page_content_hash
+
+
+@pytest.mark.asyncio
+async def test_a_changed_menu_link_does_not_rename_the_page(tmp_path) -> None:
+    before = PAGE_WITH_CHROME.format(notice="")
+    after = before.replace('href="/en/about">About Bank', 'href="/en/bank">The Bank')
+
+    first = await _service(tmp_path, before, browser=_Browser(before)).acquire(
+        "https://ameriabank.am/loan"
+    )
+    second = await _service(tmp_path, after, browser=_Browser(after)).acquire(
+        "https://ameriabank.am/loan"
+    )
+
+    assert first.page_content_hash == second.page_content_hash
+
+
+@pytest.mark.asyncio
+async def test_a_changed_tariff_still_renames_the_page(tmp_path) -> None:
+    before = PAGE_WITH_CHROME.format(notice="")
+    after = before.replace("Fixed 20%", "Fixed 21%")
+
+    first = await _service(tmp_path, before, browser=_Browser(before)).acquire(
+        "https://ameriabank.am/loan"
+    )
+    second = await _service(tmp_path, after, browser=_Browser(after)).acquire(
+        "https://ameriabank.am/loan"
+    )
+
+    assert first.page_content_hash != second.page_content_hash

@@ -1,0 +1,91 @@
+   Building ameria-tariff-monitor @ file:///home/ubuntu/second-monitor
+      Built ameria-tariff-monitor @ file:///home/ubuntu/second-monitor
+Uninstalled 1 package in 0.50ms
+Installed 1 package in 0.74ms
+
+=== minified table block text
+  block b1 heading path=() text='Rates' fields={} scalars=[]
+  block b2 table path=('Rates',) text='TermAmount12500 000 AMD' fields={} scalars=[('12500 000 AMD', '12500000', 'AMD')]
+  table t1 title=None headers=('Term', 'Amount') inferred=False
+    row t1:row:1 ['12', '500 000 AMD'] []
+
+=== card h3+p
+  block b1 card path=() text='Consumer loanUp to 5 000 000 AMD' fields={'title': 'Consumer loanUp to 5 000 000 AMD'} scalars=[('Up to 5 000 000 AMD', '5000000', 'AMD')]
+
+=== row header table
+  block b1 table path=() text='Interest rate12%Term60 months' fields={} scalars=[('12%', '12', 'percent'), ('60 months', '60', 'month')]
+  table t1 title=None headers=('Term', '60 months') inferred=False
+
+=== title row + numeric note
+  block b1 table path=() text='Consumer loan tariffsItemValueRate12%¹5 000 000 AMD is the maximum amount for unsecured loans¹ Fixed for the first year' fields={} scalars=[('12%', '12', 'percent'), ('5 000 000 AMD', '5000000', 'AMD')]
+  table t1 title='Consumer loan tariffs' headers=('Item', 'Value') inferred=False
+    row t1:row:2 ['Rate', '12%¹'] []
+    note marker= None text= 'Consumer loan tariffs'
+    note marker= 5 text= '000 000 AMD is the maximum amount for unsecured loans'
+    note marker= 1 text= 'Fixed for the first year'
+
+=== single column
+  block b1 table path=() text='Loan conditionsRate 12%Term up to 60 months' fields={} scalars=[('12%', '12', 'percent'), ('up to 60 months', '60', 'month')]
+  table t1 title='Loan conditions' headers=('Column 1',) inferred=True
+    note marker= None text= 'Loan conditions'
+    note marker= None text= 'Rate 12%'
+    note marker= None text= 'Term up to 60 months'
+
+=== list items decimals
+  block b1 table path=() text='ItemValueRate12.5% annualEffective01.03.2025' fields={} scalars=[('12.5%', '12.5', 'percent')]
+  table t1 title=None headers=('Item', 'Value') inferred=False
+    row t1:row:1 ['Rate', '12.5% annual'] [('5% annual',)]
+    row t1:row:2 ['Effective', '01.03.2025'] [('03.2025',)]
+
+=== nested table
+  block b1 table path=() text='ProductTermsLoanAMD12%USD8%' fields={} scalars=[('AMD12', '12', 'AMD'), ('USD8', '8', 'USD')]
+  block b2 table path=() text='AMD12%USD8%' fields={} scalars=[('AMD12', '12', 'AMD'), ('USD8', '8', 'USD')]
+  table t1 title=None headers=('Product', 'Terms') inferred=False
+    row t1:row:1 ['Loan', 'AMD12%USD8%'] []
+    row t1:row:2 ['AMD', '12%'] []
+    row t1:row:3 ['USD', '8%'] []
+  table t2 title=None headers=('Column 1', 'Column 2') inferred=True
+    row t2:row:0 ['AMD', '12%'] []
+    row t2:row:1 ['USD', '8%'] []
+
+=== nested li
+  block b1 list path=() text='Documents• Passport\n• Income 12%' fields={} scalars=[('12%', '12', 'percent')]
+  block b2 list path=() text='Passport' fields={} scalars=[]
+  block b3 list path=() text='Income 12%' fields={} scalars=[('12%', '12', 'percent')]
+
+=== section rows in table
+  block b1 table path=() text='ItemValueAMD loansFee0%USD loansFee0%Rate9%' fields={} scalars=[('0%', '0', 'percent'), ('0%', '0', 'percent'), ('9%', '9', 'percent')]
+  table t1 title=None headers=('Item', 'Value') inferred=False
+    row t1:row:2 ['Fee', '0%'] []
+    row t1:row:5 ['Rate', '9%'] []
+    note marker= None text= 'AMD loans'
+    note marker= None text= 'USD loans'
+
+=== heading leak across accordions
+  block b1 accordion path=() text='Mortgage' fields={} scalars=[]
+  block b2 heading path=() text='Mortgage rates' fields={} scalars=[]
+  block b3 paragraph path=('Mortgage rates',) text='Rate 10%' fields={} scalars=[('10%', '10', 'percent')]
+  block b4 accordion path=('Mortgage rates',) text='Consumer' fields={} scalars=[]
+  block b5 paragraph path=('Mortgage rates',) text='Rate 18%' fields={} scalars=[('18%', '18', 'percent')]
+
+=== text-only div panel
+  block b1 accordion path=() text='Fees' fields={} scalars=[]
+
+=== dt/dd
+  block b1 key_value path=() text='Interest rate' fields={} scalars=[]
+  block b2 key_value path=() text='12%' fields={} scalars=[('12%', '12', 'percent')]
+
+=== p inside dd
+  block b1 key_value path=() text='Rate' fields={} scalars=[]
+  block b2 key_value path=() text='12%' fields={} scalars=[('12%', '12', 'percent')]
+  block b3 paragraph path=() text='12%' fields={} scalars=[('12%', '12', 'percent')]
+
+=== two header rows
+  block b1 table path=() text='TermRateAMDUSD12 months12%8%' fields={} scalars=[('USD12', '12', 'USD'), ('12%', '12', 'percent'), ('8%', '8', 'percent')]
+  table t1 title=None headers=('Term', 'AMD', 'USD') inferred=False
+    row t1:row:2 ['12 months', '12%', '8%'] []
+
+=== bold first data row
+  block b1 table path=() text='Rate12%Term60 months' fields={} scalars=[('12%', '12', 'percent'), ('60 months', '60', 'month')]
+  table t1 title=None headers=('Rate', '12%') inferred=False
+    row t1:row:1 ['Term', '60 months'] []

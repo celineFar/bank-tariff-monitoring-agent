@@ -1,0 +1,46 @@
+{
+ "scenario": "S01",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 16.7
+ },
+ "files": [
+  "tests/unit/test_normalization_fixes.py",
+  "tests/unit/test_normalization_pdf_fixes.py",
+  "tests/unit/test_normalization_baseline.py",
+  "tests/unit/test_pdf_admission_gate.py",
+  "tests/unit/test_normalization.py",
+  "tests/unit/test_normalization_service.py",
+  "tests/unit/test_normalized_renderer.py",
+  "tests/unit/test_html_parser.py",
+  "tests/unit/test_ocr_fallback.py",
+  "tests/unit/test_gemini_pdf_extraction.py",
+  "tests/unit/test_semantic_extraction.py",
+  "tests/unit/test_source_discovery.py",
+  "tests/unit/test_knowledge_projection.py",
+  "tests/unit/test_acquisition.py",
+  "tests/unit/test_acquisition_identity.py",
+  "tests/unit/test_acquisition_completeness.py",
+  "tests/unit/test_acquisition_freshness.py",
+  "tests/unit/test_browser_render_dom.py",
+  "tests/unit/test_config.py",
+  "tests/integration/test_acquisition_snapshots_postgres.py",
+  "tests/integration/test_acquisition_baselines_postgres.py"
+ ],
+ "pytest_tail": [
+  "SKIPPED [1] tests/unit/test_ocr_fallback.py:564: no tesseract engine with the requested language data",
+  "388 passed, 5 skipped, 2 warnings in 15.34s"
+ ],
+ "skipped": [
+  "SKIPPED [1] tests/unit/test_ocr_fallback.py:432: pypdfium2 is not installed",
+  "SKIPPED [1] tests/unit/test_ocr_fallback.py:443: pypdfium2 is not installed",
+  "SKIPPED [1] tests/unit/test_ocr_fallback.py:454: pypdfium2 is not installed",
+  "SKIPPED [1] tests/unit/test_ocr_fallback.py:465: pypdfium2 is not installed",
+  "SKIPPED [1] tests/unit/test_ocr_fallback.py:564: no tesseract engine with the requested language data"
+ ]
+}

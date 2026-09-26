@@ -57,10 +57,43 @@ _FEE_TERMS = ("fee", "tariff", "commission", "վճար")
 _LEGAL_TERMS = ("procedure", "regulation", "disclosure", "agreement")
 _DATE = r"(?P<{name}>\d{{1,2}}[./-]\d{{1,2}}[./-]\d{{2,4}})"
 _RANGE_RE = re.compile(
-    rf"(?:from\s+)?{_DATE.format(name='start')}\s*(?:to|until|[-\u2013\u2014])\s*"
+    rf"(?:from\s+)?{_DATE.format(name='start')}\s*"
+    rf"(?:to|until|till|through|[-\u2013\u2014])\s*"
     rf"{_DATE.format(name='end')}",
     re.IGNORECASE,
 )
+_ARMENIAN = re.compile(r"[\u0531-\u058f]")
+
+
+def _term_pattern(term: str) -> re.Pattern[str]:
+    """Match a term as a word, not inside one: `atm` is not in "treatment".
+
+    English terms may take a plural ending. Armenian terms match as word
+    starts, since they inflect (`վարկ`, `վարկի`, `վարկային`). Path fragments
+    (`/archive/`) carry their own boundaries.
+    """
+    escaped = re.escape(term)
+    if _ARMENIAN.search(term):
+        return re.compile(rf"(?<!\w){escaped}")
+    if not term[0].isalnum():
+        return re.compile(escaped)
+    return re.compile(rf"(?<!\w){escaped}(?:s|es)?(?!\w)")
+
+
+def _matches(terms: tuple[str, ...], folded: str) -> tuple[str, ...]:
+    return tuple(term for term in terms if _PATTERNS[term].search(folded))
+
+
+_PATTERNS = {
+    term: _term_pattern(term)
+    for term in (
+        *_RELEVANT_TERMS,
+        *_HISTORICAL_TERMS,
+        *_IRRELEVANT_TERMS,
+        *_FEE_TERMS,
+        *_LEGAL_TERMS,
+    )
+}
 
 
 def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmission:
@@ -75,9 +108,9 @@ def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmiss
         )
     )
     folded = metadata.casefold()
-    relevant_matches = tuple(term for term in _RELEVANT_TERMS if term in folded)
-    irrelevant_matches = tuple(term for term in _IRRELEVANT_TERMS if term in folded)
-    historical_matches = tuple(term for term in _HISTORICAL_TERMS if term in folded)
+    relevant_matches = _matches(_RELEVANT_TERMS, folded)
+    irrelevant_matches = _matches(_IRRELEVANT_TERMS, folded)
+    historical_matches = _matches(_HISTORICAL_TERMS, folded)
     periods = _effective_periods(metadata)
     temporal = _temporal_status(periods, historical_matches, as_of)
 
@@ -103,9 +136,9 @@ def assess_pdf_metadata(document: DocumentArtifact, *, as_of: date) -> PdfAdmiss
     else:
         relevance = PdfAdmissionRelevance.AMBIGUOUS
     role = PdfAdmissionRole.PRODUCT_TERMS
-    if any(term in folded for term in _FEE_TERMS):
+    if _matches(_FEE_TERMS, folded):
         role = PdfAdmissionRole.FEES
-    elif any(term in folded for term in _LEGAL_TERMS):
+    elif _matches(_LEGAL_TERMS, folded):
         role = PdfAdmissionRole.LEGAL_DISCLOSURE
     elif relevance is not PdfAdmissionRelevance.RELEVANT:
         role = PdfAdmissionRole.OTHER

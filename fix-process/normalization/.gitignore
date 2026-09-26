@@ -1,0 +1,4 @@
+.cache/
+.cache-*/
+# The root .gitignore drops every data/ folder; this one holds the survey records.
+!data/

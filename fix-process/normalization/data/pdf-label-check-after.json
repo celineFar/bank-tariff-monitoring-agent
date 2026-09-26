@@ -1,0 +1,38 @@
+{
+ "as_of": "2026-09-26",
+ "skip_historical": true,
+ "labels": {
+  "current": 27,
+  "irrelevant": 2,
+  "historical": 62
+ },
+ "gate_passed": true,
+ "current_or_future_skipped": [],
+ "historical_transcribed": [],
+ "irrelevant_transcribed": [
+  {
+   "file": "web-info-eng.pdf",
+   "label": "irrelevant",
+   "skipped_in": [],
+   "admitted_in": [
+    "consumer_standard",
+    "credit_line"
+   ],
+   "admission": [
+    "consumer_standard: relevant/unknown",
+    "credit_line: relevant/unknown"
+   ]
+  },
+  {
+   "file": "web-info.pdf",
+   "label": "irrelevant",
+   "skipped_in": [],
+   "admitted_in": [
+    "online_consumer_finance"
+   ],
+   "admission": [
+    "online_consumer_finance: ambiguous/unknown"
+   ]
+  }
+ ]
+}

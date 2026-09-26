@@ -109,7 +109,6 @@ class Meter:
         self.bytes_kept += sum(
             item.size_bytes for item in artifact.downloadable_documents
         )
-        self.bytes_kept += sum(item.size_bytes for item in artifact.network_payloads)
 
     def report(self) -> dict[str, Any]:
         return {
@@ -291,7 +290,7 @@ async def s02_s03() -> None:
                 and (
                     r["inventory"]["tables"]
                     or r["inventory"]["pdf_links"]
-                    or r["inventory"]["payloads"]
+                    or r["inventory"]["main_chars"] >= 3000
                 )
             ]
             _write("S02", len(ok) == len(SEEDS), {"seeds": rows, "passing": ok}, meter)

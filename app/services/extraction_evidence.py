@@ -21,8 +21,8 @@ def build_evidence_catalog(
     assessments = selected_assessments_by_source_item(discovery.assessments)
     evidence: list[EvidenceItem] = []
     for document in bundle.documents:
-        table_sections = {
-            block.table_id: _table_section(block.heading_path, block.text)
+        table_paths = {
+            block.table_id: block.heading_path
             for block in document.blocks
             if block.table_id is not None
         }
@@ -45,13 +45,17 @@ def build_evidence_catalog(
             assessment = assessments.get(table.id)
             if assessment is None:
                 continue
-            section = table_sections.get(table.id) or table.title
-            if table.title and table.title not in (section or ""):
-                section = " > ".join(part for part in (section, table.title) if part)
+            # Where the table sits (its heading path) and what it is called; never
+            # the table's own flattened text, which is no label at all.
+            section = _table_section(table_paths.get(table.id, ()), table.title)
             headers = " | ".join(table.headers)
             for row in table.rows:
                 values = " | ".join(cell.text for cell in row.cells)
                 content = f"Headers: {headers}\nRow: {values}" if headers else values
+                if row.section:
+                    # The in-table section tells rows with the same label apart
+                    # ("Fee | 0%" under "AMD loans" and under "USD loans").
+                    content = f"Section: {row.section}\n{content}"
                 evidence.append(
                     _evidence_item(
                         document.id,
@@ -67,7 +71,7 @@ def build_evidence_catalog(
                     _evidence_item(
                         document.id,
                         f"{table.id}:note:{index}",
-                        note.text,
+                        _note_content(note.marker, note.text),
                         section,
                         note.source_refs[0].locator,
                         assessment,
@@ -82,10 +86,21 @@ def build_evidence_catalog(
     )
 
 
-def _table_section(heading_path: tuple[str, ...], text: str) -> str | None:
-    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
-    parts = tuple(part for part in (*heading_path, first_line) if part)
+def _table_section(heading_path: tuple[str, ...], title: str | None) -> str | None:
+    parts = tuple(part for part in (*heading_path, title) if part)
     return " > ".join(dict.fromkeys(parts)) or None
+
+
+_SUPERSCRIPTS = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def _note_content(marker: str | None, text: str) -> str:
+    """A footnote as the page shows it, marker first, so the model can tie
+    "12%¹" in a row to the note that explains it."""
+    if not marker:
+        return text
+    shown = marker.translate(_SUPERSCRIPTS) if marker.isdigit() else marker
+    return f"{shown} {text}"
 
 
 def _evidence_item(

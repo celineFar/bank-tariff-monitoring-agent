@@ -15,7 +15,6 @@ from app.domain.acquisition import (
     AcquisitionWarning,
     AcquisitionWarningCode,
     DocumentArtifact,
-    NetworkPayload,
     PageArtifact,
     StoredArtifact,
 )
@@ -25,7 +24,6 @@ from app.services.artifact_store import FileSystemArtifactStore
 from app.services.browser_renderer import (
     BrowserRenderer,
     BrowserRenderingError,
-    order_network_payloads,
 )
 from app.services.failure_mapping import source_failure_code
 from app.services.html_parser import HtmlArtifactParser, ParsedHtml
@@ -64,17 +62,27 @@ def completeness_floor_failures(
 
     Two conditions, both required. The page must carry real text outside the
     site's header, menus and footer -- every bank page has ~9k characters of
-    those, so counting the whole page proves nothing. And it must carry at least
-    one of the structures tariffs are published in: a table, a PDF link, or a
-    captured data payload.
+    those, so counting the whole page proves nothing. And it must carry one of
+    the structures tariffs are published in, a table or a PDF link -- or, for a
+    page that publishes its terms as text (a campaign landing page), a clearly
+    larger body of main text. A page rendered from its menus alone has 75-1,179
+    characters of main text.
     """
     failures: list[str] = []
     if inventory.main_chars < settings.min_main_content_chars:
         failures.append(
             f"main_chars {inventory.main_chars} < {settings.min_main_content_chars}"
         )
-    if not (inventory.tables or inventory.pdf_links or inventory.payloads):
-        failures.append("no tables, PDF links or payloads")
+    if not (
+        inventory.tables
+        or inventory.pdf_links
+        or inventory.main_chars >= settings.min_main_content_chars_without_structure
+    ):
+        failures.append(
+            "no tables or PDF links, and main_chars "
+            f"{inventory.main_chars} < "
+            f"{settings.min_main_content_chars_without_structure}"
+        )
     return tuple(failures)
 
 
@@ -103,13 +111,12 @@ class AcquisitionService:
         parsed = self._html_parser.parse(retrieved.html, source_url=retrieved.final_url)
         rendered_html: str | None = None
         final_url = retrieved.final_url
-        network_payloads: tuple[NetworkPayload, ...] = ()
         mode = AcquisitionMode.STATIC
         interactions = 0
         warnings: list[AcquisitionWarning] = []
 
         # With the browser enabled, every page is rendered: the bank's tariff
-        # tables, PDF links and data payloads exist only in the rendered page,
+        # tables and PDF links exist only in the rendered page,
         # and static HTML never carries them. A render that fails fails the
         # acquisition -- falling back to static HTML used to monitor six of
         # thirteen seeds from their navigation menus.
@@ -133,20 +140,6 @@ class AcquisitionService:
             )
             mode = AcquisitionMode.BROWSER
             interactions = rendered.interactions
-            # Canonical here too, not only in the renderer: the artifact is what
-            # every later stage reads, so its payload order must not depend on
-            # who produced it. The cap applies after the sort.
-            available = order_network_payloads(rendered.network_payloads, limit=None)
-            network_payloads = available[: self._settings.max_network_payloads]
-            skipped = len(available) - len(network_payloads)
-            skipped += rendered.payloads_over_budget
-            if skipped:
-                warnings.append(
-                    AcquisitionWarning(
-                        code=AcquisitionWarningCode.PAYLOAD_CAP_REACHED,
-                        detail=f"{skipped} payloads not kept",
-                    )
-                )
             if rendered.interaction_cap_reached:
                 warnings.append(
                     AcquisitionWarning(
@@ -159,7 +152,6 @@ class AcquisitionService:
             main_chars=len(parsed.main_text),
             tables=len(parsed.tables),
             pdf_links=len(self._pdf_link_urls(parsed)),
-            payloads=len(network_payloads),
         )
         if failures := completeness_floor_failures(inventory, self._settings):
             raise AcquisitionError(
@@ -195,17 +187,6 @@ class AcquisitionService:
                 )
             )
 
-        persisted_payloads: list[NetworkPayload] = []
-        for index, payload in enumerate(network_payloads, start=1):
-            artifact = await self._artifact_store.save(
-                payload.body_text.encode("utf-8"),
-                role=f"network_payload_{index}",
-                media_type=payload.mime_type,
-                extension="json" if "json" in payload.mime_type else "txt",
-            )
-            stored.append(artifact)
-            persisted_payloads.append(payload.model_copy(update={"artifact": artifact}))
-
         documents, document_warnings = await self._download_documents(parsed)
         warnings.extend(document_warnings)
         stored.extend(document.artifact for document in documents)
@@ -216,7 +197,6 @@ class AcquisitionService:
         content_hash = self._content_hash(
             page_content_hash=page_content_hash,
             documents=documents,
-            network_payloads=tuple(persisted_payloads),
         )
         return PageArtifact(
             url=retrieved.source_url,
@@ -234,7 +214,6 @@ class AcquisitionService:
             images=parsed.images,
             interactive_controls=parsed.interactive_controls,
             downloadable_documents=documents,
-            network_payloads=tuple(persisted_payloads),
             stored_artifacts=tuple(stored),
             warnings=tuple(warnings),
             inventory=inventory,
@@ -325,12 +304,16 @@ class AcquisitionService:
 
     @staticmethod
     def _document_origin(parsed: ParsedHtml, link_id: str) -> dict[str, object]:
+        # The link's own row, item or paragraph describes it; the whole block
+        # (a table, a list) would lend it its neighbours' dates and words.
+        link = next((item for item in parsed.links if item.id == link_id), None)
         for block in parsed.blocks:
             if link_id in block.link_ids:
+                context = link.context_text if link is not None else ""
                 return {
                     "origin_block_id": block.id,
                     "origin_heading_path": block.heading_path,
-                    "nearby_text": block.text[:5000],
+                    "nearby_text": (context or block.text)[:5000],
                 }
         return {}
 
@@ -351,16 +334,39 @@ class AcquisitionService:
         on every request, so hashing the bytes gave an unchanged page a new id
         on every fetch -- and, through the evidence ids built on it, missed
         every extraction cache. The bytes are still stored as artifacts.
+
+        The site's header, navigation and footer are left out too. They are the
+        same on every page and carry no tariff, but a footer module that loads
+        late (the consumer-loan page's language notice) made two renders of an
+        unchanged page disagree and renamed it.
         """
+        chrome = parsed.chrome_ids
         material = {
             "canonical_url": canonical_url,
-            "blocks": [block.model_dump(mode="json") for block in parsed.blocks],
-            "tables": [table.model_dump(mode="json") for table in parsed.tables],
-            "links": [link.model_dump(mode="json") for link in parsed.links],
-            "images": [image.model_dump(mode="json") for image in parsed.images],
+            "blocks": [
+                block.model_dump(mode="json")
+                for block in parsed.blocks
+                if block.id not in chrome
+            ],
+            "tables": [
+                table.model_dump(mode="json")
+                for table in parsed.tables
+                if table.id not in chrome
+            ],
+            "links": [
+                link.model_dump(mode="json")
+                for link in parsed.links
+                if link.id not in chrome
+            ],
+            "images": [
+                image.model_dump(mode="json")
+                for image in parsed.images
+                if image.id not in chrome
+            ],
             "interactive_controls": [
                 control.model_dump(mode="json")
                 for control in parsed.interactive_controls
+                if control.id not in chrome
             ],
         }
         return _digest(material)
@@ -370,7 +376,6 @@ class AcquisitionService:
         *,
         page_content_hash: str,
         documents: tuple[DocumentArtifact, ...],
-        network_payloads: tuple[NetworkPayload, ...],
     ) -> str:
         """Identify the whole acquisition: the page and everything reached from it."""
         material = {
@@ -387,9 +392,6 @@ class AcquisitionService:
                 }
                 for document in documents
             ],
-            # Sorted, because the capture order of concurrent responses is a
-            # race; the set of payloads is the fact, their arrival order is not.
-            "network_payloads": sorted(payload.sha256 for payload in network_payloads),
         }
         return _digest(material)
 

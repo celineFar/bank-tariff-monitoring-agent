@@ -14,12 +14,13 @@ a `NormalizedSourceBundle` containing:
 
 - one normalized page document;
 - one page-addressable document for each downloaded PDF;
-- one JSON-path-addressable document for each captured textual API payload;
-- normalized content blocks and rectangular tables;
+- normalized content blocks and rectangular tables (rows carry the in-table
+  section they sit under);
 - normalized links with original `href` text and fragment targets;
 - syntax-level scalar candidates (number, range, date, operator, and unit); and
-- typed warnings for unavailable artifacts, model-required/model-failed PDFs, and
-  invalid JSON.
+- typed warnings (see [`warnings`](#warnings)).
+
+Captured network payloads are not normalized: the project does not use them.
 
 Every `NormalizedBlock`, `NormalizedTableCell`, and `NormalizedNote` carries one or
 more `SourceReference` values. A reference combines the stable acquisition item ID
@@ -29,20 +30,48 @@ coordinates). Raw text is retained beside normalized text.
 ## Transformations and the PDF model boundary
 
 HTML blocks retain their type, visibility, parent, heading path, link IDs, Markdown,
-and locator. Links retain their resolved URL, raw `href`, and fragment. Whitespace
-and Unicode compatibility forms are canonicalized. Cards and key/value blocks also
-receive explicit fields where their acquired structure supports it.
+and locator. Links retain their resolved URL, raw `href`, fragment, and the text of
+their own table row, list item or paragraph. Whitespace and Unicode compatibility
+forms are canonicalized. The parser (`app/services/html_parser.py`) guarantees:
 
-Tables are rebuilt from physical cell coordinates and span metadata. The normalizer:
+- **no text runs together**: block-level elements end a line and table cells are
+  joined with ` | `, so `Term | Amount` never becomes `TermAmount12500 000`;
+- **no visible text is lost**: a `div`/`section`/`article`/… with text of its own
+  outside child blocks becomes a paragraph block (it is not a parent of the blocks
+  inside it, and it claims only the links in its own text);
+- **headings are scoped**: a heading inside a `section`, `article`, `details`, tab
+  panel, accordion panel or card labels nothing after that container ends, and an
+  accordion's title heads its panel's blocks;
+- **nothing is repeated**: a table keeps only its own rows (a nested table is its
+  own table, referenced from the outer cell as `[table tN]`), and nested list items
+  and paragraphs inside `dt`/`dd` are not separate blocks;
+- a `dt` and its `dd` values form one key/value block with `fields={"key","value"}`;
+- a table block carries the id of its table; and
+- a table cell whose only content is an image reads the image's alt text.
+
+Tables are rebuilt from physical cell coordinates and span metadata
+(`app/services/table_normalizer.py`). The normalizer:
 
 - determines width from populated cells, excluding trailing phantom DOM columns;
 - expands rowspans by repeating the source cell into each logical record;
 - keeps colspan continuations empty rather than shifting later values;
-- removes empty carry-only and exact duplicate rows;
-- merges list-item continuation rows that share row-spanned section/item cells;
-- uses source headers when present and otherwise emits explicit inferred headers;
-- retains cell lists inside the cell; and
-- separates full-width footnotes from data rows while preserving their markers.
+- takes a header row only from HTML header cells (`th` that is not a row header, or
+  `thead`); with no header cells anywhere, a first row set wholly in bold with no
+  numbers counts; stacked header rows combine per column (`Rate / AMD`); otherwise it
+  emits explicit inferred headers and reports `AMBIGUOUS_TABLE`;
+- builds the title from the tab/accordion context title, the caption and the table's
+  own first full-width row;
+- treats a later full-width row that reads like a heading (short, no sentence
+  punctuation, no numbers, no footnote marker) as a **section label** for the rows
+  under it, and a single cell in the item column under a carried section cell as a
+  sub-section until that section ends; rows carry `section` (`"USD loans"`,
+  `"Term and interest rate"`), and a label with no rows under it is a note;
+- drops only a row identical to the row just above it in the same section, and
+  reports it;
+- merges list-item continuation rows into the column that holds the list; and
+- separates full-width footnotes from data rows. A marker is a superscript, `*`/`†`/
+  `‡`, `1)`, or one or two digits directly before a capital letter; a note that
+  starts with an amount ("5 000 000 AMD…") has none.
 
 Downloaded PDFs use a deliberately narrow model-backed substep. Python first records
 link/title/heading context, checks effective-date and archive markers, and probes each
@@ -53,7 +82,11 @@ A deterministic admission gate then decides whether the document is worth
 transcribing at all, because transcription is the most output-heavy model call in
 the system. `assess_pdf_metadata` in `app/services/pdf_admission.py` reads only
 link metadata — document name, link text and title, origin heading path, nearby
-text, and the URL path — and returns a relevance, a role, and a temporal status:
+text, and the URL path — and returns a relevance, a role, and a temporal status.
+The nearby text is the link's own table row, list item or paragraph, never the
+whole table or list around it, so one link's dates cannot decide for another.
+Terms match as whole words (`atm` is not in "treatment"); Armenian terms match as
+word starts, since they inflect:
 
 - any product-relevant term (`loan`, `mortgage`, `credit`, `tariff`, `fee`,
   `վարկ`, `հիփոթեք`, …) makes the document `relevant`, so a tariff sheet that
@@ -64,19 +97,29 @@ text, and the URL path — and returns a relevance, a role, and a temporal statu
 - anything else stays `ambiguous` and is transcribed, because its content still
   has to reach source discovery to be judged.
 
-Independently, an explicit effective-date range in the link context, or an
-archive/`previous terms` marker, resolves the document as `current`,
-`historical`, `future`, `time_bounded`, or `unknown`. Unless
+Independently, an explicit effective-date range in the link context (`from … to/
+until/till/through …`), or an archive/`previous terms` marker, resolves the
+document as `current`, `historical`, `future`, `time_bounded`, or `unknown`. Unless
 `PDF_EXTRACTION_SKIP_HISTORICAL` is disabled, a `historical` document is skipped
 as well, so superseded tariff sheets are not paid for. A skipped document
 becomes an empty `pdf_skipped` normalized document that keeps its locator and
-admission reason, so the decision stays auditable.
+admission reason, and raises `PDF_SKIPPED_HISTORICAL` or `PDF_SKIPPED_IRRELEVANT`
+with the basis, so the decision stays auditable. Every PDF linked from the seed
+pages on 2026-09-26 was labelled by hand; `tests/unit/test_pdf_admission_gate.py`
+fails if admission would skip one labelled current.
 
 The original PDF bytes of an admitted document are then supplied to a tool-free
-Gemini ADK agent with a strict response schema and thinking disabled. The
-response must contain every page exactly once and rectangular tables; Python
+Gemini ADK agent with a strict response schema and thinking disabled. Python
 rejects invalid output and converts accepted blocks, tables, notes, and footnotes
-to the same page-addressable normalized structures used downstream.
+to the same page-addressable normalized structures used downstream; each PDF table
+cell cites itself (`…:table:0:row:3:cell:1`) at the page's locator. A page with a
+text layer that comes back with no content raises `PDF_PAGE_EMPTY`.
+
+Only the extractor's own failures (`PdfExtractionError`: unreadable file, no model
+available, every model failed) become warnings; any other exception is a bug and
+fails the normalization stage. Without a Gemini key, OCR is still tried before the
+document is reported as `PDF_MODEL_REQUIRED`. Offline tools that normalize without
+Gemini pass `NoPdfExtractor`, which reports every PDF that way.
 
 This stage has its own model rather than the global `MODEL_NAME`:
 `PDF_EXTRACTION_MODEL_NAME` defaults to `gemini-3.1-flash-lite`, with
@@ -92,14 +135,13 @@ The demonstration stores this exact cache under `pdf_extraction/cache` and write
 checkpoint JSON file immediately after each completed PDF. Restarting after a later
 failure therefore reuses completed model responses instead of charging for them again.
 
-JSON payloads are flattened only to scalar leaves. Each leaf becomes a key/value
-block with its exact JSON path. Invalid JSON remains available as a raw text block and
-produces a warning.
-
 Scalar parsing is deliberately semantic-free. For example, `13%-15%`,
 `AMD 3,000,000 - AMD 150,000,000`, and `up to 60 months` become typed candidates,
 but the later evidence-bound extraction component decides which tariff field—if
-any—each candidate represents.
+any—each candidate represents. Dates are read before ranges (`01.03.2024 -
+31.12.2024` is two dates), a range whose minimum exceeds its maximum is rejected, a
+number never spans a line break, and `0,125` is a decimal while `1,000` is a
+thousand.
 
 ## The OCR fallback
 
@@ -112,7 +154,7 @@ model call:
 | `machine_readable` | a text layer above the threshold | direct: Gemini transcribes the native PDF |
 | `mixed` | text layer plus images | direct |
 | `image_only` | images, no usable text layer | direct first, then OCR if that produced nothing |
-| `unknown` | neither | direct |
+| `unknown` | neither | direct first, then OCR if that produced nothing |
 
 OCR is a **fallback**, not a second primary. Gemini's multimodal reading stays
 the first attempt for every admitted PDF, because it is what produces the
@@ -120,11 +162,14 @@ structured blocks, tables, and heading paths that semantic extraction consumes.
 The OCR stage runs on exactly two deterministic conditions, neither of which the
 model decides:
 
-1. **Coverage.** A page the probe called `image_only` for which normalization
-   produced zero blocks *and* zero tables. Both halves matter: a
-   `machine_readable` page that came back empty is not an OCR problem, and
-   re-reading it would only add a weaker second opinion of the same glyphs.
-2. **Engine unavailable.** Every configured Gemini model failed. Rather than
+1. **Coverage.** A page with no usable text layer (`image_only`, or `unknown`:
+   no text layer and no image, such as text drawn as vector shapes) for which
+   normalization produced zero blocks *and* zero tables. A `machine_readable`
+   page that came back empty is not an OCR problem, and re-reading it would only
+   add a weaker second opinion of the same glyphs; it raises `PDF_PAGE_EMPTY`
+   instead. Pages OCR filled raise `PDF_OCR_FILLED`, so the run report shows them.
+2. **Engine unavailable.** No Gemini key is configured, or every configured
+   Gemini model failed. Rather than
    losing the document entirely, the stage transcribes it with OCR and records
    `ocr:tesseract:<version>` as the document's extraction method, so the
    degraded path is never mistaken for the model path.
@@ -804,7 +849,27 @@ image is routed to human review before it can be accepted. See
 
 ### `quality_score`
 
-PDF documents contain a quality score between `0` and `1`. It is the fraction of
+**HTML page documents** are scored against the page's **seed baseline**
+(`app/config/normalization_baseline.json`, loaded by
+`app/services/normalization_baseline.py`). Each seed page was read by a person on
+2026-09-26 and what normalization must produce from it was recorded
+(`fix-process/normalization/data/seed-ground-truth.json`). The runtime baseline keeps
+only the structure of that record:
+
+- each expected table (found by a stable anchor), its title, whether it has a real
+  header row (and which), a minimum row count where recorded;
+- each expected row label that must carry a value, under its in-table section;
+- each expected footnote (marker and opening words); and
+- each expected text block that is a label rather than a figure.
+
+It never holds tariff values, so a rate the bank changes is a tariff change, not a
+quality drop. The score is `passed checks / checks`; any failed check also raises
+`BASELINE_MISMATCH` listing what is missing. A page with no baseline has no score
+(`null`) rather than a claimed `1.0`. Regenerate the baseline with
+`fix-process/normalization/survey/export_normalization_baseline.py` after the ground
+truth changes, for example after the bank redesigns a page.
+
+**PDF documents** contain a quality score between `0` and `1`. It is the fraction of
 pages for which the accepted model response supplied at least one block or table.
 A page recovered by the OCR fallback counts toward the score, because the page
 did in the end produce evidence.
@@ -827,11 +892,14 @@ Normalization warnings are structured conditions that require attention.
 
 Possible warning codes include:
 
-- `ARTIFACT_UNAVAILABLE`: stored source bytes could not be read or verified.
-- `PDF_MODEL_REQUIRED`: PDF bytes were available but no Gemini PDF extractor was configured.
-- `PDF_MODEL_FAILED`: all bounded Gemini extraction attempts failed or returned invalid output.
-- `INVALID_JSON`: a captured JSON response could not be decoded.
-- `AMBIGUOUS_TABLE`: table structure could not be resolved reliably.
+- `ARTIFACT_UNAVAILABLE`: stored source bytes could not be read, or are not a readable PDF.
+- `PDF_MODEL_REQUIRED`: no Gemini key or PDF extractor is configured, and OCR recovered nothing.
+- `PDF_MODEL_FAILED`: all bounded Gemini extraction attempts failed or returned invalid output, and OCR recovered nothing.
+- `PDF_SKIPPED_HISTORICAL` / `PDF_SKIPPED_IRRELEVANT`: admission skipped the PDF from its link metadata; the message gives the basis.
+- `PDF_PAGE_EMPTY`: pages with a text layer came back empty from transcription.
+- `PDF_OCR_FILLED`: pages whose content came from the local OCR fallback.
+- `BASELINE_MISMATCH`: the page lost structure its seed baseline records; the message lists what is missing.
+- `AMBIGUOUS_TABLE`: a table has no header row (headers were invented) or a repeated row was dropped; one warning per table, `source_id` `page:<id>:<table id>`.
 
 A warning does not necessarily invalidate the whole bundle. It identifies a specific source or operation that may be incomplete.
 

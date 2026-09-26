@@ -1,0 +1,117 @@
+{
+ "scenario": "S09",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 1.9
+ },
+ "stored_artifacts": {
+  "consumer_standard": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 1.0
+  },
+  "credit_line": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 0.9688
+  },
+  "mortgage_commercial": {
+   "loaded": true,
+   "table_blocks_without_id": 2,
+   "table_blocks_linked": 2,
+   "tables": 2,
+   "quality_score": 0.9583
+  },
+  "mortgage_construction": {
+   "loaded": true,
+   "table_blocks_without_id": 4,
+   "table_blocks_linked": 4,
+   "tables": 4,
+   "quality_score": 1.0
+  },
+  "mortgage_diaspora": {
+   "loaded": true,
+   "table_blocks_without_id": 0,
+   "table_blocks_linked": 0,
+   "tables": 0,
+   "quality_score": 1.0
+  },
+  "mortgage_express": {
+   "loaded": true,
+   "table_blocks_without_id": 4,
+   "table_blocks_linked": 4,
+   "tables": 4,
+   "quality_score": 1.0
+  },
+  "mortgage_no_income_verification": {
+   "loaded": true,
+   "table_blocks_without_id": 1,
+   "table_blocks_linked": 1,
+   "tables": 1,
+   "quality_score": 1.0
+  },
+  "mortgage_online": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 0.9355
+  },
+  "mortgage_primary": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 0.9737
+  },
+  "mortgage_renovation": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 0.9583
+  },
+  "mortgage_secondary_market": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 1.0
+  },
+  "online_consumer_finance": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 1.0
+  },
+  "overdraft": {
+   "loaded": true,
+   "table_blocks_without_id": 3,
+   "table_blocks_linked": 3,
+   "tables": 3,
+   "quality_score": 1.0
+  }
+ },
+ "stored_baseline": {
+  "tables": 3,
+  "payloads": 17,
+  "pdf_links": 10,
+  "main_chars": 13218
+ },
+ "today": {
+  "main_chars": 13305,
+  "tables": 3,
+  "pdf_links": 10
+ },
+ "baseline_comparison": []
+}

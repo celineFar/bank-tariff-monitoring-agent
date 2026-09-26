@@ -1,0 +1,41 @@
+{
+ "scenario": "S05",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 36.4
+ },
+ "pdf_links": 117,
+ "skipped": 62,
+ "skip_warnings": 62,
+ "current_or_future_skipped": [],
+ "historical_transcribed": [],
+ "unlabelled": [],
+ "irrelevant_transcribed": [
+  {
+   "seed": "consumer_standard",
+   "file": "web-info-eng.pdf",
+   "label": "irrelevant",
+   "skipped": false,
+   "admission": "relevant/unknown"
+  },
+  {
+   "seed": "credit_line",
+   "file": "web-info-eng.pdf",
+   "label": "irrelevant",
+   "skipped": false,
+   "admission": "relevant/unknown"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "file": "web-info.pdf",
+   "label": "irrelevant",
+   "skipped": false,
+   "admission": "ambiguous/unknown"
+  }
+ ]
+}

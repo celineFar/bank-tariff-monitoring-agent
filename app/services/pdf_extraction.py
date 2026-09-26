@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections import OrderedDict
 from collections.abc import Sequence
 
+import httpx
 from google.genai.errors import APIError
 from pydantic import BaseModel, ConfigDict
+from pypdf.errors import PyPdfError
 
 from app.config import OcrSettings, PdfExtractionSettings
 from app.domain.acquisition import DocumentArtifact, SourceLocator, SourceType
@@ -19,6 +22,7 @@ from app.domain.normalization import (
     NormalizedTableRow,
     SourceReference,
     normalize_multiline_text,
+    normalize_text,
 )
 from app.domain.pdf_extraction import (
     OcrDocumentResult,
@@ -51,6 +55,38 @@ from app.services.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer()
+
+# Errors a model call can end with that say nothing about our code: provider
+# errors, transport failures, and responses that fail validation.
+_MODEL_FAILURES = (
+    APIError,
+    httpx.HTTPError,
+    TimeoutError,
+    ConnectionError,
+    RuntimeError,
+    ValueError,
+)
+_OCR_MEMO_PAGES = 500
+
+
+class PdfExtractionError(RuntimeError):
+    """An expected reason a linked PDF yields no transcription.
+
+    Normalization turns these into warnings and carries on; any other exception
+    from the PDF path is a bug and fails the stage.
+    """
+
+
+class PdfUnreadable(PdfExtractionError):
+    """The file could not be opened as a PDF."""
+
+
+class PdfModelUnavailable(PdfExtractionError):
+    """No Gemini key is configured, and OCR recovered nothing."""
+
+
+class PdfTranscriptionFailed(PdfExtractionError):
+    """Every Gemini model failed, and OCR recovered nothing."""
 
 
 class PdfExtractionOutcome(BaseModel):
@@ -130,7 +166,8 @@ class GeminiPdfExtractionService:
         self._rasterizer = rasterizer
         # Local OCR costs no credits, but re-rendering the same page inside one
         # process is pure waste; this memo is deliberately not the Gemini cache.
-        self._ocr_memo: dict[tuple[str, int], OcrPageResult] = {}
+        # Bounded, oldest first, so a long-lived worker does not grow without end.
+        self._ocr_memo: OrderedDict[tuple[str, int], OcrPageResult] = OrderedDict()
         self._models = tuple(
             dict.fromkeys((settings.model_name, *settings.fallback_model_names))
         )
@@ -149,9 +186,12 @@ class GeminiPdfExtractionService:
         document_id: str,
     ) -> PdfExtractionPlan:
         admission = assess_pdf_metadata(document, as_of=document.retrieved_at.date())
-        probe = probe_pdf_input(
-            content, text_threshold=self._settings.probe_text_threshold
-        )
+        try:
+            probe = probe_pdf_input(
+                content, text_threshold=self._settings.probe_text_threshold
+            )
+        except (PyPdfError, ValueError) as exc:
+            raise PdfUnreadable(f"{document_id} is not a readable PDF: {exc}") from exc
         fingerprint = hashlib.sha256(
             "\x1f".join(
                 (
@@ -188,17 +228,19 @@ class GeminiPdfExtractionService:
     def _pages_needing_ocr(
         self, plan: PdfExtractionPlan, normalized: NormalizedDocument
     ) -> tuple[int, ...]:
-        """Pages the probe called image-only that Gemini returned nothing for.
+        """Pages with no usable text layer that Gemini returned nothing for.
 
-        Both halves matter. A machine-readable page that produced no blocks is a
-        transcription problem OCR cannot fix, and re-reading it would only add a
-        second, weaker opinion of the same text layer.
+        That is image-only pages, and "unknown" ones: no text layer and no
+        embedded image, such as text drawn as vector shapes. A page with a text
+        layer that produced no blocks is a transcription problem OCR cannot fix
+        (re-reading it would only add a second, weaker opinion of the same text);
+        it is reported instead (`empty_text_pages`).
         """
         populated = _populated_pages(normalized)
         return tuple(
             page.page_number
             for page in plan.input_probe.pages
-            if page.input_mode is PdfInputMode.IMAGE_ONLY
+            if page.input_mode in {PdfInputMode.IMAGE_ONLY, PdfInputMode.UNKNOWN}
             and page.page_number not in populated
         )
 
@@ -303,6 +345,8 @@ class GeminiPdfExtractionService:
                 min_confidence=settings.min_confidence,
             )
             self._ocr_memo[(document_sha256, page.page_number)] = result
+            while len(self._ocr_memo) > _OCR_MEMO_PAGES:
+                self._ocr_memo.popitem(last=False)
             results.append(result)
         return results
 
@@ -339,8 +383,10 @@ class GeminiPdfExtractionService:
         document: DocumentArtifact,
         plan: PdfExtractionPlan,
         content: bytes,
+        *,
+        reason: str = "all Gemini PDF models failed",
     ) -> PdfExtractionOutcome | None:
-        """Engine-unavailable fallback: every Gemini model failed.
+        """Engine-unavailable fallback: no key, or every Gemini model failed.
 
         A degraded transcription that says so is worth more than no evidence at
         all, but it must never be mistaken for the model path, so the document
@@ -380,7 +426,8 @@ class GeminiPdfExtractionService:
             blocks=blocks,
         )
         logger.warning(
-            "All Gemini PDF models failed for %s; recovered %s page(s) with %s",
+            "%s for %s; recovered %s page(s) with %s",
+            reason.capitalize(),
             plan.document_id,
             len(populated),
             method,
@@ -430,7 +477,15 @@ class GeminiPdfExtractionService:
                 normalized_document=_empty_document(document, plan, "pdf_skipped"),
             )
         if self._api_key is None:
-            raise RuntimeError("GEMINI_API_KEY is required for PDF extraction")
+            # OCR needs no key: scanned pages can still be recovered.
+            recovered = await self._ocr_only(
+                document, plan, content, reason="no Gemini API key is configured"
+            )
+            if recovered is not None:
+                return recovered
+            raise PdfModelUnavailable(
+                f"GEMINI_API_KEY is required to transcribe {document_id}"
+            )
 
         failures: list[Exception] = []
         for index, model_name in enumerate(self._models, start=1):
@@ -441,8 +496,15 @@ class GeminiPdfExtractionService:
                 model_name=model_name,
                 content_fingerprint=plan.content_fingerprint,
             )
+            if cached is not None and not _covers_all_pages(cached, plan):
+                # A stored response that no longer fits the file is a cache
+                # miss, not a failure.
+                logger.warning(
+                    "Ignoring cached PDF extraction for %s: page coverage mismatch",
+                    document_id,
+                )
+                cached = None
             if cached is not None:
-                _validate_response(cached, plan)
                 await record_model_cache_hit(
                     self._usage_repository,
                     stage="pdf.transcription",
@@ -486,8 +548,7 @@ class GeminiPdfExtractionService:
             )
             try:
                 response = await extractor.extract(content, plan)
-                _validate_response(response, plan)
-            except (APIError, RuntimeError, ValueError) as exc:
+            except _MODEL_FAILURES as exc:
                 failures.append(exc)
                 if index < len(self._models):
                     logger.warning(
@@ -501,7 +562,7 @@ class GeminiPdfExtractionService:
                 recovered = await self._ocr_only(document, plan, content)
                 if recovered is not None:
                     return recovered
-                raise RuntimeError(
+                raise PdfTranscriptionFailed(
                     f"all Gemini PDF models failed for {document_id}: "
                     f"{describe_failure(exc)}"
                 ) from exc
@@ -631,16 +692,41 @@ def _page_sources(
     return tuple(sources)
 
 
-def _validate_response(
-    response: PdfExtractionResponse, plan: PdfExtractionPlan
-) -> None:
+def _covers_all_pages(response: PdfExtractionResponse, plan: PdfExtractionPlan) -> bool:
+    """Whether a stored response has one entry per page of this file.
+
+    A fresh response always does: the extractor builds an entry for every page
+    before anything is returned. Only a cached one can disagree with the file.
+    Pages the model left empty are reported by `empty_text_pages`.
+    """
     expected = set(range(1, plan.input_probe.page_count + 1))
-    received = {page.page_number for page in response.pages}
-    if received != expected:
-        raise ValueError(
-            f"Gemini PDF page coverage mismatch: expected {sorted(expected)}, "
-            f"received {sorted(received)}"
-        )
+    return {page.page_number for page in response.pages} == expected
+
+
+def empty_text_pages(outcome: PdfExtractionOutcome) -> tuple[int, ...]:
+    """Pages with a text layer that ended up with no content at all.
+
+    The probe measured text on them, OCR does not re-read such pages, so an
+    empty result means the transcription silently skipped them.
+    """
+    if outcome.model_name is None:
+        return ()
+    populated = _populated_pages(outcome.normalized_document)
+    return tuple(
+        page.page_number
+        for page in outcome.plan.input_probe.pages
+        if page.input_mode in {PdfInputMode.MACHINE_READABLE, PdfInputMode.MIXED}
+        and page.page_number not in populated
+    )
+
+
+def ocr_filled_pages(outcome: PdfExtractionOutcome) -> tuple[int, ...]:
+    """Pages whose content came from the OCR fallback rather than Gemini."""
+    return tuple(
+        number
+        for number, source in outcome.page_sources
+        if source is PdfTranscriptionSource.OCR
+    )
 
 
 def _normalize(
@@ -676,7 +762,11 @@ def _normalize(
                     type=block_types[item.type],
                     raw_text=item.text,
                     text=text,
-                    heading_path=item.heading_path,
+                    heading_path=tuple(
+                        normalized
+                        for value in item.heading_path
+                        if (normalized := normalize_text(value))
+                    ),
                     scalar_candidates=extract_scalar_candidates(text),
                     source_refs=(
                         SourceReference(source_item_id=block_id, locator=locator),
@@ -709,13 +799,10 @@ def _normalize(
                 NormalizedTableRow(
                     id=f"{table_id}:row:{row_index}",
                     cells=tuple(
-                        NormalizedTableCell(
-                            raw_text=cell,
-                            text=normalize_multiline_text(cell),
-                            scalar_candidates=extract_scalar_candidates(cell),
-                            source_refs=(table_ref,),
+                        _pdf_cell(
+                            cell, f"{table_id}:row:{row_index}:cell:{column}", locator
                         )
-                        for cell in row.cells
+                        for column, cell in enumerate(row.cells)
                     ),
                 )
                 for row_index, row in enumerate(item.rows)
@@ -723,8 +810,8 @@ def _normalize(
             tables.append(
                 NormalizedTable(
                     id=table_id,
-                    title=item.title,
-                    headers=item.headers,
+                    title=normalize_text(item.title) if item.title else None,
+                    headers=tuple(normalize_text(header) for header in item.headers),
                     rows=rows,
                     notes=tuple(
                         NormalizedNote(
@@ -767,6 +854,21 @@ def _normalize(
         pdf_admission=plan.admission,
         blocks=tuple(blocks),
         tables=tuple(tables),
+    )
+
+
+def _pdf_cell(raw: str, cell_id: str, locator: SourceLocator) -> NormalizedTableCell:
+    """A PDF table cell, cleaned before its numbers are read, pointing at itself.
+
+    The locator is still the page (a PDF has no finer address), but the source
+    item id names the table, row and cell, so evidence can cite one cell.
+    """
+    text = normalize_multiline_text(raw)
+    return NormalizedTableCell(
+        raw_text=raw,
+        text=text,
+        scalar_candidates=extract_scalar_candidates(text),
+        source_refs=(SourceReference(source_item_id=cell_id, locator=locator),),
     )
 
 

@@ -14,7 +14,7 @@ to the ADK model.
    inline links, images, and interactive controls with CSS/XPath locators. Both the
    physical table cells and a deterministic logical grid are retained.
 3. When the browser is enabled (the default), every page is rendered by
-   `PlaywrightBrowserRenderer`. The bank's tariff tables, PDF links and data payloads
+   `PlaywrightBrowserRenderer`. The bank's tariff tables and PDF links
    exist only in the rendered page: static HTML carried none of them on any of the 13
    seeds (survey of 2026-09-26). There is **no static fallback**: a render that fails
    fails the acquisition with `source.browser_failed` or `source.browser_unavailable`.
@@ -31,19 +31,19 @@ to the ADK model.
    page URL is checked again after the interactions. Every hop of the main document's
    redirect chain is validated against the allowlist. Redirects of page *resources*
    are followed by the browser without a per-hop check (Playwright routes only the
-   first URL of a chain); their final responses are still host-checked before capture.
-6. The renderer opens bounded accordions/tabs/content-revealing controls and captures
-   same-domain textual XHR/fetch responses within a byte budget. The payload count cap
-   is applied after the captures are deduplicated and sorted, so the kept set never
-   depends on arrival order. Reaching the interaction or payload cap is a typed
-   warning.
+   first URL of a chain).
+6. The renderer opens bounded accordions/tabs/content-revealing controls. Reaching the
+   interaction cap is a typed warning. Network responses are not captured: the
+   project does not use them (normalization fix plan, N22).
 7. **Completeness floor.** Every acquisition must carry at least
    `ACQUISITION_MIN_MAIN_CONTENT_CHARS` of *main* text -- text outside the site's
    `header`/`nav`/`footer` and ARIA banner/navigation/contentinfo regions, which alone
-   run to ~9k characters on every bank page -- **and** at least one table, same-host
-   PDF link or captured payload. Otherwise it fails with `source.incomplete_content`
-   and its reasons (for example `main_chars 368 < 1500; no tables, PDF links or
-   payloads`). The counts are kept on the artifact as `PageArtifact.inventory`.
+   run to ~9k characters on every bank page -- **and** at least one table or same-host
+   PDF link, or, for a page that publishes its terms as text (the diaspora campaign
+   page), at least `ACQUISITION_MIN_MAIN_CONTENT_CHARS_WITHOUT_STRUCTURE` (3000)
+   characters of main text. Otherwise it fails with `source.incomplete_content` and
+   its reasons (for example `main_chars 368 < 1500; no tables or PDF links, and
+   main_chars 368 < 3000`). The counts are kept on the artifact as `PageArtifact.inventory`.
 8. Same-domain PDF links are downloaded through the existing `PdfDownloader` security
    boundary, up to `ACQUISITION_MAX_LINKED_DOCUMENTS` (40). A failed linked PDF, a
    dead link, or links beyond the cap are recorded as typed warnings
@@ -52,7 +52,7 @@ to the ADK model.
    document artifact. A failed download makes the acquisition partial, so it is not
    stored for reuse; a dead link does not, because it is the same on every fetch. Acquisition warnings reach the run's
    source manifest and audit metadata.
-9. Raw HTML, rendered HTML, Markdown, network payloads, and PDFs are written atomically
+9. Raw HTML, rendered HTML, Markdown, and PDFs are written atomically
    to content-addressed storage.
 
 ## Identity
@@ -63,7 +63,11 @@ page only -- canonical URL, blocks, tables, links, images and controls -- never 
 the raw or rendered HTML bytes. The bank's pages carry `__VIEWSTATE`,
 `__EVENTVALIDATION` and `__RequestVerificationToken` values that change on every
 request; hashing the bytes gave an unchanged page a new id on every fetch and missed
-every extraction cache. `content_hash` adds the linked documents and payloads; it is a
+every extraction cache. The site's header, navigation and footer (`header`/`nav`/
+`footer` and ARIA banner/navigation/contentinfo regions) are left out as well: a footer
+module that sometimes loads after the render finishes renamed the consumer-loan page
+between two fetches (normalization scenario finding F1). `content_hash` adds the linked
+documents; it is a
 consistency tag checked between normalization, discovery and extraction, not the input
 to change detection, which compares accepted field values.
 
@@ -75,8 +79,9 @@ for audit only.
 
 `CompletenessGatedAcquisitionService` (wired between the freshness gate and
 acquisition) compares each fresh acquisition's inventory with the last one of the same
-URL that passed, stored in `acquisition_baselines`. A table, PDF-link or payload count
-that falls to zero fails; so does a relative drop of PDF links or main content beyond
+URL that passed, stored in `acquisition_baselines`. A table or PDF-link count
+that falls to zero fails (a `payloads` count in a baseline stored before capture was
+removed is ignored); so does a relative drop of PDF links or main content beyond
 `ACQUISITION_BASELINE_MAX_PDF_LINK_DROP` / `ACQUISITION_BASELINE_MAX_MAIN_CONTENT_DROP`.
 Only a passing acquisition moves the baseline, so a degraded one never becomes the
 reference. A drop keeps failing (`source.incomplete_content`) until an operator, having
@@ -111,7 +116,7 @@ retained as links but are not fetched until a format-specific validator is imple
 
 The `ACQUISITION_*` environment variables control browser use, the completeness floor
 (`ACQUISITION_MIN_MAIN_CONTENT_CHARS`), the baseline drop thresholds, browser
-timeout/settling, interaction count, network payload count/size, the linked-document
+timeout/settling, interaction count, the linked-document
 budget and the freshness window. General HTTP host, retry, redirect, and byte limits
 remain in the shared HTTP settings.
 
@@ -130,7 +135,7 @@ uv run python scripts/demonstrate_acquisition.py "https://ameriabank.am/en/perso
 The script writes the requested URL to `.temp/acuisition_test/source_url.txt` and
 places the inspection files under `.temp/acuisition_test/output/`. The output includes
 the complete `PageArtifact`, summary, raw and rendered HTML, Markdown, structural
-blocks, tables, links, images, interactive controls, documents, network payloads, and
+blocks, tables, links, images, interactive controls, documents, and
 content-addressed raw artifacts.
 
 
@@ -153,7 +158,6 @@ case_000/
     ├── tables.json
     ├── links.json
     ├── documents.json
-    ├── network_payloads.json
     └── artifacts/
 ```
 
@@ -171,7 +175,7 @@ A quick overview of the run:
 - Whether acquisition used static HTTP or Playwright
 - Retrieval timestamp
 - Content hash
-- Number of blocks, tables, links, documents, and network payloads
+- Number of blocks, tables, links, and documents
 - Warnings encountered
 
 This is the best file to open first.
@@ -308,25 +312,6 @@ Typical information includes:
 
 Only successfully validated PDFs appear here. A linked document must pass URL, redirect, size, MIME, and PDF-signature checks.
 
-### `network_payloads.json`
-
-Textual API responses captured from browser `XHR` and `fetch` requests.
-
-These sometimes contain structured product information not directly present in the raw HTML.
-
-Important fields:
-
-- request URL and method;
-- HTTP status;
-- MIME type;
-- response body;
-- size and SHA-256 hash;
-- retrieval time;
-- JSON locator;
-- stored artifact path.
-
-Not every payload is useful. Some may contain menus, site configuration, localization, or unrelated page data. Source discovery will classify them later.
-
 ### `page_artifact.json`
 
 The complete acquisition result in one file.
@@ -340,7 +325,6 @@ It combines:
 - tables;
 - links;
 - documents;
-- network payloads;
 - stored artifact references;
 - warnings;
 - timestamps;
@@ -389,7 +373,7 @@ They are often identical but should not be assumed to be.
 
 ### `content_hash`
 
-This is the fingerprint of the meaningful acquisition result. It includes structural content and the hashes of captured documents and network payloads, but excludes timestamps and local storage paths.
+This is the fingerprint of the meaningful acquisition result. It includes structural content and the hashes of downloaded documents, but excludes timestamps and local storage paths.
 
 Therefore:
 

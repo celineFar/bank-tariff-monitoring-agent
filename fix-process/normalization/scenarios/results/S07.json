@@ -1,0 +1,28 @@
+{
+ "scenario": "S07",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_held": 0.0,
+  "wall_seconds": 0.9
+ },
+ "pdf_links": 3,
+ "admitted": 3,
+ "outcomes": {
+  "no_key": [
+   "PDF_MODEL_REQUIRED",
+   "PDF_MODEL_REQUIRED",
+   "PDF_MODEL_REQUIRED"
+  ],
+  "unreadable": [
+   "ARTIFACT_UNAVAILABLE"
+  ],
+  "bug": "raised KeyError",
+  "no_pdf_extractor": [
+   "PDF_MODEL_REQUIRED"
+  ]
+ }
+}

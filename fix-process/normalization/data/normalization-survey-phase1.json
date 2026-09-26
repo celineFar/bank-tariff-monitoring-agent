@@ -1,0 +1,867 @@
+{
+ "consumer_standard": {
+  "blocks": 188,
+  "block_types": {
+   "list": 76,
+   "paragraph": 84,
+   "heading": 14,
+   "accordion": 11,
+   "table": 3
+  },
+  "main_chars": 18615,
+  "tables": 3,
+  "table_rows_total": 36,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 4,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 22,
+    "notes": 4,
+    "notes_with_marker": 3,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Required documents",
+    "headers": [
+     "Column 1",
+     "Column 2"
+    ],
+    "headers_inferred": true,
+    "rows": 2,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "credit_line": {
+  "blocks": 175,
+  "block_types": {
+   "list": 72,
+   "paragraph": 73,
+   "heading": 17,
+   "accordion": 10,
+   "table": 3
+  },
+  "main_chars": 19797,
+  "tables": 3,
+  "table_rows_total": 38,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 7,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Credit line unsecured",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3",
+     "Terms 4",
+     "Terms 5"
+    ],
+    "headers_inferred": true,
+    "rows": 24,
+    "notes": 7,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Required documents",
+    "headers": [
+     "Column 1",
+     "Column 2"
+    ],
+    "headers_inferred": true,
+    "rows": 2,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loans service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_commercial": {
+  "blocks": 170,
+  "block_types": {
+   "list": 100,
+   "paragraph": 57,
+   "heading": 11,
+   "table": 2
+  },
+  "main_chars": 25291,
+  "tables": 2,
+  "table_rows_total": 71,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 5,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tariffs — Loan for Purchase of Commercial Real Estate",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 59,
+    "notes": 5,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Loan service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 2,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_construction": {
+  "blocks": 181,
+  "block_types": {
+   "list": 108,
+   "paragraph": 58,
+   "heading": 11,
+   "table": 4
+  },
+  "main_chars": 48449,
+  "tables": 4,
+  "table_rows_total": 180,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 3,
+  "notes_total": 18,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Home Construction Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 63,
+    "notes": 5,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Loan for construction of commercial real estate",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 57,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t4",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 4,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_diaspora": {
+  "blocks": 101,
+  "block_types": {
+   "list": 42,
+   "paragraph": 34,
+   "heading": 15,
+   "card": 4,
+   "accordion": 6
+  },
+  "main_chars": 3298,
+  "tables": 0,
+  "table_rows_total": 0,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 0,
+  "notes_total": 0,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 0,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_express": {
+  "blocks": 105,
+  "block_types": {
+   "list": 44,
+   "paragraph": 43,
+   "heading": 14,
+   "table": 4
+  },
+  "main_chars": 8497,
+  "tables": 4,
+  "table_rows_total": 40,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 4,
+  "notes_total": 7,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Express Home Purchase Loan (primary market)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 1,
+    "notes_with_marker": 1,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Express Home Purchase Loan (secondary market)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 1,
+    "notes_with_marker": 1,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Express Home Construction Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 1,
+    "notes_with_marker": 1,
+    "sections": []
+   },
+   {
+    "id": "t4",
+    "title": "Express Home Renovation Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 10,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 4,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_no_income_verification": {
+  "blocks": 108,
+  "block_types": {
+   "list": 41,
+   "paragraph": 41,
+   "heading": 25,
+   "table": 1
+  },
+  "main_chars": 4915,
+  "tables": 1,
+  "table_rows_total": 12,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 0,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Terms",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2"
+    ],
+    "headers_inferred": true,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 1,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_online": {
+  "blocks": 205,
+  "block_types": {
+   "list": 90,
+   "paragraph": 88,
+   "heading": 18,
+   "accordion": 6,
+   "table": 3
+  },
+  "main_chars": 29098,
+  "tables": 3,
+  "table_rows_total": 76,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 9,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tariffs in the case of the primary market",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3",
+     "Terms 4",
+     "Terms 5",
+     "Terms 6",
+     "Terms 7",
+     "Terms 8",
+     "Terms 9"
+    ],
+    "headers_inferred": true,
+    "rows": 34,
+    "notes": 5,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Tariffs in the case of the secondary market",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 30,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_primary": {
+  "blocks": 201,
+  "block_types": {
+   "list": 103,
+   "paragraph": 81,
+   "heading": 14,
+   "table": 3
+  },
+  "main_chars": 41564,
+  "tables": 3,
+  "table_rows_total": 123,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 15,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tariffs",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 63,
+    "notes": 6,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fees",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_renovation": {
+  "blocks": 177,
+  "block_types": {
+   "list": 105,
+   "paragraph": 58,
+   "heading": 11,
+   "table": 3
+  },
+  "main_chars": 45621,
+  "tables": 3,
+  "table_rows_total": 169,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 3,
+  "notes_total": 18,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Home Renovation Loan",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 63,
+    "notes": 5,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Loan for renovation of commercial real estate",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 58,
+    "notes": 4,
+    "notes_with_marker": 4,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 152,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "mortgage_secondary_market": {
+  "blocks": 200,
+  "block_types": {
+   "list": 104,
+   "paragraph": 79,
+   "heading": 14,
+   "table": 3
+  },
+  "main_chars": 40626,
+  "tables": 3,
+  "table_rows_total": 124,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 2,
+  "notes_total": 15,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Tarifs",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2",
+     "Terms 3"
+    ],
+    "headers_inferred": true,
+    "rows": 64,
+    "notes": 6,
+    "notes_with_marker": 5,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms"
+    ],
+    "headers_inferred": true,
+    "rows": 48,
+    "notes": 9,
+    "notes_with_marker": 7,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loan service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "online_consumer_finance": {
+  "blocks": 114,
+  "block_types": {
+   "list": 45,
+   "paragraph": 29,
+   "heading": 9,
+   "card": 28,
+   "table": 3
+  },
+  "main_chars": 7778,
+  "tables": 3,
+  "table_rows_total": 21,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 0,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Terms of installment financing for the purchase of goods",
+    "headers": [
+     "Section",
+     "Item",
+     "Terms 1",
+     "Terms 2"
+    ],
+    "headers_inferred": true,
+    "rows": 13,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Payment methods",
+    "headers": [
+     "Payment Method",
+     "Fee"
+    ],
+    "headers_inferred": false,
+    "rows": 4,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Credit history and score",
+    "headers": [
+     "Payment Method",
+     "Commission Fee"
+    ],
+    "headers_inferred": false,
+    "rows": 4,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ },
+ "overdraft": {
+  "blocks": 129,
+  "block_types": {
+   "list": 55,
+   "paragraph": 47,
+   "heading": 14,
+   "accordion": 10,
+   "table": 3
+  },
+  "main_chars": 13305,
+  "tables": 3,
+  "table_rows_total": 33,
+  "tables_without_rows": 0,
+  "tables_with_invented_headers": 1,
+  "notes_total": 6,
+  "table_block_numbers_not_in_any_cell": [],
+  "tables_detail": [
+   {
+    "id": "t1",
+    "title": "Overdrafts via Cards not secured with property (unsecured)",
+    "headers": [
+     "Card type ¹",
+     "",
+     "Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Master Card Standard Digital",
+     "",
+     "Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital,Mastercard World/VISA Platinum, VISA Platinum Digital/ Mastercard World Digital, Visa Signature , Visa Signature Digital",
+     "",
+     ""
+    ],
+    "headers_inferred": false,
+    "rows": 19,
+    "notes": 6,
+    "notes_with_marker": 6,
+    "sections": []
+   },
+   {
+    "id": "t2",
+    "title": "Required documents",
+    "headers": [
+     "Column 1",
+     "Column 2"
+    ],
+    "headers_inferred": true,
+    "rows": 2,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   },
+   {
+    "id": "t3",
+    "title": "Loans service fee",
+    "headers": [
+     "Purpose",
+     "Rates and Fees (AMD)"
+    ],
+    "headers_inferred": false,
+    "rows": 12,
+    "notes": 0,
+    "notes_with_marker": 0,
+    "sections": []
+   }
+  ],
+  "uncovered_text_nodes": 0,
+  "uncovered_text_chars": 0,
+  "uncovered_examples": [],
+  "dom_tables": 3,
+  "dom_nested_tables": 0,
+  "dom_th_scope_row": 0,
+  "dom_dl": 0,
+  "dom_nested_li": 154,
+  "hidden_elements_with_visible_descendants": 0
+ }
+}

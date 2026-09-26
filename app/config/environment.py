@@ -49,11 +49,10 @@ class EnvironmentSettings(BaseSettings):
     max_download_bytes: int = 25 * 1024 * 1024
     acquisition_browser_enabled: bool = True
     acquisition_min_main_content_chars: int = 1_500
+    acquisition_min_main_content_chars_without_structure: int = 3_000
     acquisition_browser_navigation_timeout_seconds: float = 30
     acquisition_browser_settle_milliseconds: int = 750
     acquisition_max_interactions: int = 100
-    acquisition_max_network_payloads: int = 25
-    acquisition_max_network_payload_bytes: int = 2 * 1024 * 1024
     acquisition_max_linked_documents: int = 40
     acquisition_freshness_hours: float = 1.0
     acquisition_baseline_max_pdf_link_drop: float = 0.5

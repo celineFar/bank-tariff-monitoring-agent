@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urldefrag, urljoin, urlsplit, urlunsplit
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
 from app.domain.acquisition import (
     ContentBlock,
@@ -35,6 +35,69 @@ _NESTED_HEADING_BLOCKS = frozenset(
     {"div", "section", "article", "p", "table", "details", "ul", "ol"}
 )
 _SUPERSCRIPT_DIGITS = str.maketrans("0123456789+-=()", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾")
+_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+_LINE_BREAK_TAGS = frozenset(
+    {
+        "p",
+        "div",
+        "section",
+        "article",
+        "main",
+        "aside",
+        "header",
+        "footer",
+        "nav",
+        "form",
+        "fieldset",
+        "figure",
+        "figcaption",
+        "blockquote",
+        "address",
+        "details",
+        "summary",
+        "li",
+        "dl",
+        "dt",
+        "dd",
+        "table",
+        "caption",
+        "thead",
+        "tbody",
+        "tfoot",
+    }
+    | _HEADING_TAGS
+)
+# Containers whose own text (outside any child block) becomes a paragraph block.
+_BARE_TEXT_CONTAINERS = frozenset(
+    {"div", "section", "article", "main", "aside", "form", "figure", "figcaption"}
+)
+# Children left out of a container's own text: they are blocks of their own, or
+# controls and media that carry no page content.
+_NOT_OWN_TEXT = _LINE_BREAK_TAGS | {
+    "ul",
+    "ol",
+    "pre",
+    "button",
+    "select",
+    "option",
+    "textarea",
+    "input",
+    "svg",
+    "iframe",
+    "canvas",
+    "video",
+    "audio",
+    "object",
+    "hr",
+}
+# Ancestors whose block already includes all descendant text.
+_COVERING_ANCESTORS = ("li", "dt", "dd", "p", "details", "table", "button")
+# The smallest items that describe one link, and how much of their text to keep.
+_LINK_CONTEXT_TAGS = ("tr", "li", "p", "dd", "dt", *sorted(_HEADING_TAGS))
+_LINK_CONTEXT_CHARS = 600
+# Containers that bound a heading: a heading inside one does not label what
+# follows the container.
+_HEADING_SCOPES = frozenset({"section", "article", "details"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +115,10 @@ class ParsedHtml:
     links: tuple[LinkArtifact, ...]
     images: tuple[ImageArtifact, ...]
     interactive_controls: tuple[InteractiveControlArtifact, ...]
+    # Ids of the blocks, tables, links, images and controls that sit in the
+    # site's header, navigation or footer. The page's identity leaves them out:
+    # a footer module that loads late must not rename the page.
+    chrome_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,12 +148,19 @@ class HtmlArtifactParser:
             language = self._clean(str(html_tag.get("lang") or "")) or None
 
         root = soup.body or soup
-        links, links_by_element = self._links(root, source_url)
-        images = self._images(root, source_url)
-        interactive_controls = self._interactive_controls(root, source_url)
+        chrome_ids: set[str] = set()
+        links, links_by_element = self._links(root, source_url, chrome_ids)
+        images = self._images(root, source_url, chrome_ids)
+        interactive_controls = self._interactive_controls(root, source_url, chrome_ids)
         blocks, tables, chrome_block_ids = self._blocks_and_tables(
             root, source_url, links_by_element
         )
+        chrome_ids |= chrome_block_ids
+        chrome_ids |= {
+            block.table_id
+            for block in blocks
+            if block.table_id and block.id in chrome_block_ids
+        }
         visible_text = self._clean(" ".join(block.text for block in blocks))
         main_text = self._clean(
             " ".join(block.text for block in blocks if block.id not in chrome_block_ids)
@@ -104,6 +178,7 @@ class HtmlArtifactParser:
             links=links,
             images=images,
             interactive_controls=interactive_controls,
+            chrome_ids=frozenset(chrome_ids),
         )
 
     def _blocks_and_tables(
@@ -115,28 +190,60 @@ class HtmlArtifactParser:
         blocks: list[ContentBlock] = []
         tables: list[TableArtifact] = []
         chrome_block_ids: set[str] = set()
-        headings: list[tuple[int, str]] = []
+        # (level, text, id of the container that bounds the heading, or None).
+        # Accordion titles enter at level 0: they head their panel only.
+        headings: list[tuple[int, str, int | None]] = []
         block_ids: dict[int, str] = {}
         accordion_titles, accordion_panels = self._accordion_parts(root)
         accordion_block_ids: dict[int, str] = {}
         card_elements = self._card_elements(root)
+        block_parts = frozenset(accordion_titles) | frozenset(card_elements)
+        paired_dd: set[int] = set()
+        # Ids are fixed up front, in document order, so an outer table can point
+        # at a table nested in one of its cells before that table is reached.
+        table_refs: dict[int, str] = {}
+        for table_element in root.find_all("table"):
+            if self._is_hidden(table_element) or any(
+                id(parent) in block_parts for parent in table_element.parents
+            ):
+                continue
+            table_refs[id(table_element)] = f"t{len(table_refs) + 1}"
 
         def is_candidate(tag: Tag) -> bool:
             return (
                 tag.name in _BLOCK_TAGS
                 or tag.name == "table"
+                or tag.name in _BARE_TEXT_CONTAINERS
                 or id(tag) in accordion_titles
                 or id(tag) in card_elements
             )
+
+        def heading_scope(element: Tag) -> int | None:
+            for parent in element.parents:
+                if (
+                    parent.name in _HEADING_SCOPES
+                    or parent.get("role") == "tabpanel"
+                    or id(parent) in accordion_panels
+                    or id(parent) in card_elements
+                ):
+                    return id(parent)
+            return None
 
         for element in root.find_all(is_candidate):
             if not isinstance(element, Tag) or self._is_hidden(element):
                 continue
             if element.find_parent("table") is not None and element.name != "table":
                 continue
-            if element.name == "p" and element.find_parent(["li", "details"]):
+            if element.name == "p" and element.find_parent(
+                ["li", "details", "dt", "dd"]
+            ):
                 continue
             if element.name in {"li", "dt", "dd"} and element.find_parent("details"):
+                continue
+            if element.name == "li" and element.find_parent("li") is not None:
+                # The outer item's block already lists the nested items.
+                continue
+            if element.name == "dd" and id(element) in paired_dd:
                 continue
             if element.name == "details" and element.find_parent("details"):
                 continue
@@ -144,71 +251,100 @@ class HtmlArtifactParser:
                 continue
             if any(id(parent) in card_elements for parent in element.parents):
                 continue
+            is_part = id(element) in block_parts
+            bare_text = not is_part and element.name in _BARE_TEXT_CONTAINERS
+            if bare_text and element.find_parent(list(_COVERING_ANCESTORS)) is not None:
+                continue
 
-            is_heading = element.name.startswith("h") and len(element.name) == 2
+            ancestor_ids = {id(parent) for parent in element.parents}
+            headings = [
+                entry
+                for entry in headings
+                if entry[2] is None or entry[2] in ancestor_ids
+            ]
+
+            is_heading = element.name in _HEADING_TAGS
+            own_text = {"exclude": _NOT_OWN_TEXT, "exclude_ids": block_parts}
+            text_options: dict[str, object] = own_text if bare_text else {}
             text = self._structured_text(
                 element,
                 markdown=False,
                 exclude_nested_blocks=is_heading,
+                table_refs=table_refs,
+                **text_options,  # type: ignore[arg-type]
             )
             if not text:
                 continue
             block_id = f"b{len(blocks) + 1}"
-            block_ids[id(element)] = block_id
+            if not bare_text:
+                # A container's own stray text is not the parent of the blocks
+                # inside it; only real blocks are.
+                block_ids[id(element)] = block_id
             if self._in_site_chrome(element):
                 chrome_block_ids.add(block_id)
             locator = self._locator(element, source_url, block_id)
             parent_id = self._accordion_parent_id(
                 element, accordion_panels, accordion_block_ids
             ) or self._parent_block_id(element, block_ids)
-            link_ids = self._contained_link_ids(element, links_by_element)
+            link_ids = self._contained_link_ids(
+                element,
+                links_by_element,
+                **text_options,  # type: ignore[arg-type]
+            )
             block_markdown = self._structured_text(
                 element,
                 markdown=True,
                 links_by_element=links_by_element,
                 exclude_nested_blocks=is_heading,
+                table_refs=table_refs,
+                **text_options,  # type: ignore[arg-type]
             )
+            heading_path = tuple(value for _, value, _ in headings)
+            table_id: str | None = None
+            key_value: tuple[str, str] | None = None
 
             if element.name == "table":
-                table_id = f"t{len(tables) + 1}"
+                table_id = table_refs.get(id(element)) or f"t{len(tables) + 1}"
                 table = self._table(
                     element,
                     table_id,
                     locator,
                     source_url,
                     links_by_element,
+                    table_refs,
                 )
                 tables.append(table)
                 block_type = ContentBlockType.TABLE
                 block_markdown = None
             elif id(element) in accordion_titles:
                 block_type = ContentBlockType.ACCORDION
-                accordion_block_ids[accordion_titles[id(element)]] = block_id
+                container_id = accordion_titles[id(element)]
+                accordion_block_ids[container_id] = block_id
+                headings.append((0, text, container_id))
             elif id(element) in card_elements:
                 block_type = ContentBlockType.CARD
             elif is_heading:
                 level = int(element.name[1])
-                headings = [(n, value) for n, value in headings if n < level]
-                heading_path = tuple(value for _, value in headings)
-                headings.append((level, text))
-                blocks.append(
-                    ContentBlock(
-                        id=block_id,
-                        type=ContentBlockType.HEADING,
-                        text=text,
-                        markdown=block_markdown,
-                        heading_path=heading_path,
-                        parent_id=parent_id,
-                        link_ids=link_ids,
-                        locator=locator,
-                        visible=True,
-                    )
-                )
-                continue
+                headings = [entry for entry in headings if entry[0] < level]
+                heading_path = tuple(value for _, value, _ in headings)
+                headings.append((level, text, heading_scope(element)))
+                block_type = ContentBlockType.HEADING
             elif element.name == "li":
                 block_type = ContentBlockType.LIST
             elif element.name in {"dt", "dd"}:
                 block_type = ContentBlockType.KEY_VALUE
+                if element.name == "dt":
+                    pair = self._definition_values(element, links_by_element)
+                    if pair is not None:
+                        values, value_markdown, value_links, value_ids = pair
+                        paired_dd.update(value_ids)
+                        key = text.rstrip(":").strip()
+                        key_value = (key, values)
+                        text = f"{key}: {values}"
+                        block_markdown = (
+                            f"{block_markdown.rstrip(':').strip()}: {value_markdown}"
+                        )
+                        link_ids = (*link_ids, *value_links)
             elif element.name == "details":
                 block_type = ContentBlockType.ACCORDION
             else:
@@ -220,14 +356,46 @@ class HtmlArtifactParser:
                     type=block_type,
                     text=text,
                     markdown=block_markdown,
-                    heading_path=tuple(value for _, value in headings),
+                    heading_path=heading_path,
                     parent_id=parent_id,
                     link_ids=link_ids,
                     locator=locator,
                     visible=True,
+                    table_id=table_id,
+                    key_value=key_value,
                 )
             )
         return tuple(blocks), tuple(tables), frozenset(chrome_block_ids)
+
+    def _definition_values(
+        self, term: Tag, links_by_element: dict[int, LinkArtifact]
+    ) -> tuple[str, str, tuple[str, ...], tuple[int, ...]] | None:
+        """The visible `dd` values that follow a `dt`, up to the next `dt`."""
+        values: list[Tag] = []
+        for sibling in term.find_next_siblings():
+            if sibling.name == "dt":
+                break
+            if sibling.name == "dd" and not self._is_hidden(sibling):
+                values.append(sibling)
+        texts = [self._structured_text(value, markdown=False) for value in values]
+        if not any(texts):
+            return None
+        markdowns = [
+            self._structured_text(
+                value, markdown=True, links_by_element=links_by_element
+            )
+            for value in values
+        ]
+        return (
+            "\n".join(text for text in texts if text),
+            "\n".join(text for text in markdowns if text),
+            tuple(
+                link_id
+                for value in values
+                for link_id in self._contained_link_ids(value, links_by_element)
+            ),
+            tuple(id(value) for value in values),
+        )
 
     @staticmethod
     def _in_site_chrome(element: Tag) -> bool:
@@ -254,7 +422,7 @@ class HtmlArtifactParser:
         return False
 
     def _links(
-        self, root: Tag, source_url: str
+        self, root: Tag, source_url: str, chrome_ids: set[str]
     ) -> tuple[tuple[LinkArtifact, ...], dict[int, LinkArtifact]]:
         links: list[LinkArtifact] = []
         by_element: dict[int, LinkArtifact] = {}
@@ -294,10 +462,27 @@ class HtmlArtifactParser:
                 same_allowlisted_source=same_source,
                 downloadable=downloadable,
                 locator=self._locator(element, source_url, link_id),
+                context_text=self._link_context(element),
             )
             links.append(artifact)
+            if self._in_site_chrome(element):
+                chrome_ids.add(link_id)
             by_element[id(element)] = artifact
         return tuple(links), by_element
+
+    @classmethod
+    def _link_context(cls, anchor: Tag) -> str:
+        """The text of the smallest item that holds the link: its table row,
+        list item, paragraph, definition or heading.
+
+        A PDF's dates and "archive" words must come from its own row, not from
+        the whole table or list it sits in, where neighbouring links' dates
+        would decide for it.
+        """
+        item = anchor.find_parent(list(_LINK_CONTEXT_TAGS))
+        if item is None:
+            return ""
+        return cls._structured_text(item, markdown=False)[:_LINK_CONTEXT_CHARS]
 
     def _table(
         self,
@@ -306,17 +491,20 @@ class HtmlArtifactParser:
         locator: SourceLocator,
         source_url: str,
         links_by_element: dict[int, LinkArtifact],
+        table_refs: dict[int, str] | None = None,
     ) -> TableArtifact:
-        caption_tag = element.find("caption")
+        caption_tag = element.find("caption", recursive=False)
         caption = (
             self._clean(caption_tag.get_text(" ", strip=True))
             if isinstance(caption_tag, Tag)
             else None
         )
+        # Only this table's own rows: a table nested in a cell keeps its rows.
         physical_rows = [
             row
             for row in element.find_all("tr")
-            if row.find_all(["th", "td"], recursive=False)
+            if row.find_parent("table") is element
+            and row.find_all(["th", "td"], recursive=False)
         ]
         active: dict[int, tuple[_GridValue, int]] = {}
         grid_rows: list[tuple[tuple[str, ...], tuple[str, ...], list[Tag]]] = []
@@ -332,20 +520,40 @@ class HtmlArtifactParser:
                     next_active[column] = (value, remaining - 1)
 
             physical_cells = list(row.find_all(["th", "td"], recursive=False))
-            row_is_header = self._looks_like_header_row(physical_cells)
+            in_thead = row.find_parent("thead") is not None
+            row_has_data_cells = any(cell.name == "td" for cell in physical_cells)
             cursor = 0
             for physical_cell in physical_cells:
                 while cursor in logical:
                     cursor += 1
                 rowspan = self._positive_span(physical_cell.get("rowspan"))
                 colspan = self._positive_span(physical_cell.get("colspan"))
-                text = self._structured_text(physical_cell, markdown=False)
+                text = self._structured_text(
+                    physical_cell, markdown=False, table_refs=table_refs
+                )
                 cell_markdown = self._structured_text(
                     physical_cell,
                     markdown=True,
                     links_by_element=links_by_element,
+                    table_refs=table_refs,
                 )
-                is_header = physical_cell.name == "th" or row_is_header
+                if not text:
+                    # A cell whose only content is an icon (a check mark, a
+                    # cross) says so through the image's alt text.
+                    text = cell_markdown = self._image_text(physical_cell)
+                # HTML's own header semantics only; whether a bold first row is
+                # a header is decided with the whole table in view, in
+                # normalization.
+                scope = str(physical_cell.get("scope") or "").lower()
+                row_header = (
+                    physical_cell.name == "th"
+                    and not in_thead
+                    and (
+                        scope in {"row", "rowgroup"}
+                        or (row_has_data_cells and scope not in {"col", "colgroup"})
+                    )
+                )
+                is_header = in_thead or (physical_cell.name == "th" and not row_header)
                 cell_id = f"{table_id}.r{row_index}.c{cursor}"
                 cells.append(
                     TableCellArtifact(
@@ -356,6 +564,8 @@ class HtmlArtifactParser:
                         colspan=colspan,
                         tag=physical_cell.name,
                         is_header=is_header,
+                        row_header=row_header,
+                        bold=self._all_bold(physical_cell),
                         text=text,
                         markdown=cell_markdown,
                         link_ids=self._contained_link_ids(
@@ -436,6 +646,7 @@ class HtmlArtifactParser:
         return TableArtifact(
             id=table_id,
             caption=caption,
+            context_title=context_title,
             title=title,
             column_count=column_count,
             headers=headers,
@@ -449,7 +660,9 @@ class HtmlArtifactParser:
             locator=locator,
         )
 
-    def _images(self, root: Tag, source_url: str) -> tuple[ImageArtifact, ...]:
+    def _images(
+        self, root: Tag, source_url: str, chrome_ids: set[str]
+    ) -> tuple[ImageArtifact, ...]:
         images: list[ImageArtifact] = []
         for element in root.find_all("img"):
             if not isinstance(element, Tag) or self._is_hidden(element):
@@ -470,6 +683,8 @@ class HtmlArtifactParser:
             except DisallowedSourceUrl:
                 same_source = False
             image_id = f"img{len(images) + 1}"
+            if self._in_site_chrome(element):
+                chrome_ids.add(image_id)
             alt = self._clean(str(element.get("alt") or ""))
             images.append(
                 ImageArtifact(
@@ -489,7 +704,7 @@ class HtmlArtifactParser:
         return tuple(images)
 
     def _interactive_controls(
-        self, root: Tag, source_url: str
+        self, root: Tag, source_url: str, chrome_ids: set[str]
     ) -> tuple[InteractiveControlArtifact, ...]:
         controls: list[InteractiveControlArtifact] = []
         selector = (
@@ -501,6 +716,8 @@ class HtmlArtifactParser:
             if not isinstance(element, Tag) or self._is_hidden(element):
                 continue
             control_id = f"ctl{len(controls) + 1}"
+            if self._in_site_chrome(element):
+                chrome_ids.add(control_id)
             expanded = element.get("aria-expanded")
             controls.append(
                 InteractiveControlArtifact(
@@ -569,18 +786,25 @@ class HtmlArtifactParser:
         markdown: bool,
         links_by_element: dict[int, LinkArtifact] | None = None,
         exclude_nested_blocks: bool = False,
+        exclude: frozenset[str] = frozenset(),
+        exclude_ids: frozenset[int] = frozenset(),
+        table_refs: dict[int, str] | None = None,
     ) -> str:
         links_by_element = links_by_element or {}
+        table_refs = table_refs or {}
+        excluded = exclude | (
+            _NESTED_HEADING_BLOCKS if exclude_nested_blocks else frozenset()
+        )
 
         def render(node: object, list_depth: int = 0) -> str:
+            if isinstance(node, Comment):
+                return ""
             if isinstance(node, NavigableString):
                 return str(node)
             if not isinstance(node, Tag):
                 return ""
-            if (
-                exclude_nested_blocks
-                and node is not element
-                and node.name in _NESTED_HEADING_BLOCKS
+            if node is not element and (
+                node.name in excluded or id(node) in exclude_ids
             ):
                 return ""
             if node.name == "br":
@@ -597,6 +821,10 @@ class HtmlArtifactParser:
                         target = f"{target}#{link.fragment}"
                     return f"[{safe_label}](<{target}>)"
                 return label
+            if node.name == "table" and node is not element and id(node) in table_refs:
+                # A nested table is its own table; the outer text points at it
+                # instead of flattening its rows into one cell.
+                return f"\n[table {table_refs[id(node)]}]\n"
             if node.name in {"ul", "ol"}:
                 items: list[str] = []
                 for index, item in enumerate(
@@ -610,6 +838,12 @@ class HtmlArtifactParser:
                     marker = f"{index}." if node.name == "ol" else "•"
                     items.append(f"{marker} {body}")
                 return "\n".join(items) + "\n"
+            if node.name == "tr":
+                cells = (
+                    " ".join(cls._clean(render(cell, list_depth)).split("\n"))
+                    for cell in node.find_all(["td", "th"], recursive=False)
+                )
+                return " | ".join(cell for cell in cells if cell) + "\n"
             content = "".join(render(child, list_depth) for child in node.children)
             if node.name == "sup":
                 cleaned = cls._clean(content)
@@ -620,8 +854,10 @@ class HtmlArtifactParser:
                 elif markdown and cleaned:
                     cleaned = f"<sup>{cleaned}</sup>"
                 return f" {cleaned} " if cleaned else ""
-            if node.name in {"p", "div", "section", "article"}:
-                return content + "\n"
+            if node.name in _LINE_BREAK_TAGS:
+                # Block-level boundaries end a line, so text from neighbouring
+                # elements never runs together ("Consumer loanUp to ...").
+                return "\n" + content + "\n"
             return content
 
         return cls._clean(render(element))
@@ -700,6 +936,23 @@ class HtmlArtifactParser:
             return 1
         return max(parsed, 1)
 
+    @staticmethod
+    def _all_bold(cell: Tag) -> bool:
+        """Whether every visible character of the cell sits inside `strong`/`b`."""
+        found = False
+        for node in cell.find_all(string=True):
+            if isinstance(node, Comment) or not str(node).strip():
+                continue
+            found = True
+            parent = node.parent
+            while parent is not None and parent is not cell:
+                if parent.name in {"strong", "b"}:
+                    break
+                parent = parent.parent
+            else:
+                return False
+        return found
+
     @classmethod
     def _looks_like_header_row(cls, cells: list[Tag]) -> bool:
         if not cells:
@@ -715,14 +968,43 @@ class HtmlArtifactParser:
             for cell in cells
         )
 
+    @classmethod
+    def _image_text(cls, element: Tag) -> str:
+        return cls._clean(
+            " ".join(
+                str(image.get("alt") or image.get("title") or "")
+                for image in element.find_all("img")
+            )
+        )
+
     @staticmethod
     def _contained_link_ids(
-        element: Tag, links_by_element: dict[int, LinkArtifact]
+        element: Tag,
+        links_by_element: dict[int, LinkArtifact],
+        *,
+        exclude: frozenset[str] = frozenset(),
+        exclude_ids: frozenset[int] = frozenset(),
     ) -> tuple[str, ...]:
+        """Links inside the element, skipping those under an excluded descendant.
+
+        A container's own-text block passes the same exclusions as its text,
+        so it claims only the links in that text, not every link of the page
+        region it wraps (which would make it every PDF's origin block).
+        """
+
+        def own(anchor: Tag) -> bool:
+            for parent in anchor.parents:
+                if parent is element:
+                    return True
+                if parent.name in exclude or id(parent) in exclude_ids:
+                    return False
+            return True
+
         return tuple(
             link.id
             for anchor in element.find_all("a", href=True)
             if (link := links_by_element.get(id(anchor))) is not None
+            and (not (exclude or exclude_ids) or own(anchor))
         )
 
     @staticmethod
@@ -816,7 +1098,6 @@ class HtmlArtifactParser:
     ) -> str:
         tables_by_id = {table.id: table for table in tables}
         lines: list[str] = []
-        table_index = 0
         for block in blocks:
             value = block.markdown or block.text
             if block.type is ContentBlockType.HEADING:
@@ -827,8 +1108,7 @@ class HtmlArtifactParser:
             elif block.type is ContentBlockType.LIST:
                 lines.append(f"- {value}")
             elif block.type is ContentBlockType.TABLE:
-                table_index += 1
-                table = tables_by_id.get(f"t{table_index}")
+                table = tables_by_id.get(block.table_id or "")
                 if table:
                     if table.caption:
                         lines.append(f"**{table.caption}**")

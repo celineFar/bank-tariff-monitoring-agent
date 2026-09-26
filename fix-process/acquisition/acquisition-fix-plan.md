@@ -76,7 +76,7 @@ What it shows:
 | A8 | Uncaught Playwright errors; failure codes collapse | medium | code | Wrap all browser errors; add specific codes | proposed |
 | A13 | Positional block, table and row ids feed evidence ids | medium | code | Not pursued (Q4) | **deferred** |
 | A9 | Page URL checked before the clicks, content read after | medium | code (not seen live) | Re-check URL after the loop; block navigation | proposed |
-| A10 | Payload cap applied in arrival order (race) | low | code (max seen 19 of 25) | Cap after the deterministic sort | proposed |
+| A10 | Payload cap applied in arrival order (race) | low | code (max seen 19 of 25) | Cap after the deterministic sort | **superseded** (capture removed, N22) |
 | A11 | Browser redirect hops not checked; docs overstate it | low | code + Playwright docs | Check each hop, or fix the docs | proposed |
 | A12 | Freshness reuse is invisible on the run | low | code | Record reuse on the run and say so in chat | proposed |
 | A14 | Docs say `content_hash` drives change detection; it doesn't | low | code | Fix the docs | proposed |
@@ -126,6 +126,14 @@ stored as artifacts for audit; they only stop naming the page.
 
 **Effect.** A one-off cache miss on the first run after deploy, then identical pages reuse
 their extractions.
+
+**Refined 2026-09-26 (normalization scenario finding F1).** Two live captures of the
+consumer-loan page gave different page ids: a footer notice ("Dear User, If you find any
+discrepancies…") sometimes loads after the render has finished (1 of 52 renders). Parsed site
+chrome (header, navigation, footer) is now left out of `page_content_hash`: the parser reports
+the chrome ids (`ParsedHtml.chrome_ids`). A changed tariff still renames the page; a late footer
+module or a menu edit does not. See
+[../normalization/scenario-results.md](../normalization/scenario-results.md).
 
 ## A2. Browser visibility marking erases the whole page
 
@@ -348,6 +356,14 @@ duplicate captures count toward the cap. The survey's maximum is 19 against a ca
 
 **Fix.** Capture everything that fits a byte budget, deduplicate, sort, then cap. Warn when
 the cap is hit (A6).
+
+**Superseded (2026-09-26).** Network payload capture was removed from the project in the
+normalization fix (N22, decided by the user: payloads are not used). With it went the cap,
+`PAYLOAD_CAP_REACHED` (kept only as an enum value so stored artifacts still load), and the
+payload count in the completeness gate. The floor now accepts a page with no table and no
+PDF link only when it has at least `ACQUISITION_MIN_MAIN_CONTENT_CHARS_WITHOUT_STRUCTURE`
+(3000) characters of main text: `mortgage_diaspora` has 3,294. See
+[../normalization/normalization-fix-plan.md](../normalization/normalization-fix-plan.md).
 
 ## A11. Browser redirect hops not checked
 
