@@ -441,7 +441,7 @@ See `docs/normalization.md` for the complete contract and inspection workflow.
 tables, and PDFs into bounded classification units; applies deterministic
 rules; reuses content-addressed PostgreSQL assessments; and sends only unresolved
 semantic cases to a tool-free ADK classifier with strict structured output. Child
-blocks and JSON leaves inherit their container decision, so model use scales with
+blocks inherit their container decision, so model use scales with
 semantic novelty rather than raw normalized block count.
 
 `app/runtime.py` wraps one `SourceDiscoveryService` per configured model in a
@@ -459,8 +459,9 @@ archive/previous-term context and explicit effective dates independently classif
 PDF as current, historical, future, time-bounded, or unknown. Historical and future
 documents remain auditable but are excluded from current-tariff extraction evidence.
 
-Exact reuse requires matching product, content fingerprint, policy version, prompt
-version, and model name. Stable structure with changed content supplies only a prior
+Exact reuse requires matching product, offering, content fingerprint, policy version,
+prompt version, and model name; every classifier batch names the offering its product
+association is judged against. Stable structure with changed content supplies only a prior
 hint and still requires reassessment. Deterministic Python validates response IDs,
 persists assessments, expands inheritance, and constructs the precedence-ordered
 extraction context. See `docs/source-discovery.md` for the full contract and no-LLM

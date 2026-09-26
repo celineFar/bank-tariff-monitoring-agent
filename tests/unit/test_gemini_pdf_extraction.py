@@ -38,6 +38,7 @@ from app.services.pdf_input_probe import probe_pdf_input
 from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
+    offering_context_for,
 )
 
 
@@ -319,8 +320,12 @@ async def test_relevant_historical_pdf_skips_discovery_llm_but_not_temporal_rule
         model_name="configured-model",
     )
 
-    discovery_plan = await discovery.plan(bundle, ProductType.CONSUMER_LOAN)
-    result = await discovery.discover(bundle, ProductType.CONSUMER_LOAN)
+    discovery_plan = await discovery.plan(
+        bundle, offering_context_for(bundle, ProductType.CONSUMER_LOAN)
+    )
+    result = await discovery.discover(
+        bundle, offering_context_for(bundle, ProductType.CONSUMER_LOAN)
+    )
 
     assert discovery_plan.llm_candidates == ()
     direct = discovery_plan.deterministic_assessments[0]

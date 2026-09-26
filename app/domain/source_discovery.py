@@ -4,9 +4,10 @@ import re
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceType
+from app.domain.catalog import SeedCatalogEntry
 from app.domain.models import ProductType
 from app.domain.normalization import SourceReference
 from app.domain.pdf_extraction import PdfAdmission
@@ -168,6 +169,39 @@ class PriorAssessment(DiscoveryModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class OfferingContext(DiscoveryModel):
+    """Which offering a discovery run is about.
+
+    `current_product` and `related_product` only mean something relative to
+    one offering: the Express mortgage table is the current product on the
+    Express page and a sibling on the primary-market page. The classifier gets
+    this identity, and the assessment cache is scoped to `offering_id`.
+    """
+
+    offering_id: str = Field(min_length=1, max_length=100)
+    product: ProductType
+    display_name: str = Field(min_length=1, max_length=200)
+    seed_url: HttpUrl
+    page_title: str | None = Field(default=None, max_length=1000)
+    names: tuple[str, ...] = ()
+
+    @classmethod
+    def from_catalog_entry(
+        cls, entry: SeedCatalogEntry, *, page_title: str | None = None
+    ) -> OfferingContext:
+        names: list[str] = []
+        for terms in entry.localized_names.values():
+            names.extend((terms.name, *terms.aliases))
+        return cls(
+            offering_id=entry.offering_id.value,
+            product=entry.product,
+            display_name=entry.display_name,
+            seed_url=entry.seed_url,
+            page_title=page_title,
+            names=tuple(dict.fromkeys(name for name in names if name))[:20],
+        )
+
+
 class DiscoveryPromptItem(DiscoveryModel):
     source_id: str
     scope: DiscoveryScope
@@ -184,6 +218,7 @@ class DiscoveryPromptItem(DiscoveryModel):
 class DiscoveryBatch(DiscoveryModel):
     id: str
     product: ProductType
+    offering: OfferingContext
     items: tuple[DiscoveryPromptItem, ...] = Field(min_length=1)
 
 
@@ -205,6 +240,7 @@ class DiscoveryBatchResponse(DiscoveryModel):
 
 class SourceDiscoveryPlan(DiscoveryModel):
     product: ProductType
+    offering_id: str
     canonical_url: str
     input_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     policy_version: str
@@ -238,6 +274,7 @@ class ExtractionContext(DiscoveryModel):
 
 class SourceDiscoveryResult(DiscoveryModel):
     product: ProductType
+    offering_id: str | None = None
     input_content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     policy_version: str
     prompt_version: str

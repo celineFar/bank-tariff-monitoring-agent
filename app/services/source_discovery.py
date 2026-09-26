@@ -4,6 +4,7 @@ import hashlib
 import logging
 from collections import Counter
 from collections.abc import Sequence
+from datetime import date
 from typing import Protocol
 
 from app.config import SourceDiscoverySettings
@@ -28,6 +29,7 @@ from app.domain.source_discovery import (
     ExtractionContext,
     ExtractionContextItem,
     InformationRole,
+    OfferingContext,
     PriorAssessment,
     ProductAssociation,
     Relevance,
@@ -48,6 +50,38 @@ from app.services.model_call_usage import (
 logger = logging.getLogger(__name__)
 
 
+def offering_context_for(
+    bundle: NormalizedSourceBundle, product: ProductType
+) -> OfferingContext:
+    """The catalog offering whose seed page this bundle is, for tools and demos.
+
+    The pipeline builds the context from the catalog entry it runs; this is for
+    callers that only hold a bundle. A page that is not in the catalog gets a
+    context named after the page itself.
+    """
+    from app.config.seed_catalog import load_seed_catalog
+
+    page = next(
+        (
+            document
+            for document in bundle.documents
+            if document.source_type is SourceType.PAGE
+        ),
+        bundle.documents[0],
+    )
+    wanted = str(bundle.canonical_url).rstrip("/")
+    for entry in load_seed_catalog().offerings:
+        if entry.product is product and str(entry.seed_url).rstrip("/") == wanted:
+            return OfferingContext.from_catalog_entry(entry, page_title=page.name)
+    return OfferingContext(
+        offering_id="unlisted",
+        product=product,
+        display_name=page.name[:200],
+        seed_url=bundle.canonical_url,
+        page_title=page.name,
+    )
+
+
 class SourceDiscoveryClassifier(Protocol):
     async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse: ...
 
@@ -63,6 +97,7 @@ class InMemorySourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -75,6 +110,7 @@ class InMemorySourceDiscoveryRepository:
                 assessment := self._exact.get(
                     (
                         product.value,
+                        offering_id,
                         policy_version,
                         prompt_version,
                         model_name,
@@ -89,6 +125,7 @@ class InMemorySourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -101,6 +138,7 @@ class InMemorySourceDiscoveryRepository:
                 assessment := self._structural.get(
                     (
                         product.value,
+                        offering_id,
                         policy_version,
                         prompt_version,
                         model_name,
@@ -115,6 +153,7 @@ class InMemorySourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -123,6 +162,7 @@ class InMemorySourceDiscoveryRepository:
         for assessment in assessments:
             exact_key = (
                 product.value,
+                offering_id,
                 policy_version,
                 prompt_version,
                 model_name,
@@ -154,14 +194,15 @@ class SourceDiscoveryService:
         return self._model_name
 
     async def plan(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self, bundle: NormalizedSourceBundle, offering: OfferingContext
     ) -> SourceDiscoveryPlan:
-        plan, _ = await self._plan(bundle, product)
+        plan, _ = await self._plan(bundle, offering)
         return plan
 
     async def _plan(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self, bundle: NormalizedSourceBundle, offering: OfferingContext
     ) -> tuple[SourceDiscoveryPlan, tuple[DiscoveryCandidate, ...]]:
+        product = offering.product
         candidates = build_discovery_candidates(bundle)
         rule_assessments: list[SourceAssessment] = []
         unresolved: list[DiscoveryCandidate] = []
@@ -173,6 +214,7 @@ class SourceDiscoveryService:
 
         exact = await self._repository.get_exact(
             product=product,
+            offering_id=offering.offering_id,
             policy_version=self._settings.policy_version,
             prompt_version=self._settings.prompt_version,
             model_name=self._model_name,
@@ -198,6 +240,7 @@ class SourceDiscoveryService:
 
         priors = await self._repository.get_structural_priors(
             product=product,
+            offering_id=offering.offering_id,
             policy_version=self._settings.policy_version,
             prompt_version=self._settings.prompt_version,
             model_name=self._model_name,
@@ -215,13 +258,14 @@ class SourceDiscoveryService:
             if structural_counts[fingerprint] == 1
         }
         batches = _build_batches(
-            product,
+            offering,
             llm_candidates,
             priors,
             self._settings,
         )
         plan = SourceDiscoveryPlan(
             product=product,
+            offering_id=offering.offering_id,
             canonical_url=str(bundle.canonical_url),
             input_content_hash=bundle.acquisition_content_hash,
             policy_version=self._settings.policy_version,
@@ -238,9 +282,14 @@ class SourceDiscoveryService:
         return plan, candidates
 
     async def discover(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryResult:
-        plan, all_candidates = await self._plan(bundle, product)
+        product = offering.product
+        plan, all_candidates = await self._plan(bundle, offering)
         await record_model_cache_hit(
             self._usage_repository,
             stage="discovery.classification",
@@ -281,6 +330,7 @@ class SourceDiscoveryService:
         if llm_assessments:
             await self._repository.save(
                 product=product,
+                offering_id=offering.offering_id,
                 policy_version=plan.policy_version,
                 prompt_version=plan.prompt_version,
                 model_name=plan.model_name,
@@ -299,6 +349,7 @@ class SourceDiscoveryService:
         context = _build_extraction_context(product, direct, candidates_by_id)
         return SourceDiscoveryResult(
             product=product,
+            offering_id=offering.offering_id,
             input_content_hash=plan.input_content_hash,
             policy_version=plan.policy_version,
             prompt_version=plan.prompt_version,
@@ -326,12 +377,16 @@ class FallbackSourceDiscoveryService:
         self._services = tuple(services)
 
     async def discover(
-        self, bundle: NormalizedSourceBundle, product: ProductType
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryResult:
         last = len(self._services) - 1
         for index, service in enumerate(self._services):
             try:
-                return await service.discover(bundle, product)
+                return await service.discover(bundle, offering, as_of=as_of)
             except Exception as exc:
                 if index == last or not is_model_fallback_error(exc):
                     raise
@@ -508,7 +563,7 @@ def _no_content_values(
 
 
 def _build_batches(
-    product: ProductType,
+    offering: OfferingContext,
     candidates: list[DiscoveryCandidate],
     priors: dict[str, SourceAssessment],
     settings: SourceDiscoverySettings,
@@ -537,7 +592,8 @@ def _build_batches(
             batches.append(
                 DiscoveryBatch(
                     id=f"batch_{len(batches):03d}",
-                    product=product,
+                    product=offering.product,
+                    offering=offering,
                     items=tuple(current),
                 )
             )
@@ -548,7 +604,10 @@ def _build_batches(
     if current:
         batches.append(
             DiscoveryBatch(
-                id=f"batch_{len(batches):03d}", product=product, items=tuple(current)
+                id=f"batch_{len(batches):03d}",
+                product=offering.product,
+                offering=offering,
+                items=tuple(current),
             )
         )
     return tuple(batches)

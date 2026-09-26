@@ -720,19 +720,70 @@ failures. `ruff check` and `ruff format --check` clean.
 
 ### Phase 2: Offering identity and cache scope (SD1)
 
-- [ ] Add `OfferingContext` to the domain and to `DiscoveryBatch`.
-- [ ] Change the discovery port to `discover(bundle, offering, *, as_of)`. Update
+- [x] Add `OfferingContext` to the domain and to `DiscoveryBatch`.
+- [x] Change the discovery port to `discover(bundle, offering, *, as_of)`. Update
       `monitoring_pipeline.py`, the monitoring node path, `FallbackSourceDiscoveryService`, and
       the test doubles.
-- [ ] Rewrite `SOURCE_DISCOVERY_INSTRUCTION` around the offering: definitions of
+- [x] Rewrite `SOURCE_DISCOVERY_INSTRUCTION` around the offering: definitions of
       `current_product`, `related_product` and shared material, with one example of a sibling
       table.
-- [ ] Migration `019_source_discovery_offering_scope.sql`: add `offering_id`, replace the
+- [x] Migration `019_source_discovery_offering_scope.sql`: add `offering_id`, replace the
       unique constraint and the structural index. Update the Postgres, file and in-memory
       repositories.
-- [ ] Bump `policy_version` and `prompt_version` to `2` in settings and `.env.example`.
-- [ ] Unit tests: the prompt carries the offering; the same content for two offerings is two
+- [x] Bump `policy_version` and `prompt_version` to `2` in settings and `.env.example`.
+- [x] Unit tests: the prompt carries the offering; the same content for two offerings is two
       cache entries.
+
+#### Phase 2 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 2: offering identity and cache scope*.
+
+**What changed.**
+- **`OfferingContext`** ([domain/source_discovery.py](../../app/domain/source_discovery.py)):
+  offering id, product, display name, seed URL, page title, and up to 20 catalog names and
+  aliases (English and Armenian). `OfferingContext.from_catalog_entry()` builds it from the
+  catalog entry the pipeline already runs. Every `DiscoveryBatch` carries it, so the prompt
+  (the batch's JSON) names the offering.
+- **Signature.** `SourceDiscoveryService.plan(bundle, offering)` and
+  `discover(bundle, offering, *, as_of=None)`; the same for `FallbackSourceDiscoveryService`
+  and the pipeline port. The pipeline passes the page title and `artifact.retrieved_at` as
+  `as_of` (used from Phase 5 on). `SourceDiscoveryPlan` and `SourceDiscoveryResult` record the
+  `offering_id`.
+- **Instruction** rewritten around the offering: definitions of `current_product` (including
+  terms that apply to it among other loans, such as the loan fee schedule),
+  `related_product` (with the Express-table example), `generic_bank_information`,
+  `global_navigation`, historical/future versions and `unknown`.
+- **Cache scope.** `offering_id` is part of the exact and structural cache keys in the
+  Postgres, file and in-memory repositories and in the repository contract. Migration
+  [019_source_discovery_offering_scope.sql](../../migrations/019_source_discovery_offering_scope.sql)
+  adds the column (old rows get `''` and never match), replaces the unique constraint and the
+  structural index, and is safe to apply twice.
+- **Versions.** `policy_version` and `prompt_version` default to `2` (settings and
+  `.env.example`). Phase 5 changes the prompt again (SD18); nothing is deployed between the
+  phases, so it stays `2`.
+- **Tools and demos.** `offering_context_for(bundle, product)` finds the catalog offering whose
+  seed URL is the bundle's page, or names an unlisted page after itself. The two demonstration
+  scripts use it.
+- **Docs.** [docs/source-discovery.md](../../docs/source-discovery.md) and
+  [docs/architecture.md](../../docs/architecture.md) describe the offering in the cache key and
+  in every batch, and the Phase 1 rules (site chrome, page header, no-content documents,
+  content-only fingerprints); the API-payload section is gone.
+
+**Tests.** The SD1 (×2), SD4 and SD9 regression tests pass; markers removed. The old discovery,
+PDF and file-cache tests now pass an offering. New Postgres test
+[test_source_discovery_postgres.py](../../tests/integration/test_source_discovery_postgres.py):
+the same content saved for two offerings is two entries with different associations, a third
+offering sees neither, and migration 019 applies twice. Postgres tests run against the scratch
+`tariff_acquisition_test` database: 37 + 1 passed. Full suite: 923 passed, 43 skipped,
+5 xfailed, plus the 4 known key-dependent failures. `ruff` clean.
+
+**Not measured yet.** No Gemini run with the offering in the prompt; Phase 7 measures it
+against the labels (the baseline has 20 `leak`s, mostly sibling tables and cross-sell cards).
+
+**Found while documenting (affects Q2).** [docs/source-discovery.md](../../docs/source-discovery.md)
+records that `gemini-2.5-flash-lite` "held this slot until the provider stopped serving it to
+new users on 2026-09-22". That is the fallback chosen in Q2. Phase 5 checks with one minimal
+call whether this project's key can still use it; if not, the choice goes back to the user.
 
 ### Phase 3: Member classification (SD3, SD17)
 

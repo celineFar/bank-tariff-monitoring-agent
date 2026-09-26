@@ -20,6 +20,7 @@ class FileSystemSourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -28,6 +29,7 @@ class FileSystemSourceDiscoveryRepository:
         return self._read_many(
             "exact",
             product,
+            offering_id,
             policy_version,
             prompt_version,
             model_name,
@@ -38,6 +40,7 @@ class FileSystemSourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -46,6 +49,7 @@ class FileSystemSourceDiscoveryRepository:
         return self._read_many(
             "structural",
             product,
+            offering_id,
             policy_version,
             prompt_version,
             model_name,
@@ -56,6 +60,7 @@ class FileSystemSourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -69,6 +74,7 @@ class FileSystemSourceDiscoveryRepository:
                 path = self._path(
                     namespace,
                     product,
+                    offering_id,
                     policy_version,
                     prompt_version,
                     model_name,
@@ -80,6 +86,7 @@ class FileSystemSourceDiscoveryRepository:
         self,
         namespace: str,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -90,6 +97,7 @@ class FileSystemSourceDiscoveryRepository:
             path = self._path(
                 namespace,
                 product,
+                offering_id,
                 policy_version,
                 prompt_version,
                 model_name,
@@ -105,6 +113,7 @@ class FileSystemSourceDiscoveryRepository:
         self,
         namespace: str,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -113,6 +122,7 @@ class FileSystemSourceDiscoveryRepository:
         identity = json.dumps(
             {
                 "product": product.value,
+                "offering_id": offering_id,
                 "policy_version": policy_version,
                 "prompt_version": prompt_version,
                 "model_name": model_name,

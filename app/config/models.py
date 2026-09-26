@@ -331,8 +331,9 @@ class TariffQuerySettings(SettingsGroup):
 
 
 class SourceDiscoverySettings(SettingsGroup):
-    policy_version: str = Field(default="1", min_length=1, max_length=50)
-    prompt_version: str = Field(default="1", min_length=1, max_length=50)
+    # 2: assessments are scoped to the offering and the prompt names it.
+    policy_version: str = Field(default="2", min_length=1, max_length=50)
+    prompt_version: str = Field(default="2", min_length=1, max_length=50)
     max_items_per_batch: int = Field(default=8, ge=1, le=50)
     max_chars_per_item: int = Field(default=3000, ge=500, le=12_000)
     max_chars_per_batch: int = Field(default=18_000, ge=1000, le=100_000)

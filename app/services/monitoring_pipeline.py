@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Sequence
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from time import perf_counter
@@ -39,7 +40,7 @@ from app.domain.semantic_extraction import (
     SemanticExtractionPlan,
     SemanticExtractionResult,
 )
-from app.domain.source_discovery import SourceDiscoveryResult
+from app.domain.source_discovery import OfferingContext, SourceDiscoveryResult
 from app.repositories.contracts import (
     MonitoringSnapshotRepository,
     OfferingPublicationRepository,
@@ -83,7 +84,11 @@ class NormalizationPort(Protocol):
 
 class SourceDiscoveryPort(Protocol):
     async def discover(
-        self, bundle: NormalizedSourceBundle, product
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryResult: ...
 
 
@@ -242,7 +247,13 @@ class IndexingPipeline:
             discovery = await stage(
                 "source_discovery",
                 OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
-                self._discovery.discover(bundle, offering.product),
+                self._discovery.discover(
+                    bundle,
+                    OfferingContext.from_catalog_entry(
+                        offering, page_title=artifact.title
+                    ),
+                    as_of=artifact.retrieved_at.date(),
+                ),
             )
         except OfferingPipelineError as exc:
             if audit is not None and audit_context is not None:

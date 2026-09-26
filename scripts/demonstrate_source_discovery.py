@@ -36,6 +36,7 @@ from app.services.model_pricing import (
 from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
+    offering_context_for,
 )
 
 
@@ -63,7 +64,7 @@ async def demonstrate(
         settings=settings.source_discovery,
         model_name=settings.models.generation_model,
     )
-    plan = await planning_service.plan(bundle, product)
+    plan = await planning_service.plan(bundle, offering_context_for(bundle, product))
     if not execute_llm:
         return write_preflight_bundle(
             plan,
@@ -111,9 +112,11 @@ async def demonstrate(
             settings=settings.source_discovery,
             model_name=model_name,
         )
-        model_plan = await service.plan(bundle, product)
+        model_plan = await service.plan(bundle, offering_context_for(bundle, product))
         try:
-            result = await service.discover(bundle, product)
+            result = await service.discover(
+                bundle, offering_context_for(bundle, product)
+            )
         except Exception as exc:
             attempts.append(_model_attempt(model_name, classifier.usage, exc))
             _write_model_attempts(output_directory, attempts)

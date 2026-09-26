@@ -277,8 +277,8 @@ class _Discovery:
     def __init__(self, events):
         self.events = events
 
-    async def discover(self, bundle, product):
-        self.events.append(("discover", product))
+    async def discover(self, bundle, offering, *, as_of=None):
+        self.events.append(("discover", offering.product))
         return _discovery()
 
 
@@ -771,7 +771,7 @@ async def test_indexing_audit_failure_does_not_fail_the_run(tmp_path) -> None:
 
 
 class _FailingDiscovery:
-    async def discover(self, bundle, product):
+    async def discover(self, bundle, offering, *, as_of=None):
         raise RuntimeError("classifier unavailable")
 
 

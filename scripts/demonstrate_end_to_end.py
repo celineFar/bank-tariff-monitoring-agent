@@ -63,7 +63,7 @@ from app.services.semantic_extraction import (
     AdkSemanticExtractor,
     SemanticExtractionService,
 )
-from app.services.source_discovery import SourceDiscoveryService
+from app.services.source_discovery import SourceDiscoveryService, offering_context_for
 from app.services.source_selection import build_selected_source_bundle
 from scripts.demonstrations.runs import RUN_DIRECTORY, next_run_directory
 
@@ -695,7 +695,7 @@ async def _run_discovery(
             settings=settings.source_discovery,
             model_name=model_name,
         )
-        plan = await service.plan(bundle, product)
+        plan = await service.plan(bundle, offering_context_for(bundle, product))
         print(
             f"  source-discovery model {index + 1}/{len(models)}: {model_name}",
             flush=True,
@@ -707,7 +707,9 @@ async def _run_discovery(
             flush=True,
         )
         try:
-            result = await service.discover(bundle, product)
+            result = await service.discover(
+                bundle, offering_context_for(bundle, product)
+            )
         except Exception as exc:
             attempts.append(_model_attempt(model_name, classifier.usage, exc))
             if is_model_fallback_error(exc) and index + 1 < len(models):

@@ -21,27 +21,40 @@ terms.
 
 `SourceDiscoveryService.plan()` performs all work that can happen before a model call:
 
-1. Build document, page-section, table, and API-payload classification units.
-2. Group children so one decision can be inherited by many blocks or JSON leaves.
+1. Build document, page-section, and table classification units.
+2. Group children so one decision can be inherited by many blocks.
 3. Apply deterministic rules for the canonical product document, hidden content,
-   repeated global navigation, and reusable HTML template payloads.
+   the site's navigation, header and footer (blocks the HTML parser marks
+   `site_chrome`, kept in their own group so a footer never joins a content
+   section), the unheaded page header above the first heading, and linked
+   documents with no content (skipped before transcription, or failed).
 4. Reuse exact assessments whose content fingerprints and discovery versions match.
+   Fingerprints are built from content, never from positional block or table ids,
+   so a block inserted near the top of a page does not invalidate every section.
 5. Attach a prior assessment as a non-authoritative hint when the structure is stable
-   but content changed.
+   but content changed. The structural fingerprint includes the parent's text (the
+   accordion or card title); a fingerprint that occurs twice on one page gets no
+   prior, because the stored one may belong to the other section.
 6. Pack only unresolved units into bounded model batches.
 
 An unchanged source therefore needs no repeated semantic assessment. A changed item
 is reassessed without discarding useful information about its stable page position.
-Cache identity includes product, content fingerprint, policy version, prompt version,
-and configured model name.
+Cache identity includes product, offering, content fingerprint, policy version,
+prompt version, and configured model name. The offering is part of it because
+"current product" and "related product" are relative: the Express mortgage table
+is the current product on the Express page and a sibling on the primary-market
+page.
 
-The PostgreSQL cache is owned by migration `003_source_discovery.sql`. It stores only
+The PostgreSQL cache is owned by migrations `003_source_discovery.sql` and
+`019_source_discovery_offering_scope.sql`. It stores only
 validated structured assessments. The model cannot access the repository or SQL.
 
 ## ADK classifier
 
 `AdkSourceDiscoveryClassifier` is a narrow tool-free ADK agent with a Pydantic output
-schema. It receives only the bounded batches produced by the plan. Source text is
+schema. It receives only the bounded batches produced by the plan. Every batch
+carries the `OfferingContext` (offering id, display name, catalog names, seed URL,
+page title) that the product association is judged against. Source text is
 explicitly treated as untrusted evidence. The classifier must return exactly one
 known source ID per requested item; the application service rejects missing,
 duplicate, or invented IDs.
@@ -81,14 +94,6 @@ making an API request.
 Children inherit the validated container assessment. The final result still contains
 an assessment for every block, while the model operates on a much smaller set of
 classification units.
-
-## API and network payloads
-
-Captured API payloads are part of discovery because they may contain terms absent
-from static HTML. They are assessed at payload scope, not one call per JSON leaf.
-Known presentation-template payloads are rejected deterministically. Relevant or
-ambiguous payloads receive compact representative content, with individual JSON-path
-blocks inheriting the result.
 
 ## Extraction context
 
@@ -201,7 +206,7 @@ The individual fields mean:
 - `LLM batches that would be sent`: candidates packed into bounded requests.
 - `Characters selected for LLM`: total characters across all prospective requests, not token count.
 - `Changed-layout prior hints`: previous assessments available for structurally equivalent but content-changed components. Despite the label, these are normally stable-layout/content-changed hints.
-- `Child items covered by inheritance`: individual blocks or JSON leaves that do not need separate LLM calls because they inherit a grouped assessment.
+- `Child items covered by inheritance`: individual blocks and tables that do not need separate LLM calls because they inherit a grouped assessment.
 
 For this run, 30,941 normalized child items were condensed into only 40 semantic candidates.
 
@@ -216,10 +221,9 @@ In case_008, it contains nine assessments.
 Examples of material that can be classified deterministically include:
 
 - the canonical product-page document;
-- repeated global navigation;
+- the site's navigation, header and footer, and the unheaded page header;
 - content known to be hidden;
-- reusable HTML presentation templates;
-- obvious non-product payloads.
+- linked documents with no content (skipped before transcription, or failed).
 
 A typical assessment contains:
 
@@ -248,7 +252,7 @@ Important fields:
 
 - `source_id`: unique discovery identifier for the assessed unit.
 - `document_id`: normalized document containing the unit.
-- `scope`: level assessed, such as `document`, `section`, `table`, or `api_payload`.
+- `scope`: level assessed, such as `document`, `section`, or `table` (`api_payload` appears only in rows written before network payloads were removed).
 - `product_association`: whether it concerns the current product, another product, navigation, or generic bank information.
 - `role`: its information function, such as pricing, fees, eligibility, FAQ, or navigation.
 - `relevance`: `relevant`, `possibly_relevant`, or `irrelevant`.
@@ -304,7 +308,6 @@ Candidates may represent:
 - a page section;
 - a table;
 - an entire linked document;
-- a network/API payload;
 - another grouped structural unit.
 
 A typical candidate contains:
@@ -338,7 +341,7 @@ Important fields:
 - `source_id`: ID used when requesting and receiving a classification.
 - `document_id`: parent normalized document.
 - `scope`: classification-unit level.
-- `source_type`: page, PDF document, or API payload.
+- `source_type`: page or PDF document.
 - `title`: best available title for the unit.
 - `heading_path`: structural headings surrounding the content.
 - `context_text`: representative content from the complete unit.

@@ -170,7 +170,6 @@ def _rates_page(content_hash: str = "a" * 64) -> NormalizedDocument:
 # --- SD1 ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SD1 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd1_batch_carries_the_offering_identity() -> None:
     classifier = _Classifier()
@@ -182,7 +181,6 @@ async def test_sd1_batch_carries_the_offering_identity() -> None:
     assert str(batch.offering.seed_url) == URL
 
 
-@pytest.mark.xfail(strict=True, reason="SD1 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd1_the_cache_is_scoped_to_the_offering() -> None:
     classifier = _Classifier()
@@ -219,7 +217,6 @@ def _skipped_pdf(relevance: PdfAdmissionRelevance) -> NormalizedDocument:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="SD4 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd4_a_pdf_with_no_content_is_decided_by_rule() -> None:
     classifier = _Classifier()
@@ -341,7 +338,6 @@ async def test_sd6_good_batches_are_saved_when_one_batch_fails() -> None:
 # --- SD9 ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SD9 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd9_site_chrome_is_decided_by_rule_and_kept_apart() -> None:
     classifier = _Classifier()

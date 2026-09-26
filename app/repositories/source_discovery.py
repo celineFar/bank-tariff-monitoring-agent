@@ -28,6 +28,9 @@ class SourceAssessmentRecord(SourceDiscoveryBase):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product: Mapped[str] = mapped_column(String(50), nullable=False)
+    # An assessment is about one offering: the same table is the current
+    # product on one page and a sibling on another (migration 019).
+    offering_id: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     policy_version: Mapped[str] = mapped_column(String(50), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -45,6 +48,7 @@ class SourceAssessmentRecord(SourceDiscoveryBase):
     __table_args__ = (
         UniqueConstraint(
             "product",
+            "offering_id",
             "policy_version",
             "prompt_version",
             "model_name",
@@ -54,6 +58,7 @@ class SourceAssessmentRecord(SourceDiscoveryBase):
         Index(
             "source_discovery_assessments_structural_idx",
             "product",
+            "offering_id",
             "policy_version",
             "prompt_version",
             "model_name",
@@ -71,6 +76,7 @@ class PostgresSourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -86,6 +92,7 @@ class PostgresSourceDiscoveryRepository:
                         SourceAssessmentRecord.assessment,
                     ).where(
                         SourceAssessmentRecord.product == product.value,
+                        SourceAssessmentRecord.offering_id == offering_id,
                         SourceAssessmentRecord.policy_version == policy_version,
                         SourceAssessmentRecord.prompt_version == prompt_version,
                         SourceAssessmentRecord.model_name == model_name,
@@ -104,6 +111,7 @@ class PostgresSourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -120,6 +128,7 @@ class PostgresSourceDiscoveryRepository:
                     )
                     .where(
                         SourceAssessmentRecord.product == product.value,
+                        SourceAssessmentRecord.offering_id == offering_id,
                         SourceAssessmentRecord.policy_version == policy_version,
                         SourceAssessmentRecord.prompt_version == prompt_version,
                         SourceAssessmentRecord.model_name == model_name,
@@ -142,6 +151,7 @@ class PostgresSourceDiscoveryRepository:
         self,
         *,
         product: ProductType,
+        offering_id: str,
         policy_version: str,
         prompt_version: str,
         model_name: str,
@@ -156,6 +166,7 @@ class PostgresSourceDiscoveryRepository:
                     insert(SourceAssessmentRecord)
                     .values(
                         product=product.value,
+                        offering_id=offering_id,
                         policy_version=policy_version,
                         prompt_version=prompt_version,
                         model_name=model_name,
