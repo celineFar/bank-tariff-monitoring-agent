@@ -1162,19 +1162,92 @@ still Phase 4's.
 
 ### Phase 3: Evidence identity and rendering (SE10, SE4, SE8, SE9)
 
-- [ ] SE10: new `evidence_id` from source key, structural path, normalized text and
+- [x] SE10: new `evidence_id` from source key, structural path, normalized text and
       occurrence; `source_item_id` kept as locator only.
-- [ ] SE10: list every consumer of evidence IDs (`grep -rn evidence_id app/`): fact
+- [x] SE10: list every consumer of evidence IDs (`grep -rn evidence_id app/`): fact
       evidence, structured projection, review candidates, snapshot evidence, RAG. Check each
       works with the new IDs, and record the list in the phase notes.
-- [ ] SE1/SE4: render table rows as records (label path; column path → value; `Notes:` with
+- [x] SE1/SE4: render table rows as records (label path; column path → value; `Notes:` with
       the referenced notes). Notes stay citable items.
-- [ ] SE8: render the packet in document order (document → section → table).
-- [ ] SE9: compact packet (id, source, section path, association, text); locators stay
+- [x] SE8: render the packet in document order (document → section → table).
+- [x] SE9: compact packet (id, source, section path, association, text); locators stay
       server-side; minified per-call contracts; the packet first and identical across an
       offering's calls.
-- [ ] Re-run the probe: evidence IDs unchanged when a block is inserted on a capture copy;
+- [x] Re-run the probe: evidence IDs unchanged when a block is inserted on a capture copy;
       prompt characters per call recorded.
+
+#### Phase 3 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 3: evidence identity and rendering*.
+Unit suite **948 passed**; SE4, SE10 and the SE11 heading-rename test pass without their
+`xfail`.
+
+**SE10 (identity, `extraction_evidence.py`).**
+- `evidence_id = "ev_" + sha256(source key ‖ structural path ‖ whitespace-collapsed text
+  ‖ occurrence)[:24]`, where:
+  - the source key is `page:<page URL>` or `pdf:<PDF sha256>`;
+  - the structural path is heading path, table title, row section and row label path
+    for a row; heading path for a block; heading path, title and `note` for a note;
+  - the occurrence is the count among items with the same key, so duplicates stay
+    distinct.
+- The page hash and `source_item_id` are no longer part of the identity.
+  `source_item_id` stays for locating an item.
+- **Check on a real capture:** a paragraph inserted at the start of Mortgage Primary's
+  `<body>` shifts every block id (`b70` → `b71`) and a new page hash is set. **All 54
+  evidence IDs of the tariff table are unchanged.**
+- A change that *does* move structure changes IDs by design. Inserting inside the
+  banner made the parser stop scoping the page's `h1` to it, so the tables gained the
+  `h1` in their heading path. Heading paths are part of the identity, because the
+  model sees them (SE11).
+- **Consumers** of evidence IDs (`grep -rln evidence_id app/`):
+  - `domain/monitoring.py`, `domain/review.py`, `domain/structured_tariffs.py`;
+  - `repositories/structured_projection.py`, `repositories/structured_tariff_query.py`;
+  - `services/answer_read_model.py`, `evidence_retention_audit.py`,
+    `knowledge_projection.py`, `pipeline_audit.py`, `review_decisions.py`,
+    `review_resolution.py`, `snapshot_lifecycle.py`, `structured_projection.py`,
+    `structured_tariff_query.py`, and `app/cli.py`.
+
+  All treat IDs as opaque links inside one run's snapshot (facts to evidence, review
+  candidates to evidence). None parses them or compares them across runs. The format
+  (`ev_` + 24 hex) is unchanged. Effect: on the first run after deploy every ID
+  changes once (already in the one-time effects).
+
+**SE1/SE4 (records, `render_row`).**
+- A table row is now a record: `Section: …`, then `label path:`, then one line per
+  value, `column path → value`. A row without column paths is `label: v1 | v2`.
+- A continuation row carries the row above's word: `Currency: AMD → 13.5% (Fixed)`.
+- The notes the row cites by marker (superscripts or `*`, in cells, labels, column
+  paths or the section) follow under `Notes:`. Notes also stay citable items of their
+  own.
+- One older test (`test_normalization_fixes.py`) looked up the note by its text and
+  now found the row first; it selects the note by id and also asserts the row
+  carries it.
+
+**SE8 (order).** `EvidenceItem.order` records reading order:
+- documents in bundle order;
+- a table's rows at the position of the table's block;
+- PDF tables after the PDF's blocks.
+
+The catalog is sorted by it, no longer by precedence.
+
+**SE9 (prompt, `build_extraction_prompt`).**
+- The evidence packet comes first, then target, requested fields, minified contracts
+  for the call's fields only, and any repair context.
+- Per item: `[id] source | association | section`, qualifiers only when present
+  (conditions, effective periods, a non-current temporal status), then the text.
+  Related-product items come last, in a marked block.
+- Locators, fingerprints, precedence and role are no longer sent.
+- The instruction's "repair_context_json" wording became "a REPAIR CONTEXT section".
+- **Prompt size: 4,345–20,545 characters per call, down from 24,089–53,296**, on the
+  same batches ([data/probe-output-phase3.txt](data/probe-output-phase3.txt)).
+
+**Probe caveats.**
+- Recall moved 80% → 77%: today's keyword ranker scores the new record text
+  differently. Phase 4 replaces that ranker, so it was not tuned.
+- The probe's footnote line counts separate note items missing from a batch. With
+  notes inside row records it no longer measures SE4. SE4 is covered by
+  `test_se4_row_record_carries_its_referenced_note`.
+
 
 ### Phase 4: Selection modes (SE6, SE7, SE5)
 

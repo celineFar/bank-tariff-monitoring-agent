@@ -414,6 +414,9 @@ class EvidenceItem(ExtractionModel):
     effective_periods: tuple[EffectivePeriod, ...] = ()
     conditions: tuple[str, ...] = ()
     locator: SourceLocator
+    # Position in the bundle, in reading order: documents in bundle order, and
+    # within one, blocks and tables where they stand (SE8).
+    order: int = Field(default=0, ge=0)
 
 
 class ModelCitation(ExtractionModel):

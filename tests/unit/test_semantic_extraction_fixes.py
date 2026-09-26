@@ -428,9 +428,6 @@ async def test_se18_quote_differing_only_by_nbsp_is_accepted() -> None:
 # --- SE10: evidence identity survives unrelated changes ----------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE10: evidence IDs hash the page id and positions"
-)
 def test_se10_inserting_a_block_keeps_the_tables_evidence_ids() -> None:
     table = _table()
     before = _bundle((_block("b1", "Mortgage loan"),), (table,))
@@ -473,7 +470,6 @@ async def test_se11_instruction_change_changes_the_cache_key(monkeypatch) -> Non
     assert before.isdisjoint(await _fingerprints(bundle, discovery))
 
 
-@pytest.mark.xfail(strict=True, reason="SE11: the section path is not in the cache key")
 @pytest.mark.asyncio
 async def test_se11_heading_rename_changes_the_cache_key() -> None:
     text = "Loan amount AMD 3,000,000-150,000,000"
@@ -582,7 +578,6 @@ def test_se2_headline_card_is_one_key_value_block() -> None:
 # --- SE4: a row carries the notes it cites --------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE4: notes are separate evidence items only")
 def test_se4_row_record_carries_its_referenced_note() -> None:
     bundle, discovery = _bundle((_block("b1", "Mortgage loan"),), (_table(),))
     rate_row = next(
