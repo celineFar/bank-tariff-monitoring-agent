@@ -5,17 +5,20 @@ import pytest
 from app.domain.acquisition import (
     AcquisitionInventory,
     AcquisitionMode,
+    AcquisitionWarning,
+    AcquisitionWarningCode,
     DocumentArtifact,
     PageArtifact,
     StoredArtifact,
 )
+from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
 from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
 NOW = datetime(2026, 9, 22, 18, 0, tzinfo=UTC)
 
 
-def _artifact(retrieved_at: datetime, *, documents=()) -> PageArtifact:
+def _artifact(retrieved_at: datetime, *, documents=(), warnings=()) -> PageArtifact:
     return PageArtifact(
         url=URL,
         canonical_url=URL,
@@ -31,6 +34,7 @@ def _artifact(retrieved_at: datetime, *, documents=()) -> PageArtifact:
         links=(),
         downloadable_documents=documents,
         network_payloads=(),
+        warnings=warnings,
         retrieved_at=retrieved_at,
         inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0, payloads=0),
         content_hash="a" * 64,
@@ -186,3 +190,61 @@ async def test_a_failed_acquisition_never_falls_back_to_stored_content() -> None
 
     with pytest.raises(RuntimeError, match="unreachable"):
         await _service(_Failing(), _Snapshots(stored)).acquire(URL)
+
+
+@pytest.mark.asyncio
+async def test_a_partial_acquisition_is_not_stored_and_is_fetched_again() -> None:
+    partial = _artifact(
+        NOW,
+        warnings=(
+            AcquisitionWarning(
+                code=AcquisitionWarningCode.LINKED_DOCUMENT_FAILED,
+                detail="l12: source.timeout",
+            ),
+        ),
+    )
+    acquisition = _Acquisition(partial)
+    snapshots = _Snapshots()
+    service = _service(acquisition, snapshots)
+
+    await service.acquire(URL)
+    await service.acquire(URL)
+
+    assert snapshots.saved == []
+    assert acquisition.calls == [URL, URL]
+
+
+@pytest.mark.asyncio
+async def test_a_cap_warning_alone_does_not_prevent_reuse() -> None:
+    capped = _artifact(
+        NOW,
+        warnings=(
+            AcquisitionWarning(
+                code=AcquisitionWarningCode.LINKED_DOCUMENT_CAP_REACHED,
+                detail="2 of 42",
+            ),
+        ),
+    )
+    snapshots = _Snapshots()
+
+    await _service(_Acquisition(capped), snapshots).acquire(URL)
+
+    assert [url for url, _ in snapshots.saved] == [URL]
+
+
+@pytest.mark.asyncio
+async def test_an_acquisition_failing_the_gate_is_not_stored() -> None:
+    class _Incomplete:
+        async def acquire(self, url: str) -> PageArtifact:
+            raise AcquisitionError(
+                AcquisitionFailure.INCOMPLETE_CONTENT,
+                "thin",
+                reasons=("tables 3 -> 0",),
+            )
+
+    snapshots = _Snapshots()
+
+    with pytest.raises(AcquisitionError):
+        await _service(_Incomplete(), snapshots).acquire(URL)
+
+    assert snapshots.saved == []

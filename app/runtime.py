@@ -10,6 +10,9 @@ from google.adk.workflow import FunctionNode
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.config import Settings, load_seed_catalog
+from app.repositories.acquisition_baselines import (
+    PostgresAcquisitionBaselineRepository,
+)
 from app.repositories.acquisition_snapshots import (
     PostgresAcquisitionSnapshotRepository,
 )
@@ -30,6 +33,9 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredUnitEmbeddingRepository,
 )
 from app.services.acquisition import build_acquisition_service
+from app.services.acquisition_completeness import (
+    CompletenessGatedAcquisitionService,
+)
 from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
@@ -232,8 +238,15 @@ def build_application_container(
         else None
     )
     indexing = IndexingPipeline(
+        # Freshness outside, completeness inside: a reused acquisition already
+        # passed the gate when it was fetched, and one that fails the gate is
+        # never stored for reuse.
         acquisition=FreshnessGatedAcquisitionService(
-            build_acquisition_service(http_client, settings),
+            CompletenessGatedAcquisitionService(
+                build_acquisition_service(http_client, settings),
+                PostgresAcquisitionBaselineRepository(sessions),
+                settings.acquisition,
+            ),
             PostgresAcquisitionSnapshotRepository(sessions),
             freshness_hours=settings.acquisition.freshness_hours,
             artifact_reader=artifacts,

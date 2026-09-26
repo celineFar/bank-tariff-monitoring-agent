@@ -71,6 +71,10 @@ def load_settings(
             max_network_payload_bytes=raw.acquisition_max_network_payload_bytes,
             max_linked_documents=raw.acquisition_max_linked_documents,
             freshness_hours=raw.acquisition_freshness_hours,
+            baseline_max_pdf_link_drop=raw.acquisition_baseline_max_pdf_link_drop,
+            baseline_max_main_content_drop=(
+                raw.acquisition_baseline_max_main_content_drop
+            ),
         ),
         pdf_extraction=PdfExtractionSettings(
             schema_version=raw.pdf_extraction_schema_version,

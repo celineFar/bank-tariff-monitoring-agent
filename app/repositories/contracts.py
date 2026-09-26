@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.acquisition import PageArtifact
+from app.domain.acquisition import AcquisitionInventory, PageArtifact
 from app.domain.knowledge import (
     DocumentVersionSummary,
     EmbeddedKnowledgeDocument,
@@ -293,6 +293,14 @@ class AcquisitionSnapshotRepository(Protocol):
     async def get_latest(self, url: str) -> PageArtifact | None: ...
 
     async def save(self, url: str, artifact: PageArtifact) -> None: ...
+
+
+class AcquisitionBaselineRepository(Protocol):
+    async def get(self, url: str) -> AcquisitionInventory | None: ...
+
+    async def record(
+        self, url: str, inventory: AcquisitionInventory, *, recorded_at: datetime
+    ) -> None: ...
 
 
 class PdfExtractionRepository(Protocol):

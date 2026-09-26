@@ -5,7 +5,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from app.domain.acquisition import PageArtifact, StoredArtifact
+from app.domain.acquisition import (
+    AcquisitionWarningCode,
+    PageArtifact,
+    StoredArtifact,
+)
 from app.repositories.contracts import AcquisitionSnapshotRepository
 from app.services.telemetry import get_tracer
 
@@ -36,6 +40,8 @@ class FreshnessGatedAcquisitionService:
     disk, this acquires normally. Reuse is never a fallback for a failed
     acquisition: a fetch that fails must fail the offering, because serving
     yesterday's tariffs as today's is the one outcome this system may not have.
+    Nor is a partial one stored for reuse: an acquisition whose linked PDFs
+    failed to download is used once and fetched again next time.
     """
 
     def __init__(
@@ -68,8 +74,29 @@ class FreshnessGatedAcquisitionService:
                 return reusable
             artifact = await self._acquisition.acquire(url)
             span.set_attribute("tariff.acquisition.content_hash", artifact.content_hash)
-        await self._remember(url, artifact)
+        if self._reusable_later(artifact):
+            await self._remember(url, artifact)
         return artifact
+
+    @staticmethod
+    def _reusable_later(artifact: PageArtifact) -> bool:
+        """Whether serving this artifact again would repeat a complete fetch.
+
+        An acquisition reaching here passed the completeness gate, but one whose
+        linked PDFs failed to download is still partial: reusing it would carry
+        the gap into every run in the window instead of retrying the download.
+        """
+        partial = any(
+            warning.code is AcquisitionWarningCode.LINKED_DOCUMENT_FAILED
+            for warning in artifact.warnings
+        )
+        if partial:
+            logger.info(
+                "Not storing the acquisition of %s for reuse: "
+                "some linked documents failed to download",
+                artifact.url,
+            )
+        return not partial
 
     async def _reusable(self, url: str) -> PageArtifact | None:
         if not self._window:

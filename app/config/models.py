@@ -212,6 +212,11 @@ class AcquisitionSettings(SettingsGroup):
     # and every run re-acquires. Only acquisition is skipped -- normalization
     # onward still execute, and hit their own content-addressed caches.
     freshness_hours: float = Field(default=1.0, ge=0, le=720)
+    # Regression check against the last acquisition that passed the gate: a
+    # table, PDF-link or payload count that falls to zero always fails; these
+    # are the relative drops that fail for PDF links and main content.
+    baseline_max_pdf_link_drop: float = Field(default=0.5, gt=0, le=1)
+    baseline_max_main_content_drop: float = Field(default=0.6, gt=0, le=1)
 
 
 class PdfExtractionSettings(SettingsGroup):
