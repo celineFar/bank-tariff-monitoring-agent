@@ -1,0 +1,681 @@
+{
+ "seeds": {
+  "consumer_standard": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "product_name",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "consumer_loan"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "fees": {
+     "outcome": "missing"
+    },
+    "repayment": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "residency_requirements": {
+     "outcome": "review"
+    },
+    "required_documents": {
+     "outcome": "review"
+    },
+    "collateral": {
+     "outcome": "review"
+    }
+   }
+  },
+  "credit_line": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "product_name",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "credit_line"
+    },
+    "credit_limit": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "grace_period_days": {
+     "outcome": "missing"
+    },
+    "revolving": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "fees": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_commercial": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "collateral",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_construction": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "collateral",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "product_name",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_diaspora": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "product_name",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    }
+   }
+  },
+  "mortgage_express": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "product_name",
+    "property_market",
+    "purpose",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "variants": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_no_income_verification": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "product_name",
+    "purpose",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "income_verification_required": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_online": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "product_name",
+    "property_market",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "collateral": {
+     "outcome": "review"
+    },
+    "ltv_pct": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "review"
+    }
+   }
+  },
+  "mortgage_primary": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "product_name",
+    "property_market",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "collateral": {
+     "outcome": "review"
+    },
+    "ltv_pct": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "review"
+    }
+   }
+  },
+  "mortgage_renovation": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "collateral",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "product_name",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_secondary_market": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "down_payment_pct",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "ltv_pct",
+    "product_name",
+    "property_market",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "ltv_pct": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "review"
+    }
+   }
+  },
+  "online_consumer_finance": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "product_name",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "consumer_loan"
+    },
+    "loan_amount": {
+     "outcome": "review"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "collateral": {
+     "outcome": "review"
+    },
+    "repayment": {
+     "outcome": "review"
+    }
+   }
+  },
+  "overdraft": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [
+    "age_requirements",
+    "application_channel",
+    "collateral",
+    "effective_rate",
+    "interest_rate",
+    "loan_amount",
+    "product_name",
+    "purpose",
+    "repayment",
+    "required_documents",
+    "residency_requirements",
+    "term"
+   ],
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "overdraft"
+    },
+    "credit_limit": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "review"
+    },
+    "effective_rate": {
+     "outcome": "review"
+    },
+    "term": {
+     "outcome": "review"
+    },
+    "revolving": {
+     "outcome": "missing"
+    },
+    "linked_account_or_card": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "review"
+    },
+    "fees": {
+     "outcome": "missing"
+    }
+   }
+  }
+ },
+ "extractor": "fake",
+ "model": "gemini-3.7-flash",
+ "totals": {
+  "review": 92,
+  "match": 13,
+  "missing": 15
+ },
+ "usage": {
+  "calls": 117,
+  "spent_usd": 0
+ }
+}
