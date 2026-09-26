@@ -1,0 +1,504 @@
+{
+ "seeds": {
+  "consumer_standard": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "consumer_loan"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "fees": {
+     "outcome": "missing"
+    },
+    "repayment": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "residency_requirements": {
+     "outcome": "missing"
+    },
+    "required_documents": {
+     "outcome": "missing"
+    },
+    "collateral": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "credit_line": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "credit_line"
+    },
+    "credit_limit": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "grace_period_days": {
+     "outcome": "missing"
+    },
+    "revolving": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "fees": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_commercial": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_construction": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_diaspora": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_express": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    },
+    "variants": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_no_income_verification": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    },
+    "income_verification_required": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_online": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "collateral": {
+     "outcome": "missing"
+    },
+    "ltv_pct": {
+     "outcome": "missing"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_primary": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "collateral": {
+     "outcome": "missing"
+    },
+    "ltv_pct": {
+     "outcome": "missing"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_renovation": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "mortgage_secondary_market": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "down_payment_pct": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "ltv_pct": {
+     "outcome": "missing"
+    },
+    "property_market": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "online_consumer_finance": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "consumer_loan"
+    },
+    "loan_amount": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "collateral": {
+     "outcome": "missing"
+    },
+    "repayment": {
+     "outcome": "missing"
+    }
+   }
+  },
+  "overdraft": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "fields": {
+    "product_name": {
+     "outcome": "missing"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "overdraft"
+    },
+    "credit_limit": {
+     "outcome": "missing"
+    },
+    "interest_rate": {
+     "outcome": "missing"
+    },
+    "effective_rate": {
+     "outcome": "missing"
+    },
+    "term": {
+     "outcome": "missing"
+    },
+    "revolving": {
+     "outcome": "missing"
+    },
+    "linked_account_or_card": {
+     "outcome": "missing"
+    },
+    "age_requirements": {
+     "outcome": "missing"
+    },
+    "fees": {
+     "outcome": "missing"
+    }
+   }
+  }
+ },
+ "extractor": "fake",
+ "model": "gemini-3.7-flash",
+ "totals": {
+  "missing": 107,
+  "match": 13
+ },
+ "usage": {
+  "calls": 78,
+  "spent_usd": 0
+ }
+}

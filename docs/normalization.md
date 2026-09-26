@@ -46,6 +46,11 @@ forms are canonicalized. The parser (`app/services/html_parser.py`) guarantees:
   own table, referenced from the outer cell as `[table tN]`), and nested list items
   and paragraphs inside `dt`/`dd` are not separate blocks;
 - a `dt` and its `dd` values form one key/value block with `fields={"key","value"}`;
+- a **headline card** (a container holding only a short heading and one short label
+  after it, as in `<h6>AMD 3-150 million</h6><p>Loan amount</p>`) forms one
+  key/value block, `Loan amount: AMD 3-150 million`. The value is not a heading, so
+  it labels nothing after the card; the label's block id stays reserved, so later
+  block ids do not shift. A lone `h5`/`h6` in a small card heads only that card;
 - a table block carries the id of its table; and
 - a table cell whose only content is an image reads the image's alt text.
 
@@ -72,6 +77,21 @@ Tables are rebuilt from physical cell coordinates and span metadata
 - separates full-width footnotes from data rows. A marker is a superscript, `*`/`†`/
   `‡`, `1)`, or one or two digits directly before a capital letter; a note that
   starts with an amount ("5 000 000 AMD…") has none.
+- ties every value to its column (SE1 of the semantic-extraction fix). The leading
+  **stub columns** hold row labels (`label_path`); they are the columns a header cell
+  spans from column 0, or `Section | Item` when headers are invented. Each value cell
+  gets a `column_path`: the header texts above it, merged duplicates collapsed, so an
+  Overdraft rate names its card tier. A **qualifier row** -- two or more distinct,
+  short, digit-free value cells over a row of separate values, such as
+  `3.1. Currency | AMD | USD | EUR` -- adds `Currency: AMD` to the paths of the
+  columns below it until the next qualifier row (in-table section rows do not end
+  it); the row is kept, with `qualifies=true`. A value row under the same carried
+  labels as a row of short type words (`Fixed | Fixed | Fixed`, then
+  `13.5% | 11.0% | 8.5%`) records `continues=<that row's id>`. A cell spanning columns
+  with different paths gets their common path. PDF tables get the same structure
+  from their text rows (`structure_text_table`); a header row the transcription
+  model offers counts only when it reads as a header (short cells, no amounts), and
+  the placeholder names it invents (`Details`, `Item`, …) name nothing.
 
 Downloaded PDFs use a deliberately narrow model-backed substep. Python first records
 link/title/heading context, checks effective-date and archive markers, and probes each
@@ -109,7 +129,11 @@ pages on 2026-09-26 was labelled by hand; `tests/unit/test_pdf_admission_gate.py
 fails if admission would skip one labelled current.
 
 The original PDF bytes of an admitted document are then supplied to a tool-free
-Gemini ADK agent with a strict response schema and thinking disabled. Python
+Gemini ADK agent with a strict response schema, thinking disabled and temperature 0
+(the same PDF must transcribe to the same evidence after a cache miss). A table item
+may carry `header_rows` and `row_groups`; they are optional, since asking the model
+for them cost rows and page coverage in a 2026-09-26 trial, and the table structure
+is rebuilt from the rows either way (see the table normalizer above). Python
 rejects invalid output and converts accepted blocks, tables, notes, and footnotes
 to the same page-addressable normalized structures used downstream; each PDF table
 cell cites itself (`…:table:0:row:3:cell:1`) at the page's locator. A page with a

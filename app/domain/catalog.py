@@ -82,11 +82,39 @@ class ProductFamilyCatalogEntry(CatalogModel):
         return _validate_localized_names(value)
 
 
+class OfferingCategory(StrEnum):
+    """What kind of credit an offering is; it decides the fields extracted.
+
+    The same values as the extraction's `LoanCategory` (SE21 of the
+    semantic-extraction fix): an overdraft has a credit limit and a grace
+    period, not collateral; a mortgage has a down payment.
+    """
+
+    CONSUMER_LOAN = "consumer_loan"
+    OVERDRAFT = "overdraft"
+    CREDIT_LINE = "credit_line"
+    MORTGAGE = "mortgage"
+
+
+_FAMILY_CATEGORIES: dict[ProductType, frozenset[OfferingCategory]] = {
+    ProductType.CONSUMER_LOAN: frozenset(
+        {
+            OfferingCategory.CONSUMER_LOAN,
+            OfferingCategory.OVERDRAFT,
+            OfferingCategory.CREDIT_LINE,
+        }
+    ),
+    ProductType.MORTGAGE: frozenset({OfferingCategory.MORTGAGE}),
+}
+
+
 class SeedCatalogEntry(CatalogModel):
     product: ProductType
     offering_id: OfferingId
     display_name: str = Field(min_length=1, max_length=200)
     seed_url: HttpUrl
+    # Defaults to the family's own category (consumer_loan, mortgage).
+    category: OfferingCategory | None = None
     enabled: bool = True
     language: str | None = Field(default=None, min_length=2, max_length=35)
     localized_names: dict[CatalogLanguage, LocalizedCatalogTerms]
@@ -110,6 +138,13 @@ class SeedCatalogEntry(CatalogModel):
     @model_validator(mode="after")
     def validate_entry(self) -> SeedCatalogEntry:
         validate_offering_product(self.product, self.offering_id)
+        if self.category is None:
+            object.__setattr__(self, "category", OfferingCategory(self.product.value))
+        elif self.category not in _FAMILY_CATEGORIES[self.product]:
+            raise ValueError(
+                f"category {self.category.value} does not belong to the "
+                f"{self.product.value} family"
+            )
         if self.seed_url.scheme != "https":
             raise ValueError("seed_url must use HTTPS")
         english_name = self.localized_names[CatalogLanguage.ENGLISH].name

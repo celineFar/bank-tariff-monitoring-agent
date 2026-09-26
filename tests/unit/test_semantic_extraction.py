@@ -140,9 +140,18 @@ class FakeExtractor:
     async def extract(self, batch):
         self.calls += 1
         self.batches.append(batch)
-        citation = ModelCitation(
-            evidence_id=batch.evidence[0].evidence_id,
-            quote=batch.evidence[0].content,
+        # Cite the item that states the values (quotes must contain them).
+        terms = next(
+            (item for item in batch.evidence if "60 months" in item.content),
+            batch.evidence[0],
+        )
+        citation = ModelCitation(evidence_id=terms.evidence_id, quote=terms.content)
+        title = next(
+            (item for item in batch.evidence if item.source_item_id == "title"),
+            batch.evidence[0],
+        )
+        title_citation = ModelCitation(
+            evidence_id=title.evidence_id, quote=title.content
         )
         results = []
         for field in batch.fields:
@@ -151,14 +160,14 @@ class FakeExtractor:
                     field=field,
                     status=ExtractionStatus.FOUND,
                     value_json='"consumer_loan"',
-                    evidence=(citation,),
+                    evidence=(title_citation,),
                 )
             elif field is ExtractionField.PRODUCT_NAME:
                 result = ModelFieldResult(
                     field=field,
                     status=ExtractionStatus.FOUND,
                     value_json='"Consumer loan"',
-                    evidence=(citation,),
+                    evidence=(title_citation,),
                 )
             elif field is ExtractionField.TERM:
                 result = ModelFieldResult(
@@ -320,18 +329,19 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
 
     normalized, notes = _normalize_field_contract(result)
 
+    # A bare name says nothing about whether the document is required (SE15).
     assert json.loads(normalized.value_json) == [
         {
             "value": {
                 "name": "Identity document",
-                "requirement": "required",
+                "requirement": "unknown",
             },
             "conditions": [],
         },
         {
             "value": {
                 "name": "Purchase agreement",
-                "requirement": "required",
+                "requirement": "unknown",
             },
             "conditions": [],
         },
@@ -345,7 +355,7 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
         (
             ExtractionField.APPLICATION_CHANNEL,
             ["Seller's premises", "Online application"],
-            {"channel": "Seller's premises", "available": True},
+            {"channel": "Seller's premises"},
         ),
         (
             ExtractionField.COLLATERAL,
@@ -359,7 +369,7 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
         ),
         (
             ExtractionField.AGE_REQUIREMENTS,
-            ["20 to 66 years"],
+            [{"min_age": 20, "max_age": 66}],
             {"min_age": 20, "max_age": 66},
         ),
     ),
@@ -413,7 +423,10 @@ def test_term_threshold_requires_a_conditional_subrange() -> None:
         evidence=(
             ModelCitation(
                 evidence_id=evidence.evidence_id,
-                quote="Terms exceeding 48 months",
+                quote=(
+                    "Loan term is 6-60 months. Terms exceeding 48 months are "
+                    "available only for furniture and home improvement."
+                ),
             ),
         ),
     )
@@ -468,9 +481,10 @@ async def test_service_assembles_product_and_reuses_exact_cached_batches() -> No
 
     assert first.loan_product.product_name.value == "Consumer loan"
     assert first.loan_product.category.value == "consumer_loan"
-    assert first_calls == 6
+    # Full evidence mode asks the field groups in three calls (SE6, Q10).
+    assert first_calls == 3
     assert extractor.calls == first_calls
-    assert second.reused_batch_count == 6
+    assert second.reused_batch_count == 3
 
 
 class InvalidRateExtractor(FakeExtractor):
@@ -478,10 +492,8 @@ class InvalidRateExtractor(FakeExtractor):
         response = await super().extract(batch)
         if ExtractionField.INTEREST_RATE not in batch.fields:
             return response
-        citation = ModelCitation(
-            evidence_id=batch.evidence[0].evidence_id,
-            quote=batch.evidence[0].content,
-        )
+        terms = next(item for item in batch.evidence if "20%" in item.content)
+        citation = ModelCitation(evidence_id=terms.evidence_id, quote=terms.content)
         return ExtractionBatchResponse(
             results=tuple(
                 ModelFieldResult(
@@ -498,6 +510,8 @@ class InvalidRateExtractor(FakeExtractor):
 
 
 class RepairingTermExtractor(FakeExtractor):
+    """Answers the term in a shape the contract rejects, then fixes it on repair."""
+
     async def extract(self, batch):
         response = await super().extract(batch)
         if ExtractionField.TERM not in batch.fields or any(
@@ -506,10 +520,7 @@ class RepairingTermExtractor(FakeExtractor):
             return response
         return ExtractionBatchResponse(
             results=tuple(
-                ModelFieldResult(
-                    field=item.field,
-                    status=ExtractionStatus.NOT_STATED,
-                )
+                item.model_copy(update={"value_json": '[{"value":{"months":60}}]'})
                 if item.field is ExtractionField.TERM
                 else item
                 for item in response.results
@@ -518,7 +529,7 @@ class RepairingTermExtractor(FakeExtractor):
 
 
 @pytest.mark.asyncio
-async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> None:
+async def test_invalid_field_shape_gets_bounded_repair_and_cached() -> None:
     bundle, discovery = _fixture()
     extractor = RepairingTermExtractor()
     repository = InMemorySemanticExtractionRepository()
@@ -544,7 +555,7 @@ async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> N
         output.batch_id.endswith("__repair_term") for output in first.raw_batch_outputs
     )
     original_batch = next(
-        batch for batch in extractor.batches if batch.id == "extract_001"
+        batch for batch in extractor.batches if batch.group == "identity_and_core"
     )
     repair_batch = next(
         batch for batch in extractor.batches if batch.id.endswith("__repair_term")
@@ -553,9 +564,9 @@ async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> N
         item.evidence_id for item in original_batch.evidence
     }
     assert repair_batch.repair_context_json is not None
-    assert calls_after_first == 7
+    assert calls_after_first == 4
     assert extractor.calls == calls_after_first
-    assert second.reused_batch_count == 6
+    assert second.reused_batch_count == 3
 
 
 class SelectivelyFailingExtractor(FakeExtractor):
@@ -594,7 +605,12 @@ async def test_common_rate_shape_is_adapted_without_losing_valid_fields() -> Non
         ExtractionField.PRODUCT_NAME,
     }
     assert result.loan_product.interest_rate.value[0].value.min == 20
-    assert result.raw_batch_outputs[1].normalization_notes
+    rate_output = next(
+        output
+        for output in result.raw_batch_outputs
+        if output.group == "identity_and_core"
+    )
+    assert rate_output.normalization_notes
 
     next_plan = await service.plan(bundle, discovery)
     assert all(
@@ -712,7 +728,15 @@ async def test_extraction_falls_back_when_the_primary_model_is_retired() -> None
 
     assert retired.calls >= 1
     assert successor.calls
-    assert result.model_name == "successor-model"
+    # Fallback is per call (SE25): every call the retired model could not answer
+    # was answered by its successor, and each output names the model that did.
+    answered = {
+        output.model_name
+        for output in result.raw_batch_outputs
+        if output.parsed_response is not None
+    }
+    assert answered == {"successor-model"}
+    assert result.review_items == ()
 
 
 @pytest.mark.asyncio

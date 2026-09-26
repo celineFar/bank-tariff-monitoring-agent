@@ -102,6 +102,17 @@ failing.
 candidate snapshot and supersedes the run's other pending reviews. The reviewer
 recorded on the review is the CLI's `--user` (default `cli-user`).
 
+## Remembered decisions
+
+A field decision (`select_candidate` or `override`) is remembered once it is committed,
+against the extraction call that produced the field and the field's result (status,
+value, cited evidence). When a later run of the same offering produces the same call
+or the same result, and every evidence ID the decision cites is still in that run's
+evidence, extraction answers the field with the decision instead of opening a review,
+and the run records a `review_decision_reused` audit event. Any change to the cited
+evidence re-opens the question. `approve` (a rate change or an OCR reading) and
+`reject_all` are not remembered: they concern one run's candidate, not a field's value.
+
 ## Operations
 
 - `GET /api/v1/reviews[?run_id=]` and `GET /api/v1/reviews/{id}` are read-only

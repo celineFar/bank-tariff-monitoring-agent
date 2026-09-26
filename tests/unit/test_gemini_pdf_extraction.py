@@ -389,3 +389,36 @@ def test_product_relevance_outranks_an_off_topic_marker() -> None:
         assess_pdf_metadata(document, as_of=date(2026, 9, 18)).relevance
         is PdfAdmissionRelevance.RELEVANT
     )
+
+
+def test_se3_pdf_table_keeps_header_rows_and_row_groups_as_structure() -> None:
+    """SE3: a PDF table's header hierarchy and row groups arrive as fields, and
+    normalization turns them into column paths and sections, as for HTML."""
+    from app.services.table_normalizer import structure_text_table
+
+    item = PdfModelItem(
+        page_number=1,
+        kind=PdfModelItemKind.TABLE,
+        text="",
+        heading_path=["Tariffs"],
+        title="Overdraft",
+        headers=["", "", "Classic", "Gold"],
+        header_rows=[["Card type", "Card type", "Classic", "Gold"]],
+        rows=[
+            ["Loan terms", "Currency", "AMD", ""],
+            ["Loan terms", "Interest rate", "21%", "20%"],
+        ],
+        row_groups=["Loan terms", "Loan terms"],
+        notes=[],
+    )
+    response = _to_domain_response(PdfModelExtractionResponse(items=[item]), 1)
+    table = response.pages[0].tables[0]
+    assert table.header_rows == (("Card type", "Card type", "Classic", "Gold"),)
+    assert table.row_groups == ("Loan terms", "Loan terms")
+
+    structure = structure_text_table(
+        table.header_rows, tuple(row.cells for row in table.rows)
+    )
+    assert structure.stub == 2
+    assert structure.cell_paths[1][2] == ("Classic",)
+    assert structure.cell_paths[1][3] == ("Gold",)

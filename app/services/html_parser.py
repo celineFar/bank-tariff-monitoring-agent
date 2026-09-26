@@ -98,6 +98,8 @@ _LINK_CONTEXT_CHARS = 600
 # Containers that bound a heading: a heading inside one does not label what
 # follows the container.
 _HEADING_SCOPES = frozenset({"section", "article", "details"})
+# A headline card's value and label are short (SE2).
+_STAT_VALUE_CHARS = 60
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +201,10 @@ class HtmlArtifactParser:
         card_elements = self._card_elements(root)
         block_parts = frozenset(accordion_titles) | frozenset(card_elements)
         paired_dd: set[int] = set()
+        # Headline cards: a short value heading and its short label, one block.
+        stat_labels = self._stat_cards(root)
+        consumed_labels = frozenset(id(label) for label in stat_labels.values())
+        reserved_ids = 0
         # Ids are fixed up front, in document order, so an outer table can point
         # at a table nested in one of its cells before that table is reached.
         table_refs: dict[int, str] = {}
@@ -219,6 +225,9 @@ class HtmlArtifactParser:
             )
 
         def heading_scope(element: Tag) -> int | None:
+            if self._is_card_heading(element):
+                # A minor heading alone in a small card heads that card only.
+                return id(element.parent)
             for parent in element.parents:
                 if (
                     parent.name in _HEADING_SCOPES
@@ -244,6 +253,11 @@ class HtmlArtifactParser:
                 # The outer item's block already lists the nested items.
                 continue
             if element.name == "dd" and id(element) in paired_dd:
+                continue
+            if id(element) in consumed_labels:
+                # Its text is in the card's key/value block. Its id stays
+                # reserved so that every later block keeps its id.
+                reserved_ids += 1
                 continue
             if element.name == "details" and element.find_parent("details"):
                 continue
@@ -275,7 +289,7 @@ class HtmlArtifactParser:
             )
             if not text:
                 continue
-            block_id = f"b{len(blocks) + 1}"
+            block_id = f"b{len(blocks) + reserved_ids + 1}"
             if not bare_text:
                 # A container's own stray text is not the parent of the blocks
                 # inside it; only real blocks are.
@@ -323,6 +337,16 @@ class HtmlArtifactParser:
                 headings.append((0, text, container_id))
             elif id(element) in card_elements:
                 block_type = ContentBlockType.CARD
+            elif id(element) in stat_labels:
+                block_type = ContentBlockType.KEY_VALUE
+                label_lines = self._structured_text(
+                    stat_labels[id(element)], markdown=False
+                ).split("\n")
+                key = label_lines[0].rstrip(":").strip()
+                rest = "\n".join(line for line in label_lines[1:] if line)
+                key_value = (key, text)
+                text = f"{key}: {text}" + (f"\n{rest}" if rest else "")
+                block_markdown = text
             elif is_heading:
                 level = int(element.name[1])
                 headings = [entry for entry in headings if entry[0] < level]
@@ -1030,6 +1054,68 @@ class HtmlArtifactParser:
                 for descendant in element.find_all(["article", "div", "li"])
             )
         }
+
+    @classmethod
+    def _stat_cards(cls, root: Tag) -> dict[int, Tag]:
+        """Headline figure cards: heading id -> the label element beneath it.
+
+        The bank's product pages show key terms as cards in which a short
+        heading holds the value and a short element after it holds the label
+        (`<h6>AMD 3-150 million</h6><p>Loan amount</p>`). Read separately, the
+        value has no label and the label no value, and the value becomes a
+        heading over everything after it (SE2). A card pairs when its container
+        holds only that heading and that label, and the label's first line is
+        short and has no digits.
+        """
+        pairs: dict[int, Tag] = {}
+        for heading in root.find_all(sorted(_HEADING_TAGS)):
+            if not isinstance(heading, Tag) or cls._is_hidden(heading):
+                continue
+            value = cls._clean(heading.get_text(" ", strip=True))
+            parent = heading.parent
+            if not value or "\n" in value or len(value) > _STAT_VALUE_CHARS:
+                continue
+            if not isinstance(parent, Tag):
+                continue
+            texted = [
+                child
+                for child in parent.find_all(recursive=False)
+                if isinstance(child, Tag)
+                and not cls._is_hidden(child)
+                and child.get_text(strip=True)
+            ]
+            if len(texted) != 2 or texted[0] is not heading:
+                continue
+            label = texted[1]
+            if label.name not in {"p", "span", "div"} or label.find(
+                [*sorted(_HEADING_TAGS), "p", "li", "table", "dt", "dd"]
+            ):
+                continue
+            first_line = cls._clean(label.get_text("\n", strip=True)).split("\n")[0]
+            if (
+                not first_line
+                or len(first_line) > _STAT_VALUE_CHARS
+                or any(character.isdigit() for character in first_line)
+            ):
+                continue
+            pairs[id(heading)] = label
+        return pairs
+
+    @classmethod
+    def _is_card_heading(cls, element: Tag) -> bool:
+        """A minor heading (h5, h6) that is the only heading in a small card."""
+        parent = element.parent
+        if element.name not in {"h5", "h6"} or not isinstance(parent, Tag):
+            return False
+        texted = [
+            child
+            for child in parent.find_all(recursive=False)
+            if isinstance(child, Tag) and child.get_text(strip=True)
+        ]
+        return (
+            len(texted) <= 3
+            and sum(1 for child in texted if child.name in _HEADING_TAGS) == 1
+        )
 
     @classmethod
     def _context_title(cls, element: Tag) -> str | None:

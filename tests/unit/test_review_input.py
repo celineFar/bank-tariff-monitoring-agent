@@ -224,3 +224,31 @@ def test_review_values_stay_json_native() -> None:
     ):
         # A decision travels as JSON, so a Decimal here would break the resume.
         json.dumps(parse_review_field_text(field, text))
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    (
+        ("18-65", [{"min_age": 18, "max_age": 65}]),
+        ("at least 21", [{"min_age": 21}]),
+        ("21+", [{"min_age": 21}]),
+        ("up to 70 years", [{"max_age": 70}]),
+    ),
+)
+def test_age_entry_uses_the_review_forms_own_syntax(text: str, expected: list) -> None:
+    value = parse_review_field_text(ExtractionField.AGE_REQUIREMENTS, text)
+
+    assert [item["value"] for item in value] == expected
+
+
+def test_age_entry_that_is_not_a_range_is_refused() -> None:
+    with pytest.raises(ReviewInputError):
+        parse_review_field_text(ExtractionField.AGE_REQUIREMENTS, "adults only")
+
+
+def test_collateral_none_means_not_applicable() -> None:
+    value = parse_review_field_text(ExtractionField.COLLATERAL, "none")
+
+    assert value == [
+        {"value": {"description": None, "applicable": False}, "conditions": []}
+    ]

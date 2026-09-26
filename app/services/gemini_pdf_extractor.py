@@ -31,6 +31,7 @@ from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     adk_usage_callbacks,
 )
+from app.services.model_pricing import uses_minimal_thinking_level
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +77,19 @@ class AdkGeminiPdfExtractor:
             instruction=PDF_EXTRACTION_INSTRUCTION,
             output_schema=PdfModelExtractionResponse,
             generate_content_config=types.GenerateContentConfig(
+                # The same PDF must transcribe to the same evidence text after a
+                # cache miss, or unchanged terms look changed downstream.
+                temperature=0,
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
                 ),
                 # Transcription is schema-bound: the model copies structure it can
                 # already see, so reasoning tokens bill at the output rate for no gain.
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                thinking_config=(
+                    types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
+                    if uses_minimal_thinking_level(model_name)
+                    else types.ThinkingConfig(thinking_budget=0)
+                ),
             ),
         )
         self._runner = InMemoryRunner(agent=agent, app_name="pdf_document_extractor")
@@ -257,6 +265,7 @@ def _to_domain_response(
 def _rectangular_table(item: PdfModelItem) -> PdfExtractedTable:
     width = max(
         len(item.headers),
+        *(len(row) for row in item.header_rows),
         *(len(row) for row in item.rows),
         0,
     )
@@ -266,9 +275,18 @@ def _rectangular_table(item: PdfModelItem) -> PdfExtractedTable:
         PdfExtractedTableRow(cells=tuple(row) + ("",) * (width - len(row)))
         for row in item.rows
     )
+    header_rows = tuple(
+        tuple(row) + ("",) * (width - len(row))
+        for row in item.header_rows
+        if any(cell.strip() for cell in row)
+    )
+    groups = [group.strip() for group in item.row_groups[: len(rows)]]
+    row_groups = tuple(groups + [""] * (len(rows) - len(groups))) if any(groups) else ()
     return PdfExtractedTable(
         title=item.title.strip() or None,
         headers=tuple(headers),
+        header_rows=header_rows,
         rows=rows,
+        row_groups=row_groups,
         notes=tuple(item.notes),
     )

@@ -28,8 +28,11 @@ downloader receives `settings.http` and the PDF extraction service receives
   its own fallback list and price ceiling. Changing `MODEL_NAME` therefore does
   not change what those two stages spend. Semantic extraction stays on
   `MODEL_NAME` and accepts an optional comma-separated
-  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES`; it is empty by default, so the
-  stage behaves as a single model until a successor is configured. Every stage
+  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES` (default `gemini-3.8-flash`, probed on
+  2026-09-26; set it empty for a single model). Extraction tries the chain per call:
+  a call the primary cannot answer after its retries goes to the next model, and
+  the other calls stay with the primary. `SEMANTIC_EXTRACTION_MAX_CONCURRENT_CALLS`
+  (default `3`) bounds how many of an offering's calls run at once. Every stage
   that names a model tries its configured chain in order before failing the
   offering, because providers retire model ids on their own schedule.
 - **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`, `ARTIFACT_TEMP_DIR`.
@@ -142,13 +145,23 @@ downloader receives `settings.http` and the PDF extraction service receives
   deliberately invalidates the corresponding cached assessments.
 - **Semantic extraction:** `SEMANTIC_EXTRACTION_SCHEMA_VERSION`,
   `SEMANTIC_EXTRACTION_PROMPT_VERSION`,
-  `SEMANTIC_EXTRACTION_MAX_EVIDENCE_CHARS_PER_ITEM`,
-  `SEMANTIC_EXTRACTION_MAX_CHARS_PER_BATCH`, and
-  `SEMANTIC_EXTRACTION_MAX_ITEMS_PER_BATCH`. Schema, prompt, model, product, and
-  selected-evidence fingerprints jointly define exact extraction-batch cache reuse.
+  `SEMANTIC_EXTRACTION_EVIDENCE_MODE` (`full`, the default, or `budgeted`),
+  `SEMANTIC_EXTRACTION_MAX_PACKET_CHARS` (default `200000`) and
+  `SEMANTIC_EXTRACTION_BUDGET_CHARS` (default `16000`). In `full` mode every call
+  reads the offering's whole selected evidence, in reading order, in three calls;
+  an offering whose evidence exceeds the packet ceiling fails with
+  `source.size_rejected` (`semantic_extraction.packet_too_large`) rather than being
+  cut. In `budgeted` mode each field group's call reads whole tables and sections
+  chosen by their labels (headings, row labels, column paths), within the budget;
+  the run records which units were left out. Nothing is ever cut mid-item.
+  Schema, prompt, model, product, and selected-evidence fingerprints jointly define
+  exact extraction-batch cache reuse.
   `SEMANTIC_EXTRACTION_THINKING_BUDGET` (default `0`) sets the model thinking
   budget for extraction and its repairs; raise it only if bounded reasoning
-  measurably improves extraction quality. `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN`
+  measurably improves extraction quality. Extraction always runs at temperature 0.
+  `SEMANTIC_EXTRACTION_MAX_OUTPUT_TOKENS` (default `16384`) caps each answer; an
+  answer cut at the cap, or one that does not parse, is asked once more before the
+  batch goes to repair or review. `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN`
   (default `3`) caps how many suspicious fields may be re-asked in one run, so a
   batch that keeps failing its contract falls through to human review instead of
   issuing an unbounded number of paid repair calls.

@@ -25,6 +25,12 @@ class SemanticExtractionRecord(SemanticExtractionBase):
     prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
     model_name: Mapped[str] = mapped_column(String(200), nullable=False)
     content_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The fingerprint of exactly what the call sent (SE11); the lookup key.
+    prompt_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # `accepted` or `review`: responses that need review are cached too (SE12).
+    validation_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="accepted"
+    )
     response: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -64,23 +70,21 @@ class PostgresSemanticExtractionRepository:
             rows = (
                 await session.execute(
                     select(
-                        SemanticExtractionRecord.content_fingerprint,
+                        SemanticExtractionRecord.prompt_fingerprint,
                         SemanticExtractionRecord.response,
                     ).where(
                         SemanticExtractionRecord.product == product.value,
                         SemanticExtractionRecord.schema_version == schema_version,
                         SemanticExtractionRecord.prompt_version == prompt_version,
                         SemanticExtractionRecord.model_name == model_name,
-                        SemanticExtractionRecord.content_fingerprint.in_(
+                        SemanticExtractionRecord.prompt_fingerprint.in_(
                             tuple(fingerprints)
                         ),
                     )
                 )
             ).all()
         return {
-            row.content_fingerprint: ExtractionBatchResponse.model_validate(
-                row.response
-            )
+            row.prompt_fingerprint: ExtractionBatchResponse.model_validate(row.response)
             for row in rows
         }
 
@@ -92,9 +96,11 @@ class PostgresSemanticExtractionRepository:
         prompt_version: str,
         model_name: str,
         values: Sequence[tuple[str, ExtractionBatchResponse]],
+        validation_statuses: dict[str, str] | None = None,
     ) -> None:
         if not values:
             return
+        statuses = validation_statuses or {}
         now = datetime.now(UTC)
         async with self._session_factory() as session, session.begin():
             for fingerprint, response in values:
@@ -106,6 +112,8 @@ class PostgresSemanticExtractionRepository:
                         prompt_version=prompt_version,
                         model_name=model_name,
                         content_fingerprint=fingerprint,
+                        prompt_fingerprint=fingerprint,
+                        validation_status=statuses.get(fingerprint, "accepted"),
                         response=response.model_dump(mode="json"),
                         created_at=now,
                         updated_at=now,
@@ -114,6 +122,8 @@ class PostgresSemanticExtractionRepository:
                         constraint="semantic_extraction_batches_exact_uq",
                         set_={
                             "response": response.model_dump(mode="json"),
+                            "prompt_fingerprint": fingerprint,
+                            "validation_status": statuses.get(fingerprint, "accepted"),
                             "updated_at": now,
                         },
                     )

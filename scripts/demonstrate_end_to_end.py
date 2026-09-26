@@ -786,7 +786,11 @@ async def _run_semantic_extraction(
                 exc,
                 plan=plan,
                 attempts=attempts,
-                raw_responses=dict(extractor.raw_responses),
+                raw_responses=(
+                    {"failed_call": exc.raw_response}
+                    if getattr(exc, "raw_response", None)
+                    else {}
+                ),
             ) from exc
         attempts.append(_model_attempt(model_name, extractor.usage, None))
         return plan, result, attempts

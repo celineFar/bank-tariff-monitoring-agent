@@ -489,38 +489,58 @@ versions), each chunk labelled with its discovery assessments. See
 ## Semantic extraction boundary
 
 `SemanticExtractionService` combines the normalized source bundle with the accepted
-source-discovery assessments. It deterministically restores full normalized blocks,
-table rows, and notes; assigns immutable evidence IDs; groups fields into bounded
-packets; and sends only uncached packets to a tool-free ADK agent with a strict
-structured response schema. Every packet includes the exact JSON Schema for each
-requested field. Required documents use a dedicated completeness-oriented packet so
-the webpage and admitted PDFs can be unioned without competing with other eligibility
-fields for evidence capacity. The model cannot browse, fetch documents, query storage,
-or alter the evidence packet.
+source-discovery assessments and the offering context the pipeline builds from the
+seed catalog. It deterministically restores full normalized blocks, table rows and
+notes. A table row becomes a self-contained record: every value names its column path
+(header levels and qualifier rows such as `Currency: AMD`), a continuation row carries
+the row above's type, and the notes the row cites come with it.
 
-Python validates each returned field independently, requiring known in-batch evidence
-IDs and citation quotes that occur verbatim in the cited evidence. Valid fields are
-retained even when another field is malformed. Invalid fields become deterministic
-review records containing the raw value, validation paths, evidence references, batch,
-and model; the run completes as `completed_with_review` with a partial product. A full
-`LoanProduct` is emitted only when every field required for assembly validates. Exact
-batch reuse requires matching product, schema version, prompt version, model name,
-and selected-evidence fingerprint, and only wholly validated batches are cacheable.
-Before validation, a deterministic contract adapter may only reshape documented
-serialization variants (for example, amount ranges, term units, condition objects, and
-percentage-point notation); both raw and adapted responses remain in the audit output.
-Remaining repairs receive the original field, exact schema, validation paths, and only
-the original batch evidence. Income verification and creditworthiness assessment are
-separate requirement policies, and fees retain product-versus-general-service scope.
-Umbrella products retain a typed variant catalog; repayment, age, application channel,
-required-document, and collateral terms are conditional structured values keyed to
-those variants where applicable. Canonical webpage identity is kept separate from
-formal linked-document titles, and threshold-limited terms must be represented as
-non-overlapping conditional subranges.
-Invalid legacy cache entries are ignored. PostgreSQL migration
-`004_semantic_extraction.sql` owns that cache. Claim generation, cross-source
-verification/repair, snapshot comparison, and HITL decisions remain downstream.
-See `docs/semantic-extraction.md` for the complete contract and demonstration flow.
+Evidence IDs hash the source (page URL or PDF SHA-256), the structural path and the
+text, never the page hash or positions, so an unchanged table keeps its IDs when
+anything else on the page changes. Evidence keeps reading order.
+
+`SEMANTIC_EXTRACTION_EVIDENCE_MODE` chooses what each call reads:
+- `full` (default): the offering's whole selected evidence, in three calls, with
+  related-product items in a marked block. It fails with `source.size_rejected` above
+  `SEMANTIC_EXTRACTION_MAX_PACKET_CHARS` rather than cutting anything.
+- `budgeted`: items chosen by their labels within `SEMANTIC_EXTRACTION_BUDGET_CHARS`
+  per call, with the units left out recorded.
+
+The field set follows the catalog's offering `category` (an overdraft's credit limit
+and grace period, a mortgage's down payment). The target scope is the offering's
+names and page, never URL-specific rules. The prompt is compact: evidence first, then
+target, fields and minified JSON Schemas. The model cannot browse, fetch documents,
+query storage, or alter the evidence packet.
+
+Python validates each returned field independently:
+- known in-batch evidence IDs;
+- quotes that occur in the cited evidence, whitespace-insensitively;
+- every number of a numeric value present in its quotes;
+- alternatives distinguished by their conditions;
+- a category that matches the catalog;
+- condition dimensions from a closed set.
+
+A deterministic adapter only reshapes documented serialization variants; it never
+infers meaning. Valid fields are retained even when another field is malformed.
+Invalid fields become review records with the raw value, validation paths, evidence
+references, batch, model, and the call's prompt fingerprint and result fingerprint;
+the run completes as `completed_with_review` with a partial product.
+
+**Persistence.** The batch cache (`004_semantic_extraction.sql`, extended by
+`021_semantic_extraction_prompt_cache_and_review_memory.sql`) is keyed by the
+fingerprint of exactly what a call sends: model, generation settings, instruction and
+prompt. Every fresh answer is cached with its validation outcome (`accepted` or
+`review`); a cached answer is reused as it is and not repaired again.
+
+The same migration adds `review_decision_memory`. `ReviewDecisionService` stores
+each committed field decision against the reviewed call and the reviewed result. On a
+later run, a field whose call or result matches reuses the decision instead of opening
+a review, provided all its cited evidence IDs are in the current catalog. The pipeline
+records `review_decision_reused` audit events.
+
+Claim generation, cross-source verification, snapshot comparison and HITL decisions
+remain downstream. See `docs/semantic-extraction.md` for the complete contract and
+demonstration flow.
 
 ## RAG index / knowledge-store boundary
 

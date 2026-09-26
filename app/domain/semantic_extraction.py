@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -23,6 +24,17 @@ PercentagePoint = Annotated[Decimal, Field(ge=0, le=100)]
 
 class ExtractionModel(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+
+class ValueModel(ExtractionModel):
+    """A value the model or a reviewer supplies for a field.
+
+    Unknown keys are rejected, not dropped: a key the contract does not know (a
+    rate's `currency`, say) would otherwise vanish silently and turn two
+    currency-specific rates into two unconditional ones.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class ExtractionStatus(StrEnum):
@@ -66,18 +78,88 @@ class PropertyMarket(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
-class Condition(ExtractionModel):
-    dimension: str = Field(min_length=1, max_length=200)
+class ConditionDimension(StrEnum):
+    """What a condition is about (SE22).
+
+    A closed set, so the same condition carries the same name from run to run;
+    free text drifted (`card_type` one run, `card_tier` the next) and change
+    detection had to guess pairings.
+    """
+
+    CURRENCY = "currency"
+    CARD_TIER = "card_tier"
+    VARIANT_ID = "variant_id"
+    LOAN_TYPE = "loan_type"
+    BORROWER_TYPE = "borrower_type"
+    RESIDENCY = "residency"
+    PURPOSE = "purpose"
+    TERM_RANGE = "term_range"
+    AMOUNT_RANGE = "amount_range"
+    RATE_TYPE = "rate_type"
+    REPAYMENT_METHOD = "repayment_method"
+    CHANNEL = "channel"
+    PROGRAM = "program"
+    COLLATERAL = "collateral"
+    LOCATION = "location"
+    PROPERTY_MARKET = "property_market"
+    OTHER = "other"
+
+
+# Names a model or an older stored value used for a dimension above.
+_DIMENSION_SYNONYMS: dict[str, ConditionDimension] = {
+    "card": ConditionDimension.CARD_TIER,
+    "card_type": ConditionDimension.CARD_TIER,
+    "type_of_card": ConditionDimension.CARD_TIER,
+    "tier": ConditionDimension.CARD_TIER,
+    "variant": ConditionDimension.VARIANT_ID,
+    "financing_type": ConditionDimension.VARIANT_ID,
+    "customer_type": ConditionDimension.BORROWER_TYPE,
+    "client_type": ConditionDimension.BORROWER_TYPE,
+    "borrower": ConditionDimension.BORROWER_TYPE,
+    "term": ConditionDimension.TERM_RANGE,
+    "loan_term": ConditionDimension.TERM_RANGE,
+    "amount": ConditionDimension.AMOUNT_RANGE,
+    "loan_amount": ConditionDimension.AMOUNT_RANGE,
+    "rate": ConditionDimension.RATE_TYPE,
+    "interest_rate_type": ConditionDimension.RATE_TYPE,
+    "repayment": ConditionDimension.REPAYMENT_METHOD,
+    "region": ConditionDimension.LOCATION,
+    "city": ConditionDimension.LOCATION,
+    "market": ConditionDimension.PROPERTY_MARKET,
+    "condition": ConditionDimension.OTHER,
+}
+
+
+class Condition(ValueModel):
+    dimension: ConditionDimension
     operator: str | None = Field(default=None, max_length=50)
     value: str = Field(min_length=1, max_length=1000)
 
+    @model_validator(mode="before")
+    @classmethod
+    def canonical_dimension(cls, data: Any) -> Any:
+        """Map a known synonym to its dimension; keep an unknown dimension's name
+        in the value under `other`, so nothing is lost and old values load."""
+        if not isinstance(data, dict) or not isinstance(data.get("dimension"), str):
+            return data
+        raw = data["dimension"].strip()
+        key = re.sub(r"[\s-]+", "_", raw.casefold())
+        if key in ConditionDimension._value2member_map_:
+            return {**data, "dimension": key}
+        if key in _DIMENSION_SYNONYMS:
+            return {**data, "dimension": _DIMENSION_SYNONYMS[key].value}
+        value = str(data.get("value", ""))
+        if raw and raw.casefold() not in value.casefold():
+            value = f"{raw}: {value}"
+        return {**data, "dimension": ConditionDimension.OTHER.value, "value": value}
 
-class ConditionalValue(ExtractionModel, Generic[T]):
+
+class ConditionalValue(ValueModel, Generic[T]):
     value: T
     conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
 
 
-class MoneyRange(ExtractionModel):
+class MoneyRange(ValueModel):
     min: Decimal | None = Field(default=None, ge=0)
     max: Decimal | None = Field(default=None, ge=0)
     currency: Literal["AMD", "USD", "EUR"] | None = None
@@ -91,12 +173,12 @@ class MoneyRange(ExtractionModel):
         return self
 
 
-class AbsoluteMoneyRange(ExtractionModel):
+class AbsoluteMoneyRange(ValueModel):
     type: Literal["absolute"] = "absolute"
     range: MoneyRange
 
 
-class SalaryMultiple(ExtractionModel):
+class SalaryMultiple(ValueModel):
     type: Literal["salary_multiple"] = "salary_multiple"
     min_multiple: Decimal | None = Field(default=None, ge=0)
     max_multiple: Decimal | None = Field(default=None, ge=0)
@@ -114,7 +196,7 @@ class SalaryMultiple(ExtractionModel):
         return self
 
 
-class PropertyValuePercentage(ExtractionModel):
+class PropertyValuePercentage(ValueModel):
     type: Literal["property_value_percentage"] = "property_value_percentage"
     min_pct: Decimal | None = Field(default=None, ge=0, le=100)
     max_pct: Decimal | None = Field(default=None, ge=0, le=100)
@@ -132,7 +214,7 @@ class PropertyValuePercentage(ExtractionModel):
         return self
 
 
-class OtherAmountFormula(ExtractionModel):
+class OtherAmountFormula(ValueModel):
     type: Literal["other_formula"] = "other_formula"
     expression: str = Field(min_length=1, max_length=2000)
 
@@ -143,7 +225,7 @@ LoanAmount = Annotated[
 ]
 
 
-class Rate(ExtractionModel):
+class Rate(ValueModel):
     min: Decimal | None = Field(default=None, ge=0)
     max: Decimal | None = Field(default=None, ge=0)
     rate_type: RateType = RateType.UNKNOWN
@@ -165,7 +247,7 @@ class FeeScope(StrEnum):
     UNKNOWN = "unknown"
 
 
-class LoanFee(ExtractionModel):
+class LoanFee(ValueModel):
     description: str = Field(min_length=1, max_length=2000)
     scope: FeeScope
     amount: Decimal | None = Field(default=None, ge=0)
@@ -174,7 +256,7 @@ class LoanFee(ExtractionModel):
     conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
 
 
-class RequirementPolicy(ExtractionModel):
+class RequirementPolicy(ValueModel):
     default_required: bool | None = None
     exceptions: tuple[ConditionalValue[bool], ...] = Field(default=(), max_length=30)
 
@@ -185,7 +267,7 @@ class RequirementPolicy(ExtractionModel):
         return self
 
 
-class TermRange(ExtractionModel):
+class TermRange(ValueModel):
     min_months: int | None = Field(default=None, gt=0)
     max_months: int | None = Field(default=None, gt=0)
     indefinite: bool = False
@@ -212,30 +294,30 @@ class TermRange(ExtractionModel):
         return self
 
 
-class ProductVariant(ExtractionModel):
+class ProductVariant(ValueModel):
     variant_id: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
     name: str = Field(min_length=1, max_length=500)
     purpose: str | None = Field(default=None, max_length=2000)
 
 
-class RequiredDocument(ExtractionModel):
+class RequiredDocument(ValueModel):
     name: str = Field(min_length=1, max_length=2000)
     requirement: Literal["required", "upon_request", "conditional", "unknown"] = (
         "required"
     )
 
 
-class RepaymentMethod(ExtractionModel):
+class RepaymentMethod(ValueModel):
     method: str = Field(min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=2000)
 
 
-class ApplicationChannel(ExtractionModel):
+class ApplicationChannel(ValueModel):
     channel: str = Field(min_length=1, max_length=1000)
     available: bool = True
 
 
-class AgeRange(ExtractionModel):
+class AgeRange(ValueModel):
     min_age: int | None = Field(default=None, ge=0, le=120)
     max_age: int | None = Field(default=None, ge=0, le=120)
     measured_at: str | None = Field(default=None, max_length=500)
@@ -253,7 +335,7 @@ class AgeRange(ExtractionModel):
         return self
 
 
-class CollateralTerm(ExtractionModel):
+class CollateralTerm(ValueModel):
     description: str | None = Field(default=None, max_length=2000)
     applicable: bool = True
 
@@ -279,7 +361,7 @@ class ExtractedValue(ExtractionModel, Generic[T]):
     value: T | None = None
     evidence: tuple[EvidenceCitation, ...] = Field(default=(), max_length=100)
     status: ExtractionStatus
-    explanation: str | None = Field(default=None, max_length=2000)
+    explanation: str | None = Field(default=None, max_length=8000)
 
     @model_validator(mode="after")
     def validate_state(self) -> ExtractedValue[T]:
@@ -403,6 +485,9 @@ class EvidenceItem(ExtractionModel):
     effective_periods: tuple[EffectivePeriod, ...] = ()
     conditions: tuple[str, ...] = ()
     locator: SourceLocator
+    # Position in the bundle, in reading order: documents in bundle order, and
+    # within one, blocks and tables where they stand (SE8).
+    order: int = Field(default=0, ge=0)
 
 
 class ModelCitation(ExtractionModel):
@@ -414,8 +499,11 @@ class ModelFieldResult(ExtractionModel):
     field: ExtractionField
     status: ExtractionStatus
     value_json: str | None = Field(default=None, max_length=50_000)
-    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=20)
-    explanation: str | None = Field(default=None, max_length=2000)
+    # Full evidence mode lets a list field (required documents, fees) cite every
+    # row it drew on; 20 citations rejected whole answers in the S06 run. Gemini
+    # refuses the response schema (HTTP 400) at 100 here; 50 is accepted.
+    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=50)
+    explanation: str | None = Field(default=None, max_length=8000)
 
     @model_validator(mode="after")
     def validate_state(self) -> ModelFieldResult:
@@ -442,6 +530,15 @@ class ExtractionBatch(ExtractionModel):
     canonical_url: HttpUrl | None = None
     target_scope: tuple[str, ...] = ()
     repair_context_json: str | None = Field(default=None, max_length=100_000)
+    # How the evidence was chosen (SE6): `full` sends all selected evidence;
+    # `budgeted` sends whole labelled units within a budget and records the
+    # units it left out and the fields some left-out unit was labelled for.
+    evidence_mode: str = "full"
+    units_left_out: tuple[str, ...] = ()
+    budget_limited_fields: tuple[ExtractionField, ...] = ()
+    # The catalog's category for the offering; a model answer that disagrees is
+    # a review, not a different product (SE21).
+    category: str | None = None
 
 
 class ExtractionBatchResponse(ExtractionModel):
@@ -462,6 +559,10 @@ class ValidatedFieldResult(ExtractionModel):
     evidence: tuple[EvidenceCitation, ...] = ()
     explanation: str | None = None
     batch_id: str
+    # What a remembered review decision is keyed on (SE12): the call that
+    # produced the field, and the field's result (status, value, cited IDs).
+    prompt_fingerprint: str | None = None
+    result_fingerprint: str | None = None
 
 
 class ExtractionReviewItem(ExtractionModel):
@@ -473,6 +574,20 @@ class ExtractionReviewItem(ExtractionModel):
     raw_response: str | None = None
     validation_issues: tuple[ValidationIssue, ...] = Field(min_length=1)
     evidence_ids: tuple[str, ...] = ()
+    prompt_fingerprint: str | None = None
+    result_fingerprint: str | None = None
+
+
+class RememberedReviewDecision(ExtractionModel):
+    """A reviewer's decision on one field of one offering (SE12)."""
+
+    offering_id: str = Field(min_length=1, max_length=100)
+    field: ExtractionField
+    prompt_fingerprint: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    result_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    decision: ValidatedFieldResult
+    reviewer: str | None = None
+    review_id: str | None = None
 
 
 class PartialLoanProduct(ExtractionModel):
@@ -504,6 +619,7 @@ class SemanticExtractionPlan(ExtractionModel):
     batches: tuple[ExtractionBatch, ...]
     cached_batches: tuple[ExtractionBatch, ...] = ()
     cache_hits: tuple[ExtractionBatchResponse, ...] = ()
+    offering_id: str | None = None
 
 
 class SemanticExtractionResult(ExtractionModel):
@@ -518,3 +634,9 @@ class SemanticExtractionResult(ExtractionModel):
     validated_fields: tuple[ValidatedFieldResult, ...] = ()
     review_items: tuple[ExtractionReviewItem, ...] = ()
     reused_batch_count: int = Field(ge=0)
+    # How evidence was chosen (SE6), and per call the labelled units a budgeted
+    # run left out (empty in full mode).
+    evidence_mode: str = "full"
+    units_left_out: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    # Fields answered by a remembered review decision instead of a new review.
+    reused_review_decisions: tuple[dict[str, str], ...] = ()

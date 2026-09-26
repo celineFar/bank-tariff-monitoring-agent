@@ -1,0 +1,9 @@
+{
+ "scenario": "S07",
+ "passed": true,
+ "summary": "1 passed, 35 deselected, 2 warnings in 2.02s",
+ "counts": {
+  "passed": 1
+ },
+ "failures": []
+}

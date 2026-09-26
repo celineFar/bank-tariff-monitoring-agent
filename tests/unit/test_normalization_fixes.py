@@ -494,7 +494,10 @@ def test_evidence_carries_row_sections_note_markers_and_a_real_section() -> None
         discovery,
     )
     row = next(item for item in evidence if "Rate" in item.content)
-    note = next(item for item in evidence if "Fixed for the first year" in item.content)
+    note = next(item for item in evidence if ":note:" in item.source_item_id)
     assert row.content.startswith("Section: USD loans\n")
+    # The row carries the note it cites (semantic-extraction SE4); the note
+    # stays citable on its own.
+    assert "¹ Fixed for the first year" in row.content
     assert note.content == "¹ Fixed for the first year"
     assert row.section == "Terms and conditions"

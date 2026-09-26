@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from itertools import pairwise
 
 from app.domain.acquisition import TableArtifact, TableCellArtifact
 from app.domain.normalization import (
@@ -83,8 +84,9 @@ def normalize_table_with_report(
     section_cell: TableCellArtifact | None = None
     section_rows = 0
     sub_section: _SubSection | None = None
+    structure: _Structure | None = None
 
-    for row_index, slots in grid:
+    for position, (row_index, slots) in enumerate(grid):
         direct = _direct_meaningful_cells(slots)
         if not direct:
             # A browser table can contain a physical row made solely from empty
@@ -126,9 +128,13 @@ def normalize_table_with_report(
             header_rows.append(slots)
             continue
 
+        if structure is None:
+            structure = _Structure.start(table, header_rows, width)
         normalized_cells = tuple(_normalized_cell(slot, table_ref) for slot in slots)
         if not any(cell.text for cell in normalized_cells):
             continue
+        qualifies = structure.is_qualifier_row(slots, normalized_cells, grid, position)
+        normalized_cells = structure.with_column_paths(slots, normalized_cells)
         row_section = (
             " > ".join(
                 part
@@ -154,13 +160,20 @@ def normalize_table_with_report(
         ):
             reasons.append(f"row {row_index} repeats the row above and was dropped")
             continue
+        row_id = f"{table.id}:row:{row_index}"
         rows.append(
             NormalizedTableRow(
-                id=f"{table.id}:row:{row_index}",
+                id=row_id,
                 cells=normalized_cells,
                 section=row_section,
+                label_path=structure.label_path(normalized_cells),
+                continues=structure.continued_row(slots, normalized_cells, rows),
+                qualifies=qualifies,
             )
         )
+        structure.record(row_id, slots)
+        if qualifies:
+            structure.apply_qualifier(slots, normalized_cells)
         section_rows += 1
 
     if section is not None and section_rows == 0 and section_cell is not None:
@@ -192,12 +205,366 @@ def normalize_table_with_report(
             title=_join_titles([*base_titles, own_title]),
             headers=headers,
             headers_inferred=headers_inferred,
+            stub_columns=structure.stub if structure else 0,
+            column_paths=structure.header_paths if structure else (),
             rows=tuple(rows),
             notes=tuple(notes),
             source_refs=(table_ref,),
         ),
         tuple(reasons),
     )
+
+
+_QUALIFIER_VALUE_CHARS = 40
+_HEADER_CELL_CHARS = 60
+# Column names a transcription model invents when a PDF table has no header row;
+# they name nothing, so they never become a column path.
+_PLACEHOLDER_HEADERS = frozenset(
+    {"details", "description", "item", "value", "category", "sub-category", "terms"}
+)
+
+
+class _Structure:
+    """What a data cell's position means: its column headers, the qualifier row
+    in force, and the label columns (the stub) that name its row.
+
+    Values are tied to headers here, where the grid is known, so that later
+    readers never have to count columns (SE1).
+    """
+
+    def __init__(
+        self,
+        stub: int,
+        header_paths: tuple[tuple[str, ...], ...],
+        width: int,
+    ) -> None:
+        self.stub = stub
+        self.header_paths = header_paths
+        self.width = width
+        self._qualifier: dict[int, str] = {}
+        self._stub_cells: dict[str, tuple[str | None, ...]] = {}
+
+    @classmethod
+    def start(
+        cls,
+        table: TableArtifact,
+        header_rows: list[tuple[_Slot | None, ...]],
+        width: int,
+    ) -> _Structure:
+        paths: list[tuple[str, ...]] = []
+        for column in range(width):
+            parts: list[str] = []
+            for slots in header_rows:
+                slot = slots[column]
+                text = normalize_text(slot.cell.text) if slot is not None else ""
+                if text and text not in parts:
+                    parts.append(text)
+            paths.append(tuple(parts))
+        if header_rows:
+            first = header_rows[0][0]
+            span = first.cell.colspan if first is not None else 1
+            stub = span if span < width else 1
+        elif width >= 3 and any(cell.rowspan > 1 for cell in table.cells):
+            stub = 2
+        else:
+            stub = 1
+        return cls(min(stub, max(width - 1, 1)), tuple(paths), width)
+
+    def _column_path(self, column: int) -> tuple[str, ...]:
+        if column < self.stub:
+            return ()
+        qualifier = self._qualifier.get(column)
+        base = self.header_paths[column] if column < len(self.header_paths) else ()
+        return (*base, qualifier) if qualifier else base
+
+    def with_column_paths(
+        self,
+        slots: tuple[_Slot | None, ...],
+        cells: tuple[NormalizedTableCell, ...],
+    ) -> tuple[NormalizedTableCell, ...]:
+        updated = list(cells)
+        for column, slot in enumerate(slots):
+            if slot is None or slot.colspan_continuation or not cells[column].text:
+                continue
+            covered = range(
+                column, min(slot.cell.column_index + slot.cell.colspan, self.width)
+            )
+            paths = [self._column_path(index) for index in covered]
+            path = _common_prefix(paths)
+            if path:
+                updated[column] = cells[column].model_copy(update={"column_path": path})
+        return tuple(updated)
+
+    def label_path(self, cells: tuple[NormalizedTableCell, ...]) -> tuple[str, ...]:
+        labels: list[str] = []
+        for cell in cells[: self.stub]:
+            if cell.text and cell.text not in labels:
+                labels.append(cell.text)
+        return tuple(labels)
+
+    def record(self, row_id: str, slots: tuple[_Slot | None, ...]) -> None:
+        self._stub_cells[row_id] = tuple(
+            slot.cell.id if slot is not None else None for slot in slots[: self.stub]
+        )
+
+    def continued_row(
+        self,
+        slots: tuple[_Slot | None, ...],
+        cells: tuple[NormalizedTableCell, ...],
+        rows: list[NormalizedTableRow],
+    ) -> str | None:
+        """The row above, when this row completes it under the same labels.
+
+        The labels are carried down by rowspans from the row above; that row's
+        values are short words (rate types such as "Fixed"), and every value of
+        this row carries a number. Two list items under one label (repayment
+        methods, insurance clauses) are not a continuation.
+        """
+        values = [cell for cell in cells[self.stub :] if cell.text]
+        if not rows or not values or not all(cell.scalar_candidates for cell in values):
+            return None
+        previous = rows[-1]
+        stub_slots = slots[: self.stub]
+        if not stub_slots or not all(
+            slot is not None and slot.carried for slot in stub_slots
+        ):
+            return None
+        if self._stub_cells.get(previous.id) != tuple(
+            slot.cell.id for slot in stub_slots if slot is not None
+        ):
+            return None
+        previous_values = [
+            _LEADING_NUMBERING_RE.sub("", cell.text)
+            for cell in previous.cells[self.stub :]
+            if cell.text
+        ]
+        if not previous_values or any(
+            len(value) > _QUALIFIER_VALUE_CHARS or re.search(r"\d", value)
+            for value in previous_values
+        ):
+            return None
+        return previous.id
+
+    def is_qualifier_row(
+        self,
+        slots: tuple[_Slot | None, ...],
+        cells: tuple[NormalizedTableCell, ...],
+        grid: list[tuple[int, tuple[_Slot | None, ...]]],
+        position: int,
+    ) -> bool:
+        """Whether the row names the value columns (`Currency | AMD | USD | EUR`).
+
+        Two or more distinct, short, digit-free value cells in separate
+        columns, followed by a row with separate values in those columns.
+        """
+        values = self._value_cells(slots)
+        if len(values) < 2:
+            return False
+        texts = [
+            _LEADING_NUMBERING_RE.sub("", cells[column].text) for column, _ in values
+        ]
+        if (
+            any(
+                not text or len(text) > _QUALIFIER_VALUE_CHARS or re.search(r"\d", text)
+                for text in texts
+            )
+            or len(set(texts)) < 2
+        ):
+            return False
+        columns = {column for column, _ in values}
+        for _, next_slots in grid[position + 1 :]:
+            if not _direct_meaningful_cells(next_slots):
+                continue
+            following = {column for column, _ in self._value_cells(next_slots)}
+            return len(following & columns) >= 2
+        return False
+
+    def apply_qualifier(
+        self,
+        slots: tuple[_Slot | None, ...],
+        cells: tuple[NormalizedTableCell, ...],
+    ) -> None:
+        labels = self.label_path(cells)
+        label = _LEADING_NUMBERING_RE.sub("", labels[-1]) if labels else ""
+        qualifier: dict[int, str] = {}
+        for column, cell in self._value_cells(slots):
+            value = _LEADING_NUMBERING_RE.sub("", cells[column].text)
+            text = f"{label}: {value}" if label else value
+            for index in range(column, min(column + cell.colspan, self.width)):
+                qualifier[index] = text
+        self._qualifier = qualifier
+
+    def _value_cells(
+        self, slots: tuple[_Slot | None, ...]
+    ) -> list[tuple[int, TableCellArtifact]]:
+        found: list[tuple[int, TableCellArtifact]] = []
+        seen: set[str] = set()
+        for column, slot in enumerate(slots):
+            if (
+                column < self.stub
+                or slot is None
+                or slot.carried
+                or slot.colspan_continuation
+                or slot.cell.id in seen
+                or not normalize_text(slot.cell.text)
+            ):
+                continue
+            seen.add(slot.cell.id)
+            found.append((column, slot.cell))
+        return found
+
+
+@dataclass(frozen=True)
+class TextTableStructure:
+    """The SE1 structure of a table given as text rows (a PDF transcription)."""
+
+    stub: int
+    column_paths: tuple[tuple[str, ...], ...]
+    cell_paths: tuple[tuple[tuple[str, ...], ...], ...]
+    qualifies: tuple[bool, ...]
+    continues: tuple[int | None, ...]
+
+
+def _reads_as_header(row: tuple[str, ...]) -> bool:
+    texts = [normalize_text(cell) for cell in row if normalize_text(cell)]
+    return bool(texts) and all(
+        len(text) <= _HEADER_CELL_CHARS and not extract_scalar_candidates(text)
+        for text in texts
+    )
+
+
+def structure_text_table(
+    header_rows: tuple[tuple[str, ...], ...],
+    rows: tuple[tuple[str, ...], ...],
+) -> TextTableStructure:
+    """Column paths, qualifier rows and continuations for a rectangular text table.
+
+    The same rules as `_Structure` for HTML tables, on cell texts: a PDF table
+    arrives with its header rows and its spanned label cells already repeated.
+    """
+    # A transcription model sometimes offers a data row as a header row
+    # ("1.1.1. (i) Purchase of residential property…", "Maximum amount: AMD 15
+    # million"). Only rows that read as headers -- short cells, no amounts or
+    # rates -- name columns.
+    header_rows = tuple(row for row in header_rows if _reads_as_header(row))
+    width = max((len(row) for row in (*header_rows, *rows)), default=0)
+    paths: list[tuple[str, ...]] = []
+    for column in range(width):
+        parts: list[str] = []
+        for header in header_rows:
+            text = normalize_text(header[column]) if column < len(header) else ""
+            if (
+                text
+                and text not in parts
+                and text.casefold() not in _PLACEHOLDER_HEADERS
+            ):
+                parts.append(text)
+        paths.append(tuple(parts))
+    spanning_stub = bool(
+        header_rows
+        and width >= 3
+        and normalize_text(header_rows[0][0])
+        and normalize_text(header_rows[0][0]) == normalize_text(header_rows[0][1])
+    )
+    repeated_labels = sum(
+        1
+        for above, below in pairwise(rows)
+        if normalize_text(above[0])
+        and normalize_text(above[0]) == normalize_text(below[0])
+    )
+    stub = 2 if width >= 3 and (spanning_stub or repeated_labels >= 2) else 1
+
+    def words(text: str) -> str:
+        return _LEADING_NUMBERING_RE.sub("", normalize_text(text))
+
+    def has_digit(text: str) -> bool:
+        return bool(re.search(r"\d", text))
+
+    qualifier: dict[int, str] = {}
+    cell_paths: list[tuple[tuple[str, ...], ...]] = []
+    qualifies: list[bool] = []
+    continues: list[int | None] = []
+    for index, row in enumerate(rows):
+        values = [
+            (column, words(row[column]))
+            for column in range(stub, len(row))
+            if normalize_text(row[column])
+        ]
+        texts = [text for _, text in values]
+        following = next(
+            (
+                [c for c in range(stub, len(later)) if normalize_text(later[c])]
+                for later in rows[index + 1 :]
+                if any(normalize_text(cell) for cell in later)
+            ),
+            [],
+        )
+        is_qualifier = (
+            len(values) >= 2
+            and len(set(texts)) >= 2
+            and all(
+                text and len(text) <= _QUALIFIER_VALUE_CHARS and not has_digit(text)
+                for text in texts
+            )
+            and len({column for column, _ in values} & set(following)) >= 2
+        )
+        cell_paths.append(
+            tuple(
+                ()
+                if column < stub or not normalize_text(cell)
+                else (
+                    (*paths[column], qualifier[column])
+                    if column in qualifier and not is_qualifier
+                    else paths[column]
+                )
+                for column, cell in enumerate(row)
+            )
+        )
+        qualifies.append(is_qualifier)
+        previous = rows[index - 1] if index else None
+        previous_values = (
+            [words(cell) for cell in previous[stub:] if normalize_text(cell)]
+            if previous is not None
+            else []
+        )
+        continues.append(
+            index - 1
+            if previous is not None
+            and values
+            and all(has_digit(text) for text in texts)
+            and tuple(map(normalize_text, previous[:stub]))
+            == tuple(map(normalize_text, row[:stub]))
+            and previous_values
+            and all(
+                len(text) <= _QUALIFIER_VALUE_CHARS and not has_digit(text)
+                for text in previous_values
+            )
+            else None
+        )
+        if is_qualifier:
+            label = words(row[stub - 1]) if stub else ""
+            qualifier = {
+                column: f"{label}: {text}" if label else text for column, text in values
+            }
+    return TextTableStructure(
+        stub=stub,
+        column_paths=tuple(paths),
+        cell_paths=tuple(cell_paths),
+        qualifies=tuple(qualifies),
+        continues=tuple(continues),
+    )
+
+
+def _common_prefix(paths: list[tuple[str, ...]]) -> tuple[str, ...]:
+    if not paths:
+        return ()
+    prefix: list[str] = []
+    for parts in zip(*paths, strict=False):
+        if len(set(parts)) != 1:
+            break
+        prefix.append(parts[0])
+    shortest = min(len(path) for path in paths)
+    return tuple(prefix[:shortest])
 
 
 def _meaningful_width(table: TableArtifact) -> int:

@@ -110,6 +110,8 @@ class ClassifierUsage:
     total_tokens: int = 0
     request_attempts: int = 0
     application_retries: int = 0
+    # Input tokens the provider served from its prompt cache (billed lower).
+    cached_input_tokens: int = 0
 
 
 class StructuredAdkClassifier(Generic[RequestT, ResponseT]):

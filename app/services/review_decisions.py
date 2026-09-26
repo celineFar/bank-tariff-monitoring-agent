@@ -17,11 +17,13 @@ from app.domain.semantic_extraction import (
     ExtractionField,
     ExtractionStatus,
     PartialLoanProduct,
+    RememberedReviewDecision,
     SemanticExtractionResult,
     SemanticExtractionRunStatus,
     ValidatedFieldResult,
 )
 from app.repositories.contracts import MonitoringSnapshotRepository, ReviewRepository
+from app.repositories.review_memory import ReviewDecisionMemory
 from app.services.semantic_extraction import (
     assemble_reviewed_loan_product,
     validate_review_field_value,
@@ -41,9 +43,11 @@ class ReviewDecisionService:
         self,
         reviews: ReviewRepository,
         snapshots: MonitoringSnapshotRepository,
+        memory: ReviewDecisionMemory | None = None,
     ) -> None:
         self._reviews = reviews
         self._snapshots = snapshots
+        self._memory = memory
 
     async def apply(
         self,
@@ -93,22 +97,29 @@ class ReviewDecisionService:
         if snapshot.status is not SnapshotStatus.REVIEW_REQUIRED:
             raise ValueError("candidate snapshot is no longer reviewable")
 
+        remembered = None
         if decision.decision_type is ReviewDecisionType.APPROVE:
             update = await self._approve_unchanged(task, snapshot)
         else:
-            update = await self._resolve_field(
+            update, remembered = await self._resolve_field(
                 task,
                 snapshot,
                 decision,
                 evidence_items,
                 selected,
             )
-        return await self._reviews.approve_with_snapshot(
+        approved = await self._reviews.approve_with_snapshot(
             review_id,
             decision,
             update,
             reviewer=reviewer,
         )
+        if remembered is not None and self._memory is not None:
+            # Only a committed decision is remembered (SE12).
+            await self._memory.remember(
+                remembered.model_copy(update={"reviewer": reviewer})
+            )
+        return approved
 
     async def _approve_unchanged(
         self,
@@ -132,7 +143,7 @@ class ReviewDecisionService:
         decision: ReviewDecision,
         evidence_items: dict[str, dict[str, Any]],
         selected: Any,
-    ) -> ReviewSnapshotUpdate:
+    ) -> tuple[ReviewSnapshotUpdate, RememberedReviewDecision | None]:
         try:
             field = ExtractionField(task.issue_scope)
         except ValueError as exc:
@@ -178,6 +189,7 @@ class ReviewDecisionService:
         )
         if not any(item.field is field for item in extraction.validated_fields):
             fields = (*fields, replacement)
+        remembered = _remembered(task, field, extraction, replacement)
         remaining_items = tuple(
             item for item in extraction.review_items if item.field is not field
         )
@@ -218,12 +230,15 @@ class ReviewDecisionService:
                 "validated_field_count": len(fields),
             }
         )
-        return await self._build_update(
-            task,
-            snapshot,
-            normalized_tariff=canonical_tariff_payload(product),
-            semantic_extraction=updated_extraction.model_dump(mode="json"),
-            validation=validation,
+        return (
+            await self._build_update(
+                task,
+                snapshot,
+                normalized_tariff=canonical_tariff_payload(product),
+                semantic_extraction=updated_extraction.model_dump(mode="json"),
+                validation=validation,
+            ),
+            remembered,
         )
 
     async def _build_update(
@@ -262,6 +277,32 @@ class ReviewDecisionService:
             ready_for_activation=bool(validation.get("accepted")),
             changes=compare_accepted_snapshots(previous, candidate),
         )
+
+
+def _remembered(
+    task: ReviewTask,
+    field: ExtractionField,
+    extraction: SemanticExtractionResult,
+    replacement: ValidatedFieldResult,
+) -> RememberedReviewDecision | None:
+    """What to remember of a field decision: keyed on the model's own result for
+    the field -- the review item when validation failed, else the validated
+    field a signal flagged -- so the same result next run gets this answer."""
+    source = next(
+        (item for item in extraction.review_items if item.field is field), None
+    ) or next(
+        (item for item in extraction.validated_fields if item.field is field), None
+    )
+    if source is None or not source.result_fingerprint:
+        return None
+    return RememberedReviewDecision(
+        offering_id=task.offering_id.value,
+        field=field,
+        prompt_fingerprint=source.prompt_fingerprint,
+        result_fingerprint=source.result_fingerprint,
+        decision=replacement.model_copy(update={"batch_id": f"memory:{task.id}"}),
+        review_id=str(task.id),
+    )
 
 
 def _evidence_items(task: ReviewTask) -> dict[str, dict[str, Any]]:

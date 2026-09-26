@@ -1,0 +1,192 @@
+{
+  "as_of": "2026-09-26",
+  "status": "draft by Claude from the captured pages (fix-process/normalization/.cache-live-2); NOT yet confirmed by the user",
+  "_about": "Expected extraction results per seed, for survey/check_extraction_labels.py. Each field has 'status' (found | not_stated). For found fields, 'numbers' must all appear among the numbers of the extracted value (percentages in percentage points, amounts in units, terms in months, ages in years); 'may' lists other numbers the page legitimately carries (headline figures, other currencies or variants, conditional adjustments), which are not counted as spurious. 'contains' lists substrings (case-insensitive) one of which must appear in a string value. 'value' is an exact enum value. A field not listed is not scored. 'source' says where the value is on the page.",
+  "seeds": {
+    "consumer_standard": {
+      "category": "consumer_loan",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["consumer loan"], "source": "page heading"},
+        "category": {"status": "found", "value": "consumer_loan"},
+        "loan_amount": {"status": "found", "numbers": [100000, 20000000], "may": [300000, 1000000, 5000000, 50], "source": "headline card; t1 3.2"},
+        "interest_rate": {"status": "found", "numbers": [20], "may": [15, 21, 0.5, 0.25, 1, 2, 3], "source": "t1 Annual interest rate: Fixed 20%; note 1 scoring terms"},
+        "effective_rate": {"status": "found", "numbers": [22.2, 23.09], "may": [15.9, 16.08, 16, 17], "source": "t1 APR"},
+        "term": {"status": "found", "numbers": [60], "may": [12, 36, 48], "source": "headline card; t1 Term (months)"},
+        "fees": {"status": "found", "numbers": [0.5, 20000], "may": [5000, 0.13, 50000, 0.1, 0.05, 10000, 30000, 15000, 25000, 1000000, 0, 100000], "source": "t1 Loan disbursement fee"},
+        "repayment": {"status": "found", "source": "t1 Repayment method (annuity, differentiated, mixed)"},
+        "age_requirements": {"status": "found", "numbers": [18, 65], "may": [70], "source": "t1 Eligible age"},
+        "residency_requirements": {"status": "found", "source": "t1 Residency"},
+        "required_documents": {"status": "found", "source": "t1 / t2 Required documents"},
+        "collateral": {"status": "found", "may": [50], "source": "t1 Security: Guarantee"}
+      }
+    },
+    "credit_line": {
+      "category": "credit_line",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["credit line"], "source": "page heading"},
+        "category": {"status": "found", "value": "credit_line"},
+        "credit_limit": {"status": "found", "numbers": [100000], "may": [15000000, 100000000, 300000, 4], "source": "headline card; t1 Minimum and maximum credit limits"},
+        "interest_rate": {"status": "found", "numbers": [21, 20, 19], "may": [0.5, 0.25, 1, 2, 3, 18, 17], "source": "t1 Interest rate by card type"},
+        "effective_rate": {"status": "found", "numbers": [23.13, 21.92, 20.73], "may": [], "source": "t1 APR by card type"},
+        "term": {"status": "found", "numbers": [], "source": "t1 Term: indefinite (until requested back)"},
+        "grace_period_days": {"status": "found", "numbers": [51], "source": "t1 Grace period: up to 51 days"},
+        "revolving": {"status": "found", "source": "credit line"},
+        "age_requirements": {"status": "found", "numbers": [18, 65], "may": [70], "source": "t1 Eligible age"},
+        "fees": {"status": "found", "numbers": [5000], "may": [0.13, 50000, 0.1, 0.05, 10000, 30000, 15000, 25000, 10, 0], "source": "t1 Increase of credit limit / lump-sum fee"}
+      }
+    },
+    "overdraft": {
+      "category": "overdraft",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["overdraft"], "source": "page heading"},
+        "category": {"status": "found", "value": "overdraft"},
+        "credit_limit": {"status": "found", "numbers": [100000], "may": [15000000, 100000000, 300000, 4], "source": "headline card; t1 Minimum and total maximum credit limits"},
+        "interest_rate": {"status": "found", "numbers": [21, 20], "may": [0.5, 0.25, 1, 2, 3, 18, 17, 19], "source": "t1 Interest rate by card type"},
+        "effective_rate": {"status": "found", "numbers": [23.13, 21.92], "may": [], "source": "t1 APR by card type"},
+        "term": {"status": "found", "numbers": [], "source": "t1 Term: indefinite (until requested back)"},
+        "revolving": {"status": "found", "source": "overdraft"},
+        "linked_account_or_card": {"status": "found", "source": "t1 card types"},
+        "age_requirements": {"status": "found", "numbers": [18, 65], "may": [70], "source": "t1 Eligible age"},
+        "fees": {"status": "found", "numbers": [5000], "may": [0.13, 50000, 0.1, 0.05, 10000, 15000, 25000, 3, 0], "source": "t1 Increase of credit limit of card"}
+      }
+    },
+    "online_consumer_finance": {
+      "category": "consumer_loan",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["consumer finance"], "source": "page heading"},
+        "category": {"status": "found", "value": "consumer_loan"},
+        "loan_amount": {"status": "found", "numbers": [50000, 1500000], "source": "headline card; t1 Financing Limit"},
+        "interest_rate": {"status": "found", "numbers": [17], "may": [], "source": "headline card 17% (nominal)"},
+        "effective_rate": {"status": "found", "numbers": [18.1, 18.4], "source": "headline: APR 18.1% - 18.4%"},
+        "term": {"status": "found", "numbers": [6, 24], "source": "headline; t1 Term (months)"},
+        "age_requirements": {"status": "found", "numbers": [20, 66], "source": "t1 Customer Age"},
+        "collateral": {"status": "found", "may": [100], "source": "t1 Collateral: the purchased product"},
+        "repayment": {"status": "found", "source": "t1 Debt Repayment Methods"}
+      }
+    },
+    "mortgage_online": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["online"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 100000000], "may": [50000000, 150000000], "source": "headline; t1/t2 3.2"},
+        "interest_rate": {"status": "found", "numbers": [5], "may": [5.5, 12.9, 12.5, 14, 0.5, 0.25, 1, 2, 3, 5.25], "source": "t1 fixed component 5% + base rate; headline 12.9%"},
+        "effective_rate": {"status": "found", "numbers": [13.83, 15.65], "may": [14.37, 16.67, 13.67, 13.68], "source": "t1 / t2 APR"},
+        "term": {"status": "found", "numbers": [360], "may": [61, 240], "source": "headline; t1 3.3"},
+        "down_payment_pct": {"status": "found", "numbers": [10], "may": [20, 30], "source": "headline; t1 3.7 (primary), t2 3.7 (secondary)"},
+        "age_requirements": {"status": "found", "numbers": [18, 70], "source": "t1 2.1"},
+        "collateral": {"status": "found", "source": "t1 5.1"},
+        "ltv_pct": {"status": "found", "may": [80, 90, 70, 60, 50, 240, 360], "source": "t1 / t2 5.2"},
+        "property_market": {"status": "found", "source": "primary and secondary market"}
+      }
+    },
+    "mortgage_primary": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["primary market"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 150000000], "may": [5000, 300000, 100000000, 50000000], "source": "headline; t1 3.2 (AMD, USD, EUR)"},
+        "interest_rate": {"status": "found", "numbers": [13.5, 11, 8.5], "may": [5.5, 8, 7, 5.25, 12.9, 12.5, 14, 0.5, 0.25, 1, 2, 3], "source": "t1 3.4 fixed by currency; 3.7 adjustable; headline 12.9%"},
+        "effective_rate": {"status": "found", "numbers": [14.39, 15.76], "may": [11.6, 13.56, 8.86, 10.71, 14.35, 15.74, 10.47, 12.39, 8.3, 10.12, 13.67, 13.68], "source": "t1 3.5 / 3.10"},
+        "term": {"status": "found", "numbers": [60, 360], "may": [61, 240], "source": "headline; t1 3.3 / 3.6"},
+        "down_payment_pct": {"status": "found", "numbers": [10], "may": [20, 30], "source": "headline; t1 3.13"},
+        "age_requirements": {"status": "found", "numbers": [18, 70], "source": "t1 2.1"},
+        "collateral": {"status": "found", "source": "t1 Security"},
+        "ltv_pct": {"status": "found", "may": [80, 90, 70, 60, 50, 240, 360], "source": "t1 5.2"},
+        "property_market": {"status": "found", "value": "primary", "source": "offering"}
+      }
+    },
+    "mortgage_secondary_market": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["secondary market"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 150000000], "may": [5000, 300000, 100000000, 50000000], "source": "headline; t1 3.2"},
+        "interest_rate": {"status": "found", "numbers": [14, 11.5, 9], "may": [6, 8.5, 7.5, 5.75, 12.9, 12.5, 0.5, 0.25, 1, 2, 3], "source": "t1 3.4 fixed by currency"},
+        "effective_rate": {"status": "found", "numbers": [14.97, 17.21], "may": [12.17, 15.39, 9.42, 12.45, 14.92, 17.17, 11.03, 14.18, 8.85, 11.84, 13.67, 13.68], "source": "t1 3.5 / 3.10"},
+        "term": {"status": "found", "numbers": [60, 360], "may": [61, 240], "source": "headline; t1 3.3 / 3.6"},
+        "down_payment_pct": {"status": "found", "numbers": [5], "may": [10, 20, 30], "source": "headline; t1 3.12"},
+        "age_requirements": {"status": "found", "numbers": [18, 70], "source": "t1 2.1"},
+        "ltv_pct": {"status": "found", "may": [80, 90, 70, 60, 50, 95, 240, 360], "source": "t1 5.2"},
+        "property_market": {"status": "found", "value": "secondary", "source": "offering"}
+      }
+    },
+    "mortgage_commercial": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["commercial"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 150000000], "may": [5000, 300000], "source": "headline; t1 3.2"},
+        "interest_rate": {"status": "found", "numbers": [14, 11.5, 9], "may": [6, 8.5, 7.5, 0.5, 0.25, 1, 2, 3], "source": "t1 3.4"},
+        "effective_rate": {"status": "found", "numbers": [14.97, 17.21], "may": [12.17, 15.39, 9.42, 12.45, 14.92, 17.17, 11.03, 14.18, 8.85, 11.84, 13.84, 16.03], "source": "t1 3.5 / 3.8; headline 13.84-16.03%"},
+        "term": {"status": "found", "numbers": [360], "may": [36, 60, 61, 240], "source": "headline 36-360; t1 3.3 / 3.6"},
+        "down_payment_pct": {"status": "found", "numbers": [5], "may": [10, 20, 30], "source": "t1 3.11"},
+        "age_requirements": {"status": "found", "numbers": [18, 70], "source": "t1 2.1"},
+        "property_market": {"status": "found", "value": "commercial", "source": "offering"}
+      }
+    },
+    "mortgage_construction": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["construction"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 150000000], "may": [5000, 300000, 100000000, 50000000], "source": "headline; t1 3.2"},
+        "interest_rate": {"status": "found", "numbers": [14, 11.5, 9], "may": [6, 8.5, 7.5, 5.75, 12.9, 12.5, 0.5, 0.25, 1, 2, 3], "source": "t1 3.4"},
+        "effective_rate": {"status": "found", "numbers": [14.95, 16.21], "may": [12.15, 13.95, 9.4, 11.1, 14.93, 16.19, 11.02, 12.78, 8.84, 10.51, 13.67, 13.68], "source": "t1 3.5 / 3.10"},
+        "term": {"status": "found", "numbers": [60, 240], "may": [61, 360], "source": "headline 60-360; t1 3.3 / 3.6 / 3.8"},
+        "age_requirements": {"status": "found", "numbers": [18, 70], "source": "t1 2.1"},
+        "property_market": {"status": "found", "value": "construction", "source": "offering"}
+      }
+    },
+    "mortgage_renovation": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["renovation"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 150000000], "may": [5000, 300000, 100000000, 50000000], "source": "headline; t1 3.2"},
+        "interest_rate": {"status": "found", "numbers": [14, 11.5, 9], "may": [6, 8.5, 7.5, 5.75, 0.5, 0.25, 1, 2, 3], "source": "t1 3.4"},
+        "effective_rate": {"status": "found", "numbers": [14.95, 16.21], "may": [12.15, 13.95, 9.4, 11.1, 14.93, 16.19, 11.02, 12.78, 8.84, 10.51, 13.82, 15.06], "source": "t1 3.5 / 3.10; headline 13.82-15.06%"},
+        "term": {"status": "found", "numbers": [60, 240], "may": [61], "source": "headline 60-240; t1 3.3 / 3.6"},
+        "age_requirements": {"status": "found", "numbers": [18, 70], "source": "t1 2.1"},
+        "property_market": {"status": "found", "value": "renovation", "source": "offering"}
+      }
+    },
+    "mortgage_express": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["quick", "express"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 100000000], "source": "headline"},
+        "interest_rate": {"status": "found", "numbers": [5.25], "may": [5.75, 12.9, 0.5, 0.25, 1, 2, 3], "source": "t1-t4 fixed component + base rate; headline 12.9%"},
+        "effective_rate": {"status": "found", "numbers": [14.08, 15.57], "may": [14.66, 17.11, 14.65, 15.9, 13.67, 13.68], "source": "t1-t4 1.4; headline 13.67-13.68%"},
+        "term": {"status": "found", "numbers": [360], "may": [60, 61, 240], "source": "headline; t1-t4 1.2"},
+        "down_payment_pct": {"status": "found", "numbers": [10], "may": [5, 20, 30], "source": "t1 1.5, t2 1.5"},
+        "variants": {"status": "found", "source": "purchase primary, purchase secondary, construction, renovation"}
+      }
+    },
+    "mortgage_no_income_verification": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["income"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [100000000], "may": [30000000, 50000000, 3000000], "source": "headline; down-payment tiers"},
+        "effective_rate": {"status": "found", "numbers": [13.67, 13.68], "may": [12.05, 12.45], "source": "headline; t1 APR"},
+        "term": {"status": "found", "numbers": [61, 360], "source": "headline"},
+        "down_payment_pct": {"status": "found", "numbers": [30], "may": [40, 50, 60], "source": "headline; tiers by amount"},
+        "income_verification_required": {"status": "found", "source": "the offering is without income verification"}
+      }
+    },
+    "mortgage_diaspora": {
+      "category": "mortgage",
+      "fields": {
+        "product_name": {"status": "found", "contains": ["diaspora"], "source": "page heading"},
+        "category": {"status": "found", "value": "mortgage"},
+        "loan_amount": {"status": "found", "numbers": [3000000, 150000000], "may": [5000, 300000], "source": "b25 amount card"},
+        "interest_rate": {"status": "found", "numbers": [13.5, 14], "may": [10, 10.5, 8, 8.5], "source": "b28 nominal by currency"},
+        "effective_rate": {"status": "found", "numbers": [14.97, 17.17], "may": [11.03, 15.39, 8.3, 12.45], "source": "b29 APR by currency"},
+        "term": {"status": "found", "numbers": [60, 360], "source": "b27 Loan term"},
+        "down_payment_pct": {"status": "found", "numbers": [10], "may": [30], "source": "b26 by currency"}
+      }
+    }
+  }
+}

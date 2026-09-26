@@ -1,0 +1,589 @@
+{
+ "seeds": {
+  "mortgage_primary": {
+   "pdfs_added": [
+    "mortgage_personal_purchase_eng.pdf",
+    "terms_flexible_mortgage_eng.pdf",
+    "terms_mortgage_lending_campaign_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "formal_terms_names",
+    "income_verification_required",
+    "ltv_pct"
+   ],
+   "review_issues": {
+    "formal_terms_names": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "ltv_pct": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "income_verification_required": [
+     "income verification cannot be inferred from creditworthiness assessment; explicit income-document evidence is required"
+    ]
+   },
+   "reused_batches": 0,
+   "call_errors": [],
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Real estate loan for primary market"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "150000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "100000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "For online refinancing"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "13.5",
+        "max": "13.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.0",
+        "max": "11.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.5",
+        "max": "8.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 8% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 7% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.25% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "online_refinancing"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.39",
+        "max": "15.76",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.6",
+        "max": "13.56",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.86",
+        "max": "10.71",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.35",
+        "max": "15.74",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "online_refinancing"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "10.47",
+        "max": "12.39",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "online_refinancing"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.3",
+        "max": "10.12",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "online_refinancing"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360 months"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "5",
+      "7.5"
+     ],
+     "value": [
+      {
+       "value": "10",
+       "conditions": []
+      },
+      {
+       "value": "5",
+       "conditions": [
+        {
+         "dimension": "collateral",
+         "operator": null,
+         "value": "In case of additional collateral"
+        }
+       ]
+      },
+      {
+       "value": "7.5",
+       "conditions": [
+        {
+         "dimension": "program",
+         "operator": null,
+         "value": "2024-2026 state-supported housing programs for families with children"
+        },
+        {
+         "dimension": "collateral",
+         "operator": null,
+         "value": "subject to provision of additional collateral"
+        }
+       ]
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of loan agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "customer/co-borrower/guarantor"
+        }
+       ]
+      }
+     ]
+    },
+    "collateral": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "description": "The loan is secured by the real estate being purchased. The Bank may consider pledge of other real estate as additional security to the reasonable satisfaction of the Bank, as well as cash in the Bank or bonds issued by the Bank.",
+        "applicable": true
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "description": "If the borrower wishes to purchase property under construction without registered certificate of title, the loan will be secured by other Armenia-based real estate to the reasonable satisfaction of the Bank.",
+        "applicable": true
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "property under construction without registered certificate of title"
+        }
+       ]
+      },
+      {
+       "value": {
+        "description": "If the borrower wishes to purchase property abroad, the loan will be secured by Armenia-based real estate to the reasonable satisfaction of the Bank.",
+        "applicable": true
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "purchase property abroad"
+        }
+       ]
+      },
+      {
+       "value": {
+        "description": "In the case of online refinancing, the collateral is real estate purchased directly from the developer, which has a completion certificate and is not encumbered with any liabilities other than the refinanced loan.",
+        "applicable": true
+       },
+       "conditions": [
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "online refinancing"
+        }
+       ]
+      }
+     ]
+    },
+    "ltv_pct": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "primary"
+    }
+   }
+  }
+ },
+ "extractor": "gemini",
+ "model": "gemini-3.7-flash",
+ "evidence_mode": "full",
+ "max_repairs_per_run": 1,
+ "pdfs": true,
+ "totals": {
+  "match": 10,
+  "review": 1
+ },
+ "usage": {
+  "calls": 4,
+  "refused": 0,
+  "input_tokens": 196385,
+  "output_tokens": 17974,
+  "thinking_tokens": 0,
+  "cached_input_tokens": 72557,
+  "spent_usd": 0.2147
+ }
+}

@@ -400,6 +400,67 @@ def _parse_int(text: str) -> int:
     return int(match.group(0))
 
 
+_AGE_YEARS = r"(?:\s*years?(?:\s+old)?)?"
+_AGE_RANGE = re.compile(
+    rf"(?:aged\s+)?(\d{{1,3}})\s*(?:-|\u2013|to)\s*(\d{{1,3}}){_AGE_YEARS}"
+)
+_AGE_MINIMUM = re.compile(
+    rf"(?:at least|from|minimum|min\.?|not younger than)\s*(\d{{1,3}}){_AGE_YEARS}"
+    rf"|(\d{{1,3}})\s*\+{_AGE_YEARS}"
+)
+_AGE_MAXIMUM = re.compile(
+    rf"(?:up to|at most|maximum|max\.?|not older than|under)\s*(\d{{1,3}}){_AGE_YEARS}"
+)
+_NO_COLLATERAL = frozenset(
+    {"none", "n/a", "not applicable", "not required", "unsecured"}
+)
+
+
+def _parse_ages(text: str) -> list[dict[str, int]]:
+    """A reviewer's age ranges, one per line: '18-65', 'at least 18', 'up to 65'.
+
+    This is the review form's own documented syntax. Model output is never
+    parsed this way: an age the model gives as prose goes back to it for repair.
+    """
+    ages: list[dict[str, int]] = []
+    for line in _lines(text):
+        folded = line.casefold()
+        if match := _AGE_RANGE.fullmatch(folded):
+            ages.append({"min_age": int(match[1]), "max_age": int(match[2])})
+        elif match := _AGE_MINIMUM.fullmatch(folded):
+            ages.append({"min_age": int(match[1] or match[2])})
+        elif match := _AGE_MAXIMUM.fullmatch(folded):
+            ages.append({"max_age": int(match[1])})
+        else:
+            raise ValueError(f"'{line}' is not an age range.")
+    return ages
+
+
+def _parse_documents(text: str) -> list[dict[str, str]]:
+    """Documents one per line; a line ending in 'upon request' is marked so."""
+    return [
+        {
+            "name": line,
+            "requirement": (
+                "upon_request"
+                if line.casefold().endswith("upon request")
+                else "required"
+            ),
+        }
+        for line in _lines(text)
+    ]
+
+
+def _parse_collateral(text: str) -> list[dict[str, Any]]:
+    """Collateral requirements one per line, or 'none' when the loan is unsecured."""
+    return [
+        {"description": None, "applicable": False}
+        if line.casefold() in _NO_COLLATERAL
+        else {"description": line, "applicable": True}
+        for line in _lines(text)
+    ]
+
+
 def _parse_text(text: str) -> str:
     return " ".join(text.split())
 
@@ -514,9 +575,10 @@ _FORMATS: dict[ExtractionField, ReviewFieldFormat] = dict(
         ),
         _format(
             ExtractionField.AGE_REQUIREMENTS,
-            "Enter the age range; one range per line.",
+            "Enter the age range; one range per line, like '18-65', 'at least 18' "
+            "or 'up to 65'.",
             ("18-65", "at least 18"),
-            _parse_list,
+            _parse_ages,
         ),
         _format(
             ExtractionField.APPLICATION_CHANNEL,
@@ -529,7 +591,7 @@ _FORMATS: dict[ExtractionField, ReviewFieldFormat] = dict(
             "Enter each document on its own line, or separate them with ';'. Add "
             "'upon request' to a document the passage marks that way.",
             ("Passport; Social card; Income statement upon request",),
-            _parse_list,
+            _parse_documents,
         ),
         _format(
             ExtractionField.SPECIAL_CONDITIONS,
@@ -542,7 +604,7 @@ _FORMATS: dict[ExtractionField, ReviewFieldFormat] = dict(
             "Enter each collateral requirement on its own line, or 'none' when the "
             "passage states the loan is unsecured.",
             ("Residential property", "none"),
-            _parse_list,
+            _parse_collateral,
         ),
         _format(
             ExtractionField.INCOME_VERIFICATION_REQUIRED,

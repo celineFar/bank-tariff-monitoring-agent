@@ -43,61 +43,82 @@ requirement policies. Mortgage, overdraft, credit-line, and ordinary consumer-lo
 details are discriminated types. Umbrella products also retain a typed variant catalog.
 Formal PDF/terms titles are separate from the canonical customer-facing product name.
 Repayment methods, age ranges, application channels, required documents, and
-collateral are structured conditional values, so a solar-only document or a
-service-only no-collateral rule cannot silently become global.
+collateral are structured conditional values, so a variant-only document or a
+variant-only no-collateral rule cannot silently become global.
 
 ## Deterministic/model split
 
-Python builds an evidence catalog only from selected discovery assessments, restores
-complete normalized blocks and table rows, and carries a table's surrounding tab and
-product heading into every row. The planner gives every requested field a reserved
-evidence quota before filling the remaining packet, ranks canonical/current-product
-evidence above generic material, and excludes sibling-product and known variant
-sections from the canonical product packet. Packet fingerprints include this scope
-metadata. Gemini receives only unresolved bounded packets through a tool-free ADK
-agent on the configured `MODEL_NAME`, with thinking set by
-`SEMANTIC_EXTRACTION_THINKING_BUDGET` (default `0`, disabled) because the response
-contract is schema-bound. Every packet carries the exact Pydantic-derived JSON Schema
-for each requested field. Required documents have their own packet so all
-current-product webpage and PDF document lists can be unioned without losing
-evidence capacity to other fields.
+Python builds an evidence catalog only from selected discovery assessments, in reading
+order.
 
-After the model responds, Python validates fields independently. Missing, duplicate,
-or extra fields; out-of-batch evidence IDs; non-verbatim quotes; malformed JSON; and
-canonical Pydantic type failures become review items without discarding valid sibling
-fields. A `found` value cannot exist without evidence; `not_stated` cannot contain a
-value or evidence. Evidence-aware checks additionally reject `not_stated` when the
-same packet contains a strong current-product field label, reject values supported
-only by sibling/variant evidence, and detect condition-specific down-payment or LTV
-alternatives flattened into unconditional values. The same checks cover conditional
-documents, collateral, channels, ages, repayment methods, and term ranges. A term rule
-that begins above a stated threshold must be split into a separate conditional range,
-and a canonical product name must cite the canonical product page when that evidence
-is available. A suspicious or malformed field
-first passes through a deterministic shape adapter for known serialization variants.
-The audit output preserves both the raw and adapted response. Anything still invalid
-receives one bounded repair call containing the original result, exact field schema,
-validation paths, and only the original packet evidence; only that field is replaced,
-and a still-invalid repair enters the review queue. Repairs are additionally capped
-per run by `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `3`), so a batch that
-keeps failing its own contract falls through to human review instead of issuing an
-unbounded number of paid calls; fields left unrepaired because the budget was spent
-are reviewed like any other invalid field. If review items
-remain, the run is `completed_with_review` and no
-full `LoanProduct` is claimed. Total termination is reserved for systemic failures,
-including configuration/input failures and every model batch failing before a usable
-response exists. This step does not yet decide whether a supported claim is ultimately
-publishable—that belongs to verification and repair.
+- **Table rows are records.** Each value names its column path (header levels and
+  qualifier rows such as `Currency: AMD`); a continuation row carries the rate type
+  above it; the notes the row cites come with it.
+- **Headline cards** ("Loan amount: AMD 3-150 million") are key/value blocks.
+- **Evidence IDs** hash the source, the structural path and the text, never the page
+  hash or positions, so an unchanged table keeps its IDs.
+
+`SEMANTIC_EXTRACTION_EVIDENCE_MODE` chooses what Gemini reads:
+- `full` (default): the offering's whole selected evidence in three calls; related
+  products' items go in a marked block.
+- `budgeted`: items chosen by whole-word label matches (headings, row labels, column
+  paths), within `SEMANTIC_EXTRACTION_BUDGET_CHARS` per call, with per-field shares.
+
+Nothing is cut mid-item: full mode fails loudly above
+`SEMANTIC_EXTRACTION_MAX_PACKET_CHARS`.
+
+The field set follows the seed catalog's offering `category`. The target scope is the
+offering's names and page, with no URL-specific rules. Gemini runs as a tool-free ADK
+agent on `MODEL_NAME`:
+- at temperature 0, with thinking set by `SEMANTIC_EXTRACTION_THINKING_BUDGET`
+  (default `0`) and an output cap of `SEMANTIC_EXTRACTION_MAX_OUTPUT_TOKENS`;
+- one SDK attempt; the application retries with backoff, and asks once more after an
+  empty, cut or unparseable answer;
+- calls run concurrently (`SEMANTIC_EXTRACTION_MAX_CONCURRENT_CALLS`);
+- a call the primary model cannot answer goes to the next model of
+  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES`, for that call only.
+
+Every call carries the exact JSON Schema of its fields. Condition dimensions come
+from a closed set.
+
+After the model responds, Python validates fields independently. Missing, duplicate
+or extra fields become review items without discarding valid sibling fields, as do:
+- out-of-batch evidence IDs and quotes absent from the cited evidence (compared
+  whitespace-insensitively);
+- numbers of a value absent from its quotes;
+- alternatives that share their conditions;
+- values supported only by related-product evidence;
+- a category other than the catalog's;
+- a term threshold rule not split into its own conditional range;
+- a product name not anchored to the canonical page.
+
+A `found` value cannot exist without evidence; `not_stated` cannot contain a value or
+evidence.
+
+A deterministic adapter first reshapes known serialization variants. It moves a
+condition written as a key (a rate's `currency`) into `conditions`, and never infers
+meaning. The audit output keeps both the raw and adapted response. Anything still
+invalid gets one bounded repair call (the original result, the field schema, the
+validation paths, only the original packet), capped per run by
+`SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `3`) and spent on the required
+tariff fields first. A field still invalid enters the review queue, unless a
+remembered review decision for the same call or the same result answers it. If
+review items remain, the run is `completed_with_review` and no full `LoanProduct` is
+claimed. Total termination is reserved for systemic failures: configuration or input
+failures, an evidence packet above the ceiling, or a call that failed on every model.
 
 ## Cache
 
-`semantic_extraction_batches` stores only fully validated structured batch responses. Reuse requires an
-exact match on product, schema version, prompt version, model name, and evidence
-fingerprint. Invalid responses are never written, and invalid legacy entries are
-ignored when read. Any selected evidence change or deliberate schema/prompt version
-bump therefore causes only the affected field group to run again. Semantic extraction
-schema and prompt version 5 intentionally invalidate the earlier flat-string
-contracts.
+`semantic_extraction_batches` is keyed by the fingerprint of exactly what a call
+sends: model, generation settings, instruction and prompt. Every fresh answer is
+stored with its validation outcome (`accepted` or `review`). A stored answer is
+reused as it is and not repaired again, so an unchanged failing field costs no call.
+The schema and prompt versions stay in the lookup as a manual invalidation switch.
+Any change to what a call's model sees, and nothing else, makes that call run
+again.
+
+`review_decision_memory` keeps each committed field decision against the call and
+the result it was about (see `docs/native-hitl-review.md`).
 
 ## Demonstration
 

@@ -1,0 +1,5241 @@
+{
+ "seeds": {
+  "consumer_standard": {
+   "pdfs_added": [
+    "Consumer_loan_unsecured_eng.pdf",
+    "Consumer_unsecured_eng.pdf",
+    "Loan_tariffs_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "income_verification_required"
+   ],
+   "review_issues": {
+    "income_verification_required": [
+     "income verification cannot be inferred from creditworthiness assessment; explicit income-document evidence is required"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Consumer loan"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "consumer_loan"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "1E+7"
+     ],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "100000.0",
+         "max": "20000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "program",
+         "operator": null,
+         "value": "If the loan application is reviewed based on the scoring system"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "300000.0",
+         "max": "10000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "program",
+         "operator": null,
+         "value": "If the loan application is reviewed outside the scoring system"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "20.0",
+        "max": "20.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "min": "15.0",
+        "max": "21.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "program",
+         "operator": null,
+         "value": "In case of applications for scoring-based loans or loans to workers of specific industries"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "16.06",
+      "23.13"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "22.2",
+        "max": "23.09",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "min": "16.06",
+        "max": "23.13",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "program",
+         "operator": null,
+         "value": "In case of applications for scoring-based loans or loans to workers of specific industries"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": null,
+        "max_months": 60,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "collateral",
+         "operator": null,
+         "value": "In the case of unsecured consumer loans"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 60,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "fees": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "1",
+      "1E+1",
+      "2E+1",
+      "5"
+     ],
+     "value": [
+      {
+       "description": "Loan disbursement fee: 0.5% of loan amount or AMD 20,000 (AMD 5,000 if the loan amount is within AMD 1 million), whichever is greater (not applicable in case of online loan applications)",
+       "scope": "product",
+       "amount": null,
+       "currency": "AMD",
+       "rate_pct": "0.5",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": "!=",
+         "value": "online"
+        }
+       ]
+      },
+      {
+       "description": "Cashing of the loan amount by the borrower: Free",
+       "scope": "product",
+       "amount": "0",
+       "currency": "AMD",
+       "rate_pct": "0",
+       "conditions": []
+      },
+      {
+       "description": "Loan disbursement fee: 1% of the loan amount (max AMD 10,000), applicable if the loan application is submitted at the Bank branches.",
+       "scope": "product",
+       "amount": null,
+       "currency": "AMD",
+       "rate_pct": "1",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": "=",
+         "value": "Bank branches"
+        },
+        {
+         "dimension": "program",
+         "operator": "=",
+         "value": "scoring-based loans or loans to workers of specific industries"
+        }
+       ]
+      },
+      {
+       "description": "Modification of the condition subsequent for the loan: 0.05% of the outstanding loan amount, minimum AMD 10,000",
+       "scope": "general_loan_service",
+       "amount": "10000",
+       "currency": "AMD",
+       "rate_pct": "0.05",
+       "conditions": []
+      },
+      {
+       "description": "Change of the overdraft/line of credit account/card",
+       "scope": "general_loan_service",
+       "amount": "30000",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Revision/modification of another loan term not specified in this document: 0.1% of the outstanding loan amount, minimum AMD 10,000",
+       "scope": "general_loan_service",
+       "amount": "10000",
+       "currency": "AMD",
+       "rate_pct": "0.1",
+       "conditions": []
+      },
+      {
+       "description": "Change of the loan repayment date",
+       "scope": "general_loan_service",
+       "amount": "10000",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      }
+     ]
+    },
+    "repayment": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "2E+1"
+     ],
+     "value": [
+      {
+       "value": {
+        "method": "Annuity",
+        "description": "equal monthly installments consisting of a portion of loan and a portion of interest"
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "method": "Differentiated",
+        "description": "monthly repayment of equal portions of principal amount while interest accrues to outstanding loan and decreases each month"
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "method": "Mixed",
+        "description": "client may choose an individual repayment schedule based on seasonality of cash flows, provided that at least 20% of contractual loan amount is repaid each year; interest payable on monthly basis"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 65,
+        "measured_at": "at the time of expiry of the loan agreement"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "residency_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      "Citizens and non-citizens of Armenia who are resident in Armenia"
+     ]
+    },
+    "required_documents": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "name": "Identity document",
+        "requirement": "required"
+       },
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        }
+       ]
+      },
+      {
+       "value": {
+        "name": "Public services personal number (PPSN) / social card",
+        "requirement": "required"
+       },
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        }
+       ]
+      },
+      {
+       "value": {
+        "name": "Loan application",
+        "requirement": "required"
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "name": "ID (original)",
+        "requirement": "required"
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "name": "Proof of employment and/or other income",
+        "requirement": "required"
+       },
+       "conditions": []
+      },
+      {
+       "value": {
+        "name": "Other documents as the Bank specialist may request",
+        "requirement": "upon_request"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "collateral": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "description": "Consumer loan not secured by property",
+        "applicable": false
+       },
+       "conditions": []
+      }
+     ]
+    }
+   }
+  },
+  "credit_line": {
+   "pdfs_added": [
+    "Credit_line_unsecured_eng.pdf",
+    "unsecured_credit_line_eng.pdf",
+    "Loan_tariffs_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "formal_terms_names"
+   ],
+   "review_issues": {
+    "formal_terms_names": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Credit line"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "credit_line"
+    },
+    "credit_limit": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "1E+7"
+     ],
+     "value": [
+      {
+       "type": "absolute",
+       "range": {
+        "min": "100000",
+        "max": "15000000",
+        "currency": "AMD"
+       }
+      },
+      {
+       "type": "absolute",
+       "range": {
+        "min": "300000",
+        "max": "10000000",
+        "currency": "AMD"
+       }
+      },
+      {
+       "type": "absolute",
+       "range": {
+        "min": "100000",
+        "max": "100000000",
+        "currency": "AMD"
+       }
+      },
+      {
+       "type": "salary_multiple",
+       "min_multiple": null,
+       "max_multiple": "4"
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "15"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "21.0",
+        "max": "21.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "VISA Classic/Master Card Standard, VISA Classic Digital/Master Card Standard Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "20.0",
+        "max": "20.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "Master Card Gold/VISA Gold, Master Card World/VISA Platinum, VISA Signature, VISA Gold Digital/ Master Card Gold Digital,VISA Platinum Digital/ Master Card World Digital,VISA Signature Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "19.0",
+        "max": "19.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "VISA Infinite, Mastercard World Elite"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "15.0",
+        "max": "21.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "scoring-based loans or loans to workers of specific industries"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "16.06"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "23.13",
+        "max": "23.13",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "VISA Classic/Master Card Standard, VISA Classic Digital/Master Card Standard Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "21.92",
+        "max": "21.92",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "Master Card Gold/VISA Gold, Master Card World/VISA Platinum, VISA Signature, VISA Gold Digital/ Master Card Gold Digital,VISA Platinum Digital/ Master Card World Digital,VISA Signature Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "20.73",
+        "max": "20.73",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "VISA Infinite, Mastercard World Elite"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "16.06",
+        "max": "23.13",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "scoring-based loans or loans to workers of specific industries"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": null,
+        "max_months": null,
+        "indefinite": true,
+        "end_condition": "on_demand"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "grace_period_days": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": 51
+    },
+    "revolving": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": true
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 65,
+        "measured_at": "at the time of expiry of the loan agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "client/co-borrower/guarantor"
+        }
+       ]
+      }
+     ]
+    },
+    "fees": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "description": "Increase of credit limit of card",
+       "scope": "product",
+       "amount": "5000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Early repayment fee: N/A",
+       "scope": "product",
+       "amount": null,
+       "currency": null,
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Lump-sum fee for failure to make required minimum monthly payment when due",
+       "scope": "product",
+       "amount": "5000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "For credit cards issued after January 2015, late payment penalties will be applicable instead of lump-sum fee."
+        }
+       ]
+      },
+      {
+       "description": "Late payment fines and penalties: Fine in the amount of 0.13 % of overdue loan and interest for each day of delay.",
+       "scope": "product",
+       "amount": null,
+       "currency": null,
+       "rate_pct": "0.13",
+       "conditions": []
+      },
+      {
+       "description": "Modification of the condition subsequent for the loan",
+       "scope": "general_loan_service",
+       "amount": "10000.0",
+       "currency": "AMD",
+       "rate_pct": "0.05",
+       "conditions": []
+      },
+      {
+       "description": "Change of the overdraft/line of credit account/card",
+       "scope": "general_loan_service",
+       "amount": "30000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Change of the borrower/co-borrower/guarantor",
+       "scope": "general_loan_service",
+       "amount": "50000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Release/substitution of the collateral",
+       "scope": "general_loan_service",
+       "amount": "50000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Issuing consent for change of a pledged vehicle plate number",
+       "scope": "general_loan_service",
+       "amount": "50000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Collateral-related change (including change of the collateral owner)",
+       "scope": "general_loan_service",
+       "amount": "15000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Change of the loan repayment date",
+       "scope": "general_loan_service",
+       "amount": "10000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Provision of loan before submitting to the Bank the document certifying state registration of the security interest",
+       "scope": "general_loan_service",
+       "amount": "25000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Issuing other consent not established by this document and not related to the collateral",
+       "scope": "general_loan_service",
+       "amount": "10000.0",
+       "currency": "AMD",
+       "rate_pct": null,
+       "conditions": []
+      },
+      {
+       "description": "Revision/modification of another loan term not specified in this document (including interest rate revision)",
+       "scope": "general_loan_service",
+       "amount": "10000.0",
+       "currency": "AMD",
+       "rate_pct": "0.1",
+       "conditions": []
+      }
+     ]
+    }
+   }
+  },
+  "mortgage_commercial": {
+   "pdfs_added": [
+    "mortgage_commercial_purchase_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "income_verification_required",
+    "ltv_pct",
+    "product_name",
+    "purpose"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ],
+    "purpose": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "ltv_pct": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "income_verification_required": [
+     "income verification cannot be inferred from creditworthiness assessment; explicit income-document evidence is required"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000.0",
+         "max": "150000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000.0",
+         "max": "300000.0",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000.0",
+         "max": "300000.0",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.0",
+        "max": "14.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.5",
+        "max": "11.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.0",
+        "max": "9.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 6% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 8.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 7.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.97",
+        "max": "17.21",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "12.17",
+        "max": "15.39",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.42",
+        "max": "12.45",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.92",
+        "max": "17.17",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.03",
+        "max": "14.18",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.85",
+        "max": "11.84",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 36,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": "5",
+       "conditions": []
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of loan agreement"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "property_market": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "commercial"
+    }
+   }
+  },
+  "mortgage_construction": {
+   "pdfs_added": [
+    "mortage_personal_construction_eng.pdf",
+    "mortgage_commercial_construction_eng.pdf",
+    "terms_mortgage_lending_campaign_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "fees",
+    "income_verification_required",
+    "product_name"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ],
+    "fees": [
+     "cited quotes do not contain the value's numbers 0.05, 10000, 15000, 25000; quote the text that states them"
+    ],
+    "income_verification_required": [
+     "income verification cannot be inferred from creditworthiness assessment; explicit income-document evidence is required"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "150000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "100000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "home_construction_loan"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14",
+        "max": "14",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.5",
+        "max": "11.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9",
+        "max": "9",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 6% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 8.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 7.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 5.75% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "home_construction_loan"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.95",
+        "max": "16.21",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "12.15",
+        "max": "13.95",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.4",
+        "max": "11.1",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.93",
+        "max": "16.19",
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.02",
+        "max": "12.78",
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.84",
+        "max": "10.51",
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 60,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 240,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Adjustable fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "home_construction_loan"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        }
+       ]
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of loan agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "borrower"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "co-borrower or guarantor"
+        }
+       ]
+      }
+     ]
+    },
+    "property_market": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "construction"
+    }
+   }
+  },
+  "mortgage_diaspora": {
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "review_items": [],
+   "review_issues": {},
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Mortgage loan for the Diaspora"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000.0",
+         "max": "150000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000.0",
+         "max": "300000.0",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000.0",
+         "max": "300000.0",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "13.5",
+        "max": "14.0",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "10.0",
+        "max": "10.5",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.0",
+        "max": "8.5",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.97",
+        "max": "17.17",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.03",
+        "max": "15.39",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.3",
+        "max": "12.45",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": "10",
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": "30",
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": "30",
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": "30",
+       "conditions": [
+        {
+         "dimension": "program",
+         "operator": null,
+         "value": "without income verification"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "mortgage_express": {
+   "pdfs_added": [
+    "mortgage_personal_express_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Loan_tariffs_14.07.26_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [],
+   "review_issues": {},
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Quick mortgage loan"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "100000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.25% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_purchase_loan_primary_market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.75% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_purchase_loan_secondary_market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.75% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_construction_loan"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.75% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_renovation_loan"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.08",
+        "max": "15.57",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_purchase_loan_primary_market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.66",
+        "max": "17.11",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_purchase_loan_secondary_market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.65",
+        "max": "15.9",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_construction_loan"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.65",
+        "max": "15.9",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_renovation_loan"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_purchase_loan_primary_market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_purchase_loan_secondary_market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_construction_loan"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 240,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "express_home_renovation_loan"
+        }
+       ]
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": "10",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        }
+       ]
+      },
+      {
+       "value": "5",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "collateral",
+         "operator": null,
+         "value": "In case of additional collateral"
+        }
+       ]
+      },
+      {
+       "value": "5",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        }
+       ]
+      }
+     ]
+    },
+    "variants": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "variant_id": "express_home_purchase_loan_primary_market",
+       "name": "Express Home Purchase Loan (primary market)",
+       "purpose": "Purchase of residential property for residential, lease or investment purposes"
+      },
+      {
+       "variant_id": "express_home_purchase_loan_secondary_market",
+       "name": "Express Home Purchase Loan (secondary market)",
+       "purpose": "Purchase of residential property for residential, lease or investment purposes."
+      },
+      {
+       "variant_id": "express_home_construction_loan",
+       "name": "Express Home Construction Loan",
+       "purpose": "Construction of residential property"
+      },
+      {
+       "variant_id": "express_home_renovation_loan",
+       "name": "Express Home Renovation Loan",
+       "purpose": "Renovation of residential property"
+      }
+     ]
+    }
+   }
+  },
+  "mortgage_no_income_verification": {
+   "pdfs_added": [
+    "no-verification-mortgage-eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "product_name"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": null,
+         "max": "100000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "12.05",
+        "max": "12.45",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "refinancing"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "13.67",
+        "max": "13.68",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "new_loans"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": "30.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "Up to AMD 30 million"
+        }
+       ]
+      },
+      {
+       "value": "40.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 30 – 50 million"
+        }
+       ]
+      },
+      {
+       "value": "40.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Regions"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "Up to AMD 30 million"
+        }
+       ]
+      },
+      {
+       "value": "50.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Regions"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 30 – 50 million"
+        }
+       ]
+      },
+      {
+       "value": "30.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "offline"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "Up to AMD 30 million"
+        }
+       ]
+      },
+      {
+       "value": "40.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "offline"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 30 – 50 million"
+        }
+       ]
+      },
+      {
+       "value": "50.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "offline"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 50 – 100 million"
+        }
+       ]
+      },
+      {
+       "value": "40.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "offline"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Regions"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "Up to AMD 30 million"
+        }
+       ]
+      },
+      {
+       "value": "50.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "offline"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Regions"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 30 – 50 million"
+        }
+       ]
+      },
+      {
+       "value": "60.0",
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "offline"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Regions"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 50 – 100 million"
+        }
+       ]
+      }
+     ]
+    },
+    "income_verification_required": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": {
+      "default_required": false,
+      "exceptions": []
+     }
+    }
+   }
+  },
+  "mortgage_online": {
+   "pdfs_added": [
+    "mortgage_personal_online_purchase_eng.pdf",
+    "mortgage_personal_online_secondary_purchase_eng.pdf",
+    "terms_mortgage_lending_campaign_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "product_name"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "100000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "50000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "13.83",
+        "max": "15.65",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.37",
+        "max": "16.67",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 61,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": "10",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        }
+       ]
+      },
+      {
+       "value": "20",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        }
+       ]
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "64"
+     ],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 64,
+        "measured_at": "at application"
+       },
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "by the time of expiry of loan agreement"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "collateral": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "description": "The loan is secured by the real estate being purchased.",
+        "applicable": true
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        }
+       ]
+      },
+      {
+       "value": {
+        "description": "The loan is secured by the apartment purchased.",
+        "applicable": true
+       },
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        }
+       ]
+      }
+     ]
+    },
+    "ltv_pct": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": "90",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "up to 240 months"
+        }
+       ]
+      },
+      {
+       "value": "80",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "above 240 months"
+        }
+       ]
+      },
+      {
+       "value": "70",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "up to AMD 30 million"
+        },
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "without creditworthiness assessment"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        }
+       ]
+      },
+      {
+       "value": "60",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "up to AMD 30 million"
+        },
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "without creditworthiness assessment"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "regions of Armenia"
+        }
+       ]
+      },
+      {
+       "value": "60",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 30--50 million"
+        },
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "without creditworthiness assessment"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "Yerevan"
+        }
+       ]
+      },
+      {
+       "value": "50",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "primary market"
+        },
+        {
+         "dimension": "amount_range",
+         "operator": null,
+         "value": "AMD 30--50 million"
+        },
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "without creditworthiness assessment"
+        },
+        {
+         "dimension": "location",
+         "operator": null,
+         "value": "regions of Armenia"
+        }
+       ]
+      },
+      {
+       "value": "80",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240 months"
+        }
+       ]
+      },
+      {
+       "value": "70",
+       "conditions": [
+        {
+         "dimension": "property_market",
+         "operator": null,
+         "value": "secondary market"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "above 240 months"
+        }
+       ]
+      }
+     ]
+    },
+    "property_market": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mixed"
+    }
+   }
+  },
+  "mortgage_primary": {
+   "pdfs_added": [
+    "mortgage_personal_purchase_eng.pdf",
+    "terms_flexible_mortgage_eng.pdf",
+    "terms_mortgage_lending_campaign_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "collateral",
+    "creditworthiness_assessment_required",
+    "down_payment_pct",
+    "income_verification_required",
+    "ltv_pct",
+    "product_name",
+    "property_market",
+    "property_requirements",
+    "required_documents"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ],
+    "required_documents": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "property_market": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "down_payment_pct": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "ltv_pct": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "collateral": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "income_verification_required": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "creditworthiness_assessment_required": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "property_requirements": [
+     "answer does not match the response schema: 1 error(s)"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "150000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "100000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "For online refinancing"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "13.5",
+        "max": "13.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.0",
+        "max": "11.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.5",
+        "max": "8.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 8% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 7% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.25% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "online refinancing"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.39",
+        "max": "15.76",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.6",
+        "max": "13.56",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.86",
+        "max": "10.71",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.35",
+        "max": "15.74",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "online refinancing"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "10.47",
+        "max": "12.39",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "online refinancing"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.3",
+        "max": "10.12",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "online refinancing"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of loan agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "borrower"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "co-borrower or guarantor"
+        }
+       ]
+      }
+     ]
+    },
+    "collateral": {
+     "outcome": "review"
+    },
+    "ltv_pct": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "review"
+    }
+   }
+  },
+  "mortgage_renovation": {
+   "pdfs_added": [
+    "mortage_personal_renovation_eng.pdf",
+    "mortgage_commercial_renovation_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "income_verification_required",
+    "product_name"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ],
+    "income_verification_required": [
+     "income verification cannot be inferred from creditworthiness assessment; explicit income-document evidence is required"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "mortgage"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "150000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000",
+         "max": "100000000",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "refinance"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000",
+         "max": "300000",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.0",
+        "max": "14.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.5",
+        "max": "11.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.0",
+        "max": "9.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 6% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Adjustable fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 8.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Adjustable fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 7.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Adjustable fixed"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": "Fixed component 5.75% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online"
+        },
+        {
+         "dimension": "purpose",
+         "operator": null,
+         "value": "refinance"
+        },
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "rate_type",
+         "operator": null,
+         "value": "Adjustable fixed"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.95",
+        "max": "16.21",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "12.15",
+        "max": "13.95",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.4",
+        "max": "11.1",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.93",
+        "max": "16.19",
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.02",
+        "max": "12.78",
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.84",
+        "max": "10.51",
+        "rate_type": "variable",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-240"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 240,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of loan agreement"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "property_market": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "renovation"
+    }
+   }
+  },
+  "mortgage_secondary_market": {
+   "pdfs_added": [
+    "mortage_personal_purchase_Secondary_eng.pdf",
+    "terms_mortgage_lending_campaign_eng.pdf",
+    "Loan_tariffs_eng.pdf",
+    "Floating_Agreement_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "category",
+    "collateral",
+    "creditworthiness_assessment_required",
+    "down_payment_pct",
+    "formal_terms_names",
+    "income_verification_required",
+    "ltv_pct",
+    "product_name",
+    "property_market",
+    "property_requirements",
+    "required_documents"
+   ],
+   "review_issues": {
+    "product_name": [
+     "product_name must be anchored to the canonical product page; put linked document titles in formal_terms_names"
+    ],
+    "formal_terms_names": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "category": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "required_documents": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "property_market": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "down_payment_pct": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "ltv_pct": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "collateral": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "income_verification_required": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "creditworthiness_assessment_required": [
+     "answer does not match the response schema: 1 error(s)"
+    ],
+    "property_requirements": [
+     "answer does not match the response schema: 1 error(s)"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "review"
+    },
+    "category": {
+     "outcome": "review"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000.0",
+         "max": "150000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "3000000.0",
+         "max": "100000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000.0",
+         "max": "300000.0",
+         "currency": "USD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "5000.0",
+         "max": "300000.0",
+         "currency": "EUR"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.0",
+        "max": "14.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.5",
+        "max": "11.5",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.0",
+        "max": "9.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 6% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 8.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 7.5% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": null,
+        "max": null,
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": "Fixed component 5.75% + variable component (base rate)"
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min": "14.97",
+        "max": "17.21",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "12.17",
+        "max": "15.39",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "9.42",
+        "max": "12.45",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "60"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "14.92",
+        "max": "17.17",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "11.03",
+        "max": "14.18",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "USD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "8.85",
+        "max": "11.84",
+        "rate_type": "mixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "term_range",
+         "operator": null,
+         "value": "61-360"
+        },
+        {
+         "dimension": "channel",
+         "operator": null,
+         "value": "online refinance loans"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "EUR"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": 60,
+        "max_months": 360,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "down_payment_pct": {
+     "outcome": "review"
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 70,
+        "measured_at": "at the time of expiry of loan agreement"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "ltv_pct": {
+     "outcome": "review"
+    },
+    "property_market": {
+     "outcome": "review"
+    }
+   }
+  },
+  "online_consumer_finance": {
+   "pdfs_added": [
+    "Leaflet_consumer_finance_eng.pdf",
+    "basic_conditions_of_installment_financing-service_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "purpose",
+    "variants"
+   ],
+   "review_issues": {
+    "variants": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ],
+    "purpose": [
+     "citation quote is not present in the supplied evidence excerpt"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Online consumer finance"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "consumer_loan"
+    },
+    "loan_amount": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "1.8E+6",
+      "2E+5",
+      "6E+6"
+     ],
+     "value": [
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "50000.0",
+         "max": "1500000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "Online consumer finance main page"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "50000.0",
+         "max": "6000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_goods"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "50000.0",
+         "max": "1800000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_services"
+        }
+       ]
+      },
+      {
+       "value": {
+        "type": "absolute",
+        "range": {
+         "min": "200000.0",
+         "max": "6000000.0",
+         "currency": "AMD"
+        }
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_solar_panels_and_water_heaters"
+        }
+       ]
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "0",
+      "15.5",
+      "21.5"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "17.0",
+        "max": "17.0",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "The offer is valid from 15.04.26 to 12.01.27"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "0.0",
+        "max": "21.5",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_goods"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "0.0",
+        "max": "21.5",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_services"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "0.0",
+        "max": "15.5",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_solar_panels_and_water_heaters"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "0",
+      "17",
+      "24"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "18.1",
+        "max": "18.4",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "The offer is valid from 15.04.26 to 12.01.27"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "0.0",
+        "max": "24.0",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_goods"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "0.0",
+        "max": "24.0",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_services"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "0.0",
+        "max": "17.0",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_solar_panels_and_water_heaters"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "6E+1",
+      "96"
+     ],
+     "value": [
+      {
+       "value": {
+        "min_months": 6,
+        "max_months": 24,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "Online consumer finance main page"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 6,
+        "max_months": 60,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_goods"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 6,
+        "max_months": 24,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_services"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_months": 6,
+        "max_months": 96,
+        "indefinite": false,
+        "end_condition": null
+       },
+       "conditions": [
+        {
+         "dimension": "variant_id",
+         "operator": null,
+         "value": "purchase_of_solar_panels_and_water_heaters"
+        }
+       ]
+      }
+     ]
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 20,
+        "max_age": 66,
+        "measured_at": null
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "collateral": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "description": "The purchased product serves as collateral",
+        "applicable": true
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "repayment": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "method": "annuity",
+        "description": "the total of the principal and interest amounts is repaid in equal monthly installments"
+       },
+       "conditions": []
+      }
+     ]
+    }
+   }
+  },
+  "overdraft": {
+   "pdfs_added": [
+    "Overdraft_unsecured_eng.pdf",
+    "unsecured_overdraft_eng.pdf",
+    "Loan_tariffs_eng.pdf"
+   ],
+   "pdfs_missing": [],
+   "review_items": [
+    "fees"
+   ],
+   "review_issues": {
+    "fees": [
+     "cited quotes do not contain the value's numbers 0.05, 0.1, 10000, 50000; quote the text that states them"
+    ]
+   },
+   "reused_batches": 0,
+   "fields": {
+    "product_name": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "Overdraft"
+    },
+    "category": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "overdraft"
+    },
+    "credit_limit": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "1E+7"
+     ],
+     "value": [
+      {
+       "type": "absolute",
+       "range": {
+        "min": "100000",
+        "max": "100000000",
+        "currency": "AMD"
+       }
+      },
+      {
+       "type": "absolute",
+       "range": {
+        "min": "100000",
+        "max": "15000000",
+        "currency": "AMD"
+       }
+      },
+      {
+       "type": "absolute",
+       "range": {
+        "min": "300000",
+        "max": "10000000",
+        "currency": "AMD"
+       }
+      },
+      {
+       "type": "salary_multiple",
+       "min_multiple": null,
+       "max_multiple": "4"
+      }
+     ]
+    },
+    "interest_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "15"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "21.0",
+        "max": "21.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Master Card Standard Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "20.0",
+        "max": "20.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital,Mastercard World/VISA Platinum, VISA Platinum Digital/ Mastercard World Digital, Visa Signature , Visa Signature Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "15.0",
+        "max": "21.0",
+        "rate_type": "fixed",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "scoring-based loans or loans to workers of specific industries"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "effective_rate": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [
+      "16.06"
+     ],
+     "value": [
+      {
+       "value": {
+        "min": "23.13",
+        "max": "23.13",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Master Card Standard Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "21.92",
+        "max": "21.92",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "card_tier",
+         "operator": null,
+         "value": "Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital,Mastercard World/VISA Platinum, VISA Platinum Digital/ Mastercard World Digital, Visa Signature , Visa Signature Digital"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min": "16.06",
+        "max": "23.13",
+        "rate_type": "unknown",
+        "basis": "annual",
+        "formula": null
+       },
+       "conditions": [
+        {
+         "dimension": "other",
+         "operator": null,
+         "value": "scoring-based loans or loans to workers of specific industries"
+        },
+        {
+         "dimension": "currency",
+         "operator": null,
+         "value": "AMD"
+        }
+       ]
+      }
+     ]
+    },
+    "term": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_months": null,
+        "max_months": null,
+        "indefinite": true,
+        "end_condition": "on_demand"
+       },
+       "conditions": []
+      }
+     ]
+    },
+    "revolving": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": true
+    },
+    "linked_account_or_card": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": "debit card"
+    },
+    "age_requirements": {
+     "outcome": "match",
+     "problems": [],
+     "extra_numbers": [],
+     "value": [
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 65,
+        "measured_at": "at the time of expiry of the loan agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "borrower"
+        }
+       ]
+      },
+      {
+       "value": {
+        "min_age": 18,
+        "max_age": 65,
+        "measured_at": "at the time of expiry of the agreement"
+       },
+       "conditions": [
+        {
+         "dimension": "borrower_type",
+         "operator": null,
+         "value": "co-borrower or guarantor"
+        }
+       ]
+      }
+     ]
+    },
+    "fees": {
+     "outcome": "review"
+    }
+   }
+  }
+ },
+ "extractor": "gemini",
+ "model": "gemini-3.7-flash",
+ "evidence_mode": "full",
+ "max_repairs_per_run": 1,
+ "pdfs": true,
+ "totals": {
+  "match": 104,
+  "review": 16
+ },
+ "rerun": {
+  "calls": 0,
+  "spent_usd": 0.0
+ },
+ "usage": {
+  "calls": 50,
+  "refused": 3,
+  "input_tokens": 1383023,
+  "output_tokens": 137554,
+  "thinking_tokens": 1011,
+  "spent_usd": 1.5569
+ },
+ "rescored_from": "extraction-check-after.json"
+}

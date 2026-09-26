@@ -244,6 +244,9 @@ class OfferingContext(DiscoveryModel):
     # links to another offering's page is that offering's); left out of the
     # prompt JSON.
     other_offerings: tuple[OtherOffering, ...] = Field(default=(), exclude=True)
+    # The catalog's category (consumer_loan, overdraft, credit_line, mortgage):
+    # extraction asks that category's fields. Left out of the discovery prompt.
+    category: str | None = Field(default=None, exclude=True)
 
     @classmethod
     def from_catalog_entry(
@@ -267,6 +270,7 @@ class OfferingContext(DiscoveryModel):
             names=tuple(dict.fromkeys(name for name in names if name))[:20],
             page_heading=heading,
             page_summary=summary,
+            category=entry.category.value if entry.category else None,
             other_offerings=tuple(
                 OtherOffering(
                     offering_id=other.offering_id.value,

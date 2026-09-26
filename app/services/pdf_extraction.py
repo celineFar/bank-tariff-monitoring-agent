@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from collections import OrderedDict
 from collections.abc import Sequence
 
@@ -51,6 +52,7 @@ from app.services.pdf_admission import assess_pdf_metadata
 from app.services.pdf_input_probe import probe_pdf_input
 from app.services.pdf_rasterizer import PageRasterizer
 from app.services.scalar_normalizer import extract_scalar_candidates
+from app.services.table_normalizer import structure_text_table
 from app.services.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -795,15 +797,49 @@ def _normalize(
         for index, item in enumerate(page.tables):
             table_id = f"{plan.document_id}:page:{page.page_number}:table:{index}"
             table_ref = SourceReference(source_item_id=table_id, locator=locator)
+            # Header rows as fields when the model gave them (SE3); else its one
+            # header row, unless that row is a placeholder. Either way only a
+            # row that reads as a header names columns.
+            header_rows = item.header_rows or (
+                (item.headers,)
+                if item.headers
+                and not all(re.fullmatch(r"Column \d+", h) for h in item.headers)
+                else ()
+            )
+            structure = structure_text_table(
+                header_rows, tuple(row.cells for row in item.rows)
+            )
             rows = tuple(
                 NormalizedTableRow(
                     id=f"{table_id}:row:{row_index}",
                     cells=tuple(
                         _pdf_cell(
                             cell, f"{table_id}:row:{row_index}:cell:{column}", locator
+                        ).model_copy(
+                            update={
+                                "column_path": structure.cell_paths[row_index][column]
+                            }
                         )
                         for column, cell in enumerate(row.cells)
                     ),
+                    section=(
+                        normalize_text(item.row_groups[row_index]) or None
+                        if row_index < len(item.row_groups)
+                        else None
+                    ),
+                    label_path=tuple(
+                        dict.fromkeys(
+                            text
+                            for cell in row.cells[: structure.stub]
+                            if (text := normalize_text(cell))
+                        )
+                    ),
+                    continues=(
+                        f"{table_id}:row:{structure.continues[row_index]}"
+                        if structure.continues[row_index] is not None
+                        else None
+                    ),
+                    qualifies=structure.qualifies[row_index],
                 )
                 for row_index, row in enumerate(item.rows)
             )
@@ -812,6 +848,8 @@ def _normalize(
                     id=table_id,
                     title=normalize_text(item.title) if item.title else None,
                     headers=tuple(normalize_text(header) for header in item.headers),
+                    stub_columns=structure.stub,
+                    column_paths=structure.column_paths,
                     rows=rows,
                     notes=tuple(
                         NormalizedNote(

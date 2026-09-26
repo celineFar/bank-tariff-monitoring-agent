@@ -37,7 +37,7 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.source_discovery.classifier_backoff_base_seconds == 5.0
     assert settings.source_discovery.model_name == "gemini-3.1-flash-lite"
     assert settings.source_discovery.fallback_model_names == ("gemini-3.5-flash-lite",)
-    assert settings.semantic_extraction.fallback_model_names == ()
+    assert settings.semantic_extraction.fallback_model_names == ("gemini-3.8-flash",)
     assert settings.source_discovery.max_price_per_million_tokens_usd == 2.5
     assert settings.semantic_extraction.thinking_budget == 0
     assert settings.semantic_extraction.max_repairs_per_run == 3

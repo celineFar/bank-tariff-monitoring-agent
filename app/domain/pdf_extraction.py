@@ -193,7 +193,12 @@ class PdfModelItem(BaseModel):
     heading_path: list[str]
     title: str
     headers: list[str]
+    # Every header row, top to bottom, one entry per column (SE3): the table's
+    # header hierarchy as fields, not as text the model has to repeat.
+    header_rows: list[list[str]] = Field(default_factory=list)
     rows: list[list[str]]
+    # Per row, the group it falls under (a merged label cell or a group row).
+    row_groups: list[str] = Field(default_factory=list)
     notes: list[str]
 
 
@@ -214,7 +219,10 @@ class PdfExtractedTableRow(PdfExtractionModel):
 class PdfExtractedTable(PdfExtractionModel):
     title: str | None = Field(default=None, max_length=2000)
     headers: tuple[str, ...] = Field(default=(), max_length=50)
+    header_rows: tuple[tuple[str, ...], ...] = Field(default=(), max_length=10)
     rows: tuple[PdfExtractedTableRow, ...] = Field(default=(), max_length=1000)
+    # One per row when given; stored transcriptions from before SE3 have none.
+    row_groups: tuple[str, ...] = Field(default=(), max_length=1000)
     notes: tuple[str, ...] = Field(default=(), max_length=100)
 
     @model_validator(mode="after")

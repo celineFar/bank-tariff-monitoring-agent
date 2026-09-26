@@ -57,8 +57,8 @@ class EnvironmentSettings(BaseSettings):
     acquisition_freshness_hours: float = 1.0
     acquisition_baseline_max_pdf_link_drop: float = 0.5
     acquisition_baseline_max_main_content_drop: float = 0.6
-    pdf_extraction_schema_version: str = "2"
-    pdf_extraction_prompt_version: str = "2"
+    pdf_extraction_schema_version: str = "3"
+    pdf_extraction_prompt_version: str = "3"
     pdf_extraction_model_name: str = "gemini-3.1-flash-lite"
     pdf_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
     pdf_extraction_max_price_per_million_tokens_usd: float = 1.5
@@ -114,14 +114,20 @@ class EnvironmentSettings(BaseSettings):
         "gemini-3.5-flash-lite",
     )
     source_discovery_max_price_per_million_tokens_usd: float = 2.5
-    semantic_extraction_schema_version: str = "5"
-    semantic_extraction_prompt_version: str = "5"
-    semantic_extraction_max_evidence_chars_per_item: int = 5000
-    semantic_extraction_max_chars_per_batch: int = 20_000
-    semantic_extraction_max_items_per_batch: int = 20
+    semantic_extraction_schema_version: str = "6"
+    semantic_extraction_prompt_version: str = "6"
+    semantic_extraction_evidence_mode: str = "full"
+    semantic_extraction_max_packet_chars: int = 200_000
+    semantic_extraction_budget_chars: int = 16_000
     semantic_extraction_thinking_budget: int = 0
+    semantic_extraction_max_output_tokens: int = 16_384
     semantic_extraction_max_repairs_per_run: int = 3
-    semantic_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
+    semantic_extraction_max_concurrent_calls: int = 3
+    # Probed 2026-09-26: answers this project's key; gemini-2.5-flash does not
+    # (404, retired for new users). Tried per call when MODEL_NAME fails (SE25).
+    semantic_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
+        "gemini-3.8-flash",
+    )
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     review_admin_token: SecretStr | None = None

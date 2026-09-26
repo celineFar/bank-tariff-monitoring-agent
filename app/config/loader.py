@@ -165,13 +165,13 @@ def load_settings(
         semantic_extraction=SemanticExtractionSettings(
             schema_version=raw.semantic_extraction_schema_version,
             prompt_version=raw.semantic_extraction_prompt_version,
-            max_evidence_chars_per_item=(
-                raw.semantic_extraction_max_evidence_chars_per_item
-            ),
-            max_chars_per_batch=raw.semantic_extraction_max_chars_per_batch,
-            max_items_per_batch=raw.semantic_extraction_max_items_per_batch,
+            evidence_mode=raw.semantic_extraction_evidence_mode,
+            max_packet_chars=raw.semantic_extraction_max_packet_chars,
+            budget_chars=raw.semantic_extraction_budget_chars,
             thinking_budget=raw.semantic_extraction_thinking_budget,
+            max_output_tokens=raw.semantic_extraction_max_output_tokens,
             max_repairs_per_run=raw.semantic_extraction_max_repairs_per_run,
+            max_concurrent_calls=raw.semantic_extraction_max_concurrent_calls,
             fallback_model_names=raw.semantic_extraction_fallback_model_names,
         ),
         hitl=HitlSettings(

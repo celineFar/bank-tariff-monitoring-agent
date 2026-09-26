@@ -14,6 +14,13 @@ seed. Every family and offering has exactly two localized term sets:
 - `hy`: Armenian primary name, aliases, synonyms, and optional Latin
   transliterations.
 
+Each offering may declare a `category` -- `consumer_loan`, `overdraft`, `credit_line` or
+`mortgage` -- which must belong to its family (`mortgage` for the mortgage family, one
+of the first three for consumer loans). Without one it is the family's own category.
+Semantic extraction asks exactly that category's fields (an overdraft's credit limit
+and grace period, a mortgage's down payment), and a model answer naming another
+category goes to review. `overdraft` and `credit_line` declare theirs.
+
 The existing offering `display_name` and `language` fields remain available to the
 monitoring/indexing pipeline. `display_name` must match the primary English localized
 name after normalization. URLs remain acquisition inputs, not product identifiers.

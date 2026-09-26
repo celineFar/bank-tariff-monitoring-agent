@@ -1,0 +1,35 @@
+seed                             product       items chars own_chars in_batches
+consumer_standard                consumer_loan   183  22761     20539         82
+credit_line                      consumer_loan   169  39691     39221         75
+overdraft                        consumer_loan   240  60883     60883         81
+online_consumer_finance          consumer_loan    81   8245      8245         47
+mortgage_online                  mortgage        310  56897     56312         98
+mortgage_primary                 mortgage        429  94057     74689         92
+mortgage_secondary_market        mortgage        361  73871     54526         85
+mortgage_commercial              mortgage        242  46216     45648         88
+mortgage_construction            mortgage        380  85127     66112         96
+mortgage_renovation              mortgage        343  75013     55949         98
+mortgage_express                 mortgage        164  26927     26927         68
+mortgage_no_income_verification  mortgage         66   5282      5218         29
+mortgage_diaspora                mortgage         54   3183      3164         41
+
+ground-truth facts: 197 {'selected': 115, 'no_marker': 24, 'ranked_out': 18, 'sibling_excluded': 40}
+current-product facts reaching their batch: 115/157 (73%)
+  age_requirements         {'selected': 1}
+  application_channel      {'selected': 1, 'no_marker': 1}
+  collateral               {'selected': 1, 'ranked_out': 2}
+  credit_limit             {'selected': 2}
+  down_payment_pct         {'selected': 7, 'no_marker': 1}
+  effective_rate           {'selected': 21, 'no_marker': 1}
+  fees                     {'selected': 39, 'no_marker': 5, 'ranked_out': 11}
+  grace_period_days        {'selected': 1}
+  interest_rate            {'selected': 23, 'ranked_out': 4}
+  loan_amount              {'no_marker': 12, 'selected': 3}
+  repayment                {'no_marker': 3, 'selected': 4}
+  required_documents       {'selected': 5}
+  term                     {'selected': 7, 'no_marker': 1, 'ranked_out': 1}
+
+quota cut inside a score tie: 140 of 177 over-quota fields
+row->footnote references in batches: 151; note absent from the same batch: 72
+batch evidence chars 768-12520; prompt chars 24031-51296
+gemini attempts: 0
