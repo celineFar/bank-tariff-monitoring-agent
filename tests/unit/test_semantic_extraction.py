@@ -728,7 +728,15 @@ async def test_extraction_falls_back_when_the_primary_model_is_retired() -> None
 
     assert retired.calls >= 1
     assert successor.calls
-    assert result.model_name == "successor-model"
+    # Fallback is per call (SE25): every call the retired model could not answer
+    # was answered by its successor, and each output names the model that did.
+    answered = {
+        output.model_name
+        for output in result.raw_batch_outputs
+        if output.parsed_response is not None
+    }
+    assert answered == {"successor-model"}
+    assert result.review_items == ()
 
 
 @pytest.mark.asyncio

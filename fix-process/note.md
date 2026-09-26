@@ -40,3 +40,15 @@ decided, why, and where it matters.
   with pages 4, 7, 8, 9 or 7, 8, 9 empty in some runs and complete in others, even at
   temperature 0. `PDF_PAGE_EMPTY` reports it, but nothing re-asks for those pages.
   A per-page re-transcription of empty text pages belongs in the normalization plan.
+- **Extraction fallback model (plan Q8): `gemini-3.8-flash`.** The plan meant to ask the
+  user. Following the instruction not to ask, one small call each on 2026-09-26 chose:
+  - `gemini-3.8-flash`, `gemini-3.6-flash` and `gemini-3.5-flash-lite` answer this key;
+  - `gemini-2.5-flash` returns 404 (retired for new users).
+
+  `gemini-3.8-flash` is non-lite (a lite model is a weak fallback for extraction), in
+  the primary's price tier, and newer than it. It is the default in `environment.py`
+  and `.env.example`. `SemanticExtractionSettings` in `models.py` keeps an empty
+  default, so code that builds settings directly (tests) has no chain unless it asks
+  for one. On your earlier question "should the fallback list be empty by default?":
+  no. Each call now falls back on its own, so one configured successor costs nothing
+  until the primary fails.

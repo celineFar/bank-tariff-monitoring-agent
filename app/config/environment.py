@@ -122,7 +122,12 @@ class EnvironmentSettings(BaseSettings):
     semantic_extraction_thinking_budget: int = 0
     semantic_extraction_max_output_tokens: int = 16_384
     semantic_extraction_max_repairs_per_run: int = 3
-    semantic_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
+    semantic_extraction_max_concurrent_calls: int = 3
+    # Probed 2026-09-26: answers this project's key; gemini-2.5-flash does not
+    # (404, retired for new users). Tried per call when MODEL_NAME fails (SE25).
+    semantic_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = (
+        "gemini-3.8-flash",
+    )
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     review_admin_token: SecretStr | None = None

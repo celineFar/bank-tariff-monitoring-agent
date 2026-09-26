@@ -1554,13 +1554,57 @@ rewritten for Phases 1–7: evidence identity, modes, validation, persistence) a
 
 ### Phase 8: Execution and reliability (SE25, SE26, Q8)
 
-- [ ] SE25: per-call model fallback; save each successful call as it completes; an offering
+- [x] SE25: per-call model fallback; save each successful call as it completes; an offering
       fails only when a call fails on every model.
-- [ ] SE26: concurrent calls with `max_concurrent_calls` (3); repair budget spent on required
+- [x] SE26: concurrent calls with `max_concurrent_calls` (3); repair budget spent on required
       tariff fields first.
-- [ ] **Q8.** Probe candidate fallback models with one small call each (a few cents) and
+- [x] **Q8.** Probe candidate fallback models with one small call each (a few cents) and
       **ask the user** which to configure; set it in `.env.example` and
       [docs/configuration.md](../../docs/configuration.md).
+
+#### Phase 8 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 8: execution and reliability*.
+Unit suite **970 passed**, and **no `xfail` is left**: every Phase 0 regression test
+now passes.
+
+**SE25 (per-call fallback).**
+- `SemanticExtractionService._call` tries the primary model, with its own retries.
+  Then each fallback model, for that call only: first that model's cache (the key
+  includes the model), then a call.
+- The other calls stay with the primary. Each `RawBatchOutput` names the model that
+  answered, and answers are cached under that model.
+- `FallbackSemanticExtractionService` hands its other services' extractors to the
+  primary as its chain. The old whole-offering fallback is gone: a run fails only
+  when a call failed on every model, and then only if no call succeeded.
+- **"Save every successful call as it completes":** answers are saved after
+  validation, in the same `extract()`, before anything that can raise. Calls no
+  longer raise (failures are collected per call), so nothing successful is lost. A
+  save per call would have to cache before the validation status is known.
+- The older retired-model test now asserts that every answering output names the
+  successor, rather than the result's `model_name`. The run keeps the primary's name
+  as its cache namespace.
+
+**SE26.**
+- The calls run through `asyncio.gather` under a semaphore of
+  `max_concurrent_calls` (`SEMANTIC_EXTRACTION_MAX_CONCURRENT_CALLS`, default 3).
+  Results keep the plan's order.
+- Repairs are ranked before any is made: the required tariff fields first (interest
+  rate, effective rate, loan amount, credit limit, term, fees, category, product
+  name), then call order. The test breaks `purpose` in the first call and `fees` in a
+  later one, with a budget of one; it fails on the Phase 7 code and passes now.
+
+**Q8 (fallback model), decided without asking the user** (per the instruction; see
+[../note.md](../note.md)):
+- One tiny call each: `gemini-3.8-flash`, `gemini-3.6-flash` and
+  `gemini-3.5-flash-lite` answer this key; `gemini-2.5-flash` returns 404.
+- **`gemini-3.8-flash`** is the default of
+  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES`, in `environment.py`, `.env.example` and
+  `docs/configuration.md`. `models.py` keeps an empty default for code that builds
+  settings directly.
+- The config defaults test is updated.
+- Spend: 4 calls of a few tokens, under $0.001.
+
 
 ### Phase 9: Validation
 

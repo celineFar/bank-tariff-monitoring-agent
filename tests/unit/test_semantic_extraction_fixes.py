@@ -634,7 +634,6 @@ class _FailsCoreFinancial(ScriptedExtractor):
         return await super().extract(batch)
 
 
-@pytest.mark.xfail(strict=True, reason="SE25: fallback only when every batch fails")
 @pytest.mark.asyncio
 async def test_se25_one_failing_call_uses_the_fallback_for_that_call_only() -> None:
     bundle, discovery = _mortgage_bundle("Interest rate 14%; loan amount AMD 3,000,000")
@@ -1003,3 +1002,47 @@ async def test_se12_a_review_decision_is_asked_once_and_reused_until_evidence_ch
     third = await service.extract(changed, changed_discovery, retrieved_at=RETRIEVED_AT)
     assert ExtractionField.INTEREST_RATE in _reviewed_fields(third)
     assert not third.reused_review_decisions
+
+
+@pytest.mark.asyncio
+async def test_se26_repairs_go_to_rates_before_other_fields() -> None:
+    bundle, discovery = _mortgage_bundle("Interest rate 14% per annum; age 18-70")
+    bad = '[{"value":{"months":1}}]'  # a shape every contract rejects
+
+    class Unshaped(ScriptedExtractor):
+        def __init__(self):
+            super().__init__()
+            self.repaired: list[ExtractionField] = []
+
+        async def extract(self, batch):
+            if batch.repair_context_json:
+                self.repaired.extend(batch.fields)
+                return await ScriptedExtractor().extract(batch)
+            response = await super().extract(batch)
+            return ExtractionBatchResponse(
+                results=tuple(
+                    ModelFieldResult(
+                        field=item.field,
+                        status=ExtractionStatus.FOUND,
+                        value_json=bad,
+                        evidence=(
+                            ModelCitation(
+                                evidence_id=batch.evidence[-1].evidence_id,
+                                quote="14%",
+                            ),
+                        ),
+                    )
+                    if item.field in {ExtractionField.PURPOSE, ExtractionField.FEES}
+                    else item
+                    for item in response.results
+                )
+            )
+
+    extractor = Unshaped()
+    settings = SemanticExtractionSettings(max_repairs_per_run=1)
+    await _service(extractor, settings=settings).extract(
+        bundle, discovery, retrieved_at=RETRIEVED_AT
+    )
+    # `purpose` is broken in the first call and `fees` in a later one; the one
+    # repair allowed goes to the tariff field.
+    assert extractor.repaired == [ExtractionField.FEES]

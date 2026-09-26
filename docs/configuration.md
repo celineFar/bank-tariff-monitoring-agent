@@ -28,8 +28,11 @@ downloader receives `settings.http` and the PDF extraction service receives
   its own fallback list and price ceiling. Changing `MODEL_NAME` therefore does
   not change what those two stages spend. Semantic extraction stays on
   `MODEL_NAME` and accepts an optional comma-separated
-  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES`; it is empty by default, so the
-  stage behaves as a single model until a successor is configured. Every stage
+  `SEMANTIC_EXTRACTION_FALLBACK_MODEL_NAMES` (default `gemini-3.8-flash`, probed on
+  2026-09-26; set it empty for a single model). Extraction tries the chain per call:
+  a call the primary cannot answer after its retries goes to the next model, and
+  the other calls stay with the primary. `SEMANTIC_EXTRACTION_MAX_CONCURRENT_CALLS`
+  (default `3`) bounds how many of an offering's calls run at once. Every stage
   that names a model tries its configured chain in order before failing the
   offering, because providers retire model ids on their own schedule.
 - **Persistence:** `DATABASE_URL`, `SESSION_SERVICE_URI`, `ARTIFACT_TEMP_DIR`.

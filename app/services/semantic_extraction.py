@@ -75,7 +75,6 @@ from app.repositories.review_memory import ReviewDecisionMemory, result_fingerpr
 from app.services.adk_logging import suppress_handled_adk_exception_logs
 from app.services.discovery_classifier import (
     ClassifierUsage,
-    is_model_fallback_error,
     is_retryable_api_error,
 )
 from app.services.extraction_evidence import build_evidence_catalog
@@ -280,6 +279,16 @@ class ExtractorOutput:
     """A parsed response with the exact text it was parsed from."""
 
     response: ExtractionBatchResponse
+    raw_response: str | None = None
+
+
+@dataclass(frozen=True)
+class _CallOutcome:
+    batch: ExtractionBatch
+    response: ExtractionBatchResponse | None
+    raw_outputs: tuple[RawBatchOutput, ...]
+    model_name: str
+    error: Exception | None = None
     raw_response: str | None = None
 
 
@@ -490,6 +499,8 @@ class SemanticExtractionService:
         self._model_name = model_name
         self._usage_repository = usage_repository
         self._review_memory = review_memory
+        # Models tried, in order, for a call the primary model could not answer.
+        self._fallbacks: tuple[tuple[str, SemanticExtractor], ...] = ()
 
     @property
     def model_name(self) -> str:
@@ -566,7 +577,9 @@ class SemanticExtractionService:
             offering_id=discovery.offering_id,
         )
 
-    def prompt_fingerprint(self, batch: ExtractionBatch) -> str:
+    def prompt_fingerprint(
+        self, batch: ExtractionBatch, model_name: str | None = None
+    ) -> str:
         """The cache key (SE11): exactly what the call sends, and to whom."""
         generation = (
             f"temperature=0;thinking_budget={self._settings.thinking_budget};"
@@ -574,7 +587,7 @@ class SemanticExtractionService:
         )
         material = "\x1e".join(
             (
-                self._model_name,
+                model_name or self._model_name,
                 generation,
                 SEMANTIC_EXTRACTION_INSTRUCTION,
                 build_extraction_prompt(batch),
@@ -623,71 +636,36 @@ class SemanticExtractionService:
                 "Reusing %s cached semantic-extraction batch(es)",
                 len(plan.cache_hits),
             )
-        for batch_index, batch in enumerate(plan.batches, start=1):
-            assert self._extractor is not None
-            logger.info(
-                "Submitting semantic-extraction batch %s/%s: %s "
-                "(%s field(s), %s evidence item(s))",
-                batch_index,
-                batch_count,
-                batch.id,
-                len(batch.fields),
-                len(batch.evidence),
-            )
-            try:
-                raw_response_model, raw_text = _unpack(
-                    await self._extractor.extract(batch)
-                )
-                response, normalization_notes = _normalize_response_contract(
-                    raw_response_model
-                )
-            except Exception as exc:
-                raw_response = getattr(exc, "raw_response", None)
-                execution_failures.append((batch, exc, raw_response))
-                raw_outputs.append(
-                    RawBatchOutput(
-                        batch_id=batch.id,
-                        group=batch.group,
-                        model_name=plan.model_name,
-                        raw_response=raw_response or "",
-                        error=f"{type(exc).__name__}: {exc}",
-                    )
-                )
-                logger.warning(
-                    "Semantic-extraction batch %s could not be parsed: %s",
-                    batch.id,
-                    exc,
-                )
-                continue
-            logger.info(
-                "Completed semantic-extraction batch %s/%s: %s",
-                batch_index,
-                batch_count,
-                batch.id,
-            )
-            responses.append(response)
-            raw_outputs.append(
-                RawBatchOutput(
-                    batch_id=batch.id,
-                    group=batch.group,
-                    model_name=plan.model_name,
-                    raw_response=raw_text
-                    or raw_response_model.model_dump_json(indent=2),
-                    parsed_response=raw_response_model,
-                    normalized_response=response,
-                    normalization_notes=normalization_notes,
-                )
-            )
-        if plan.batches and not responses and not plan.cache_hits:
-            raise execution_failures[-1][1]
-        failed_batch_ids = {item[0].id for item in execution_failures}
-        fresh_pairs = tuple(
-            zip(
-                (batch for batch in plan.batches if batch.id not in failed_batch_ids),
-                responses,
-                strict=True,
+        assert self._extractor is not None or not plan.batches
+        semaphore = asyncio.Semaphore(self._settings.max_concurrent_calls)
+
+        async def bounded(index: int, batch: ExtractionBatch) -> _CallOutcome:
+            async with semaphore:
+                return await self._call(plan, batch, index, batch_count)
+
+        # An offering's calls run concurrently, a few at a time (SE26); results
+        # keep the plan's order.
+        outcomes = await asyncio.gather(
+            *(
+                bounded(index, batch)
+                for index, batch in enumerate(plan.batches, start=1)
             )
         )
+        answered_by: dict[str, str] = {}
+        answered_batches: list[ExtractionBatch] = []
+        for outcome in outcomes:
+            raw_outputs.extend(outcome.raw_outputs)
+            if outcome.response is None:
+                execution_failures.append(
+                    (outcome.batch, outcome.error, outcome.raw_response)
+                )
+                continue
+            responses.append(outcome.response)
+            answered_batches.append(outcome.batch)
+            answered_by[outcome.batch.content_fingerprint] = outcome.model_name
+        if plan.batches and not responses and not plan.cache_hits:
+            raise execution_failures[-1][1]
+        fresh_pairs = tuple(zip(answered_batches, responses, strict=True))
         # A cached answer had its repair chance when it was fresh; repairing it
         # again every run would pay for the same failure each time (SE12).
         fresh_pairs, repair_outputs = await self._repair_suspicious_fields(
@@ -704,18 +682,22 @@ class SemanticExtractionService:
             plan,
             batch_pairs,
             execution_failures,
+            fresh_ids={batch.id for batch in answered_batches},
         )
-        if cache_values:
+        # Each answer is cached under the model that gave it (SE25).
+        by_model: dict[str, list[tuple[str, ExtractionBatchResponse, str]]] = {}
+        for fingerprint, response, status in cache_values:
+            model = answered_by.get(fingerprint, plan.model_name)
+            by_model.setdefault(model, []).append((fingerprint, response, status))
+        for model, values in by_model.items():
             await self._repository.save(
                 product=plan.product,
                 schema_version=plan.schema_version,
                 prompt_version=plan.prompt_version,
-                model_name=plan.model_name,
-                values=[
-                    (fingerprint, response) for fingerprint, response, _ in cache_values
-                ],
+                model_name=model,
+                values=[(fingerprint, response) for fingerprint, response, _ in values],
                 validation_statuses={
-                    fingerprint: status for fingerprint, _, status in cache_values
+                    fingerprint: status for fingerprint, _, status in values
                 },
             )
         validated_fields, review_items, reused = await self._apply_review_memory(
@@ -770,6 +752,111 @@ class SemanticExtractionService:
                 for batch in (*plan.cached_batches, *plan.batches)
                 if batch.units_left_out
             },
+        )
+
+    async def _call(
+        self,
+        plan: SemanticExtractionPlan,
+        batch: ExtractionBatch,
+        index: int,
+        count: int,
+    ) -> _CallOutcome:
+        """One call, with the configured fallback models for this call only.
+
+        After the primary model's own retries, each fallback model is tried in
+        turn -- its cache first -- so one failing call neither sinks the
+        offering nor sends the other calls to another model (SE25).
+        """
+        assert self._extractor is not None
+        chain = ((self._model_name, self._extractor), *self._fallbacks)
+        outputs: list[RawBatchOutput] = []
+        error: Exception | None = None
+        raw_error_text: str | None = None
+        for position, (model, extractor) in enumerate(chain):
+            answering = (
+                batch
+                if position == 0
+                else batch.model_copy(
+                    update={
+                        "content_fingerprint": self.prompt_fingerprint(batch, model)
+                    }
+                )
+            )
+            logger.info(
+                "Submitting semantic-extraction call %s/%s: %s to %s "
+                "(%s field(s), %s evidence item(s))",
+                index,
+                count,
+                batch.id,
+                model,
+                len(batch.fields),
+                len(batch.evidence),
+            )
+            if position > 0:
+                cached = await self._repository.get_exact(
+                    product=plan.product,
+                    schema_version=plan.schema_version,
+                    prompt_version=plan.prompt_version,
+                    model_name=model,
+                    fingerprints=[answering.content_fingerprint],
+                )
+                if answering.content_fingerprint in cached:
+                    response = cached[answering.content_fingerprint]
+                    outputs.append(
+                        RawBatchOutput(
+                            batch_id=batch.id,
+                            group=batch.group,
+                            model_name=model,
+                            raw_response=response.model_dump_json(indent=2),
+                            parsed_response=response,
+                            normalized_response=response,
+                        )
+                    )
+                    return _CallOutcome(answering, response, tuple(outputs), model)
+            try:
+                raw_model, raw_text = _unpack(await extractor.extract(answering))
+                response, notes = _normalize_response_contract(raw_model)
+            except Exception as exc:
+                error = exc
+                raw_error_text = getattr(exc, "raw_response", None)
+                outputs.append(
+                    RawBatchOutput(
+                        batch_id=batch.id,
+                        group=batch.group,
+                        model_name=model,
+                        raw_response=raw_error_text or "",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                )
+                logger.warning(
+                    "Semantic-extraction call %s failed on %s: %s",
+                    batch.id,
+                    model,
+                    describe_failure(exc),
+                )
+                continue
+            logger.info(
+                "Completed semantic-extraction call %s/%s: %s on %s",
+                index,
+                count,
+                batch.id,
+                model,
+            )
+            outputs.append(
+                RawBatchOutput(
+                    batch_id=batch.id,
+                    group=batch.group,
+                    model_name=model,
+                    raw_response=raw_text or raw_model.model_dump_json(indent=2),
+                    parsed_response=raw_model,
+                    normalized_response=response,
+                    normalization_notes=notes,
+                )
+            )
+            return _CallOutcome(answering, response, tuple(outputs), model)
+        assert error is not None
+        return _CallOutcome(
+            batch, None, tuple(outputs), self._model_name, error, raw_error_text
         )
 
     async def _apply_review_memory(
@@ -863,7 +950,30 @@ class SemanticExtractionService:
         # Each repair is a full paid model call. A batch whose contract keeps failing
         # would otherwise repair every suspicious field on every run, so the budget is
         # spent on the first few and the rest fall through to human review.
-        repair_budget = self._settings.max_repairs_per_run
+        # The budget goes to the required tariff fields first, then the rest in
+        # call order (SE26), not to whichever call happens to come first.
+        needing: list[tuple[int, int, str, ExtractionField]] = []
+        for order, (batch, response) in enumerate(batch_pairs):
+            by_field_first: dict[ExtractionField, list[ModelFieldResult]] = {}
+            for item in response.results:
+                by_field_first.setdefault(item.field, []).append(item)
+            for field in batch.fields:
+                candidates = by_field_first.get(field, [])
+                if len(candidates) != 1 or _field_semantic_issues(
+                    batch, candidates[0], evidence_by_id, product=plan.product
+                ):
+                    priority = (
+                        _REPAIR_PRIORITY.index(field)
+                        if field in _REPAIR_PRIORITY
+                        else len(_REPAIR_PRIORITY)
+                    )
+                    needing.append((priority, order, batch.id, field))
+        allowed = {
+            (batch_id, field)
+            for _, _, batch_id, field in sorted(needing)[
+                : self._settings.max_repairs_per_run
+            ]
+        }
         repairs_skipped = 0
         for batch, response in batch_pairs:
             replacements: dict[ExtractionField, ModelFieldResult] = {}
@@ -894,10 +1004,9 @@ class SemanticExtractionService:
                     )
                 if not issues:
                     continue
-                if repair_budget <= 0:
+                if (batch.id, field) not in allowed:
                     repairs_skipped += 1
                     continue
-                repair_budget -= 1
                 repair_batch = _repair_batch(
                     batch,
                     field,
@@ -1607,6 +1716,17 @@ def _normalize_requirement_policy(value: Any) -> Any:
     return policy
 
 
+# Repairs are spent on these first, in this order (SE26).
+_REPAIR_PRIORITY = (
+    ExtractionField.INTEREST_RATE,
+    ExtractionField.EFFECTIVE_RATE,
+    ExtractionField.LOAN_AMOUNT,
+    ExtractionField.CREDIT_LIMIT,
+    ExtractionField.TERM,
+    ExtractionField.FEES,
+    ExtractionField.CATEGORY,
+    ExtractionField.PRODUCT_NAME,
+)
 # Fields whose list items are alternatives of one fact (a rate per currency),
 # not a union of separate items (documents, channels, fees): SE17.
 _ALTERNATIVE_FIELDS = frozenset(
@@ -1997,11 +2117,14 @@ def _validate_individual_fields(
     plan: SemanticExtractionPlan,
     batch_pairs: Sequence[tuple[ExtractionBatch, ExtractionBatchResponse]],
     execution_failures: Sequence[tuple[ExtractionBatch, Exception, str | None]],
+    *,
+    fresh_ids: set[str] | None = None,
 ) -> tuple[
     tuple[ValidatedFieldResult, ...],
     tuple[ExtractionReviewItem, ...],
     tuple[tuple[str, ExtractionBatchResponse, str], ...],
 ]:
+    fresh = fresh_ids if fresh_ids is not None else {batch.id for batch in plan.batches}
     evidence_by_id = {item.evidence_id: item for item in plan.evidence_catalog}
     validated: list[ValidatedFieldResult] = []
     reviews: list[ExtractionReviewItem] = []
@@ -2100,7 +2223,7 @@ def _validate_individual_fields(
                     response.model_dump_json(indent=2),
                 )
             )
-        if batch in plan.batches:
+        if batch.id in fresh:
             # Every fresh answer is kept, with its outcome (SE12).
             cache_values.append(
                 (
@@ -2594,17 +2717,29 @@ def _decode_value(result: ModelFieldResult) -> Any:
 
 
 class FallbackSemanticExtractionService:
-    """Try each configured extraction model in turn before failing the offering.
+    """Extraction with configured successor models, tried per call (SE25).
 
-    The same retirement that can end source discovery can end extraction, and
-    the chain is empty unless an operator configures one, so by default this
-    behaves exactly like the single service it wraps.
+    The first service is the primary. The others' extractors become its
+    fallback chain: a call the primary cannot answer after its retries goes to
+    the next model, the other calls stay with the primary, and every answer is
+    cached under the model that gave it. With no chain configured this is the
+    single service it wraps.
     """
 
     def __init__(self, services: Sequence[SemanticExtractionService]) -> None:
         if not services:
             raise ValueError("semantic extraction needs at least one model")
         self._services = tuple(services)
+        primary = self._services[0]
+        primary._fallbacks = tuple(
+            (service.model_name, service._extractor)
+            for service in self._services[1:]
+            if service._extractor is not None
+        )
+
+    @property
+    def model_name(self) -> str:
+        return self._services[0].model_name
 
     async def plan(
         self,
@@ -2624,19 +2759,6 @@ class FallbackSemanticExtractionService:
         retrieved_at: datetime,
         offering: OfferingContext | None = None,
     ) -> SemanticExtractionResult:
-        last = len(self._services) - 1
-        for index, service in enumerate(self._services):
-            try:
-                return await service.extract(
-                    bundle, discovery, retrieved_at=retrieved_at, offering=offering
-                )
-            except Exception as exc:
-                if index == last or not is_model_fallback_error(exc):
-                    raise
-                logger.warning(
-                    "Semantic-extraction model %s failed (%s); falling back to %s",
-                    service.model_name,
-                    describe_failure(exc),
-                    self._services[index + 1].model_name,
-                )
-        raise AssertionError("semantic-extraction model sequence exhausted")
+        return await self._services[0].extract(
+            bundle, discovery, retrieved_at=retrieved_at, offering=offering
+        )
