@@ -34,6 +34,7 @@ from app.domain.source_discovery import (
     DiscoveryPromptItem,
     DiscoveryScope,
     InformationRole,
+    MemberException,
     ModelSourceAssessment,
     OfferingContext,
     OtherOffering,
@@ -847,9 +848,71 @@ def _settle_temporal(
                 PeriodStatus.FUTURE: TemporalStatus.FUTURE,
                 PeriodStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
             }[dated]
+    if (
+        status in {TemporalStatus.POSSIBLY_STALE, TemporalStatus.FUTURE}
+        and (moved := _dates_of_a_few_members(assessment, candidate, status))
+        is not None
+    ):
+        return moved
     if status is assessment.temporal_status:
         return assessment
     return assessment.model_copy(update={"temporal_status": status})
+
+
+def _dates_of_a_few_members(
+    assessment: SourceAssessment,
+    candidate: DiscoveryCandidate,
+    status: TemporalStatus,
+) -> SourceAssessment | None:
+    """Stale or future because of a few members: move it onto those members.
+
+    A "Terms and conditions" part that lists links to old editions ("…
+    (effective from 30.03.26 to 31.05.26)") was called stale as a whole, from
+    the linked editions' dates, and excluded 19 current blocks with it (Phase 8).
+    When the dates or quoted words that make an item stale or future sit in
+    fewer than half of its members, the item is `unknown` and those members
+    become exceptions: old (or future) editions, not relevant today.
+    """
+    if len(candidate.members) < 2:
+        return None
+    markers = [
+        _normalized(text)
+        for text in (
+            *(period.raw for period in assessment.effective_periods),
+            assessment.temporal_evidence or "",
+        )
+        if text and text.strip()
+    ]
+    carriers = [
+        index
+        for index, member in enumerate(candidate.members, start=1)
+        if any(marker in _normalized(member.text) for marker in markers)
+    ]
+    if not carriers or len(carriers) * 2 >= len(candidate.members):
+        return None
+    excepted = {exception.member_id for exception in assessment.member_exceptions}
+    edition = (
+        ProductAssociation.HISTORICAL_VERSION
+        if status is TemporalStatus.POSSIBLY_STALE
+        else ProductAssociation.FUTURE_VERSION
+    )
+    added = tuple(
+        MemberException(
+            member_id=f"m{index}",
+            product_association=edition,
+            role=assessment.role,
+            relevance=Relevance.IRRELEVANT,
+            reason="Refers to another edition, dated outside today's terms.",
+        )
+        for index in carriers
+        if f"m{index}" not in excepted
+    )
+    return assessment.model_copy(
+        update={
+            "temporal_status": TemporalStatus.UNKNOWN,
+            "member_exceptions": (*assessment.member_exceptions, *added),
+        }
+    )
 
 
 _EVIDENCE_DATE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{2}|\d{4})\b")

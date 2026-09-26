@@ -146,7 +146,12 @@ The classifier extracts explicit effective periods. Content with no date is
 `temporal_evidence`, a quote from the item showing it, and an answer whose quote is
 missing or not found in the item becomes `unknown`. So does one whose quote carries
 dates that contradict it ("effective from 14.07.2026" read as future on
-26.09.2026). A "last updated" stamp is not an effective period. Dated periods then decide the status on
+26.09.2026). A "last updated" stamp is not an effective period.
+Effective periods are only the dates of the item's own content: when the dates or
+quoted words that make a section stale or future sit in fewer than half of its
+members (a "Terms and conditions" part that lists links to old editions), the
+section is `unknown` and those members become exceptions (an old or future
+edition, not relevant today). Dated periods then decide the status on
 the run's `as_of` date (the acquisition's retrieval date) for fresh and cached
 assessments alike, with the same rule PDF admission uses: current when a period
 covers the day, historical (`possibly_stale`) when all ended, future when all start

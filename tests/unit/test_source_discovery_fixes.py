@@ -1227,3 +1227,47 @@ async def test_every_batch_tells_the_model_what_day_it_is() -> None:
     from app.services.discovery_classifier import build_classifier_prompt
 
     assert '"as_of": "2026-09-26"' in build_classifier_prompt(classifier.batches[0])
+
+
+@pytest.mark.asyncio
+async def test_dates_of_a_few_linked_editions_do_not_make_the_section_stale() -> None:
+    page = _page(
+        _block("b0", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
+        *(
+            _block(f"b{index}", text, heading_path=("Primary", "Useful information"))
+            for index, text in enumerate(
+                (
+                    "Credit history and score: how the bank uses it.",
+                    "Terms of the loan for purchase of residential real estate",
+                    "Loan service fees",
+                    "Finance for All website",
+                    "Terms of the loan (effective from 30.03.26 to 31.05.26)",
+                ),
+                start=1,
+            )
+        ),
+    )
+    classifier = _Classifier(
+        temporal_status=TemporalStatus.CURRENT,
+        effective_periods=(
+            EffectivePeriod(
+                raw="effective from 30.03.26 to 31.05.26",
+                start=date(2026, 3, 30),
+                end=date(2026, 5, 31),
+            ),
+        ),
+    )
+
+    result = await _service(classifier).discover(
+        _bundle(page), _offering(), as_of=date(2026, 9, 26)
+    )
+
+    by_block = {
+        a.source_refs[0].source_item_id: a
+        for a in result.assessments
+        if a.scope is DiscoveryScope.BLOCK
+    }
+    assert by_block["b1"].temporal_status is TemporalStatus.UNKNOWN
+    assert by_block["b1"].relevance is Relevance.RELEVANT
+    assert by_block["b5"].product_association is ProductAssociation.HISTORICAL_VERSION
+    assert by_block["b5"].relevance is Relevance.IRRELEVANT

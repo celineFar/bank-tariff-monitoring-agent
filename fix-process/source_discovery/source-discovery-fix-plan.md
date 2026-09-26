@@ -2,8 +2,8 @@
 
 Date: 2026-09-26 · Branch: `fix/source-discovery` (from `integration/process-fixes` at `f5c4e44`) ·
 Status: **done** (Phases 0–8; commits on `fix/source-discovery`, not pushed). The hand labels
-are confirmed. After Phase 8, S03 fails on one own table and S04 on one disputed PDF, both
-naming questions for the user. Gemini spend for validation: **$0.78** of the ~$1 budget.
+are confirmed; Q10 and Q11 are settled. Final pass: S04 passes; S03 fails on two items
+(below). Gemini spend for validation: **$0.92** of the ~$1 budget.
 Deployment steps: [Deployment](#deployment).
 
 ## Scope
@@ -522,6 +522,8 @@ instruction or the code prevents it.
 | Q7 | Cross-sell cards: a deterministic rule? (after Phase 7) | **Yes**: a small section linking to another catalog offering's seed page is `related_product` by rule. | decided, **done** | S03, Phase 8 |
 | Q8 | The website-profile PDF: content check or skip list? | **Content check** of every transcribed PDF, no skip list (the user: the name says "terms and conditions", so a file-name list is the wrong tool). | decided, **done** | SD2, S04, Phase 8 |
 | Q9 | Fallback temperature | **Temperature 0 for every model.** The old exception was a misdiagnosis: `gemini-3.5-flash-lite` rejects `thinking_budget=0`, not temperature 0. | decided, **done** | SD14, Phase 8 |
+| Q10 | The construction offering covers commercial construction: alias or rename? | **Alias.** The catalog's English aliases gain "loan for construction of commercial real estate" and "commercial construction loan". | decided, **done** | S03, Phase 8 |
+| Q11 | `terms_flexible_mortgage_eng.pdf`: own terms or another product? | **Own terms, a conditional variant** (left to Claude by the user; decided from the PDF's text). Label corrected. | decided, **done** | S04, Phase 8 |
 
 **One-time effects on the first production run after deploy.**
 - `policy_version`/`prompt_version` go to `2` and the cache gains `offering_id`: every page is
@@ -1220,6 +1222,12 @@ single-call probes (model availability for Q2, schema bisection).
 - [x] Measure: cross-sell rule applied to round 2 (no Gemini); PDF content check on the
       44 kept PDFs ($0.025 ×2); construction page re-check ($0.009).
 - [x] Update scenarios S03, S04, docs, and this plan; write the deployment steps.
+- [x] Q10: catalog aliases for commercial construction; intent resolution checked on 8
+      questions; construction page re-checked.
+- [x] Q11: flexible-mortgage PDF read and relabelled `current_product`.
+- [x] Guard: dates or quotes found in fewer than half of a section's members make those
+      members, not the section, old or future editions; test.
+- [x] Final Gemini pass on all 13 seeds with the final code ($0.12); S03 and S04 re-run.
 
 #### Phase 8 notes (2026-09-26)
 
@@ -1275,13 +1283,60 @@ S04: fails only on the disputed flexible-mortgage PDF.
 **Spend.** $0.78 in all: Phase 7's $0.71, two content checks ($0.050), the construction
 re-check ($0.009), and single-call probes (under $0.01).
 
-**Remaining, for the user.**
-1. **The construction page's commercial table (S03).** The catalog names the offering
-   "Construction Mortgage"; the page covers residential and commercial construction. Adding
-   the commercial name to the offering's catalog aliases (or renaming it "Construction Loan")
-   would give the classifier the page's own scope.
-2. **The flexible-mortgage PDF (S04).** Is it the primary-market mortgage's own terms (a
-   variant with developer partners) or a separate programme? The label decides S04.
+**Q10 and Q11 (after review).**
+- **Alias (Q10).** `seed_catalog.yaml`: the construction offering's English aliases gain
+  "loan for construction of commercial real estate" and "commercial construction loan".
+  Intent resolution was checked on 8 questions against the old catalog: "loan for construction
+  of commercial real estate" now resolves to the construction offering (it was ambiguous);
+  "commercial mortgage rate" and "commercial property mortgage" still resolve to the
+  commercial mortgage; "commercial real estate loan" stays ambiguous (clarification), now
+  between the two mortgages instead of a consumer loan. A re-check of the construction page
+  ($0.011) turned its commercial table `current`.
+- **Flexible mortgage (Q11).** The PDF reads "Mortgage lending terms and conditions for
+  purchase of residential real estate at the primary market with flexible opportunities
+  offered by development companies…", offers developer-paid rate subsidies (0.5%–13.5%) or
+  down payments, and says "The rest of the terms and conditions are specified in the Terms"
+  (the home-mortgage terms). So it is the primary-market mortgage's own terms under a
+  condition, as both Gemini steps said; label corrected to `current_product`. Extraction's
+  variant-scope handling must keep its subsidised rate a conditional value.
+- **Section staleness from a few members.** The construction re-check excluded a 19-block
+  "Terms and conditions" part: Gemini put the linked old editions' dates ("effective from
+  30.03.26 to 31.05.26") in the section's `effective_periods`, and the SD5 date rule then
+  made the whole section stale. Now, when the dates or quoted words behind a stale or future
+  status sit in fewer than half of a section's members, the section is `unknown` and those
+  members become exceptions (old or future editions, not relevant). The instruction says
+  effective periods are only the item's own. Re-check: the page's `lost` 24 → 4 ($0.009).
+
+**Final pass** ([data/discovery-check-final.json](data/discovery-check-final.json); all 13
+seeds, final code and labels, $0.113 + $0.009 link selection):
+
+| | Baseline | Phase 7 round 2 | Final |
+|---|---|---|---|
+| `leak` | 29 | 7 | **1** |
+| `noise` | 377 | 3 | **2** |
+| `stale` | 77 | 6 | **1** |
+| `lost` | 1 | 24 | 36 |
+| Own tables current | 29 of 29 | 28 of 29 | 28 of 29 |
+| Express table correct on 4 pages | 0 of 4 | 4 of 4 | 4 of 4 |
+
+The `lost` rise is Gemini now excepting external links one by one (abcfinance.am,
+fininfo.am, the credit bureau, "Apply online", the branch map: about 28 blocks, no tariff
+values), plus 3 vehicle-insurance notes, and a few cases where Gemini is right against the
+coarse labels (an old-edition summary, cross-sell headings). Two real misses: the
+consumer-loan page's "Loan service fees" table called `related` (it has flipped between
+runs: `related` in the superseded run, `current` in the baseline and round 2), and the
+refinancing-campaign link on the primary page called a separate product.
+
+**Scenarios after Phase 8.** S01, S02, S04–S08 pass. S03 fails on the consumer-loan fee
+table and one cross-sell card heading (construction page); the Express table, the
+construction commercial table and all cross-sell cards are right.
+
+**Remaining.**
+1. The consumer-loan fee table's label is unstable across runs. The fee schedule applies to
+   every loan, so a deterministic rule ("a table titled like the loan fee schedule is
+   `current_product`") would settle it; not built, since titles vary ("Loan service fees",
+   "Loans service fee").
+2. A cross-sell card's own heading sits in the section above the card and is decided with it.
 
 ## Deployment
 

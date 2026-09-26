@@ -9,15 +9,16 @@ recorded Phase 7 Gemini run.
 |---|---|---|
 | S01 | [Offline test suite](scenarios/S01-offline-test-suite.md) | **PASS** (195 passed, 0 skipped) |
 | S02 | [Deterministic defects gone on the live pages](scenarios/S02-confirmed-bugs-fixed.md) | **PASS** |
-| S03 | [Sibling products told apart](scenarios/S03-offering-identity.md) | **FAIL**: Express table right on 4 of 4; 0 leaks (was 29) after the Phase 8 cross-sell rule; 28 of 29 own tables (construction's commercial table) |
-| S04 | [PDF selection, then content check](scenarios/S04-pdf-selection.md) | **FAIL**: 0 own PDFs lost; website-profile ×3 and an expired offer now excluded; 1 disputed keep (flexible mortgage) |
+| S03 | [Sibling products told apart](scenarios/S03-offering-identity.md) | **FAIL**: Express and construction commercial tables right; 1 leak (a cross-sell heading, was 29); consumer-loan fee table `related` |
+| S04 | [PDF selection, then content check](scenarios/S04-pdf-selection.md) | **PASS**: 0 own PDFs lost; website-profile ×3 and an expired offer excluded |
 | S05 | [Cache re-run free; one new block, one item](scenarios/S05-cache.md) | **PASS** |
 | S06 | [Dated offer expires without a call](scenarios/S06-dated-campaign.md) | **PASS** |
 | S07 | [Retry, split, keep the rest, next model](scenarios/S07-bad-response.md) | **PASS** |
 | S08 | [RAG index holds only selected content](scenarios/S08-projection.md) | **PASS** |
 
-**Phase 8 (after review).** The cross-sell rule and the PDF content check leave one wrong own
-table and one disputed PDF; both are naming questions for the user (Phase 8 notes).
+**Phase 8 (after review).** With the cross-sell rule, the PDF content check, the catalog alias
+and the corrected flexible-mortgage label, S04 passes; S03 fails on one cross-sell heading and
+the consumer-loan fee table, whose label flips between runs (Phase 8 notes).
 
 **The two failures are Gemini judgements the plan's code cannot force**: which cross-sell
 card or link belongs to the offering. Both improved a lot against the baseline and neither
@@ -44,3 +45,6 @@ See the Phase 7 notes in the plan for the options.
   switched off per model.
 - **F5: the model does not know today's date.** It called "effective from 14.07.2026"
   future on 26.09.2026. Fixed in Phase 8: every batch carries `as_of`.
+- **F6: a section's dates can belong to its links.** Gemini put linked old editions'
+  dates into a whole section's effective periods, and the date rule made the section stale.
+  Fixed in Phase 8: dates found in only a few members are moved onto those members.

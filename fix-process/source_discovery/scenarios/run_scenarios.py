@@ -278,11 +278,8 @@ FOUR_MORTGAGE_PAGES = (
 async def s03() -> None:
     started = time.monotonic()
     run = json.loads(
-        # Round 2's recorded answers with the Phase 8 cross-sell rule applied
-        # to the sections it now decides (no Gemini call), on the final labels.
-        (
-            BASE / "data/discovery-check-after-crosssell-rule-final-labels.json"
-        ).read_text()
+        # The final Phase 8 Gemini pass: all 13 seeds, final code and labels.
+        (BASE / "data/discovery-check-final.json").read_text()
     )
     before = json.loads(
         (BASE / "data/discovery-check-before-final-labels.json").read_text()

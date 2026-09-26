@@ -3,7 +3,7 @@
   "passed": true,
   "gemini_attempts": 0,
   "gemini_cost_usd": 0.0,
-  "wall_seconds": 1.0,
+  "wall_seconds": 1.1,
   "recorded_rerun": {
     "discovery_calls": 0,
     "pdf_selector_calls": 0,

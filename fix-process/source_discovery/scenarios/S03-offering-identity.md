@@ -16,24 +16,20 @@ unknown or generic; no `leak` on a page block.
 
 **Gemini.** None in the scenario; the recorded run cost $0.33 (see the Phase 7 notes).
 
-## Result: **FAIL** (two of three criteria met; Phase 8 re-run 2026-09-26)
+## Result: **FAIL** (two small misses; final Phase 8 pass, 2026-09-26)
 
-Raw result: [results/S03.json](results/S03.json). Now read from
-[../data/discovery-check-after-crosssell-rule-final-labels.json](../data/discovery-check-after-crosssell-rule-final-labels.json):
-round 2's recorded Gemini answers with the Phase 8 cross-sell rule applied to the 16
-sections it now decides, no Gemini call.
+Raw result: [results/S03.json](results/S03.json). Now read from the final Gemini pass with the
+final code and labels ([../data/discovery-check-final.json](../data/discovery-check-final.json)).
 
 - **Express table: `related` on all four pages** (it was `current` on all four before).
-- **Leaks: 29 → 0.** The seven cross-sell cards Gemini still read as the offering are now
-  decided by the cross-sell rule (a small section linking to another offering's page).
-- **Own tables: 28 of 29 current.** The construction page's "Loan for construction of
-  commercial real estate" table is still `related`, also in a Phase 8 re-check of that page
-  with the current prompt ([../data/discovery-check-phase8-construction.json](../data/discovery-check-phase8-construction.json),
-  $0.009). Gemini's reason: it is "distinct from the 'Construction Mortgage' offering". The
-  catalog names the offering "Construction Mortgage" while the page says it covers
-  "residential purposes, as well as … commercial use"; see the Phase 8 notes.
+- **The construction page's commercial table is now `current`**, after the catalog alias
+  (Q10).
+- **Leaks: 29 → 1.** The cross-sell cards are decided by rule; the one leak is a card's
+  heading on the construction page, which sits in the section above the card.
+- **Own tables: 28 of 29.** The consumer-loan page's "Loan service fees" table came back
+  `related` in this run (it was `current` in the baseline and in Phase 7 round 2).
 
-Phase 7 result (before the rule): FAIL, 7 leaks.
+Phase 7 result: FAIL, 7 leaks and the construction commercial table.
 
 | Gemini calls | Gemini cost | Bank HTTP requests | Wall time |
 |---|---|---|---|

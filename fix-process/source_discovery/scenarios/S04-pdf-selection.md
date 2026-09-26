@@ -17,21 +17,18 @@ admitted links on the 13 seeds) and [../data/pdf-content-check-phase8.json](../d
 **Gemini.** None in the scenario; the recorded selector calls cost $0.010 and the content
 check $0.025.
 
-## Result: **FAIL** (one disputed PDF; Phase 8 re-run 2026-09-26)
+## Result: **PASS** (Phase 8, 2026-09-26)
 
 Raw result: [results/S04.json](results/S04.json).
 
-- **No own or shared PDF lost** (0 of 39).
-- **The website-profile PDF (3 links) is now excluded** by the content check: its content is
-  the bank's website terms, although its link says "Terms and Conditions" under the loan's
-  terms.
+- **No own or shared PDF lost** (0 of 40).
+- **The website-profile PDF (3 links) is excluded** by the content check: its content is the
+  bank's website terms, although its link says "Terms and Conditions" under the loan's terms.
 - **The content check also caught an expired document the bank still links**:
   `renovation_loan_special_offer_eng.pdf` says "Term of the Campaign From April 8, 2025 until
-  and including December 31, 2025". Its label was corrected to `historical` (it was labelled
-  from its undated link).
-- **One remaining keep, disputed:** `terms_flexible_mortgage_eng.pdf` on the primary page is
-  labelled `related_product`; both the link step and the content check read it as "a variant
-  of the Primary Market Mortgage offering". Which is right is the user's call.
+  and including December 31, 2025". Its label was corrected to `historical`.
+- `terms_flexible_mortgage_eng.pdf` is the primary-market mortgage's own terms under a
+  developer condition (Q11); its label was corrected to `current_product`.
 - 44 of 55 links transcribed (55 before); 40 kept as the offering's terms.
 
 Phase 7 result (link selection only): FAIL, 4 wrong keeps.

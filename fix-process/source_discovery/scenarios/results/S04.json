@@ -1,6 +1,6 @@
 {
   "scenario": "S04",
-  "passed": false,
+  "passed": true,
   "gemini_attempts": 0,
   "gemini_cost_usd": 0.0,
   "wall_seconds": 0.0,
@@ -8,15 +8,7 @@
   "transcribed": 44,
   "kept_as_offering_terms": 40,
   "own_or_shared_lost": [],
-  "sibling_irrelevant_or_expired_kept": [
-    [
-      "mortgage_primary",
-      "terms_flexible_mortgage_eng.pdf",
-      "related_product",
-      true,
-      true
-    ]
-  ],
+  "sibling_irrelevant_or_expired_kept": [],
   "link_selector_usage": {
     "calls": 12,
     "input_tokens": 17358,
