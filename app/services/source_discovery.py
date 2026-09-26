@@ -14,6 +14,8 @@ from app.domain.normalization import NormalizedSourceBundle, SourceReference
 from app.domain.pdf_extraction import (
     PdfAdmissionRelevance,
     PdfAdmissionRole,
+    PdfLinkChoice,
+    PdfLinkLabel,
     PdfTemporalStatus,
 )
 from app.domain.source_discovery import (
@@ -420,47 +422,33 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
         values = _no_content_values(candidate)
     elif (
         candidate.scope is DiscoveryScope.DOCUMENT
-        and candidate.source_type is SourceType.PDF
         and candidate.pdf_admission is not None
-        and candidate.pdf_admission.relevance is PdfAdmissionRelevance.RELEVANT
+        and candidate.pdf_admission.temporal_status
+        in {PdfTemporalStatus.HISTORICAL, PdfTemporalStatus.FUTURE}
     ):
-        admission = candidate.pdf_admission
-        role = {
-            PdfAdmissionRole.PRODUCT_TERMS: InformationRole.PRODUCT_TERMS,
-            PdfAdmissionRole.FEES: InformationRole.FEES,
-            PdfAdmissionRole.LEGAL_DISCLOSURE: InformationRole.LEGAL_DISCLOSURE,
-            PdfAdmissionRole.OTHER: InformationRole.OTHER,
-        }[admission.role]
-        temporal = {
-            PdfTemporalStatus.CURRENT: TemporalStatus.CURRENT,
-            PdfTemporalStatus.HISTORICAL: TemporalStatus.POSSIBLY_STALE,
-            PdfTemporalStatus.FUTURE: TemporalStatus.FUTURE,
-            PdfTemporalStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
-            PdfTemporalStatus.UNKNOWN: TemporalStatus.UNKNOWN,
-        }[admission.temporal_status]
-        association = {
-            PdfTemporalStatus.HISTORICAL: ProductAssociation.HISTORICAL_VERSION,
-            PdfTemporalStatus.FUTURE: ProductAssociation.FUTURE_VERSION,
-        }.get(admission.temporal_status, ProductAssociation.CURRENT_PRODUCT)
-        return SourceAssessment(
-            source_id=candidate.source_id,
-            document_id=candidate.document_id,
-            scope=candidate.scope,
-            product_association=association,
-            role=role,
-            relevance=Relevance.RELEVANT,
-            authority=Authority.OFFICIAL_TERMS,
-            temporal_status=temporal,
-            effective_periods=tuple(
-                EffectivePeriod(raw=item.raw, start=item.start, end=item.end)
-                for item in admission.effective_periods
-            ),
-            reason=admission.reason,
-            decision_source=DecisionSource.RULE,
-            input_fingerprint=candidate.content_fingerprint,
-            structural_fingerprint=candidate.structural_fingerprint,
-            source_refs=candidate.source_refs,
+        # Explicit dates in the link context place it outside today's terms,
+        # whatever its content says (transcribed only with skip_historical off).
+        historical = (
+            candidate.pdf_admission.temporal_status is PdfTemporalStatus.HISTORICAL
         )
+        values = (
+            ProductAssociation.HISTORICAL_VERSION
+            if historical
+            else ProductAssociation.FUTURE_VERSION,
+            _PDF_ROLES[candidate.pdf_admission.role],
+            Relevance.POSSIBLY_RELEVANT,
+            Authority.OFFICIAL_TERMS,
+            TemporalStatus.POSSIBLY_STALE if historical else TemporalStatus.FUTURE,
+            candidate.pdf_admission.reason,
+        )
+    elif (
+        candidate.scope is DiscoveryScope.DOCUMENT
+        and candidate.pdf_selection is not None
+        and candidate.pdf_selection.label is not PdfLinkLabel.UNCLEAR
+    ):
+        # Source discovery already decided this PDF from its link, before
+        # transcription; an unclear link falls through to content review.
+        return _link_selection_assessment(candidate, candidate.pdf_selection)
     elif (
         candidate.scope is DiscoveryScope.DOCUMENT
         and candidate.source_type is SourceType.PAGE
@@ -520,11 +508,82 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
     )
 
 
+_PDF_ROLES = {
+    PdfAdmissionRole.PRODUCT_TERMS: InformationRole.PRODUCT_TERMS,
+    PdfAdmissionRole.FEES: InformationRole.FEES,
+    PdfAdmissionRole.LEGAL_DISCLOSURE: InformationRole.LEGAL_DISCLOSURE,
+    PdfAdmissionRole.OTHER: InformationRole.OTHER,
+}
+_LINK_ASSOCIATIONS = {
+    PdfLinkLabel.CURRENT_PRODUCT: ProductAssociation.CURRENT_PRODUCT,
+    PdfLinkLabel.SHARED_TERMS: ProductAssociation.CURRENT_PRODUCT,
+    PdfLinkLabel.RELATED_PRODUCT: ProductAssociation.RELATED_PRODUCT,
+    PdfLinkLabel.GENERIC_BANK_INFORMATION: ProductAssociation.GENERIC_BANK_INFORMATION,
+    PdfLinkLabel.UNCLEAR: ProductAssociation.UNKNOWN,
+}
+
+
+def _link_selection_assessment(
+    candidate: DiscoveryCandidate, choice: PdfLinkChoice
+) -> SourceAssessment:
+    """A transcribed PDF, as the link selection judged it.
+
+    Its blocks and tables inherit this decision (Q6). The temporal status is
+    the deterministic admission's; shared terms say so in their conditions.
+    """
+    admission = candidate.pdf_admission
+    temporal = (
+        {
+            PdfTemporalStatus.CURRENT: TemporalStatus.CURRENT,
+            PdfTemporalStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
+        }.get(admission.temporal_status, TemporalStatus.UNKNOWN)
+        if admission is not None
+        else TemporalStatus.UNKNOWN
+    )
+    own = choice.label in {PdfLinkLabel.CURRENT_PRODUCT, PdfLinkLabel.SHARED_TERMS}
+    return SourceAssessment(
+        source_id=candidate.source_id,
+        document_id=candidate.document_id,
+        scope=candidate.scope,
+        product_association=_LINK_ASSOCIATIONS[choice.label],
+        role=_PDF_ROLES[choice.role],
+        relevance=Relevance.RELEVANT if own else Relevance.IRRELEVANT,
+        authority=Authority.OFFICIAL_TERMS if own else Authority.UNKNOWN,
+        temporal_status=temporal,
+        effective_periods=tuple(
+            EffectivePeriod(raw=item.raw, start=item.start, end=item.end)
+            for item in (admission.effective_periods if admission else ())
+        ),
+        conditions=(
+            ("Applies to other loans as well as this offering.",)
+            if choice.label is PdfLinkLabel.SHARED_TERMS
+            else ()
+        ),
+        reason=choice.reason,
+        decision_source=DecisionSource.LINK_SELECTION,
+        input_fingerprint=candidate.content_fingerprint,
+        structural_fingerprint=candidate.structural_fingerprint,
+        source_refs=candidate.source_refs,
+    )
+
+
 def _no_content_values(
     candidate: DiscoveryCandidate,
 ) -> tuple[
     ProductAssociation, InformationRole, Relevance, Authority, TemporalStatus, str
 ]:
+    choice = candidate.pdf_selection
+    if choice is not None and not choice.transcribe:
+        return (
+            _LINK_ASSOCIATIONS[choice.label],
+            _PDF_ROLES[choice.role],
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.UNKNOWN,
+            f"Not transcribed: link judged {choice.label.value}. {choice.reason}"[
+                :2000
+            ],
+        )
     admission = candidate.pdf_admission
     if (
         admission is not None

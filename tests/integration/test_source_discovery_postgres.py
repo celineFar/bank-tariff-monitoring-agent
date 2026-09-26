@@ -110,3 +110,57 @@ async def test_the_same_content_is_cached_per_offering() -> None:
         assert other == {}
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_pdf_link_choices_are_cached_per_offering() -> None:
+    from app.domain.pdf_extraction import PdfAdmissionRole, PdfLinkChoice, PdfLinkLabel
+    from app.repositories.pdf_link_selection import PostgresPdfLinkSelectionRepository
+
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL is required")
+    assert url.endswith("_test")
+    connection = await asyncpg.connect(
+        url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    )
+    try:
+        await connection.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+        for migration in sorted(Path("migrations").glob("*.sql")):
+            await connection.execute(migration.read_text())
+    finally:
+        await connection.close()
+    engine = create_async_engine(url)
+    try:
+        repository = PostgresPdfLinkSelectionRepository(async_sessionmaker(engine))
+        versions = {
+            "policy_version": "2",
+            "prompt_version": "1",
+            "model_name": "gemini-3.1-flash-lite",
+        }
+        choice = PdfLinkChoice(
+            label=PdfLinkLabel.RELATED_PRODUCT,
+            role=PdfAdmissionRole.PRODUCT_TERMS,
+            reason="Express mortgage terms",
+            decided_by="llm",
+            model_name="gemini-3.1-flash-lite",
+            link_fingerprint="d" * 64,
+        )
+        await repository.save(
+            **versions, offering_id="mortgage_primary", choices=(choice,)
+        )
+        await repository.save(
+            **versions, offering_id="mortgage_primary", choices=(choice,)
+        )
+
+        found = await repository.get_many(
+            **versions, offering_id="mortgage_primary", link_fingerprints=("d" * 64,)
+        )
+        other = await repository.get_many(
+            **versions, offering_id="mortgage_express", link_fingerprints=("d" * 64,)
+        )
+
+        assert found == {"d" * 64: choice}
+        assert other == {}
+    finally:
+        await engine.dispose()

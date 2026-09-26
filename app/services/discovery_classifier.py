@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 from uuid import uuid4
 
 from google import genai
@@ -12,6 +14,7 @@ from google.adk.models import Gemini
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 from google.genai.errors import APIError
+from pydantic import BaseModel
 
 from app.domain.source_discovery import DiscoveryBatch, DiscoveryBatchResponse
 from app.services.adk_logging import suppress_handled_adk_exception_logs
@@ -64,6 +67,8 @@ content.
 
 _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 logger = logging.getLogger(__name__)
+RequestT = TypeVar("RequestT")
+ResponseT = TypeVar("ResponseT", bound=BaseModel)
 
 
 @dataclass
@@ -76,13 +81,23 @@ class ClassifierUsage:
     application_retries: int = 0
 
 
-class AdkSourceDiscoveryClassifier:
-    """Bounded ADK classifier with strict Pydantic structured output and no tools."""
+class StructuredAdkClassifier(Generic[RequestT, ResponseT]):
+    """Bounded ADK classifier with strict Pydantic structured output and no tools.
+
+    One request model in, one response model out, with application-level
+    retries for transient provider errors. Source discovery and PDF link
+    selection each configure one.
+    """
 
     def __init__(
         self,
         model_name: str,
         *,
+        agent_name: str,
+        instruction: str,
+        output_schema: type[ResponseT],
+        prompt_builder: Callable[[RequestT], str],
+        usage_stage: str,
         api_key: str | None = None,
         max_attempts: int = 3,
         backoff_base_seconds: float = 5.0,
@@ -92,17 +107,17 @@ class AdkSourceDiscoveryClassifier:
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
         agent = Agent(
-            name="source_discovery_classifier",
+            name=agent_name,
             **adk_usage_callbacks(
-                usage_repository, stage="discovery.classification", model_id=model_name
+                usage_repository, stage=usage_stage, model_id=model_name
             ),
             model=Gemini(
                 model=model_name,
                 client=client,
                 retry_options=types.HttpRetryOptions(attempts=3),
             ),
-            instruction=SOURCE_DISCOVERY_INSTRUCTION,
-            output_schema=DiscoveryBatchResponse,
+            instruction=instruction,
+            output_schema=output_schema,
             generate_content_config=(
                 types.GenerateContentConfig(
                     automatic_function_calling=types.AutomaticFunctionCallingConfig(
@@ -120,17 +135,16 @@ class AdkSourceDiscoveryClassifier:
                 )
             ),
         )
-        self._runner = InMemoryRunner(
-            agent=agent,
-            app_name="source_discovery_classifier",
-        )
+        self._runner = InMemoryRunner(agent=agent, app_name=agent_name)
+        self._output_schema = output_schema
+        self._prompt_builder = prompt_builder
         self.usage = ClassifierUsage()
         self._max_attempts = max_attempts
         self._backoff_base_seconds = backoff_base_seconds
         self._max_backoff_seconds = max_backoff_seconds
         self._retry_jitter_ratio = retry_jitter_ratio
 
-    async def classify(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
+    async def classify(self, batch: RequestT) -> ResponseT:
         for attempt in range(1, self._max_attempts + 1):
             self.usage.request_attempts += 1
             try:
@@ -141,18 +155,19 @@ class AdkSourceDiscoveryClassifier:
                 self.usage.application_retries += 1
                 delay = self._retry_delay(attempt)
                 logger.warning(
-                    "Retryable Gemini error for source-discovery batch %s "
+                    "Retryable Gemini error for %s batch %s "
                     "(status=%s, application attempt=%s/%s); retrying in %.2fs",
-                    batch.id,
+                    self._runner.app_name,
+                    getattr(batch, "id", "-"),
                     exc.code,
                     attempt,
                     self._max_attempts,
                     delay,
                 )
                 await asyncio.sleep(delay)
-        raise AssertionError("source discovery retry loop exhausted unexpectedly")
+        raise AssertionError("classifier retry loop exhausted unexpectedly")
 
-    async def _classify_once(self, batch: DiscoveryBatch) -> DiscoveryBatchResponse:
+    async def _classify_once(self, batch: RequestT) -> ResponseT:
         session_id = uuid4().hex
         user_id = "tariff-pipeline"
         session = await self._runner.session_service.create_session(
@@ -160,7 +175,7 @@ class AdkSourceDiscoveryClassifier:
             user_id=user_id,
             session_id=session_id,
         )
-        prompt = build_classifier_prompt(batch)
+        prompt = self._prompt_builder(batch)
         final_text: str | None = None
         with suppress_handled_adk_exception_logs():
             async for event in self._runner.run_async(
@@ -184,8 +199,8 @@ class AdkSourceDiscoveryClassifier:
                     if text_parts:
                         final_text = "".join(text_parts)
         if final_text is None:
-            raise RuntimeError("source discovery classifier returned no final response")
-        return DiscoveryBatchResponse.model_validate_json(_strip_json_fence(final_text))
+            raise RuntimeError(f"{self._runner.app_name} returned no final response")
+        return self._output_schema.model_validate_json(_strip_json_fence(final_text))
 
     def _retry_delay(self, failed_attempt: int) -> float:
         base = min(
@@ -194,6 +209,23 @@ class AdkSourceDiscoveryClassifier:
         )
         jitter = base * self._retry_jitter_ratio
         return max(0.0, base + random.uniform(-jitter, jitter))
+
+
+class AdkSourceDiscoveryClassifier(
+    StructuredAdkClassifier[DiscoveryBatch, DiscoveryBatchResponse]
+):
+    """Classifies discovery batches (sections, tables, unclear documents)."""
+
+    def __init__(self, model_name: str, **options) -> None:
+        super().__init__(
+            model_name,
+            agent_name="source_discovery_classifier",
+            instruction=SOURCE_DISCOVERY_INSTRUCTION,
+            output_schema=DiscoveryBatchResponse,
+            prompt_builder=build_classifier_prompt,
+            usage_stage="discovery.classification",
+            **options,
+        )
 
 
 def _strip_json_fence(value: str) -> str:

@@ -17,6 +17,7 @@ Daily scheduler ----------+-> RunService              |
                                                     v
                                            deterministic pipeline
  discovery -> secure retrieval -> deterministic PDF admission/input probe
+ -> bounded Gemini PDF link selection (which admitted PDFs belong to the offering)
  -> bounded Gemini PDF structure extraction + deterministic HTML parsing
  -> structural normalization -> cached/rule prefilter -> bounded Gemini source classification
  -> clean/chunk -> PostgreSQL + pgvector -> hybrid retrieval
@@ -222,6 +223,8 @@ shell, or SQL tool.
   Project-owned event timestamps retain their `timestamptz` instants and have
   stored `timestamp` columns suffixed `_yerevan` for direct local-time inspection.
   Migration `009` generates and backfills those columns; ADK-owned tables are unchanged.
+  Migration `019` scopes the source-discovery assessment cache to the offering;
+  migration `020` adds `pdf_link_selections`, the cache of PDF link decisions.
 - `tests/unit/`: deterministic logic tests.
 - `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
 
@@ -406,7 +409,15 @@ off-topic marker is admitted as irrelevant, and (unless `PDF_EXTRACTION_SKIP_HIS
 is disabled) a document whose metadata resolves to a historical temporal status is also
 skipped. Skipped documents yield an empty `pdf_skipped` normalized document, raise
 `PDF_SKIPPED_HISTORICAL`/`PDF_SKIPPED_IRRELEVANT`, and never reach the model. The
-link context admission reads is the link's own row, list item or paragraph. Otherwise a tool-free ADK agent sends the original PDF
+link context admission reads is the link's own row, list item or paragraph. For every
+PDF admission lets through, the pipeline's `pdf_selection` stage (source discovery's
+first step, `PdfLinkSelectionService`) asks a tool-free Gemini classifier, once per
+offering and from the links' metadata alone, whether it is the offering's own
+document, terms shared with other loans, another product's document, bank-wide
+material, or unclear. Only the offering's own, shared and unclear PDFs are read and
+transcribed; the others become empty `pdf_not_selected` documents with a
+`PDF_SKIPPED_NOT_SELECTED` warning. Decisions are cached in `pdf_link_selections`
+(migration 020) by offering and link-metadata fingerprint. Otherwise a tool-free ADK agent sends the original PDF
 bytes to Gemini and requires page-complete blocks, rectangular tables, notes, and
 footnotes. PDF outputs retain page locators (table cells cite themselves by id) and are
 cached by source hash, schema, prompt, model, and admission/probe fingerprint.
@@ -452,12 +463,15 @@ its own cache namespace and stores its own `model_name`, so one accepted result
 never mixes decisions from two models. `FallbackSemanticExtractionService` does
 the same for extraction; its chain is empty unless configured.
 
-Downloaded PDFs with strongly product-relevant link text, title, URL, or surrounding
-heading receive a deterministic document assessment, so their extracted content is
-not sent through source classification again. Relevance does not imply currentness:
-archive/previous-term context and explicit effective dates independently classify a
-PDF as current, historical, future, time-bounded, or unknown. Historical and future
-documents remain auditable but are excluded from current-tariff extraction evidence.
+A transcribed PDF that the link selection judged the offering's own or shared terms
+receives that decision as its document assessment (`link_selection`), inherited by its
+blocks and tables, so its content is not classified again; an `unclear` one is
+classified on its content (reading order, each page's tables compacted). A PDF with no
+content (skipped, not selected, or failed) is decided by rule. Relevance does not imply
+currentness: archive/previous-term context and explicit effective dates independently
+classify a PDF as current, historical, future, time-bounded, or unknown. Historical and
+future documents remain auditable but are excluded from current-tariff extraction
+evidence.
 
 Exact reuse requires matching product, offering, content fingerprint, policy version,
 prompt version, and model name; every classifier batch names the offering its product

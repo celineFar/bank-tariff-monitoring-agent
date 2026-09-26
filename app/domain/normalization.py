@@ -9,7 +9,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceLocator, SourceType
-from app.domain.pdf_extraction import PdfAdmission, PdfInputMode
+from app.domain.pdf_extraction import PdfAdmission, PdfInputMode, PdfLinkChoice
 
 _SPACE_RE = re.compile(r"[\t\r\f\v \u00a0]+")
 _ALL_SPACE_RE = re.compile(r"[\s\u00a0]+")
@@ -82,6 +82,8 @@ class NormalizationWarningCode(StrEnum):
     # Deliberate skips, from link metadata alone; the message gives the basis.
     PDF_SKIPPED_HISTORICAL = "PDF_SKIPPED_HISTORICAL"
     PDF_SKIPPED_IRRELEVANT = "PDF_SKIPPED_IRRELEVANT"
+    # Source discovery judged from the link that the PDF is not this offering's.
+    PDF_SKIPPED_NOT_SELECTED = "PDF_SKIPPED_NOT_SELECTED"
     # Pages with a text layer that the transcription returned nothing for.
     PDF_PAGE_EMPTY = "PDF_PAGE_EMPTY"
     # Pages whose content came from local OCR instead of Gemini.
@@ -205,6 +207,8 @@ class NormalizedDocument(NormalizationModel):
     quality_score: float | None = Field(default=None, ge=0, le=1)
     pdf_input_mode: PdfInputMode | None = None
     pdf_admission: PdfAdmission | None = None
+    # Source discovery's link decision, made before transcription.
+    pdf_selection: PdfLinkChoice | None = None
     blocks: tuple[NormalizedBlock, ...] = ()
     tables: tuple[NormalizedTable, ...] = ()
     links: tuple[NormalizedLink, ...] = ()

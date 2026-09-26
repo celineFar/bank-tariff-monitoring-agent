@@ -53,6 +53,47 @@ class PdfAdmission(PdfExtractionModel):
     effective_periods: tuple[PdfEffectivePeriod, ...] = ()
 
 
+class PdfLinkLabel(StrEnum):
+    """Whether a linked PDF belongs to the offering, judged from its link alone."""
+
+    CURRENT_PRODUCT = "current_product"
+    # Applies to this offering among others: the loan fee schedule, the
+    # floating-rate procedure, a lending campaign that covers it.
+    SHARED_TERMS = "shared_terms"
+    RELATED_PRODUCT = "related_product"
+    GENERIC_BANK_INFORMATION = "generic_bank_information"
+    # The link does not say; the document is transcribed and read.
+    UNCLEAR = "unclear"
+
+
+TRANSCRIBED_LINK_LABELS = frozenset(
+    {PdfLinkLabel.CURRENT_PRODUCT, PdfLinkLabel.SHARED_TERMS, PdfLinkLabel.UNCLEAR}
+)
+
+
+class PdfLinkChoice(PdfExtractionModel):
+    """Source discovery's decision on one linked PDF, made before transcription."""
+
+    label: PdfLinkLabel
+    role: PdfAdmissionRole
+    reason: str = Field(min_length=1, max_length=2000)
+    # `llm` for a fresh model answer, `cache` for a stored one.
+    decided_by: str = Field(pattern=r"^(llm|cache)$")
+    model_name: str = Field(min_length=1, max_length=200)
+    link_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @property
+    def transcribe(self) -> bool:
+        return self.label in TRANSCRIBED_LINK_LABELS
+
+
+class PdfLinkSelection(PdfExtractionModel):
+    """Link choices for one acquisition, keyed by PDF content hash (sha256)."""
+
+    offering_id: str = Field(min_length=1, max_length=100)
+    choices: dict[str, PdfLinkChoice] = Field(default_factory=dict)
+
+
 class PdfPageProbe(PdfExtractionModel):
     page_number: int = Field(ge=1)
     input_mode: PdfInputMode

@@ -10,7 +10,12 @@ from app.domain.acquisition import SourceType
 from app.domain.catalog import SeedCatalogEntry
 from app.domain.models import ProductType
 from app.domain.normalization import SourceReference
-from app.domain.pdf_extraction import PdfAdmission
+from app.domain.pdf_extraction import (
+    PdfAdmission,
+    PdfAdmissionRole,
+    PdfLinkChoice,
+    PdfLinkLabel,
+)
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -75,6 +80,8 @@ class DecisionSource(StrEnum):
     LLM = "llm"
     INHERITED = "inherited"
     HUMAN_OVERRIDE = "human_override"
+    # A linked PDF decided by source discovery from its link, before transcription.
+    LINK_SELECTION = "link_selection"
 
 
 class DiscoveryScope(StrEnum):
@@ -147,6 +154,7 @@ class DiscoveryCandidate(DiscoveryModel):
     structural_fingerprint: str
     selection_reason: str = Field(min_length=1, max_length=1000)
     pdf_admission: PdfAdmission | None = None
+    pdf_selection: PdfLinkChoice | None = None
     layout: CandidateLayout = CandidateLayout.CONTENT
     # Sections list every member, so the classifier sees each member's text
     # and can name the ones that differ. `member_context` is what the prompt
@@ -317,3 +325,33 @@ class SourceDiscoveryResult(DiscoveryModel):
     extraction_context: ExtractionContext
     llm_batch_count: int = Field(ge=0)
     reused_assessment_count: int = Field(ge=0)
+
+
+class PdfLinkPromptItem(DiscoveryModel):
+    """What the link selector sees of one admitted PDF link."""
+
+    id: str
+    file_name: str
+    document_name: str
+    link_text: str
+    link_title: str | None = None
+    heading_path: tuple[str, ...] = ()
+    nearby_text: str = ""
+    effective_periods: tuple[str, ...] = ()
+
+
+class PdfLinkBatch(DiscoveryModel):
+    id: str
+    offering: OfferingContext
+    links: tuple[PdfLinkPromptItem, ...] = Field(min_length=1)
+
+
+class PdfLinkModelDecision(DiscoveryModel):
+    id: str
+    label: PdfLinkLabel
+    role: PdfAdmissionRole
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class PdfLinkBatchResponse(DiscoveryModel):
+    items: tuple[PdfLinkModelDecision, ...] = Field(min_length=1)

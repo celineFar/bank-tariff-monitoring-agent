@@ -850,24 +850,93 @@ retry and split.
 
 ### Phase 4: PDF link selection (SD2, SD4 not-selected)
 
-- [ ] Domain: `PdfLinkSelection` (per link: label, role, reason) and
+- [x] Domain: `PdfLinkSelection` (per link: label, role, reason) and
       `DecisionSource.LINK_SELECTION`.
-- [ ] Service: a tool-free ADK classifier with structured output, one call per offering, with
+- [x] Service: a tool-free ADK classifier with structured output, one call per offering, with
       the `OfferingContext`; cached by offering + link-metadata fingerprint + versions + model;
       uses the same fallback chain (SD8).
-- [ ] Pipeline: new stage between acquisition and normalization, with its own audit record and
+- [x] Pipeline: new stage between acquisition and normalization, with its own audit record and
       failure code.
-- [ ] Normalization: takes the selection; transcribes only `current_product`, `shared_terms`
+- [x] Normalization: takes the selection; transcribes only `current_product`, `shared_terms`
       and `unclear`; others become empty documents with `PDF_SKIPPED_NOT_SELECTED`.
-- [ ] Discovery: rule assessment from the selection; `unclear` PDFs go to content
+- [x] Discovery: rule assessment from the selection; `unclear` PDFs go to content
       classification.
-- [ ] Remove the `relevant`-admission shortcut in `_rule_assessment`.
-- [ ] Update AGENTS.md, `docs/architecture.md` and `docs/source-discovery.md` (new stage,
+- [x] Remove the `relevant`-admission shortcut in `_rule_assessment`.
+- [x] Update AGENTS.md, `docs/architecture.md` and `docs/source-discovery.md` (new stage,
       pipeline order, Gemini's role).
-- [ ] Unit tests with a fake selector: sibling terms are not transcribed; the fee schedule is;
+- [x] Unit tests with a fake selector: sibling terms are not transcribed; the fee schedule is;
       an unclear PDF is transcribed and classified on content.
-- [ ] Offline check against the PDF labels with a replayed selector: no `current_product` or
+- [x] Offline check against the PDF labels with a replayed selector: no `current_product` or
       `shared_terms` PDF skipped.
+
+#### Phase 4 notes (2026-09-26)
+
+**State: done, except the real-Gemini check**, which is Phase 7's first pass (the replayed-label
+check below covers the plumbing). Commit: *Source discovery Phase 4: Gemini picks the
+offering's PDFs from their links*.
+
+**What changed.**
+- **Stage.** A new pipeline stage, `pdf_selection`, runs between acquisition and normalization
+  when the page links PDFs (progress label "Choosing the offering's documents"; failures map to
+  `offering.source_discovery_failed` / `source.model_failed`). `NormalizationPort.normalize`
+  takes `pdf_selection=`; `IndexingPipeline` takes an optional `pdf_selection` port (omitted,
+  the stage is skipped and discovery classifies PDFs on content).
+- **Service** ([pdf_link_selection.py](../../app/services/pdf_link_selection.py)).
+  `admitted_links()` applies the extractor's own skip rule (off-topic; historical when
+  `skip_historical`), so the selector is never asked about a PDF that would not be transcribed.
+  One batch per offering (up to 40 links), the `OfferingContext`, and per link: file name,
+  document name, link text and title, heading path, nearby text (600 chars), effective
+  periods. Labels `current_product`, `shared_terms`, `related_product`,
+  `generic_bank_information`, `unclear`, plus a role and reason. An answer that does not name
+  every link once is asked again once, then raises `PdfLinkResponseError`. A provider error
+  moves to the next discovery model. Prompt version `1`, policy version = discovery's.
+- **Cache.** `pdf_link_selections` ([migration 020](../../migrations/020_pdf_link_selections.sql),
+  [repository](../../app/repositories/pdf_link_selection.py)), keyed by offering, versions,
+  model, and a fingerprint of the link metadata (not the PDF bytes: the decision is made from
+  the link). A separate table instead of `source_discovery_assessments`, whose rows are
+  `SourceAssessment`s and would have needed a label smuggled into another field.
+- **Classifier.** `discovery_classifier.py` now has a generic `StructuredAdkClassifier`
+  (instruction, schema, prompt builder, usage stage, retries); `AdkSourceDiscoveryClassifier`
+  and `AdkPdfLinkClassifier` configure it.
+- **Normalization.** A PDF the selection did not keep is not read or transcribed: it becomes
+  an empty `pdf_not_selected` document with its `pdf_selection` and a
+  `PDF_SKIPPED_NOT_SELECTED` warning. Every other PDF document, transcribed or failed, carries
+  its choice in `NormalizedDocument.pdf_selection`.
+- **Discovery rules.** Order: no content (the selection's labels for unselected PDFs; SD4
+  otherwise) → explicit historical/future dates → link selection (`current_product` and
+  `shared_terms` become `link_selection` document decisions with authority `official_terms`
+  and the admission's temporal status; shared terms carry the condition "Applies to other
+  loans as well as this offering.") → `unclear`, or no selection at all, goes to content
+  classification. The keyword shortcut (`relevant` admission → official terms) is gone. The
+  selection's label and role are part of the PDF's content fingerprint.
+- **Audit.** `2_pdf_link_selection.md` lists each linked PDF, its decision, who made it,
+  whether it was transcribed, and why.
+- **Docs.** AGENTS.md now lists source discovery, including the link selection before
+  transcription, among Gemini's roles. `docs/architecture.md` (pipeline diagram, PDF flow,
+  source-discovery boundary, migrations 019/020) and `docs/source-discovery.md` (new section)
+  describe the stage.
+
+**Checked.** With the hand labels replayed through the selector
+([data/discovery-check-phase4-pdf-labels-replayed.json](data/discovery-check-phase4-pdf-labels-replayed.json)):
+all 55 labelled links on the 13 seeds reach the selector (admission drops none of the 40
+current or shared ones), and 0 lost / 0 leaked. Kept: 20 `current_product` + 20
+`shared_terms`; dropped: 5 `related_product`, 7 `generic_bank_information`, 3 irrelevant.
+**15 fewer transcriptions per full run** (55 → 40), on top of the 62 old editions admission
+already skips.
+
+**Tests.** New [test_pdf_link_selection.py](../../tests/unit/test_pdf_link_selection.py): only
+admitted links are asked, in one call, and the second run is all cache; the cache is per
+offering; a wrong answer is asked again, then rejected; a 404 moves to the next model;
+normalization never reads an unselected PDF; discovery decides selected (own, shared) and
+unselected PDFs by rule with no Gemini call. Pipeline test: `pdf_selection` runs before
+normalization and passes its result. Postgres test for `pdf_link_selections`. Full suite:
+934 passed, 44 skipped, 5 xfailed, plus the 4 known key-dependent failures; 39 Postgres tests
+pass on the scratch database. `ruff` clean.
+
+**Remaining.**
+- The real selector's accuracy on the 55 links is measured in Phase 7 (`--pdf-selector gemini`).
+- An `unclear` PDF is transcribed and classified whole; per Q6 its members inherit that one
+  decision.
 
 ### Phase 5: Reliability (SD5, SD18, SD6, SD8, SD13, SD14)
 

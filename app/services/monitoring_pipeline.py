@@ -29,6 +29,7 @@ from app.domain.monitoring import (
     SourceManifestItem,
 )
 from app.domain.normalization import NormalizedSourceBundle
+from app.domain.pdf_extraction import PdfLinkSelection
 from app.domain.pipeline import IndexingRefreshResult, SourceManifest, StageTiming
 from app.domain.review import (
     ReviewCandidate,
@@ -79,7 +80,18 @@ class AcquisitionPort(Protocol):
 
 
 class NormalizationPort(Protocol):
-    async def normalize(self, artifact: PageArtifact) -> NormalizedSourceBundle: ...
+    async def normalize(
+        self,
+        artifact: PageArtifact,
+        *,
+        pdf_selection: PdfLinkSelection | None = None,
+    ) -> NormalizedSourceBundle: ...
+
+
+class PdfLinkSelectionPort(Protocol):
+    async def select(
+        self, artifact: PageArtifact, offering: OfferingContext
+    ) -> PdfLinkSelection: ...
 
 
 class SourceDiscoveryPort(Protocol):
@@ -145,8 +157,10 @@ class IndexingPipeline:
         runs: RunRepository | None = None,
         audit_archive: PipelineAuditArchive | None = None,
         large_rate_change_percentage_points: float = 3.0,
+        pdf_selection: PdfLinkSelectionPort | None = None,
     ) -> None:
         self._acquisition = acquisition
+        self._pdf_selection = pdf_selection
         self._normalization = normalization
         self._discovery = discovery
         self._extraction = extraction
@@ -224,10 +238,22 @@ class IndexingPipeline:
                     offering.offering_id.value,
                     exc_info=True,
                 )
+        offering_context = OfferingContext.from_catalog_entry(
+            offering, page_title=artifact.title
+        )
+        pdf_selection = None
+        if self._pdf_selection is not None and artifact.downloadable_documents:
+            # Source discovery's first step: which linked PDFs belong to this
+            # offering, from their links, before any transcription is paid for.
+            pdf_selection = await stage(
+                "pdf_selection",
+                OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
+                self._pdf_selection.select(artifact, offering_context),
+            )
         bundle = await stage(
             "normalization",
             OfferingFailureCode.NORMALIZATION_FAILED,
-            self._normalization.normalize(artifact),
+            self._normalization.normalize(artifact, pdf_selection=pdf_selection),
         )
         audit = self._audit_archive
         audit_context = (
@@ -249,9 +275,7 @@ class IndexingPipeline:
                 OfferingFailureCode.SOURCE_DISCOVERY_FAILED,
                 self._discovery.discover(
                     bundle,
-                    OfferingContext.from_catalog_entry(
-                        offering, page_title=artifact.title
-                    ),
+                    offering_context,
                     as_of=artifact.retrieved_at.date(),
                 ),
             )

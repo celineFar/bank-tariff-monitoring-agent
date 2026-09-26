@@ -204,33 +204,109 @@ def _estimate_usd(plan, price, settings) -> float:
     ) / 1_000_000
 
 
-def _pdf_decisions(seed: str, artifact: PageArtifact, parser) -> dict[str, bool]:
-    """file name -> selected for transcription, as the code on this branch decides."""
+def _rebuilt_documents(artifact: PageArtifact, parser) -> tuple:
+    """The capture's PDF links with their context rebuilt by this branch's code."""
     parsed = parser.parse(
         artifact.rendered_html or "", source_url=str(artifact.final_url)
     )
-    decisions: dict[str, bool] = {}
+    documents = []
     for document in artifact.downloadable_documents:
         origin = (
             AcquisitionService._document_origin(parsed, document.link_id)
             if document.link_id
             else {}
         )
-        rebuilt = document.model_copy(
-            update={
-                "origin_block_id": None,
-                "origin_heading_path": (),
-                "nearby_text": "",
-                **origin,
-            }
+        documents.append(
+            document.model_copy(
+                update={
+                    "origin_block_id": None,
+                    "origin_heading_path": (),
+                    "nearby_text": "",
+                    **origin,
+                }
+            )
         )
-        admission = assess_pdf_metadata(rebuilt, as_of=AS_OF)
+    return tuple(documents)
+
+
+def _file_name(sha256: str, fallback: str) -> str:
+    return PDF_LABELS.get(sha256, {}).get("file") or fallback
+
+
+def _admission_decisions(documents) -> dict[str, bool]:
+    """Before PDF link selection: every admitted PDF is transcribed and kept."""
+    decisions: dict[str, bool] = {}
+    for document in documents:
+        admission = assess_pdf_metadata(document, as_of=AS_OF)
         if admission.temporal_status.value == "historical":
             continue
-        name = PDF_LABELS.get(document.sha256, {}).get("file") or document.document_name
+        name = _file_name(document.sha256, document.document_name)
         decisions[name] = (
             decisions.get(name, False) or admission.relevance.value != "irrelevant"
         )
+    return decisions
+
+
+class _LabelSelector:
+    """Replays the hand labels as a selector: checks the plumbing, not Gemini."""
+
+    def __init__(self, seed: str) -> None:
+        self.labels = LABELS["seeds"][seed]["pdfs"]
+
+    async def classify(self, batch):
+        from app.domain.pdf_extraction import PdfAdmissionRole, PdfLinkLabel
+        from app.domain.source_discovery import (
+            PdfLinkBatchResponse,
+            PdfLinkModelDecision,
+        )
+
+        label_map = {
+            "current_product": PdfLinkLabel.CURRENT_PRODUCT,
+            "shared_terms": PdfLinkLabel.SHARED_TERMS,
+            "related_product": PdfLinkLabel.RELATED_PRODUCT,
+            "generic_bank_information": PdfLinkLabel.GENERIC_BANK_INFORMATION,
+            "irrelevant": PdfLinkLabel.GENERIC_BANK_INFORMATION,
+        }
+        return PdfLinkBatchResponse(
+            items=tuple(
+                PdfLinkModelDecision(
+                    id=link.id,
+                    label=label_map.get(
+                        self.labels.get(link.file_name, ""), PdfLinkLabel.UNCLEAR
+                    ),
+                    role=PdfAdmissionRole.OTHER,
+                    reason="replayed hand label",
+                )
+                for link in batch.links
+            )
+        )
+
+
+async def _selection_decisions(
+    artifact: PageArtifact, documents, offering, classifier, model: str
+) -> dict[str, bool]:
+    """With PDF link selection: only current, shared and unclear PDFs are kept."""
+    from app.services.pdf_link_selection import (
+        InMemoryPdfLinkSelectionRepository,
+        PdfLinkSelectionService,
+    )
+
+    service = PdfLinkSelectionService(
+        ((model, classifier),),
+        InMemoryPdfLinkSelectionRepository(),
+        policy_version="survey",
+    )
+    selection = await service.select(
+        artifact.model_copy(update={"downloadable_documents": documents}), offering
+    )
+    decisions: dict[str, bool] = {}
+    names = {document.sha256: document.document_name for document in documents}
+    for sha, choice in selection.choices.items():
+        name = _file_name(sha, names[sha])
+        decisions[name] = decisions.get(name, False) or choice.transcribe
+    # Admitted-but-historical and off-topic links are skipped before selection.
+    for document in documents:
+        decisions.setdefault(_file_name(document.sha256, document.document_name), False)
     return decisions
 
 
@@ -253,6 +329,17 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             raise SystemExit("GEMINI_API_KEY is required for --classifier gemini")
         guard = _GuardedClassifier(
             AdkSourceDiscoveryClassifier(model, api_key=key), price, args.max_usd
+        )
+
+    pdf_guard = None
+    if args.pdf_selector == "gemini":
+        from app.services.pdf_link_selection import AdkPdfLinkClassifier
+
+        key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise SystemExit("GEMINI_API_KEY is required for --pdf-selector gemini")
+        pdf_guard = _GuardedClassifier(
+            AdkPdfLinkClassifier(model, api_key=key), price, args.max_usd
         )
 
     seeds: dict[str, Any] = {}
@@ -402,7 +489,19 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                         "outcome": outcome,
                     }
                 )
-        pdf_selected = _pdf_decisions(seed, artifact, parser)
+        documents = _rebuilt_documents(artifact, parser)
+        if args.pdf_selector == "admission":
+            pdf_selected = _admission_decisions(documents)
+        else:
+            from app.domain.source_discovery import OfferingContext
+
+            pdf_selected = await _selection_decisions(
+                artifact,
+                documents,
+                OfferingContext.from_catalog_entry(entry, page_title=artifact.title),
+                _LabelSelector(seed) if args.pdf_selector == "labels" else pdf_guard,
+                model,
+            )
         pdfs = []
         for name, label in spec["pdfs"].items():
             selected = pdf_selected.get(name)
@@ -474,7 +573,25 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             "thinking_tokens": usage.thinking_tokens,
             "spent_usd": round(guard.spent_usd(), 4),
         }
-    print("totals:", totals, "pdf:", pdf_totals, "usage:", report.get("usage"))
+    report["pdf_selector"] = args.pdf_selector
+    if pdf_guard is not None:
+        usage = pdf_guard.inner.usage
+        report["pdf_selector_usage"] = {
+            "calls": pdf_guard.calls,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "spent_usd": round(pdf_guard.spent_usd(), 4),
+        }
+    print(
+        "totals:",
+        totals,
+        "pdf:",
+        pdf_totals,
+        "usage:",
+        report.get("usage"),
+        "pdf selector:",
+        report.get("pdf_selector_usage"),
+    )
     return report
 
 
@@ -485,6 +602,15 @@ def main() -> None:
     parser.add_argument("--max-usd", type=float, default=0.40)
     parser.add_argument("--label", default=None)
     parser.add_argument("--seed", action="append")
+    parser.add_argument(
+        "--pdf-selector",
+        choices=("admission", "labels", "gemini"),
+        default="admission",
+        help=(
+            "how PDFs are chosen: today's keyword admission, the hand labels replayed "
+            "through the link selector (plumbing check), or the Gemini link selector"
+        ),
+    )
     parser.add_argument(
         "--rescore",
         default=None,

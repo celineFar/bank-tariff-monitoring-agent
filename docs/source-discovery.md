@@ -12,9 +12,33 @@ state and each PDF receives its own `*.selection_decisions.md` and
 `*.selection_diff.md`. The retained content is also written as
 `selected_webpage.md` and per-document `selected_*.md` files. These are
 human-readable renderings of `selected_sources.json`, the filtered structured bundle
-passed to semantic extraction. A PDF admitted as relevant from its title, link label,
-and surrounding metadata receives one document-level decision that is inherited by
-its blocks and tables; historical or future status still excludes it from current
+passed to semantic extraction.
+
+## PDF link selection (before transcription)
+
+Source discovery starts before normalization. `PdfLinkSelectionService` takes every
+linked PDF that deterministic admission lets through (off-topic metadata and, by
+default, superseded editions are skipped without any model) and asks a tool-free
+Gemini classifier, in one call per offering, to label each from its link metadata
+alone (file name, document name, link text and title, heading path, nearby text,
+effective periods):
+
+- `current_product`: the offering's own terms, information leaflet, or tariff;
+- `shared_terms`: terms that apply to it among other loans (the loan fee schedule,
+  the floating-rate procedure, a lending campaign that covers it);
+- `related_product`: another product's or an uncovered variant's document;
+- `generic_bank_information`: bank-wide material that is not lending terms;
+- `unclear`: the link does not say.
+
+Only `current_product`, `shared_terms` and `unclear` PDFs are read and transcribed.
+The pipeline records the stage as `pdf_selection`, the audit as
+`2_pdf_link_selection.md`, and caches decisions in `pdf_link_selections` by offering,
+policy and prompt version, model, and a fingerprint of the link metadata, so an
+unchanged link is never asked about again. It uses the discovery models and fallback
+chain. In discovery, a selected PDF gets one `link_selection` document decision that
+its blocks and tables inherit (shared terms carry the condition "Applies to other
+loans as well as this offering."); an `unclear` PDF is classified on its content;
+historical or future status from explicit dates still excludes a PDF from current
 terms.
 
 ## Cost-aware execution

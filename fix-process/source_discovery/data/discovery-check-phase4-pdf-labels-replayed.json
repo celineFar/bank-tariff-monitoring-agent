@@ -1,0 +1,823 @@
+{
+  "as_of": "2026-09-26",
+  "classifier": "none",
+  "model": "gemini-3.1-flash-lite",
+  "estimated_usd": 0.1017,
+  "totals": {
+    "lost": 0,
+    "leak": 0,
+    "noise": 0,
+    "scored": 0,
+    "tables_scored": 35
+  },
+  "pdf_totals": {
+    "lost": 0,
+    "leak": 0
+  },
+  "seeds": {
+    "consumer_standard": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Required documents",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Consumer_loan_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Consumer_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "web-info-eng.pdf",
+          "label": "irrelevant",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "credit_line": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Credit line unsecured",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Required documents",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loans service fee",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Credit_line_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "unsecured_credit_line_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "web-info-eng.pdf",
+          "label": "irrelevant",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_commercial": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Tariffs — Loan for Purchase of Commercial Real Estate",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan service fee",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_commercial_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_construction": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Home Construction Loan",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan for construction of commercial real estate",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortage_personal_construction_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_commercial_construction_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": false,
+          "failure": null
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_diaspora": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [],
+      "pdfs": [],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_express": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "1. Express Home Purchase Loan (primary market)",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "2. Express Home Purchase Loan (secondary market)",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "3. Express Home Construction Loan",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "4. Express Home Renovation Loan",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_14.07.26_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_no_income_verification": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Terms",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "no-verification-mortgage-eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_online": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Tariffs in the case of the primary market",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Tariffs in the case of the secondary market",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_personal_online_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_online_secondary_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_primary": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Tariffs — Home Purchase Loan (primary market)",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_personal_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": false,
+          "failure": null
+        },
+        {
+          "file": "terms_flexible_mortgage_eng.pdf",
+          "label": "related_product",
+          "selected": false,
+          "failure": null
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_renovation": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Home Renovation Loan",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan for renovation of commercial real estate",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortage_personal_renovation_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_commercial_renovation_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "renovation_loan_special_offer_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": false,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "mortgage_secondary_market": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Tarifs — Home Purchase Loan (secondary market)",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loan service fee",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortage_personal_purchase_Secondary_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": false,
+          "failure": null
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "online_consumer_finance": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Terms of installment financing for the purchase of goods",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Payment methods",
+          "expected": "any",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Credit history and score",
+          "expected": "any",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Leaflet_consumer_finance_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "basic_conditions_of_installment_financing-service_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Payment_terminals_arm.pdf",
+          "label": "generic_bank_information",
+          "selected": false,
+          "failure": null
+        },
+        {
+          "file": "web-info.pdf",
+          "label": "irrelevant",
+          "selected": false,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    },
+    "overdraft": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 0,
+        "scored": 0
+      },
+      "tables": [
+        {
+          "title": "Overdrafts via Cards not secured with property (unsecured)",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Required documents",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        },
+        {
+          "title": "Loans service fee",
+          "expected": "current",
+          "outcome": "not run",
+          "failure": null,
+          "temporal": null,
+          "reason": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Overdraft_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "unsecured_overdraft_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [],
+      "llm_batches": null,
+      "assessments": {}
+    }
+  },
+  "pdf_selector": "labels"
+}

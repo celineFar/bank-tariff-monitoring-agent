@@ -219,7 +219,48 @@ def _normalization_reports(
     return (
         ("2_normalized_webpage.md", normalized_page),
         ("2_normalization_diff.md", diff),
+        ("2_pdf_link_selection.md", lambda: render_pdf_link_selection(bundle)),
     )
+
+
+def render_pdf_link_selection(bundle: NormalizedSourceBundle) -> str:
+    """Which linked PDFs source discovery chose, from their links, and why."""
+    lines = [
+        "# PDF link selection",
+        "",
+        "Source discovery's first step: for each PDF that deterministic admission "
+        "let through, whether it belongs to this offering, judged from its link "
+        "before transcription. Only `current_product`, `shared_terms` and "
+        "`unclear` PDFs are transcribed.",
+        "",
+        "| Document | Decision | Role | By | Transcribed | Reason |",
+        "|---|---|---|---|---|---|",
+    ]
+    rows = 0
+    for document in bundle.documents:
+        if document.source_type is SourceType.PAGE:
+            continue
+        choice = document.pdf_selection
+        if choice is None:
+            decision = "not asked (admission skipped it)"
+            role = by = reason = "—"
+        else:
+            decision, role = choice.label.value, choice.role.value
+            by = f"{choice.decided_by} ({choice.model_name})"
+            reason = choice.reason
+        transcribed = "yes" if document.blocks or document.tables else "no"
+        cells = (document.name, decision, role, by, transcribed, reason)
+        lines.append(
+            "| "
+            + " | ".join(
+                str(cell).replace("|", "\\|").replace("\n", " ") for cell in cells
+            )
+            + " |"
+        )
+        rows += 1
+    if rows == 0:
+        lines.append("| (no linked documents) | | | | | |")
+    return "\n".join(lines) + "\n"
 
 
 def _source_discovery_reports(

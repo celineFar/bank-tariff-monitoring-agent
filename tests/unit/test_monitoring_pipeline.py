@@ -268,7 +268,7 @@ class _Normalization:
     def __init__(self, events):
         self.events = events
 
-    async def normalize(self, artifact):
+    async def normalize(self, artifact, *, pdf_selection=None):
         self.events.append(("normalize", artifact))
         return _bundle()
 
@@ -723,6 +723,7 @@ async def test_indexing_refresh_collects_stage_numbered_audit_markdown(
         "0_run_context.md",
         "2_normalization_diff.md",
         "2_normalized_webpage.md",
+        "2_pdf_link_selection.md",
         "3_selected_sources.md",
         "3_source_selection_decisions.md",
         "3_source_selection_diff.md",
@@ -972,7 +973,7 @@ async def test_cancellation_cleanup_failure_never_replaces_the_cancellation() ->
 class _MenuNormalization(_Normalization):
     """The page also has a menu block that discovery marks irrelevant."""
 
-    async def normalize(self, artifact):
+    async def normalize(self, artifact, *, pdf_selection=None):
         bundle = await super().normalize(artifact)
         page = bundle.documents[0]
         menu = NormalizedBlock(
@@ -1022,3 +1023,52 @@ async def test_sd7_projection_indexes_only_the_selected_blocks() -> None:
     content = "\n".join(chunk.content for chunk in source.chunks)
     assert "Consumer loan rate 13.5%" in content
     assert "Cards Deposits Transfers" not in content
+
+
+class _PdfSelection:
+    def __init__(self, events):
+        self.events = events
+
+    async def select(self, artifact, offering):
+        from app.domain.pdf_extraction import PdfLinkSelection
+
+        self.events.append(("select_pdfs", offering.offering_id))
+        return PdfLinkSelection(offering_id=offering.offering_id)
+
+
+class _SelectionAwareNormalization(_Normalization):
+    async def normalize(self, artifact, *, pdf_selection=None):
+        self.events.append(("normalize_with", pdf_selection is not None))
+        return await super().normalize(artifact)
+
+
+@pytest.mark.asyncio
+async def test_pdf_selection_runs_before_normalization_when_the_page_links_pdfs() -> (
+    None
+):
+    events = []
+    publications = _Publications()
+
+    class _PdfAcquisition(_Acquisition):
+        async def acquire(self, url):
+            artifact = await super().acquire(url)
+            return artifact.model_copy(update={"downloadable_documents": ("pdf",)})
+
+    service = IndexingPipeline(
+        acquisition=_PdfAcquisition(events),
+        normalization=_SelectionAwareNormalization(events),
+        pdf_selection=_PdfSelection(events),
+        discovery=_Discovery(events),
+        extraction=_Extraction(events),
+        projection=KnowledgeProjectionService(),
+        embedder=_Embedder(events),
+        snapshots=_Snapshots(),
+        publications=publications,
+    )
+
+    result = await service.refresh(_offering(), uuid4(), uuid4())
+
+    names = [event[0] for event in events]
+    assert names.index("select_pdfs") < names.index("normalize_with")
+    assert ("normalize_with", True) in events
+    assert "pdf_selection" in {timing.stage for timing in result.manifest.timings}

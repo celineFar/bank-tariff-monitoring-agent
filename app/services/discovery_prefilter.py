@@ -354,9 +354,16 @@ def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
                 if document.pdf_admission
                 else None
             ),
+            # The link decision, not who made it: a cache hit is the same input.
+            "pdf_selection": (
+                [document.pdf_selection.label.value, document.pdf_selection.role.value]
+                if document.pdf_selection
+                else None
+            ),
         },
         selection_reason="Linked documents are first assessed as one source-level unit.",
         pdf_admission=document.pdf_admission,
+        pdf_selection=document.pdf_selection,
     )
 
 
@@ -426,6 +433,7 @@ def _candidate(
     content_identity: object,
     selection_reason: str,
     pdf_admission=None,
+    pdf_selection=None,
     parent: str | None = None,
     layout: CandidateLayout = CandidateLayout.CONTENT,
     members: tuple[DiscoveryMember, ...] = (),
@@ -461,6 +469,7 @@ def _candidate(
         structural_fingerprint=_hash(structural),
         selection_reason=selection_reason,
         pdf_admission=pdf_admission,
+        pdf_selection=pdf_selection,
         layout=layout,
         members=members,
         member_context=member_context,

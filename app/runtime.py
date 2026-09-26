@@ -24,6 +24,7 @@ from app.repositories.monitoring import (
     PostgresSnapshotRepository,
 )
 from app.repositories.pdf_extraction import PostgresPdfExtractionRepository
+from app.repositories.pdf_link_selection import PostgresPdfLinkSelectionRepository
 from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
 from app.repositories.reviews import PostgresReviewRepository
 from app.repositories.semantic_extraction import PostgresSemanticExtractionRepository
@@ -58,6 +59,10 @@ from app.services.normalization import StructuralNormalizationService
 from app.services.normalization_baseline import load_normalization_baseline
 from app.services.ocr_transcriber import TesseractOcrTranscriber
 from app.services.pdf_extraction import GeminiPdfExtractionService
+from app.services.pdf_link_selection import (
+    AdkPdfLinkClassifier,
+    PdfLinkSelectionService,
+)
 from app.services.pdf_rasterizer import PdfiumPageRasterizer
 from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
 from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
@@ -195,6 +200,34 @@ def build_application_container(
             for discovery_model in discovery_models
         )
     )
+    # Source discovery's first step runs on the same models and budget: which
+    # linked PDFs belong to the offering, decided before transcription.
+    pdf_selection = PdfLinkSelectionService(
+        tuple(
+            (
+                discovery_model,
+                AdkPdfLinkClassifier(
+                    discovery_model,
+                    api_key=api_key,
+                    max_attempts=settings.source_discovery.classifier_max_attempts,
+                    backoff_base_seconds=(
+                        settings.source_discovery.classifier_backoff_base_seconds
+                    ),
+                    max_backoff_seconds=(
+                        settings.source_discovery.classifier_max_backoff_seconds
+                    ),
+                    retry_jitter_ratio=(
+                        settings.source_discovery.classifier_retry_jitter_ratio
+                    ),
+                    usage_repository=model_usage,
+                ),
+            )
+            for discovery_model in discovery_models
+        ),
+        PostgresPdfLinkSelectionRepository(sessions),
+        policy_version=settings.source_discovery.policy_version,
+        skip_historical=settings.pdf_extraction.skip_historical,
+    )
     extraction_models = model_sequence(
         settings.models.generation_model,
         settings.semantic_extraction.fallback_model_names,
@@ -254,6 +287,7 @@ def build_application_container(
             artifact_reader=artifacts,
         ),
         normalization=normalization,
+        pdf_selection=pdf_selection,
         discovery=discovery,
         extraction=extraction,
         projection=KnowledgeProjectionService(
