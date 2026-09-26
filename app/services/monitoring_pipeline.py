@@ -115,6 +115,9 @@ class OfferingPipelineError(RuntimeError):
         self.cause_type = type(cause).__name__
         reason = getattr(cause, "reason", None)
         self.cause_reason = reason.value if isinstance(reason, StrEnum) else None
+        # Counts such as "tables 3 -> 0": what an incomplete acquisition lacked.
+        # Never source text, so safe to persist.
+        self.cause_reasons = tuple(getattr(cause, "reasons", ()) or ())
         # `ClientError` alone cannot tell an operator that a model was retired,
         # so keep the transport status too. The provider's message stays in the
         # logs; `docs/failure-behavior.md` keeps it out of stored details.
@@ -202,6 +205,20 @@ class IndexingPipeline:
             OfferingFailureCode.ACQUISITION_FAILED,
             self._acquisition.acquire(str(offering.seed_url)),
         )
+        if self._runs is not None:
+            try:
+                await self._runs.record_acquisition(
+                    offering_execution_id,
+                    retrieved_at=artifact.retrieved_at,
+                    reused=artifact.reused,
+                )
+            except Exception:
+                # Informational: the run's result does not depend on it.
+                logger.warning(
+                    "Could not record the acquisition time of %s",
+                    offering.offering_id.value,
+                    exc_info=True,
+                )
         bundle = await stage(
             "normalization",
             OfferingFailureCode.NORMALIZATION_FAILED,
@@ -348,6 +365,7 @@ class IndexingPipeline:
             document_count=len(embedded),
             chunk_count=sum(len(document.chunks) for document in embedded),
             warning_codes=(
+                *(warning.code.value for warning in artifact.warnings),
                 *(warning.code.value for warning in bundle.warnings),
                 *(("indexing.embedding_deferred",) if index_deferred else ()),
             ),
@@ -370,6 +388,10 @@ class IndexingPipeline:
                             timing.model_dump(mode="json") for timing in timings
                         ],
                         "warning_codes": list(manifest.warning_codes),
+                        "acquisition_warnings": [
+                            warning.model_dump(mode="json")
+                            for warning in artifact.warnings
+                        ],
                     },
                 )
             ),
@@ -572,6 +594,11 @@ class TariffPipeline:
                             "detail": exc.cause_detail,
                             **(
                                 {"reason": exc.cause_reason} if exc.cause_reason else {}
+                            ),
+                            **(
+                                {"reasons": list(exc.cause_reasons)}
+                                if exc.cause_reasons
+                                else {}
                             ),
                         },
                     )

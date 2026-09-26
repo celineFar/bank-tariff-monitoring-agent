@@ -24,6 +24,8 @@ _BLOCK_TAGS = frozenset(
     {"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "dt", "dd", "details"}
 )
 _DOCUMENT_EXTENSIONS = frozenset({".pdf"})
+_SECTIONING_TAGS = frozenset({"article", "aside", "main", "section"})
+_SITE_CHROME_ROLES = frozenset({"navigation", "banner", "contentinfo"})
 _ACCORDION_TITLE = re.compile(
     r"(?:accordion|faq).*(?:title|header|question|trigger)", re.I
 )
@@ -41,6 +43,9 @@ class ParsedHtml:
     title: str | None
     language: str | None
     visible_text: str
+    # Visible text outside the site's header, menus and footer: the part of the
+    # page that is about this page.
+    main_text: str
     markdown: str | None
     blocks: tuple[ContentBlock, ...]
     tables: tuple[TableArtifact, ...]
@@ -79,14 +84,20 @@ class HtmlArtifactParser:
         links, links_by_element = self._links(root, source_url)
         images = self._images(root, source_url)
         interactive_controls = self._interactive_controls(root, source_url)
-        blocks, tables = self._blocks_and_tables(root, source_url, links_by_element)
+        blocks, tables, chrome_block_ids = self._blocks_and_tables(
+            root, source_url, links_by_element
+        )
         visible_text = self._clean(" ".join(block.text for block in blocks))
+        main_text = self._clean(
+            " ".join(block.text for block in blocks if block.id not in chrome_block_ids)
+        )
         markdown = self._markdown(blocks, tables)
         return ParsedHtml(
             canonical_url=canonical_url,
             title=title,
             language=language,
             visible_text=visible_text,
+            main_text=main_text,
             markdown=markdown or None,
             blocks=blocks,
             tables=tables,
@@ -100,9 +111,10 @@ class HtmlArtifactParser:
         root: Tag,
         source_url: str,
         links_by_element: dict[int, LinkArtifact],
-    ) -> tuple[tuple[ContentBlock, ...], tuple[TableArtifact, ...]]:
+    ) -> tuple[tuple[ContentBlock, ...], tuple[TableArtifact, ...], frozenset[str]]:
         blocks: list[ContentBlock] = []
         tables: list[TableArtifact] = []
+        chrome_block_ids: set[str] = set()
         headings: list[tuple[int, str]] = []
         block_ids: dict[int, str] = {}
         accordion_titles, accordion_panels = self._accordion_parts(root)
@@ -143,6 +155,8 @@ class HtmlArtifactParser:
                 continue
             block_id = f"b{len(blocks) + 1}"
             block_ids[id(element)] = block_id
+            if self._in_site_chrome(element):
+                chrome_block_ids.add(block_id)
             locator = self._locator(element, source_url, block_id)
             parent_id = self._accordion_parent_id(
                 element, accordion_panels, accordion_block_ids
@@ -213,7 +227,31 @@ class HtmlArtifactParser:
                     visible=True,
                 )
             )
-        return tuple(blocks), tuple(tables)
+        return tuple(blocks), tuple(tables), frozenset(chrome_block_ids)
+
+    @staticmethod
+    def _in_site_chrome(element: Tag) -> bool:
+        """Whether the element sits in the site's navigation, banner or footer.
+
+        Follows the ARIA mapping: `nav` is always navigation, but a `header` or
+        `footer` is the site's banner or footer only when it is not inside an
+        article, aside, main or section -- there it belongs to that content.
+        """
+        ancestors = [
+            current
+            for current in (element, *element.parents)
+            if isinstance(current, Tag)
+        ]
+        for index, current in enumerate(ancestors):
+            if str(current.get("role") or "").lower() in _SITE_CHROME_ROLES:
+                return True
+            if current.name == "nav":
+                return True
+            if current.name in {"header", "footer"} and not any(
+                outer.name in _SECTIONING_TAGS for outer in ancestors[index + 1 :]
+            ):
+                return True
+        return False
 
     def _links(
         self, root: Tag, source_url: str

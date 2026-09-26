@@ -197,6 +197,32 @@ class NetworkPayload(AcquisitionModel):
         return normalized
 
 
+class AcquisitionInventory(AcquisitionModel):
+    """What an acquisition found, counted for the completeness gate.
+
+    `main_chars` is visible text outside the site header, menus and footer;
+    `pdf_links` counts the distinct same-host PDF links the page advertises,
+    whether or not they were downloaded.
+    """
+
+    main_chars: int = Field(ge=0)
+    tables: int = Field(ge=0)
+    pdf_links: int = Field(ge=0)
+    payloads: int = Field(ge=0)
+
+
+class AcquisitionWarningCode(StrEnum):
+    LINKED_DOCUMENT_FAILED = "acquisition.linked_document_failed"
+    LINKED_DOCUMENT_CAP_REACHED = "acquisition.linked_document_cap_reached"
+    INTERACTION_CAP_REACHED = "acquisition.interaction_cap_reached"
+    PAYLOAD_CAP_REACHED = "acquisition.payload_cap_reached"
+
+
+class AcquisitionWarning(AcquisitionModel):
+    code: AcquisitionWarningCode
+    detail: str = Field(default="", max_length=1000)
+
+
 class PageArtifact(AcquisitionModel):
     url: HttpUrl
     canonical_url: HttpUrl
@@ -215,7 +241,12 @@ class PageArtifact(AcquisitionModel):
     downloadable_documents: tuple[DocumentArtifact, ...]
     network_payloads: tuple[NetworkPayload, ...]
     stored_artifacts: tuple[StoredArtifact, ...] = ()
-    warnings: tuple[str, ...] = ()
+    warnings: tuple[AcquisitionWarning, ...] = ()
+    inventory: AcquisitionInventory
+    interactions: int = Field(default=0, ge=0)
+    # Set by the freshness gate on the copy it serves again; never part of the
+    # stored artifact or its hashes.
+    reused: bool = False
     retrieved_at: datetime
     # `content_hash` identifies the whole acquisition -- the page plus the
     # documents and API payloads reached from it -- and is what change

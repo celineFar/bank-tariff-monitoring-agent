@@ -18,6 +18,9 @@ official evidence gives a reviewer a bounded business choice.
 | Invalid length or excessive bytes | `source.size_rejected` | reject source, no review |
 | Redirect loop, limit, or missing location | `source.redirect_rejected` | reject source, no review |
 | Invalid PDF signature | `source.signature_rejected` | reject source, no review |
+| Headless browser cannot start | `source.browser_unavailable` | fail offering, no review; environment problem |
+| Browser render or page interaction failed | `source.browser_failed` | fail offering, no review; no static fallback |
+| Page below the completeness floor, or a sharp drop against the page's last good acquisition | `source.incomplete_content` | fail offering, no review; the audit payload lists the reasons (counts only); a drop keeps failing until `scripts/reset_acquisition_baseline.py` |
 | Page/normalization parsing failure | `source.parsing_failed` | fail offering when no trustworthy evidence remains |
 | PDF extraction failure | `source.pdf_extraction_failed` | fail offering when no trustworthy evidence remains |
 | OCR fallback produced nothing | `source.ocr_failed` | recorded after every model attempt and OCR both failed; no values are emitted |

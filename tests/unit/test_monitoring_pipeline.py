@@ -638,10 +638,11 @@ async def test_single_offering_failure_reports_source_code_and_reason() -> None:
         ):
             raise OfferingPipelineError(
                 "acquisition",
-                "source.parsing_failed",
+                "source.incomplete_content",
                 AcquisitionError(
-                    AcquisitionFailure.INSUFFICIENT_CONTENT,
-                    "source content is insufficient",
+                    AcquisitionFailure.INCOMPLETE_CONTENT,
+                    "source content is incomplete",
+                    reasons=("tables 3 -> 0",),
                 ),
             )
 
@@ -666,11 +667,12 @@ async def test_single_offering_failure_reports_source_code_and_reason() -> None:
     completed = await pipeline.execute(running)
 
     assert completed.status is RunStatus.FAILED
-    assert completed.failure_code == "source.parsing_failed"
+    assert completed.failure_code == "source.incomplete_content"
     assert runs.failures[0][1]["failure_detail"] == (
-        "AcquisitionError:INSUFFICIENT_CONTENT"
+        "AcquisitionError:INCOMPLETE_CONTENT"
     )
-    assert runs.failures[0][1]["audit_payload"]["reason"] == ("INSUFFICIENT_CONTENT")
+    assert runs.failures[0][1]["audit_payload"]["reason"] == "INCOMPLETE_CONTENT"
+    assert runs.failures[0][1]["audit_payload"]["reasons"] == ["tables 3 -> 0"]
 
 
 @pytest.mark.asyncio
@@ -684,11 +686,17 @@ async def test_indexing_refresh_persists_progress_before_each_stage() -> None:
         async def start_offering_execution(self, execution_id, *, stage):
             self.stages.append(stage)
 
+        async def record_acquisition(self, execution_id, *, retrieved_at, reused):
+            self.acquisition = (execution_id, retrieved_at, reused)
+
     runs = _StageRuns()
     service._runs = runs
+    execution_id = uuid4()
 
-    await service.refresh(_offering(), uuid4(), uuid4())
+    await service.refresh(_offering(), uuid4(), execution_id)
 
+    # When the page was fetched, and whether it was a reuse, is on the execution.
+    assert runs.acquisition == (execution_id, NOW, False)
     assert runs.stages == [
         "acquisition",
         "normalization",

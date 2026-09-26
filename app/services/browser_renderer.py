@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
+from urllib.parse import urldefrag
 
 from app.config import AcquisitionSettings, HttpSettings
 from app.domain.acquisition import NetworkPayload, SourceLocator, SourceType
@@ -14,7 +15,7 @@ from app.security.urls import DisallowedSourceUrl, validate_source_url
 
 
 def order_network_payloads(
-    captured: Sequence[NetworkPayload], *, limit: int
+    captured: Sequence[NetworkPayload], *, limit: int | None
 ) -> tuple[NetworkPayload, ...]:
     """Order captures by content rather than by whichever body downloaded first.
 
@@ -26,7 +27,8 @@ def order_network_payloads(
     byte-identical content disagree and miss every content-addressed cache.
     Sorting by (url, digest) makes the same set of responses produce the same
     list on every run. Duplicate captures of one endpoint collapse, because a
-    repeated body is one document, not several.
+    repeated body is one document, not several. A `limit` applies after the
+    sort, so the payloads it keeps are the same on every run.
     """
     unique: dict[tuple[str, str], NetworkPayload] = {}
     for payload in captured:
@@ -43,6 +45,7 @@ class BrowserRenderingFailure(StrEnum):
     REDIRECT_LIMIT_EXCEEDED = "REDIRECT_LIMIT_EXCEEDED"
     UNSUPPORTED_MIME_TYPE = "UNSUPPORTED_MIME_TYPE"
     PAGE_TOO_LARGE = "PAGE_TOO_LARGE"
+    INTERACTION = "INTERACTION"
 
 
 class BrowserRenderingError(RuntimeError):
@@ -59,6 +62,9 @@ class RenderedPage:
     visible_text: str
     interactions: int
     network_payloads: tuple[NetworkPayload, ...]
+    interaction_cap_reached: bool = False
+    # Responses skipped because the capture byte budget was already spent.
+    payloads_over_budget: int = 0
 
 
 class BrowserRenderer(Protocol):
@@ -76,7 +82,6 @@ _PREPARE_ACQUISITION_DOM = """
       style.display === 'none'
       || style.visibility === 'hidden'
       || style.visibility === 'collapse'
-      || style.opacity === '0'
     ) {
       return false;
     }
@@ -111,7 +116,6 @@ _PERFORM_ONE_INTERACTION = """
       style.display !== 'none'
       && style.visibility !== 'hidden'
       && style.visibility !== 'collapse'
-      && style.opacity !== '0'
       && element.getClientRects().length > 0
     );
   };
@@ -183,6 +187,16 @@ _PERFORM_ONE_INTERACTION = """
 }
 """
 
+_INTERACTION_LABELS = (
+    "terms and conditions",
+    "see more",
+    "show more",
+    "learn more",
+    "details",
+    "պայմաններ",
+    "տեսնել ավելին",
+)
+
 _ACQUISITION_DOM_SIGNATURE = """
 () => [
   document.body.innerText.length,
@@ -200,20 +214,46 @@ _MARK_CURRENT_INTERACTION_EXHAUSTED = """
 }
 """
 
-_PRIMARY_CONTENT_REVEALED = """
+# Pages fade their content in (the bank's ASP.NET form wrapper starts at opacity
+# 0). Marking visibility mid-fade used to hide the whole page, and the old wait
+# only watched the first <h1>, which many seed pages do not have. This waits for
+# the element that actually holds the page's text -- and the <h1>, when there is
+# one -- to be fully shown.
+_CONTENT_REVEALED = """
 () => {
-  const heading = document.querySelector('h1');
-  if (!heading) return true;
-  for (let element = heading; element && element !== document.body; element = element.parentElement) {
-    const style = window.getComputedStyle(element);
-    if (
-      style.display === 'none'
-      || style.visibility === 'hidden'
-      || style.visibility === 'collapse'
-      || Number(style.opacity) < 0.99
-    ) return false;
+  const shown = (element) => {
+    for (
+      let current = element;
+      current && current !== document.documentElement;
+      current = current.parentElement
+    ) {
+      const style = window.getComputedStyle(current);
+      if (
+        style.display === 'none'
+        || style.visibility === 'hidden'
+        || style.visibility === 'collapse'
+        || Number(style.opacity) < 0.99
+      ) return false;
+    }
+    return true;
+  };
+  const skipped = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+  let root = null;
+  let longest = 0;
+  for (const candidate of document.querySelectorAll(
+    'main, [role="main"], body > *'
+  )) {
+    if (skipped.has(candidate.tagName) || candidate.hasAttribute('hidden')) continue;
+    if (window.getComputedStyle(candidate).display === 'none') continue;
+    const length = (candidate.textContent || '').length;
+    if (length > longest) {
+      longest = length;
+      root = candidate;
+    }
   }
-  return true;
+  if (root && !shown(root)) return false;
+  const heading = document.querySelector('h1');
+  return !heading || shown(heading);
 }
 """
 
@@ -225,7 +265,6 @@ _FINALIZE_ACQUISITION_DOM = """
       style.display !== 'none'
       && style.visibility !== 'hidden'
       && style.visibility !== 'collapse'
-      && style.opacity !== '0'
       && element.getClientRects().length > 0
     );
   };
@@ -257,7 +296,6 @@ class PlaywrightBrowserRenderer:
     async def render(self, url: str) -> RenderedPage:
         try:
             from playwright.async_api import Error as PlaywrightError
-            from playwright.async_api import TimeoutError as PlaywrightTimeoutError
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise BrowserRenderingError(
@@ -266,12 +304,47 @@ class PlaywrightBrowserRenderer:
             ) from exc
 
         validate_source_url(url, self._http.allowed_source_hosts)
-        captured: list[NetworkPayload] = []
-        capture_tasks: set[asyncio.Task[None]] = set()
+        # Every Playwright failure becomes a typed rendering error, classified by
+        # how far the render got: a browser that never started is an environment
+        # problem, not something wrong with the bank's page.
+        progress = _RenderProgress()
+        try:
+            async with async_playwright() as playwright:
+                browser = await playwright.chromium.launch(
+                    headless=True, args=["--disable-dev-shm-usage"]
+                )
+                try:
+                    return await self._render_in(browser, url, progress)
+                finally:
+                    await browser.close()
+        except BrowserRenderingError:
+            raise
+        except PlaywrightError as exc:
+            raise BrowserRenderingError(
+                progress.phase,
+                f"Browser rendering failed during {progress.phase.value.lower()}: "
+                f"{type(exc).__name__}",
+            ) from exc
 
-        async def capture_response(response: object) -> None:
-            if len(captured) >= self._settings.max_network_payloads:
-                return
+    async def _render_in(
+        self, browser: Any, url: str, progress: _RenderProgress
+    ) -> RenderedPage:
+        from playwright.async_api import Error as PlaywrightError
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+        captured: list[NetworkPayload] = []
+        captured_bytes = 0
+        capture_tasks: set[asyncio.Task[None]] = set()
+        # The byte budget bounds memory; the payload count is capped only after
+        # the captures are deduplicated and sorted, so which payloads survive
+        # never depends on the order their bodies finished downloading.
+        byte_budget = (
+            self._settings.max_network_payloads
+            * self._settings.max_network_payload_bytes
+        )
+
+        async def capture_response(response: Any) -> None:
+            nonlocal captured_bytes
             request = response.request
             if request.resource_type not in {"xhr", "fetch"} or request.method != "GET":
                 return
@@ -298,6 +371,10 @@ class PlaywrightBrowserRenderer:
                 return
             if len(body) > self._settings.max_network_payload_bytes:
                 return
+            if captured_bytes + len(body) > byte_budget:
+                progress.payloads_over_budget += 1
+                return
+            captured_bytes += len(body)
             body_text = body.decode("utf-8", errors="replace")
             checksum = hashlib.sha256(body).hexdigest()
             captured.append(
@@ -318,155 +395,202 @@ class PlaywrightBrowserRenderer:
                 )
             )
 
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(
-                headless=True, args=["--disable-dev-shm-usage"]
+        context = await browser.new_context(
+            user_agent=self._http.user_agent,
+            accept_downloads=False,
+            service_workers="block",
+        )
+        page = await context.new_page()
+        page.set_default_timeout(
+            self._settings.browser_navigation_timeout_seconds * 1000
+        )
+        loaded = False
+
+        async def route_request(route: Any, request: Any) -> None:
+            await self.route(route, request, page=page, loaded=loaded)
+
+        await page.route("**/*", route_request)
+
+        def schedule_capture(response: Any) -> None:
+            task = asyncio.create_task(capture_response(response))
+            capture_tasks.add(task)
+            task.add_done_callback(capture_tasks.discard)
+
+        page.on("response", schedule_capture)
+        progress.phase = BrowserRenderingFailure.NAVIGATION
+        try:
+            response = await page.goto(url, wait_until="domcontentloaded")
+        except PlaywrightTimeoutError as exc:
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.NAVIGATION,
+                "Browser navigation timed out",
+            ) from exc
+        except PlaywrightError as exc:
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.NAVIGATION,
+                "Browser navigation failed",
+            ) from exc
+        loaded = True
+        if response is None or response.status < 200 or response.status >= 400:
+            status = response.status if response else "unknown"
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.HTTP_STATUS,
+                f"Browser navigation returned HTTP {status}",
             )
+        self._check_redirect_chain(response.request)
+        mime_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+        if mime_type != "text/html":
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.UNSUPPORTED_MIME_TYPE,
+                "Browser navigation did not return text/html",
+            )
+        final_url = self._allowed_page_url(page.url)
+
+        progress.phase = BrowserRenderingFailure.INTERACTION
+        interactions, interaction_cap_reached = await self.expand_and_mark(page)
+        if urldefrag(self._allowed_page_url(page.url)).url != urldefrag(final_url).url:
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.NAVIGATION,
+                "The page changed its address while it was being expanded",
+            )
+        if capture_tasks:
+            await asyncio.gather(*tuple(capture_tasks), return_exceptions=True)
+        html = await page.content()
+        if len(html.encode("utf-8")) > self._http.max_download_bytes:
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.PAGE_TOO_LARGE,
+                "Rendered HTML exceeds the configured byte limit",
+            )
+        visible_text = await page.locator("body").inner_text()
+        title = (await page.title()).strip() or None
+        payloads = order_network_payloads(captured, limit=None)
+        return RenderedPage(
+            final_url=final_url,
+            html=html,
+            title=title,
+            visible_text=visible_text,
+            interactions=interactions,
+            interaction_cap_reached=interaction_cap_reached,
+            network_payloads=payloads,
+            payloads_over_budget=progress.payloads_over_budget,
+        )
+
+    async def expand_and_mark(self, page: Any) -> tuple[int, bool]:
+        """Wait for the content, open its tabs and panels, and mark visibility.
+
+        Returns the number of interactions and whether the interaction cap
+        stopped the loop. Separate from `render` so the DOM steps can be tested
+        against a local fixture page without any network.
+        """
+        from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+        if self._settings.browser_settle_milliseconds:
+            await page.wait_for_timeout(self._settings.browser_settle_milliseconds)
+        try:
+            await page.wait_for_function(
+                _CONTENT_REVEALED,
+                timeout=min(
+                    5_000, self._settings.browser_navigation_timeout_seconds * 1_000
+                ),
+            )
+        except PlaywrightTimeoutError:
+            pass
+        await page.evaluate(_PREPARE_ACQUISITION_DOM)
+        interactions = 0
+        exhausted = False
+        while interactions < self._settings.max_interactions:
+            before_signature = await page.evaluate(_ACQUISITION_DOM_SIGNATURE)
+            interaction = await page.evaluate(
+                _PERFORM_ONE_INTERACTION, {"labels": list(_INTERACTION_LABELS)}
+            )
+            if not interaction["interacted"]:
+                exhausted = True
+                break
+            interactions += 1
+            if self._settings.browser_settle_milliseconds:
+                await page.wait_for_timeout(self._settings.browser_settle_milliseconds)
+            after_signature = await page.evaluate(_ACQUISITION_DOM_SIGNATURE)
+            if interaction["repeatable"] and before_signature == after_signature:
+                await page.evaluate(_MARK_CURRENT_INTERACTION_EXHAUSTED)
+            await page.evaluate(_PREPARE_ACQUISITION_DOM)
+        await page.evaluate(_FINALIZE_ACQUISITION_DOM)
+        cap_reached = not exhausted and self._settings.max_interactions > 0
+        return interactions, cap_reached
+
+    async def route(self, route: Any, request: Any, *, page: Any, loaded: bool) -> None:
+        """Let a request through only if it is a read-only fetch of the source."""
+        decision = self.decide(request, page=page, loaded=loaded)
+        if decision is _RouteDecision.STAY:
+            # An aborted main-frame navigation still commits Chromium's error
+            # page and destroys the document being read. A 204 response is the
+            # one answer that makes a browser keep the current document.
+            await route.fulfill(status=204, body="")
+        elif decision is _RouteDecision.BLOCK:
+            await route.abort("blockedbyclient")
+        else:
+            await route.continue_()
+
+    def decide(self, request: Any, *, page: Any, loaded: bool) -> _RouteDecision:
+        # Once the page has loaded, nothing may take the tab elsewhere: a clicked
+        # "learn more" button that navigates would otherwise leave another
+        # page's content stored under this page's URL.
+        if (
+            loaded
+            and request.is_navigation_request()
+            and request.frame == page.main_frame
+        ):
+            return _RouteDecision.STAY
+        if request.method not in {"GET", "HEAD"}:
+            return _RouteDecision.BLOCK
+        if request.resource_type in {"image", "media", "font"}:
+            return _RouteDecision.BLOCK
+        try:
+            validate_source_url(request.url, self._http.allowed_source_hosts)
+        except DisallowedSourceUrl:
+            return _RouteDecision.BLOCK
+        return _RouteDecision.ALLOW
+
+    def _check_redirect_chain(self, request: Any) -> None:
+        """Validate every hop of the main document's redirect chain.
+
+        Playwright calls route handlers only for the first URL of a redirect
+        chain, so an intermediate hop is never seen by `route_request`.
+        """
+        hops = 0
+        current = request.redirected_from
+        while current is not None:
+            hops += 1
             try:
-                context = await browser.new_context(
-                    user_agent=self._http.user_agent,
-                    accept_downloads=False,
-                    service_workers="block",
-                )
-                page = await context.new_page()
-                page.set_default_timeout(
-                    self._settings.browser_navigation_timeout_seconds * 1000
-                )
+                validate_source_url(current.url, self._http.allowed_source_hosts)
+            except DisallowedSourceUrl as exc:
+                raise BrowserRenderingError(
+                    BrowserRenderingFailure.DISALLOWED_REDIRECT,
+                    "Browser navigation redirected through a host outside the allowlist",
+                ) from exc
+            current = current.redirected_from
+        if hops > self._http.max_redirects:
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.REDIRECT_LIMIT_EXCEEDED,
+                "Browser navigation exceeded the configured redirect limit",
+            )
 
-                async def route_request(route: object, request: object) -> None:
-                    if request.method not in {"GET", "HEAD"}:
-                        await route.abort("blockedbyclient")
-                        return
-                    if request.resource_type in {"image", "media", "font"}:
-                        await route.abort("blockedbyclient")
-                        return
-                    try:
-                        validate_source_url(
-                            request.url, self._http.allowed_source_hosts
-                        )
-                    except DisallowedSourceUrl:
-                        await route.abort("blockedbyclient")
-                        return
-                    await route.continue_()
+    def _allowed_page_url(self, url: str) -> str:
+        try:
+            return validate_source_url(url, self._http.allowed_source_hosts)
+        except DisallowedSourceUrl as exc:
+            raise BrowserRenderingError(
+                BrowserRenderingFailure.DISALLOWED_REDIRECT,
+                "Browser navigation left the source allowlist",
+            ) from exc
 
-                await page.route("**/*", route_request)
 
-                def schedule_capture(response: object) -> None:
-                    task = asyncio.create_task(capture_response(response))
-                    capture_tasks.add(task)
-                    task.add_done_callback(capture_tasks.discard)
+class _RouteDecision(StrEnum):
+    ALLOW = "ALLOW"
+    BLOCK = "BLOCK"
+    STAY = "STAY"
 
-                page.on("response", schedule_capture)
-                try:
-                    response = await page.goto(url, wait_until="domcontentloaded")
-                except PlaywrightTimeoutError as exc:
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.NAVIGATION,
-                        "Browser navigation timed out",
-                    ) from exc
-                except PlaywrightError as exc:
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.NAVIGATION,
-                        "Browser navigation failed",
-                    ) from exc
-                if response is None or response.status < 200 or response.status >= 400:
-                    status = response.status if response else "unknown"
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.HTTP_STATUS,
-                        f"Browser navigation returned HTTP {status}",
-                    )
-                redirect_count = 0
-                redirected_from = response.request.redirected_from
-                while redirected_from is not None:
-                    redirect_count += 1
-                    redirected_from = redirected_from.redirected_from
-                if redirect_count > self._http.max_redirects:
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.REDIRECT_LIMIT_EXCEEDED,
-                        "Browser navigation exceeded the configured redirect limit",
-                    )
-                mime_type = (
-                    response.headers.get("content-type", "").split(";", 1)[0].lower()
-                )
-                if mime_type != "text/html":
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.UNSUPPORTED_MIME_TYPE,
-                        "Browser navigation did not return text/html",
-                    )
-                try:
-                    final_url = validate_source_url(
-                        page.url, self._http.allowed_source_hosts
-                    )
-                except DisallowedSourceUrl as exc:
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.DISALLOWED_REDIRECT,
-                        "Browser navigation left the source allowlist",
-                    ) from exc
 
-                if self._settings.browser_settle_milliseconds:
-                    await page.wait_for_timeout(
-                        self._settings.browser_settle_milliseconds
-                    )
-                try:
-                    await page.wait_for_function(
-                        _PRIMARY_CONTENT_REVEALED,
-                        timeout=min(
-                            5_000,
-                            self._settings.browser_navigation_timeout_seconds * 1_000,
-                        ),
-                    )
-                except PlaywrightTimeoutError:
-                    pass
-                await page.evaluate(_PREPARE_ACQUISITION_DOM)
-                interaction_labels = [
-                    "terms and conditions",
-                    "see more",
-                    "show more",
-                    "learn more",
-                    "details",
-                    "պայմաններ",
-                    "տեսնել ավելին",
-                ]
-                interactions = 0
-                while interactions < self._settings.max_interactions:
-                    before_signature = await page.evaluate(_ACQUISITION_DOM_SIGNATURE)
-                    interaction = await page.evaluate(
-                        _PERFORM_ONE_INTERACTION,
-                        {"labels": interaction_labels},
-                    )
-                    if not interaction["interacted"]:
-                        break
-                    interactions += 1
-                    if self._settings.browser_settle_milliseconds:
-                        await page.wait_for_timeout(
-                            self._settings.browser_settle_milliseconds
-                        )
-                    after_signature = await page.evaluate(_ACQUISITION_DOM_SIGNATURE)
-                    if interaction["repeatable"] and (
-                        before_signature == after_signature
-                    ):
-                        await page.evaluate(_MARK_CURRENT_INTERACTION_EXHAUSTED)
-                    await page.evaluate(_PREPARE_ACQUISITION_DOM)
-                await page.evaluate(_FINALIZE_ACQUISITION_DOM)
-                if capture_tasks:
-                    await asyncio.gather(*tuple(capture_tasks), return_exceptions=True)
-                html = await page.content()
-                if len(html.encode("utf-8")) > self._http.max_download_bytes:
-                    raise BrowserRenderingError(
-                        BrowserRenderingFailure.PAGE_TOO_LARGE,
-                        "Rendered HTML exceeds the configured byte limit",
-                    )
-                visible_text = await page.locator("body").inner_text()
-                title = (await page.title()).strip() or None
-                return RenderedPage(
-                    final_url=final_url,
-                    html=html,
-                    title=title,
-                    visible_text=visible_text,
-                    interactions=interactions,
-                    network_payloads=order_network_payloads(
-                        captured, limit=self._settings.max_network_payloads
-                    ),
-                )
-            finally:
-                await browser.close()
+@dataclass(slots=True)
+class _RenderProgress:
+    phase: BrowserRenderingFailure = BrowserRenderingFailure.UNAVAILABLE
+    payloads_over_budget: int = 0

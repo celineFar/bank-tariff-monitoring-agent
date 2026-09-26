@@ -45,8 +45,8 @@ run_tariff_monitoring; pass the resolved offering_id, or null only when the user
 asked for the whole family. If it returns needs_scope_confirmation, tell the user
 how many offerings the run covers and call it again only after they agree.
 The monitoring tool itself shows progress and asks the user for any review; when it
-returns, report each offering's outcome, and answer the original question from its
-`answer` field when present. If it failed or was cancelled, say so in plain words
+returns, report each offering's outcome, including its source_note when present, and
+answer the original question from its `answer` field when present. If it failed or was cancelled, say so in plain words
 using failure_summary; do not invent values, sources, status or freshness.
 Route change-history questions to get_tariff_history and status questions to
 get_monitoring_status; use review_pending_candidates when the user wants to review

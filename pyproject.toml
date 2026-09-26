@@ -118,6 +118,7 @@ asyncio_default_fixture_loop_scope = "session"
 markers = [
     "live: requires external services or model credentials",
     "postgres: requires TEST_DATABASE_URL pointing to an isolated PostgreSQL test database",
+    "browser: starts a local headless Chromium; fixture pages only, no network",
 ]
 
 [tool.hatch.build.targets.wheel]

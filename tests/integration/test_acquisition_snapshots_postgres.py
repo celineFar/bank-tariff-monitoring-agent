@@ -6,7 +6,11 @@ import asyncpg
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.domain.acquisition import AcquisitionMode, PageArtifact
+from app.domain.acquisition import (
+    AcquisitionInventory,
+    AcquisitionMode,
+    PageArtifact,
+)
 from app.repositories.acquisition_snapshots import (
     PostgresAcquisitionSnapshotRepository,
 )
@@ -31,6 +35,7 @@ def _artifact(retrieved_at: datetime, content_hash: str) -> PageArtifact:
         downloadable_documents=(),
         network_payloads=(),
         retrieved_at=retrieved_at,
+        inventory=AcquisitionInventory(main_chars=0, tables=0, pdf_links=0, payloads=0),
         content_hash=content_hash,
         page_content_hash="b" * 64,
     )

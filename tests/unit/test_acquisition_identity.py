@@ -99,7 +99,9 @@ def _service(tmp_path, html: str, *, browser=None, pdf=None) -> AcquisitionServi
         html_parser=HtmlArtifactParser(("ameriabank.am",)),
         pdf_downloader=pdf or _PdfDownloader(),
         artifact_store=FileSystemArtifactStore(tmp_path),
-        settings=AcquisitionSettings(min_static_text_chars=10),
+        settings=AcquisitionSettings(
+            browser_enabled=browser is not None, min_main_content_chars=10
+        ),
         browser_renderer=browser,
     )
 
@@ -170,7 +172,7 @@ async def test_a_revised_linked_document_does_not_rename_the_page(tmp_path) -> N
         tmp_path, html, pdf=_PdfDownloader(b"%PDF-1.7 revised")
     ).acquire("https://ameriabank.am/overdraft")
 
-    # The acquisition as a whole changed, so change detection still sees it...
+    # The acquisition as a whole changed, and its content hash says so...
     assert original.content_hash != revised.content_hash
     # ...but the page's own markup did not, so the page document keeps its name
     # and the evidence quoted from it keeps its cached extraction.
@@ -205,3 +207,66 @@ async def test_document_ids_are_addressed_by_content_not_position(tmp_path) -> N
         item.id for item in before.documents if item.id.startswith("document:")
     )
     assert terms_id in {item.id for item in after.documents}
+
+
+def _aspnet_page(view_state: str, token: str, *, amount: str = "10,000,000") -> str:
+    """The bank's pages carry three hidden fields that change on every request."""
+    return f"""
+    <html lang="en"><head><title>Overdraft</title></head><body>
+    <form id="Form">
+      <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="{view_state}" />
+      <input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION"
+             value="{view_state[::-1]}" />
+      <h1>Overdraft</h1><p>Amount up to {amount} AMD.</p>
+      <a href="/terms.pdf">Official terms</a>
+      <input name="__RequestVerificationToken" type="hidden" value="{token}" />
+    </form>
+    </body></html>
+    """
+
+
+@pytest.mark.asyncio
+async def test_per_request_form_tokens_do_not_rename_the_page(tmp_path) -> None:
+    # Measured live on 2026-09-26: two fetches of the Overdraft page, seconds
+    # apart, differed only in these three fields -- and got two page ids, so
+    # every extraction cache missed.
+    first = await _service(
+        tmp_path, _aspnet_page("BwyBTnZQdPsd", "DnwM91GA9DJX")
+    ).acquire("https://ameriabank.am/overdraft")
+    second = await _service(
+        tmp_path, _aspnet_page("4YXJM+soRSFc", "8Keo3O5yhFjL")
+    ).acquire("https://ameriabank.am/overdraft")
+
+    assert first.raw_html != second.raw_html
+    assert first.page_content_hash == second.page_content_hash
+    assert first.content_hash == second.content_hash
+
+
+@pytest.mark.asyncio
+async def test_per_request_tokens_in_the_rendered_page_do_not_rename_it(
+    tmp_path,
+) -> None:
+    pages = []
+    for view_state, token in (("BwyBTnZQdPsd", "DnwM91"), ("4YXJM+soRSFc", "8Keo3O")):
+        html = _aspnet_page(view_state, token)
+        pages.append(
+            await _service(tmp_path, html, browser=_Browser((), html)).acquire(
+                "https://ameriabank.am/overdraft"
+            )
+        )
+
+    assert pages[0].rendered_html != pages[1].rendered_html
+    assert pages[0].page_content_hash == pages[1].page_content_hash
+
+
+@pytest.mark.asyncio
+async def test_a_changed_visible_value_renames_the_page(tmp_path) -> None:
+    before = await _service(
+        tmp_path, _aspnet_page("BwyBTnZQdPsd", "DnwM91GA9DJX")
+    ).acquire("https://ameriabank.am/overdraft")
+    after = await _service(
+        tmp_path,
+        _aspnet_page("BwyBTnZQdPsd", "DnwM91GA9DJX", amount="12,000,000"),
+    ).acquire("https://ameriabank.am/overdraft")
+
+    assert before.page_content_hash != after.page_content_hash

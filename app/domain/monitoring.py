@@ -113,6 +113,9 @@ class SourceFailureCode(StrEnum):
     MODEL_FAILED = "source.model_failed"
     MALFORMED_STRUCTURED_OUTPUT = "source.malformed_structured_output"
     VALIDATION_FAILED = "source.validation_failed"
+    BROWSER_UNAVAILABLE = "source.browser_unavailable"
+    BROWSER_FAILED = "source.browser_failed"
+    INCOMPLETE_CONTENT = "source.incomplete_content"
 
 
 class IndexingFailureCode(StrEnum):
@@ -248,6 +251,10 @@ class OfferingExecution(MonitoringModel):
     review_count: int = Field(default=0, ge=0)
     failure_code: str | None = Field(default=None, max_length=100)
     failure_detail: str | None = Field(default=None, max_length=2000)
+    # When the bank page this execution read was fetched, and whether that
+    # fetch was reused from the freshness window rather than made for this run.
+    source_retrieved_at: datetime | None = None
+    acquisition_reused: bool | None = None
 
     @model_validator(mode="after")
     def validate_scope(self) -> OfferingExecution:

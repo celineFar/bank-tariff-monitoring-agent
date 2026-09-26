@@ -8,11 +8,12 @@ replay of the original tool call on resume, and cancellation.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
-from app.domain.models import OfferingId
+from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import OfferingRunStatus, RunStatus
 from app.domain.review import ReviewStatus
 from app.services.monitoring_node import (
@@ -344,3 +345,32 @@ def test_interrupt_ids_round_trip() -> None:
     assert parse_review_interrupt_id(review_interrupt_id(run_id, review_id, 3))[2] == 3
     assert parse_review_interrupt_id("adk-123") is None
     assert parse_review_interrupt_id("review:not-a-uuid:x") is None
+
+
+def test_a_reused_acquisition_is_named_in_the_offering_outcome() -> None:
+    from app.domain.monitoring import OfferingExecution
+    from app.services.monitoring_node import _offering_outcome
+
+    def execution(**fields) -> OfferingExecution:
+        return OfferingExecution(
+            id=uuid4(),
+            run_id=uuid4(),
+            product=ProductType.CONSUMER_LOAN,
+            offering_id=OfferingId.OVERDRAFT,
+            status=OfferingRunStatus.SUCCEEDED,
+            **fields,
+        )
+
+    fetched = datetime(2026, 9, 26, 10, 5, tzinfo=UTC)
+    reused = _offering_outcome(
+        execution(source_retrieved_at=fetched, acquisition_reused=True)
+    )
+    fresh = _offering_outcome(
+        execution(source_retrieved_at=fetched, acquisition_reused=False)
+    )
+
+    assert reused.source_note == (
+        "Checked against the bank's page as fetched at 2026-09-26 14:05 "
+        "(Yerevan time) by an earlier run, not fetched again."
+    )
+    assert fresh.source_note is None
