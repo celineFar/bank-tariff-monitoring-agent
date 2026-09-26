@@ -1,7 +1,7 @@
 # Indexing: fix plan
 
 Date: 2026-09-26 · Branch: `fix/indexing` (to create from `integration/process-fixes` at
-`a812f69`) · Status: **in progress** (Phases 0–4 done).
+`a812f69`) · Status: **in progress** (Phases 0–5 done).
 
 The four design choices this plan depends on (D1–D4) were confirmed by the user on
 2026-09-26. The other decisions (D5–D12) are Claude's; each is listed in
@@ -791,21 +791,73 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
 
 ### Phase 5: Embedding lifecycle and retrieval (IX5, IX7, IX8)
 
-- [ ] IX5: the pipeline embeds only accepted snapshots; review-required documents are
+- [x] IX5: the pipeline embeds only accepted snapshots; review-required documents are
       published text-only.
-- [ ] IX7: on quota exhaustion, publish the projected documents text-only (keep
+- [x] IX7: on quota exhaustion, publish the projected documents text-only (keep
       vectors already made) and keep the `indexing.embedding_deferred` warning; rewrite
       the deferral docstring.
-- [ ] Add `KnowledgeIndexer.embed_missing(offering_id=None, limit=...)`: select active
+- [x] Add `KnowledgeIndexer.embed_missing(offering_id=None, limit=...)`: select active
       chunks with `NULL` vectors, embed through the cache in full batches of 20, fill
       them with `UPDATE ... WHERE embedding IS NULL`, stop on quota.
-- [ ] Call `embed_missing(offering)` after a committed approval (best effort, logged).
-- [ ] Add the worker sweep (`RAG_EMBED_SWEEP_BATCH`, default 200) to `MonitoringWorker`'s
+- [x] Call `embed_missing(offering)` after a committed approval (best effort, logged).
+- [x] Add the worker sweep (`RAG_EMBED_SWEEP_BATCH`, default 200) to `MonitoringWorker`'s
       tick, with usage stage `indexing.embedding_sweep`.
-- [ ] IX8: rewrite the retrieval predicates to match the partial indexes
+- [x] IX8: rewrite the retrieval predicates to match the partial indexes
       (`c.is_active AND c.embedding IS NOT NULL` for vectors, `c.is_active` for text);
       `SET LOCAL hnsw.iterative_scan = relaxed_order` in `search_candidates`.
-- [ ] Record the Phase 5 notes here.
+- [x] Record the Phase 5 notes here.
+
+**Phase 5 notes (done).**
+- **IX5.** `IndexingPipeline.refresh` embeds only accepted snapshots; a review-required
+  run's documents go through `_text_only` (the `embedding` stage still runs and is
+  timed, so progress reporting is unchanged). No embedding call is made for content
+  under review.
+- **IX7.** `_embed_all_or_defer` keeps the documents embedded before a quota refusal
+  and publishes the rest as `EmbeddedKnowledgeDocument.text_only`; the set is activated
+  as usual. `indexing.embedding_deferred` stays a manifest warning. The old test
+  `test_a_quota_refusal_publishes_the_snapshot_without_the_corpus` asserted the opposite
+  and was rewritten (`..._and_its_corpus_as_text`).
+- **`embed_missing`.** `KnowledgeIndexer.embed_missing(offering_id=None, limit=200)`
+  reads `(chunk id, content)` of **active** chunks without a vector from the new
+  [app/repositories/knowledge_embeddings.py](../../app/repositories/knowledge_embeddings.py)
+  (`PostgresChunkEmbeddingRepository`), embeds them through the cache in provider
+  batches of 20, and fills them (`UPDATE ... WHERE embedding IS NULL`). It stops at a
+  quota refusal and keeps what it filled. Document embedding and the sweep share one
+  cache-aware path (`_vectors`). Usage is recorded under stage
+  `indexing.embedding_sweep`: `embed_documents` gained a `stage` keyword (the document
+  path calls it without one, so fakes without the keyword still work).
+- **After approval.** `ReviewDecisionService(..., vectors=indexer)` calls
+  `embed_missing(offering_id=...)` after a committed decision that was
+  `ready_for_activation`; failures are logged and left to the sweep, never raised.
+- **Worker sweep.** `MonitoringWorker` runs `sweep_embeddings()` in **its own loop**
+  (`_sweep_forever`), every `EMBEDDING_SWEEP_INTERVAL_SECONDS` (300), up to
+  `EMBEDDING_SWEEP_BATCH` chunks (200; `0` disables). A separate task because a quota
+  refusal makes the provider retry for minutes, which must not block claiming runs.
+  **Naming differs from the plan:** the settings follow the existing un-prefixed env
+  names (`EMBEDDING_SWEEP_BATCH`, not `RAG_EMBED_SWEEP_BATCH`), and an interval setting
+  was added. `ApplicationContainer.knowledge_indexer` carries the indexer to the worker.
+- **IX8.** Retrieval predicates repeat the partial indexes' verbatim
+  (`c.is_active`, `c.is_active AND c.embedding IS NOT NULL`); `search_candidates` sets
+  `SET LOCAL hnsw.iterative_scan = relaxed_order` in its transaction.
+  **Found: the hybrid query could never use the HNSW index.** Its query vector came from
+  the `search_input` CTE (a column), and pgvector orders by an index only for a constant
+  or parameter; retrieval has always been an exact scan (correct, O(n)). The vector
+  side now orders by `CAST(:query_embedding AS vector)`, so the planner can use the
+  partial index when the corpus is large enough to prefer it. At today's size
+  (~500 active chunks) it still picks the btree path and a sort.
+- **Tests for IX8** force the HNSW path (`enable_seqscan` and `enable_sort` off):
+  the plan uses `knowledge_chunks_embedding_hnsw_idx`; and
+  `test_ix8_retired_chunks_never_crowd_the_vector_search` (200 retired chunks nearer the
+  query than 5 active ones) returns all 5. **Checked to fail with a full index**
+  (4 of 5 returned).
+- **Remaining gap (IX8).** A retired row's entry stays in the partial HNSW index until
+  (auto)vacuum removes it, so a burst of retirements can crowd the scan until then;
+  iterative scan mitigates it. ANN recall across offerings on tiny graphs is
+  approximate either way (seen in the probe: 4 of 5 with or without iterative scan
+  before vacuum); not asserted.
+- New tests: worker sweep ×3 and approval-time embedding ×2 (`test_indexing_fixes.py`);
+  SQL shape in `test_rag_retrieval.py` updated. **No `xfail` left.** Suite: 1087 passed,
+  5 skipped (Gemini-key tests excluded).
 
 ### Phase 6: Validation and docs
 

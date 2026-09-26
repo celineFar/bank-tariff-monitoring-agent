@@ -417,7 +417,13 @@ class IndexingPipeline:
         embedded, index_deferred = await stage(
             "embedding",
             "indexing.embedding_failed",
-            self._embed_all_or_defer(documents),
+            (
+                self._embed_all_or_defer(documents)
+                if snapshot.status is SnapshotStatus.ACCEPTED
+                # Content under review is stored as text only: nothing is spent
+                # on vectors a reviewer may reject. Approval embeds it (IX5).
+                else self._text_only(documents)
+            ),
         )
         selected = {document.document_key: document for document in embedded}
         manifest_items = tuple(
@@ -495,37 +501,44 @@ class IndexingPipeline:
     async def _embed_all_or_defer(
         self, documents: Sequence[KnowledgeDocument]
     ) -> tuple[tuple[EmbeddedKnowledgeDocument, ...], bool]:
-        """Embed the corpus, or defer it when the provider is out of quota.
+        """Embed the corpus, or publish it as text when the provider is out of quota.
 
         A quota refusal says the request was well-formed and the window has
-        moved, so losing a run that was acquired, extracted, validated and
-        human-reviewed is the wrong trade. The snapshot, its facts and its
-        retrieval units are projected from the snapshot itself and never needed
-        these vectors, and the answer path falls back to lexical recall, so
-        publishing without the source-faithful corpus degrades retrieval rather
-        than discarding the tariff data.
+        moved, so losing a run that was acquired, extracted and validated is the
+        wrong trade. The documents are published anyway: those embedded before
+        the refusal with their vectors, the rest as text only. The snapshot's
+        set is activated as usual, so lexical search serves the new tariff at
+        once, and the worker's `embed_missing` sweep fills the vectors when the
+        quota returns (IX7).
 
-        Publishing no documents supersedes nothing, so the previous corpus stays
-        searchable until the next run rebuilds it from the content-addressed
-        caches. Every other embedding failure still raises: a malformed response
-        or a dimension mismatch is a defect, not a window to wait out.
+        Every other embedding failure still raises: a malformed response or a
+        dimension mismatch is a defect, not a window to wait out.
         """
-        try:
-            return await self._embed_all(documents), False
-        except EmbeddingQuotaExhausted:
-            logger.warning(
-                "embedding deferred for lack of provider quota; publishing the "
-                "snapshot without the source corpus"
-            )
-            return (), True
-
-    async def _embed_all(
-        self, documents: Sequence[KnowledgeDocument]
-    ) -> tuple[EmbeddedKnowledgeDocument, ...]:
         embedded: list[EmbeddedKnowledgeDocument] = []
-        for document in documents:
-            embedded.append(await self._embedder.embed(document))
-        return tuple(embedded)
+        for index, document in enumerate(documents):
+            try:
+                embedded.append(await self._embedder.embed(document))
+            except EmbeddingQuotaExhausted:
+                logger.warning(
+                    "embedding deferred for lack of provider quota; publishing "
+                    "%s of %s documents as text for the embedding sweep",
+                    len(documents) - index,
+                    len(documents),
+                )
+                embedded.extend(
+                    EmbeddedKnowledgeDocument.text_only(item)
+                    for item in documents[index:]
+                )
+                return tuple(embedded), True
+        return tuple(embedded), False
+
+    @staticmethod
+    async def _text_only(
+        documents: Sequence[KnowledgeDocument],
+    ) -> tuple[tuple[EmbeddedKnowledgeDocument, ...], bool]:
+        return tuple(
+            EmbeddedKnowledgeDocument.text_only(item) for item in documents
+        ), False
 
     @staticmethod
     async def _stage(

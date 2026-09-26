@@ -82,6 +82,8 @@ class EnvironmentSettings(BaseSettings):
     embedding_backoff_base_seconds: float = 10.0
     embedding_quota_max_attempts: int = 4
     embedding_quota_backoff_base_seconds: float = 30.0
+    embedding_sweep_batch: int = 200
+    embedding_sweep_interval_seconds: float = 300.0
     retrieval_min_score: float = 0.25
     intent_fuzzy_min_score: float = 0.82
     intent_fuzzy_min_gap: float = 0.08

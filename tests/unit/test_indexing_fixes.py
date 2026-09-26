@@ -107,7 +107,6 @@ def test_ix2_same_source_bytes_with_other_chunks_is_another_version() -> None:
 # IX5 -------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="IX5: review-required runs are embedded")
 @pytest.mark.asyncio
 async def test_ix5_review_required_run_embeds_nothing_and_publishes_text(
     monkeypatch,
@@ -182,10 +181,68 @@ async def test_ix6_final_decision_carries_a_summary_of_the_final_snapshot() -> N
     assert all(chunk.embedding is None for chunk in final.summary.chunks)
 
 
+class _Vectors:
+    def __init__(self, *, fail: Exception | None = None) -> None:
+        self.offerings: list[OfferingId | None] = []
+        self.fail = fail
+
+    async def embed_missing(self, *, offering_id=None, limit: int = 200) -> int:
+        self.offerings.append(offering_id)
+        if self.fail is not None:
+            raise self.fail
+        return 1
+
+
+def _overdraft_review_batch():
+    extraction = _extraction()
+    snapshot_id = uuid4()
+    snapshot = SnapshotAttempt(
+        id=snapshot_id,
+        run_id=uuid4(),
+        offering_execution_id=uuid4(),
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=OfferingId.OVERDRAFT,
+        status=SnapshotStatus.REVIEW_REQUIRED,
+        normalized_tariff={},
+        semantic_extraction=extraction.model_dump(mode="json"),
+        validation={"accepted": False, "review_signals": []},
+        canonical_sha256="a" * 64,
+        created_at=NOW,
+    )
+    snapshots = _Snapshots(snapshot)
+    tasks = [_task(snapshot_id, field) for field in OPEN_FIELDS]
+    return snapshots, tasks, _Reviews(tasks, snapshots)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail", [None, RuntimeError("quota")])
+async def test_ix5_approval_embeds_the_activated_documents_after_the_last_decision(
+    fail,
+) -> None:
+    snapshots, tasks, reviews = _overdraft_review_batch()
+    vectors = _Vectors(fail=fail)
+    service = ReviewDecisionService(reviews, snapshots, vectors=vectors)
+
+    await service.apply(
+        tasks[0].id,
+        _decision(ExtractionField.PRODUCT_NAME, "Overdraft"),
+        reviewer="reviewer-1",
+    )
+    assert vectors.offerings == []  # nothing activated yet
+    decided = await service.apply(
+        tasks[1].id,
+        _decision(ExtractionField.COLLATERAL, "none"),
+        reviewer="reviewer-1",
+    )
+
+    # Best effort: a failure is left to the sweep and never fails the decision.
+    assert decided.status.value == "approved"
+    assert vectors.offerings == [OfferingId.OVERDRAFT]
+
+
 # IX7 -------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="IX7: quota deferral publishes no documents")
 @pytest.mark.asyncio
 async def test_ix7_quota_refusal_publishes_the_corpus_as_text() -> None:
     service, _, publications = _indexing(out_of_quota=True)
@@ -395,3 +452,53 @@ def test_ix14_chunk_size_outside_the_embedding_window_is_rejected(size) -> None:
     with pytest.raises(ValueError):
         RagSettings(chunk_size_chars=size)
     assert "chunk_overlap_chars" not in RagSettings.model_fields
+
+
+# IX7: the worker's embedding sweep -------------------------------------------
+
+
+class _Sweep:
+    def __init__(self, *, fail: Exception | None = None) -> None:
+        self.limits: list[int] = []
+        self.fail = fail
+
+    async def embed_missing(self, *, limit: int = 200) -> int:
+        self.limits.append(limit)
+        if self.fail is not None:
+            raise self.fail
+        return 3
+
+
+def _worker(sweep, *, batch: int = 50):
+    from app.worker import MonitoringWorker
+
+    return MonitoringWorker(
+        runs=object(),
+        pipeline=object(),
+        worker_id="worker-1",
+        embeddings=sweep,
+        embedding_sweep_batch=batch,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ix7_worker_sweep_fills_vectors_in_bounded_batches() -> None:
+    sweep = _Sweep()
+
+    assert await _worker(sweep).sweep_embeddings() == 3
+    assert sweep.limits == [50]
+
+
+@pytest.mark.asyncio
+async def test_ix7_worker_sweep_failure_never_stops_the_worker() -> None:
+    sweep = _Sweep(fail=RuntimeError("provider down"))
+
+    assert await _worker(sweep).sweep_embeddings() == 0
+
+
+@pytest.mark.asyncio
+async def test_ix7_worker_sweep_can_be_turned_off() -> None:
+    sweep = _Sweep()
+
+    assert await _worker(sweep, batch=0).sweep_embeddings() == 0
+    assert sweep.limits == []

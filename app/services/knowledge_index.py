@@ -17,6 +17,7 @@ from app.domain.knowledge import (
     EmbeddedKnowledgeDocument,
     KnowledgeDocument,
 )
+from app.domain.models import OfferingId
 from app.repositories.contracts import ChunkEmbeddingRepository
 from app.repositories.embedding_cache import PostgresEmbeddingCache
 from app.services.model_call_usage import (
@@ -42,6 +43,10 @@ class EmbeddingQuotaExhausted(EmbeddingError):
 
 logger = logging.getLogger(__name__)
 _EMBED_BATCH_SIZE = 20
+DOCUMENT_EMBEDDING_STAGE = "indexing.embedding"
+# Vectors filled after publication: an approval's documents and quota-deferred
+# runs (IX5, IX7).
+SWEEP_EMBEDDING_STAGE = "indexing.embedding_sweep"
 _QUOTA_STATUS_CODE = 429
 _TRANSIENT_STATUS_CODES = frozenset({500, 502, 503, 504})
 
@@ -56,7 +61,7 @@ class EmbeddingProvider(Protocol):
     def dimensions(self) -> int: ...
 
     async def embed_documents(
-        self, contents: Sequence[str]
+        self, contents: Sequence[str], *, stage: str = DOCUMENT_EMBEDDING_STAGE
     ) -> Sequence[Sequence[float]]: ...
 
 
@@ -100,7 +105,7 @@ class GeminiEmbeddingProvider:
         return self._model_name
 
     async def embed_documents(
-        self, contents: Sequence[str]
+        self, contents: Sequence[str], *, stage: str = DOCUMENT_EMBEDDING_STAGE
     ) -> Sequence[Sequence[float]]:
         if not contents:
             return ()
@@ -121,7 +126,7 @@ class GeminiEmbeddingProvider:
                             ),
                         ),
                         repository=self._usage_repository,
-                        stage="indexing.embedding",
+                        stage=stage,
                         operation="embed_content",
                         model_id=self._model_name,
                         call_id=call_id,
@@ -246,8 +251,65 @@ class KnowledgeIndexer:
             )
             raise
 
+    async def embed_missing(
+        self, *, offering_id: OfferingId | None = None, limit: int = 200
+    ) -> int:
+        """Fill vectors of active chunks stored without one; returns chunks filled.
+
+        Chunks under review are never active, so they are never embedded here
+        (IX5). Works in provider batches and stops at a quota refusal, keeping
+        what was filled; the next call resumes. Other failures raise.
+        """
+        if self._embeddings is None:
+            raise RuntimeError("embed_missing needs a chunk embedding repository")
+        pending = await self._embeddings.list_missing(
+            offering_id=offering_id, limit=limit
+        )
+        filled = 0
+        for offset in range(0, len(pending), _EMBED_BATCH_SIZE):
+            batch = pending[offset : offset + _EMBED_BATCH_SIZE]
+            try:
+                vectors = await self._vectors(
+                    [content for _, content in batch], stage=SWEEP_EMBEDDING_STAGE
+                )
+            except EmbeddingQuotaExhausted:
+                logger.warning(
+                    "embedding sweep stopped for lack of provider quota after "
+                    "%s of %s chunks",
+                    filled,
+                    len(pending),
+                )
+                break
+            filled += await self._embeddings.fill(
+                {
+                    identifier: vector
+                    for (identifier, _), vector in zip(batch, vectors, strict=True)
+                }
+            )
+        return filled
+
     async def _embed(self, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
-        contents = [chunk.content for chunk in document.chunks]
+        embeddings = await self._vectors(
+            [chunk.content for chunk in document.chunks],
+            stage=DOCUMENT_EMBEDDING_STAGE,
+        )
+        if len(embeddings) != len(document.chunks):
+            raise EmbeddingError(
+                "embedding count does not match the number of document chunks"
+            )
+        return EmbeddedKnowledgeDocument(
+            **document.model_dump(exclude={"chunks"}),
+            chunks=tuple(
+                EmbeddedKnowledgeChunk(**chunk.model_dump(), embedding=embedding)
+                for chunk, embedding in zip(document.chunks, embeddings, strict=True)
+            ),
+        )
+
+    async def _vectors(
+        self, contents: Sequence[str], *, stage: str
+    ) -> list[tuple[float, ...]]:
+        """One validated vector per content, from the cache first."""
+        contents = list(contents)
         if self._embedding_cache is not None:
             model_name = getattr(self._embedding_provider, "model_name", None)
             if not model_name:
@@ -263,7 +325,7 @@ class KnowledgeIndexer:
             )
             await record_model_cache_hit(
                 self._usage_repository,
-                stage="indexing.embedding",
+                stage=stage,
                 operation="embed_content",
                 model_id=model_name,
                 input_count=sum(checksum in cached for checksum in hashes),
@@ -274,7 +336,7 @@ class KnowledgeIndexer:
                 if checksum not in cached
             }
             generated = (
-                await self._embedding_provider.embed_documents(list(missing.values()))
+                await self._generate(list(missing.values()), stage=stage)
                 if missing
                 else ()
             )
@@ -296,15 +358,12 @@ class KnowledgeIndexer:
                 cached.get(checksum) or fresh[checksum] for checksum in hashes
             ]
         else:
-            embeddings = await self._embedding_provider.embed_documents(contents)
+            embeddings = list(await self._generate(contents, stage=stage))
 
-        if len(embeddings) != len(document.chunks):
-            raise EmbeddingError(
-                "embedding count does not match the number of document chunks"
-            )
-
-        embedded_chunks: list[EmbeddedKnowledgeChunk] = []
-        for chunk, embedding in zip(document.chunks, embeddings, strict=True):
+        if len(embeddings) != len(contents):
+            raise EmbeddingError("embedding count does not match the contents")
+        vectors: list[tuple[float, ...]] = []
+        for embedding in embeddings:
             values = tuple(float(value) for value in embedding)
             if len(values) != self._embedding_provider.dimensions:
                 raise EmbeddingError(
@@ -312,14 +371,14 @@ class KnowledgeIndexer:
                 )
             if not all(math.isfinite(value) for value in values):
                 raise EmbeddingError("embedding contains a non-finite value")
-            embedded_chunks.append(
-                EmbeddedKnowledgeChunk(
-                    **chunk.model_dump(),
-                    embedding=values,
-                )
-            )
+            vectors.append(values)
+        return vectors
 
-        return EmbeddedKnowledgeDocument(
-            **document.model_dump(exclude={"chunks"}),
-            chunks=tuple(embedded_chunks),
-        )
+    async def _generate(
+        self, contents: Sequence[str], *, stage: str
+    ) -> Sequence[Sequence[float]]:
+        # The document path keeps the provider's default stage, so providers
+        # (and test fakes) without a `stage` argument still work there.
+        if stage == DOCUMENT_EMBEDDING_STAGE:
+            return await self._embedding_provider.embed_documents(contents)
+        return await self._embedding_provider.embed_documents(contents, stage=stage)

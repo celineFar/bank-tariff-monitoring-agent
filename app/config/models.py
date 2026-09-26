@@ -304,6 +304,11 @@ class RagSettings(SettingsGroup):
     embedding_backoff_base_seconds: float = Field(default=10.0, ge=0, le=300)
     embedding_quota_max_attempts: int = Field(default=4, ge=1, le=10)
     embedding_quota_backoff_base_seconds: float = Field(default=30.0, ge=0, le=600)
+    # The worker's sweep embeds active chunks stored text-only (an approval's
+    # documents, a quota-deferred run; IX5, IX7): up to this many chunks every
+    # interval. 0 turns the sweep off.
+    embedding_sweep_batch: int = Field(default=200, ge=0, le=5_000)
+    embedding_sweep_interval_seconds: float = Field(default=300.0, ge=10, le=86_400)
 
 
 class IntentResolutionSettings(SettingsGroup):

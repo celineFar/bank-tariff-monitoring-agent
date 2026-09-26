@@ -112,6 +112,8 @@ def load_settings(
             embedding_quota_backoff_base_seconds=(
                 raw.embedding_quota_backoff_base_seconds
             ),
+            embedding_sweep_batch=raw.embedding_sweep_batch,
+            embedding_sweep_interval_seconds=raw.embedding_sweep_interval_seconds,
         ),
         intent_resolution=IntentResolutionSettings(
             fuzzy_min_score=raw.intent_fuzzy_min_score,

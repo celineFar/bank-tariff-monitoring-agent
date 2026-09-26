@@ -6,13 +6,20 @@ PostgreSQL integration tests, and skip without it.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
+import asyncpg
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.pool import NullPool
 
 from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
@@ -33,7 +40,10 @@ from app.domain.review import (
     ReviewStatus,
 )
 from app.repositories.monitoring import PostgresOfferingPublicationRepository
-from app.repositories.rag_retrieval import HYBRID_SEARCH_SQL
+from app.repositories.rag_retrieval import (
+    HYBRID_SEARCH_SQL,
+    PostgresRagRetrievalRepository,
+)
 from app.repositories.reviews import PostgresReviewRepository, ReviewConflictError
 from tests.integration import test_monitoring_repository_postgres as repository_tests
 from tests.integration.test_monitoring_repository_postgres import (
@@ -344,14 +354,11 @@ class _Provider:
     def __init__(self) -> None:
         self.calls: list[int] = []
 
-    async def embed_documents(self, contents):
+    async def embed_documents(self, contents, *, stage="indexing.embedding"):
         self.calls.append(len(contents))
         return [tuple(0.02 for _ in range(EMBEDDING_DIMENSIONS)) for _ in contents]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="IX7: chunks cannot be published without vectors"
-)
 @pytest.mark.asyncio
 async def test_ix7_text_only_active_chunks_are_filled_by_embed_missing(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -390,7 +397,6 @@ async def test_ix7_text_only_active_chunks_are_filled_by_embed_missing(
     assert missing == 0
 
 
-@pytest.mark.xfail(strict=True, reason="IX8: chunk indexes cover dead rows")
 @pytest.mark.asyncio
 async def test_ix8_vector_search_uses_a_partial_index_over_active_vectors(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -408,7 +414,11 @@ async def test_ix8_vector_search_uses_a_partial_index_over_active_vectors(
             ).all()
         )
     async with monitoring_session_factory() as session, session.begin():
+        # On a table this small the planner prefers a btree path and a sort;
+        # without those, only the HNSW index can order the rows -- which it can
+        # only do if the query repeats the index's partial predicate.
         await session.execute(text("SET LOCAL enable_seqscan = off"))
+        await session.execute(text("SET LOCAL enable_sort = off"))
         explained = await session.execute(
             text("EXPLAIN " + HYBRID_SEARCH_SQL),
             {
@@ -430,6 +440,131 @@ async def test_ix8_vector_search_uses_a_partial_index_over_active_vectors(
     assert "WHERE (is_active AND (embedding IS NOT NULL))" in hnsw
     assert "WHERE is_active" in definitions["knowledge_chunks_search_gin_idx"]
     assert "knowledge_chunks_embedding_hnsw_idx" in plan
+
+
+def _unit_vector(axis: int, *, jitter_axis: int, jitter: float) -> tuple[float, ...]:
+    values = [0.0] * EMBEDDING_DIMENSIONS
+    values[axis] = 1.0
+    values[jitter_axis] += jitter
+    return tuple(values)
+
+
+def _vector_doc(
+    run_id: UUID,
+    offering_id: OfferingId,
+    *,
+    key: str,
+    axis: int,
+    count: int,
+) -> EmbeddedKnowledgeDocument:
+    return EmbeddedKnowledgeDocument(
+        run_id=run_id,
+        product=ProductType.CONSUMER_LOAN,
+        offering_id=offering_id,
+        document_key=key,
+        document_name=key,
+        source_url=URL,
+        final_url=URL,
+        mime_type="text/html",
+        content_sha256="c" * 64,
+        retrieved_at=datetime.now(UTC),
+        extraction_method="browser",
+        chunks=tuple(
+            EmbeddedKnowledgeChunk(
+                ordinal=index,
+                content=f"{key} passage {index}",
+                language="en",
+                extraction_method="browser",
+                embedding=_unit_vector(
+                    axis, jitter_axis=2 + index % 700, jitter=0.001 * (index + 1)
+                ),
+            )
+            for index in range(count)
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_ix8_retired_chunks_never_crowd_the_vector_search(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """IXS07: 200 retired chunks closer to the query than the 5 active ones.
+
+    With a full index, the HNSW scan returns its `ef_search` (40) nearest rows --
+    all retired -- before the `is_active` filter, and the active chunks are lost.
+    The partial index holds active vectors only. A retired row's old entry stays
+    in it until (auto)vacuum removes it, so the test vacuums, as autovacuum would.
+    """
+    from tests.fixtures.knowledge import store_active_document
+
+    async with monitoring_session_factory() as session, session.begin():
+        run_id = await session.scalar(
+            text(
+                "INSERT INTO monitoring_runs (id, trigger_type, product, status) "
+                "VALUES (gen_random_uuid(), 'user', 'consumer_loan', 'running') "
+                "RETURNING id"
+            )
+        )
+    await store_active_document(
+        monitoring_session_factory,
+        _vector_doc(
+            run_id, OfferingId.CONSUMER_STANDARD, key="retired", axis=0, count=200
+        ),
+    )
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE knowledge_chunks SET is_active = false WHERE document_id IN "
+                "(SELECT id FROM knowledge_documents WHERE document_key = 'retired')"
+            )
+        )
+        await session.execute(
+            text(
+                "UPDATE knowledge_documents SET is_active = false, "
+                "publication_state = 'retired' WHERE document_key = 'retired'"
+            )
+        )
+    await store_active_document(
+        monitoring_session_factory,
+        _vector_doc(
+            run_id, OfferingId.CONSUMER_STANDARD, key="active", axis=1, count=5
+        ),
+    )
+    connection = await asyncpg.connect(
+        os.environ["TEST_DATABASE_URL"].replace(
+            "postgresql+asyncpg://", "postgresql://"
+        )
+    )
+    try:
+        await connection.execute("VACUUM knowledge_chunks")
+    finally:
+        await connection.close()
+    # Force the HNSW path: on a table this small the planner would scan and sort.
+    engine = create_async_engine(
+        os.environ["TEST_DATABASE_URL"],
+        poolclass=NullPool,
+        connect_args={
+            "server_settings": {"enable_seqscan": "off", "enable_sort": "off"}
+        },
+    )
+    try:
+        candidates = await PostgresRagRetrievalRepository(
+            async_sessionmaker(engine, expire_on_commit=False)
+        ).search_candidates(
+            bank="ameria",
+            product=ProductType.CONSUMER_LOAN,
+            lexical_query="nothing-matches-this",
+            query_embedding=_unit_vector(0, jitter_axis=1, jitter=0.0),
+            limit=5,
+            offering_id=OfferingId.CONSUMER_STANDARD,
+            document_kinds=(),
+        )
+    finally:
+        await engine.dispose()
+
+    assert sorted(item.content for item in candidates) == [
+        f"active passage {index}" for index in range(5)
+    ]
 
 
 @pytest.mark.asyncio

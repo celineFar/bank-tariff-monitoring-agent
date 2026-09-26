@@ -91,6 +91,10 @@ downloader receives `settings.http` and the PDF extraction service receives
   `hye.traineddata` dropped into its `tessdata` directory.
 - **RAG:** `CHUNK_SIZE_CHARS` (500–2,000), `RETRIEVAL_TOP_K`, and
   `RETRIEVAL_MIN_SCORE`.
+- **Embedding sweep:** the worker embeds active chunks stored without a vector
+  (approved review content, quota-deferred runs) every
+  `EMBEDDING_SWEEP_INTERVAL_SECONDS` (default 300), up to `EMBEDDING_SWEEP_BATCH`
+  chunks (default 200; `0` disables it).
 - **Embedding retries:** `EMBEDDING_MAX_ATTEMPTS` and
   `EMBEDDING_BACKOFF_BASE_SECONDS` bound retries for transient `5xx` refusals;
   `EMBEDDING_QUOTA_MAX_ATTEMPTS` and `EMBEDDING_QUOTA_BACKOFF_BASE_SECONDS` bound

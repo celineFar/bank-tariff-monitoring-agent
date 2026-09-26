@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Protocol
 from uuid import UUID
 
 from app.domain.knowledge import EmbeddedKnowledgeDocument, KnowledgeDocument
+from app.domain.models import OfferingId
 from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.review import (
     ReviewDecision,
@@ -38,9 +40,17 @@ from app.services.snapshot_lifecycle import (
     extraction_is_acceptable,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class OfferingSummaries(Protocol):
     def project(self, snapshot: SnapshotAttempt) -> KnowledgeDocument: ...
+
+
+class MissingVectors(Protocol):
+    async def embed_missing(
+        self, *, offering_id: OfferingId | None = None, limit: int = 200
+    ) -> int: ...
 
 
 class ReviewDecisionService:
@@ -52,6 +62,7 @@ class ReviewDecisionService:
         snapshots: MonitoringSnapshotRepository,
         memory: ReviewDecisionMemory | None = None,
         summaries: OfferingSummaries | None = None,
+        vectors: MissingVectors | None = None,
     ) -> None:
         self._reviews = reviews
         self._snapshots = snapshots
@@ -59,6 +70,8 @@ class ReviewDecisionService:
         # Builds the approved snapshot's offering summary (IX6). Without it an
         # approval activates the source documents only.
         self._summaries = summaries
+        # Embeds what an approval activated (stored text only, IX5).
+        self._vectors = vectors
 
     async def apply(
         self,
@@ -137,7 +150,29 @@ class ReviewDecisionService:
             await self._memory.remember(
                 remembered.model_copy(update={"reviewer": reviewer})
             )
+        if update.ready_for_activation and self._vectors is not None:
+            await self._embed_activated(task)
         return approved
+
+    async def _embed_activated(self, task: ReviewTask) -> None:
+        """Embed the approved documents, now active and text only (IX5).
+
+        Best effort after the commit: mostly embedding-cache hits (an unchanged
+        page was embedded by earlier accepted runs). A failure leaves the chunks
+        to the worker's sweep; lexical search serves them meanwhile.
+        """
+        assert self._vectors is not None
+        try:
+            filled = await self._vectors.embed_missing(offering_id=task.offering_id)
+        except Exception:
+            logger.warning(
+                "could not embed the approved documents of %s; the embedding "
+                "sweep will retry",
+                task.offering_id.value,
+                exc_info=True,
+            )
+            return
+        logger.info("embedded %s approved chunks of %s", filled, task.offering_id.value)
 
     async def _approve_unchanged(
         self,
