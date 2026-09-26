@@ -367,7 +367,10 @@ those stages resolves from its own content-addressed cache instead of calling a
 model. Reuse is declined when the stored artifact's linked documents are no longer
 readable from the artifact store, and it is never a fallback for a failed
 acquisition: a fetch that fails fails the offering. A partial acquisition (a linked
-PDF failed to download) is used once and not stored for reuse.
+PDF failed to download) is used once and not stored for reuse. A dead link (HTTP 404,
+`acquisition.linked_document_missing`) does not make it partial: it is the same on
+every fetch, and treating it as partial disabled reuse for good on the two seed pages
+that carry such links.
 
 Each offering execution records `source_retrieved_at` and `acquisition_reused`
 (migration 018), and the chat's offering outcome carries a `source_note` naming the

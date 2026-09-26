@@ -19,6 +19,7 @@ from app.domain.acquisition import (
     PageArtifact,
     StoredArtifact,
 )
+from app.domain.monitoring import SourceFailureCode
 from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.browser_renderer import (
@@ -286,13 +287,15 @@ class AcquisitionService:
                     PdfCandidate(url=str(link.url))
                 )
             except PdfDownloadError as exc:
+                code = source_failure_code(exc, stage="acquisition")
                 warnings.append(
                     AcquisitionWarning(
-                        code=AcquisitionWarningCode.LINKED_DOCUMENT_FAILED,
-                        detail=(
-                            f"{link.id}: "
-                            f"{source_failure_code(exc, stage='acquisition').value}"
+                        code=(
+                            AcquisitionWarningCode.LINKED_DOCUMENT_MISSING
+                            if code is SourceFailureCode.NOT_FOUND
+                            else AcquisitionWarningCode.LINKED_DOCUMENT_FAILED
                         ),
+                        detail=f"{link.id}: {code.value}",
                     )
                 )
                 continue

@@ -85,6 +85,9 @@ class FreshnessGatedAcquisitionService:
         An acquisition reaching here passed the completeness gate, but one whose
         linked PDFs failed to download is still partial: reusing it would carry
         the gap into every run in the window instead of retrying the download.
+        A link that is simply dead (`linked_document_missing`, HTTP 404) does
+        not count: it is the same on every fetch, and refusing reuse over it
+        would refetch the page and all its PDFs on every run for nothing.
         """
         partial = any(
             warning.code is AcquisitionWarningCode.LINKED_DOCUMENT_FAILED

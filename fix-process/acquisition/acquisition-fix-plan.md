@@ -264,6 +264,13 @@ only if the window still covers it. Add an explicit `degraded: bool` (or a reaso
 **Tests.** A fallback or partial artifact → `snapshots.save` is not called, and the next
 acquire fetches again.
 
+**Follow-up F1 (found by scenario S04, fixed 2026-09-26).** The bank's pages link to three
+historical-terms PDFs that return 404. Treating every failed download as partial meant
+`mortgage_online` and `mortgage_construction` were never reused, and were refetched in full on
+every run. A 404 now produces its own warning, `acquisition.linked_document_missing`, which
+does not block reuse. Timeouts, transport errors, 5xx and rejected responses still produce
+`linked_document_failed` and do block it.
+
 ## A6. `PageArtifact.warnings` is never read
 
 **What happens.** Acquisition writes warnings ("browser rendering failed", "linked document

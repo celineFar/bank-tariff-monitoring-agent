@@ -45,10 +45,12 @@ to the ADK model.
    and its reasons (for example `main_chars 368 < 1500; no tables, PDF links or
    payloads`). The counts are kept on the artifact as `PageArtifact.inventory`.
 8. Same-domain PDF links are downloaded through the existing `PdfDownloader` security
-   boundary, up to `ACQUISITION_MAX_LINKED_DOCUMENTS` (40). A failed linked PDF, or
-   links beyond the cap, are recorded as typed warnings
-   (`acquisition.linked_document_failed`, `acquisition.linked_document_cap_reached`)
-   and cannot create a partial document artifact. Acquisition warnings reach the run's
+   boundary, up to `ACQUISITION_MAX_LINKED_DOCUMENTS` (40). A failed linked PDF, a
+   dead link, or links beyond the cap are recorded as typed warnings
+   (`acquisition.linked_document_failed`, `acquisition.linked_document_missing` for
+   HTTP 404, `acquisition.linked_document_cap_reached`) and cannot create a partial
+   document artifact. A failed download makes the acquisition partial, so it is not
+   stored for reuse; a dead link does not, because it is the same on every fetch. Acquisition warnings reach the run's
    source manifest and audit metadata.
 9. Raw HTML, rendered HTML, Markdown, network payloads, and PDFs are written atomically
    to content-addressed storage.

@@ -212,7 +212,12 @@ class AcquisitionInventory(AcquisitionModel):
 
 
 class AcquisitionWarningCode(StrEnum):
+    # A download that may succeed next time (timeout, transport, 5xx, a bad
+    # response); the acquisition is partial and is not stored for reuse.
     LINKED_DOCUMENT_FAILED = "acquisition.linked_document_failed"
+    # The bank's page links to a document that is not there (HTTP 404). The
+    # same on every fetch, so it does not make the acquisition partial.
+    LINKED_DOCUMENT_MISSING = "acquisition.linked_document_missing"
     LINKED_DOCUMENT_CAP_REACHED = "acquisition.linked_document_cap_reached"
     INTERACTION_CAP_REACHED = "acquisition.interaction_cap_reached"
     PAYLOAD_CAP_REACHED = "acquisition.payload_cap_reached"
