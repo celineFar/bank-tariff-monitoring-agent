@@ -209,9 +209,6 @@ def test_rv6_resolving_the_ocr_review_keeps_the_rate_signal() -> None:
 # --- RV8: the model gets freshness, not the catalog -------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RV8: get_current_tariffs returns the whole catalog"
-)
 def test_rv8_current_tariffs_payload_has_no_evidence_or_values() -> None:
     from datetime import UTC, datetime
 
@@ -287,7 +284,6 @@ async def test_rv10_snapshot_keeps_the_selected_sources_markdown() -> None:
 # --- RV12: chat model calls carry the run -----------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RV12: ADK model calls record run_id=None")
 @pytest.mark.asyncio
 async def test_rv12_model_call_during_a_run_records_the_run() -> None:
     from types import SimpleNamespace
@@ -304,14 +300,15 @@ async def test_rv12_model_call_during_a_run_records_the_run() -> None:
     callbacks = adk_usage_callbacks(
         Repository(), stage="adk.cli", model_id="gemini-3.7-flash"
     )
-    context = SimpleNamespace(
-        invocation_id="inv-1", state={ACTIVE_RUN_STATE_KEY: str(run_id)}
-    )
-    await callbacks["before_model_callback"](context, None)
-    await callbacks["after_model_callback"](
-        context, SimpleNamespace(usage_metadata=None)
-    )
-    assert recorded and recorded[0].run_id == run_id
+    state = {ACTIVE_RUN_STATE_KEY: {"run_id": str(run_id), "invocation_id": "inv-1"}}
+    for invocation in ("inv-1", "inv-2"):
+        context = SimpleNamespace(invocation_id=invocation, state=state)
+        await callbacks["before_model_callback"](context, None)
+        await callbacks["after_model_callback"](
+            context, SimpleNamespace(usage_metadata=None)
+        )
+    # The run's own invocation is attributed; a later turn is not.
+    assert [usage.run_id for usage in recorded] == [run_id, None]
 
 
 # --- RV13: a citation outside the shown units is logged ----------------------------------------
@@ -500,3 +497,25 @@ async def test_rv13_override_citing_a_shown_passage_is_not_audited() -> None:
         reviewer="analyst",
     )
     assert reviews.updates[0].audit_events == ()
+
+
+@pytest.mark.asyncio
+async def test_rv8_history_payload_keeps_values_but_not_evidence() -> None:
+    from datetime import UTC, datetime
+
+    from app.domain.intent import HistoryQuery, HistoryRequestKind
+    from app.domain.tariff_queries import HistoryResultStatus, TariffHistoryResult
+    from app.tools.reads import tariff_history_payload
+
+    snapshot = _snapshot(await _result(_long_page()))
+    result = TariffHistoryResult(
+        query=HistoryQuery(kind=HistoryRequestKind.SHOW_HISTORY),
+        status=HistoryResultStatus.HISTORY_FOUND,
+        window_start=datetime(2026, 9, 1, tzinfo=UTC),
+        window_end=datetime(2026, 9, 26, tzinfo=UTC),
+        snapshots=(snapshot,),
+    )
+
+    (stored,) = tariff_history_payload(result)["snapshots"]
+    assert stored["normalized_tariff"] == snapshot.normalized_tariff
+    assert not {"evidence", "semantic_extraction", "validation"} & stored.keys()

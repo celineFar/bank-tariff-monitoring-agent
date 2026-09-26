@@ -15,6 +15,7 @@ from google.adk.tools import ToolContext
 
 from app.domain.intent import FreshnessStatus, HistoryQuery, HistoryRequestKind
 from app.domain.structured_tariffs import ANSWERABLE_OPERATIONS, ResolutionPlan
+from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
 from app.tools._services import services
 from app.tools._state import (
     MONITOR_OFFER_KEY,
@@ -75,7 +76,10 @@ async def answer_tariff_query(
         return {
             "status": "rejected",
             "reason_code": "query.scope_only_plan",
-            "hint": "use get_current_tariffs or get_tariff_history for this scope",
+            "hint": (
+                "ask which tariff field the user wants (rate, term, fees, ...) "
+                "and resolve again; get_current_tariffs reports freshness only"
+            ),
         }
     tool_context.state[TARIFF_PLAN_USED_KEY] = True
     tool_context.state[TARIFF_LAST_USED_TURN_KEY] = plan.turn_id
@@ -111,7 +115,7 @@ async def get_current_tariffs(tool_context: ToolContext) -> dict[str, object]:
             ),
             "invocation_id": invocation_id(tool_context),
         }
-    payload = result.model_dump(mode="json")
+    payload = current_tariffs_payload(result)
     if missing:
         # Demonstration artifacts under `end-to-end/` look like completed work
         # but never publish a snapshot, so say what "missing" actually means.
@@ -154,4 +158,53 @@ async def get_tariff_history(
         result = await services.tariff_history_service.query(query)
     except ValueError:
         return {"status": "rejected", "reason_code": "history.invalid_query"}
-    return result.model_dump(mode="json")
+    return tariff_history_payload(result)
+
+
+def current_tariffs_payload(result: CurrentTariffResult) -> dict[str, object]:
+    """What the model needs from current tariffs: freshness, and which fields the
+    accepted snapshot has, by status -- never values or evidence (RV8, D5).
+
+    Values reach the user only through answer_tariff_query, which carries its
+    own citations. The REST route returns the full result; it calls the service.
+    """
+    return {
+        "bank": result.bank,
+        "as_of": result.as_of.isoformat(),
+        "items": [
+            {
+                "product": item.product.value,
+                "offering_id": item.offering_id.value,
+                "freshness": item.freshness.value,
+                "snapshot_id": str(item.snapshot_id) if item.snapshot_id else None,
+                "accepted_at": (
+                    item.accepted_at.isoformat() if item.accepted_at else None
+                ),
+                "age_seconds": item.age_seconds,
+                "pending_newer_review": item.pending_newer_review,
+                "fields": _field_statuses(item.normalized_tariff),
+            }
+            for item in result.items
+        ],
+    }
+
+
+def tariff_history_payload(result: TariffHistoryResult) -> dict[str, object]:
+    """History for the model: each snapshot's values and times, without the
+    evidence catalog and extraction internals a stored snapshot carries (a
+    snapshot's evidence alone is hundreds of kB)."""
+    payload = result.model_dump(
+        mode="json",
+        exclude={
+            "snapshots": {"__all__": {"evidence", "semantic_extraction", "validation"}}
+        },
+    )
+    return payload
+
+
+def _field_statuses(tariff: dict[str, object] | None) -> dict[str, str]:
+    return {
+        name: str(value["status"])
+        for name, value in (tariff or {}).items()
+        if isinstance(value, dict) and isinstance(value.get("status"), str)
+    }

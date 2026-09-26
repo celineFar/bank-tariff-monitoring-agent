@@ -42,6 +42,7 @@ from app.domain.review import ReviewDecisionInput, ReviewDecisionType, ReviewTas
 from app.repositories.contracts import RunRepository
 from app.services.contracts import TariffPipeline
 from app.services.failure_mapping import explain_failure_code
+from app.services.model_call_usage import ACTIVE_RUN_STATE_KEY
 from app.services.monitoring_progress import (
     PipelineProgress,
     ProgressKind,
@@ -191,6 +192,12 @@ def build_monitoring_node(
                     ),
                 ).model_dump(mode="json")
                 return
+
+        # The chat model calls of this invocation now belong to this run (RV12).
+        ctx.state[ACTIVE_RUN_STATE_KEY] = {
+            "run_id": str(run.id),
+            "invocation_id": ctx.invocation_id,
+        }
 
         # 2. Execute it here if nobody has claimed it yet.
         if run.status is RunStatus.QUEUED:

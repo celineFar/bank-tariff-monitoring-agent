@@ -90,7 +90,7 @@ class _History:
 
     async def query(self, query):
         self.queries.append(query)
-        return SimpleNamespace(model_dump=lambda mode: {"status": "unavailable"})
+        return SimpleNamespace(model_dump=lambda mode, **_: {"status": "unavailable"})
 
 
 class _Answers:

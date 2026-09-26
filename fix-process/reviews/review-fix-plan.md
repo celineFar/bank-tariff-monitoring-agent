@@ -484,8 +484,35 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 
 ### Phase 4: Model payloads and attribution (RV8, RV12)
 
-- [ ] RV8: `get_current_tariffs` returns freshness and field statuses only.
-- [ ] RV12: ADK usage callbacks record the active run id from session state.
+- [x] RV8: `get_current_tariffs` returns freshness and field statuses only.
+- [x] RV12: ADK usage callbacks record the active run id from session state.
+- [x] (Added) `get_tariff_history` returns snapshots without `evidence`,
+      `semantic_extraction` and `validation` (same cause as RV8).
+
+**Phase 4 notes (done).**
+- **RV8.** `app/tools/reads.py` `current_tariffs_payload(result)`: per offering
+  `product`, `offering_id`, `freshness`, `snapshot_id`, `accepted_at`, `age_seconds`,
+  `pending_newer_review` and `fields` (field name → status, e.g. `"term": "not_stated"`).
+  No values, no evidence. `missing_means` is still added when an offering is missing.
+  The REST route `GET /tariffs/current` is unchanged (it calls the service).
+- **Knock-on (decided).** `answer_tariff_query` used to reply to a scope-only plan with
+  "use get_current_tariffs or get_tariff_history for this scope", i.e. read values from
+  the snapshot. That path no longer carries values, so the hint now says: ask which
+  field the user wants and resolve again; `get_current_tariffs` reports freshness only.
+  Values keep reaching the user only through `answer_tariff_query`, with citations.
+- **Added: history payload.** `get_tariff_history` dumped up to 100 whole snapshots,
+  each with its evidence catalog and the full extraction record (raw model outputs):
+  the same "storage payload as model payload" cause as RV8, larger. It now uses
+  `tariff_history_payload`, which keeps `normalized_tariff`, times, ids and the change
+  sets and drops `evidence`, `semantic_extraction` and `validation`.
+- **RV12.** `ACTIVE_RUN_STATE_KEY = "temp:monitoring_active_run"` in
+  `model_call_usage.py`. The monitoring node writes `{run_id, invocation_id}` there as
+  soon as it knows its run (new, found, or resumed; it re-runs from the top on resume,
+  so a resumed invocation sets it again). `adk_usage_callbacks` records that run id when
+  the invocation matches; other calls keep `run_id = NULL`. `temp:` state is never
+  persisted. The model call that decides to start monitoring precedes the run and stays
+  `NULL`; the calls after the node (the reply) are attributed.
+- Suite: 1063 passed, 5 skipped, 0 xfailed; the 4 known Gemini-key failures.
 
 ### Phase 5: Validation
 

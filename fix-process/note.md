@@ -106,3 +106,15 @@ Decisions the review-process report left open, taken without asking (plan table 
 - **Old rows with non-catalog items** show each cited item as its own passage; no
   keyword fallback for uncited ones.
 
+### Reviews Phase 4 decisions (2026-09-26)
+
+- **Scope-only questions.** With `get_current_tariffs` reduced to freshness (D5, decided
+  in the report), the `answer_tariff_query` hint for scope-only plans now asks the model
+  to ask which field is wanted, instead of pointing it at `get_current_tariffs` for
+  values. Risk: "show me the overdraft terms" now needs one clarification turn; every
+  value shown stays citable.
+- **History payload trimmed too** (not in the plan; same cause). `get_tariff_history`
+  keeps values and change sets, drops each snapshot's evidence and extraction record.
+- **Run attribution uses `temp:` state**, so nothing about the run is persisted in the
+  chat session; it is matched on the invocation id as well.
+
