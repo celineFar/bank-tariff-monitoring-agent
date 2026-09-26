@@ -187,7 +187,6 @@ async def _active(session_factory) -> list[tuple[str, str, tuple[str, ...]]]:
     return [(row[0], row[1], tuple(row[2] or ())) for row in rows]
 
 
-@pytest.mark.xfail(strict=True, reason="IX1: retirement only matches the same key")
 @pytest.mark.asyncio
 async def test_ix1_accepted_publication_replaces_the_whole_active_set(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -471,7 +470,6 @@ async def test_ix9_rejection_deletes_only_unshared_candidate_documents(
     assert [tuple(row) for row in states] == [(EVIDENCE_KEY, "active")]
 
 
-@pytest.mark.xfail(strict=True, reason="IX12: evidence is linked by run_id")
 @pytest.mark.asyncio
 async def test_ix12_evidence_links_a_document_unchanged_since_an_earlier_run(
     monitoring_session_factory: async_sessionmaker[AsyncSession],

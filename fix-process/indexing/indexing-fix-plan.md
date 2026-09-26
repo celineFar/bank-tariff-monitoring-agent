@@ -1,7 +1,7 @@
 # Indexing: fix plan
 
 Date: 2026-09-26 · Branch: `fix/indexing` (to create from `integration/process-fixes` at
-`a812f69`) · Status: **in progress** (Phases 0–2 done).
+`a812f69`) · Status: **in progress** (Phases 0–3 done).
 
 The four design choices this plan depends on (D1–D4) were confirmed by the user on
 2026-09-26. The other decisions (D5–D12) are Claude's; each is listed in
@@ -693,17 +693,46 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
 
 ### Phase 3: Publication and activation (IX1, IX2, IX12)
 
-- [ ] Rewrite `_upsert_document` as insert-if-absent: bookkeeping-only update on
+- [x] Rewrite `_upsert_document` as insert-if-absent: bookkeeping-only update on
       conflict; chunk insert-if-absent; fill `embedding` only where it is `NULL`; no
       supersession, no activation.
-- [ ] Add `activate_snapshot_set(session, snapshot_id)` (retire the offering's active
+- [x] Add `activate_snapshot_set(session, snapshot_id)` (retire the offering's active
       documents outside the set, activate the set and its chunks).
-- [ ] `publish`: insert versions; write `snapshot_documents`; if accepted, call
+- [x] `publish`: insert versions; write `snapshot_documents`; if accepted, call
       `activate_snapshot_set`, then `publish_structured_projection`; if review-required,
       new versions stay `pending_review`.
-- [ ] IX12: `publish_structured_projection` links evidence through `snapshot_documents`
+- [x] IX12: `publish_structured_projection` links evidence through `snapshot_documents`
       for the snapshot, not `run_id`.
-- [ ] Record the Phase 3 notes here.
+- [x] Record the Phase 3 notes here.
+
+**Phase 3 notes (done).**
+- New module [app/repositories/knowledge_publication.py](../../app/repositories/knowledge_publication.py),
+  used inside the caller's transaction:
+  - `store_document_version(session, document, now)` replaces `_upsert_document` (deleted
+    from `monitoring.py`). A new version is inserted **inactive** (`pending_review`)
+    for accepted and review-required runs alike; only activation makes it searchable.
+    On an existing row it updates bookkeeping only: `last_seen_run_id`, `last_seen_at`,
+    `retrieved_at`, and the document `metadata` (not part of the version's content; it
+    keeps the summary's `as_of` current). Chunks are insert-if-absent; a present vector
+    fills a stored `NULL` one (`ON CONFLICT ... WHERE embedding IS NULL`).
+    The advisory lock is now on the version id (the offering lock already serializes
+    publications).
+  - `link_snapshot_documents(session, snapshot_id, document_ids)`.
+  - `activate_snapshot_set(session, snapshot_id, now)`: retires active documents (and
+    chunks) of the snapshot's offering outside its set, activates the set. Returns
+    `(retired, activated)`.
+- `publish`: store versions → insert snapshot → link the set → if accepted, activate
+  the set (**only when the publication has documents**, so an empty publication never
+  empties an offering's index) → structured projection. `IndexWriteResult`'s
+  `chunks_retired`/`versions_retired` are now always 0 (retirement is the activation's);
+  nothing read them.
+- **IX12.** `publish_structured_projection` links evidence through `snapshot_documents`.
+  A snapshot with no recorded set (accepted before 023 and re-projected by
+  `structured_backfill`) falls back to the old `run_id` lookup.
+- `_activate_snapshot` (approval) is unchanged in this phase and still selects the
+  candidate by `run_id`; Phase 4 moves it to `activate_snapshot_set`.
+- IX1 and IX12 regression tests pass (markers removed). Suite: 1071 passed, 5 skipped,
+  9 xfailed (Gemini-key tests excluded).
 
 ### Phase 4: Reviews (IX3, IX4, IX6, IX9)
 
