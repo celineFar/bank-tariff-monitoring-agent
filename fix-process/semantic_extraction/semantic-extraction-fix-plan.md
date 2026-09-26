@@ -1681,6 +1681,9 @@ bar adopted as proposed; repairs capped at 1 per offering in the live run to fit
 
 ## Deployment
 
+*Not done: deployment needs explicit human approval (AGENTS.md, Phase 5). The branch is
+merged into `integration/process-fixes`; these steps apply when it is deployed.*
+
 - [ ] Resolve or supersede open reviews before deploy: their evidence IDs change (SE10).
 - [ ] Apply the migrations (cache fingerprint and validation status; review decision memory).
 - [ ] Set `SEMANTIC_EXTRACTION_EVIDENCE_MODE=full` (or `budgeted`) and the fallback model (Q8)
