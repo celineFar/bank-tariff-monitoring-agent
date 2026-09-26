@@ -320,18 +320,19 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
 
     normalized, notes = _normalize_field_contract(result)
 
+    # A bare name says nothing about whether the document is required (SE15).
     assert json.loads(normalized.value_json) == [
         {
             "value": {
                 "name": "Identity document",
-                "requirement": "required",
+                "requirement": "unknown",
             },
             "conditions": [],
         },
         {
             "value": {
                 "name": "Purchase agreement",
-                "requirement": "required",
+                "requirement": "unknown",
             },
             "conditions": [],
         },
@@ -345,7 +346,7 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
         (
             ExtractionField.APPLICATION_CHANNEL,
             ["Seller's premises", "Online application"],
-            {"channel": "Seller's premises", "available": True},
+            {"channel": "Seller's premises"},
         ),
         (
             ExtractionField.COLLATERAL,
@@ -359,7 +360,7 @@ def test_required_documents_are_deduplicated_without_losing_order() -> None:
         ),
         (
             ExtractionField.AGE_REQUIREMENTS,
-            ["20 to 66 years"],
+            [{"min_age": 20, "max_age": 66}],
             {"min_age": 20, "max_age": 66},
         ),
     ),
@@ -498,6 +499,8 @@ class InvalidRateExtractor(FakeExtractor):
 
 
 class RepairingTermExtractor(FakeExtractor):
+    """Answers the term in a shape the contract rejects, then fixes it on repair."""
+
     async def extract(self, batch):
         response = await super().extract(batch)
         if ExtractionField.TERM not in batch.fields or any(
@@ -506,10 +509,7 @@ class RepairingTermExtractor(FakeExtractor):
             return response
         return ExtractionBatchResponse(
             results=tuple(
-                ModelFieldResult(
-                    field=item.field,
-                    status=ExtractionStatus.NOT_STATED,
-                )
+                item.model_copy(update={"value_json": '[{"value":{"months":60}}]'})
                 if item.field is ExtractionField.TERM
                 else item
                 for item in response.results
@@ -518,7 +518,7 @@ class RepairingTermExtractor(FakeExtractor):
 
 
 @pytest.mark.asyncio
-async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> None:
+async def test_invalid_field_shape_gets_bounded_repair_and_cached() -> None:
     bundle, discovery = _fixture()
     extractor = RepairingTermExtractor()
     repository = InMemorySemanticExtractionRepository()
@@ -544,7 +544,7 @@ async def test_suspicious_not_stated_field_gets_bounded_repair_and_cached() -> N
         output.batch_id.endswith("__repair_term") for output in first.raw_batch_outputs
     )
     original_batch = next(
-        batch for batch in extractor.batches if batch.id == "extract_001"
+        batch for batch in extractor.batches if batch.group == "core_financial"
     )
     repair_batch = next(
         batch for batch in extractor.batches if batch.id.endswith("__repair_term")

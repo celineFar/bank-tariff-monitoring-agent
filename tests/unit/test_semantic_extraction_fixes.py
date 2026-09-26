@@ -282,9 +282,6 @@ def _cell_by_text(table: NormalizedTable, text: str) -> NormalizedTableCell:
 # --- SE13: raw responses never cross offerings ------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE13: raw responses kept on the shared extractor"
-)
 @pytest.mark.asyncio
 async def test_se13_failing_call_carries_no_other_offerings_raw_response() -> None:
     from app.services.semantic_extraction import (
@@ -310,7 +307,6 @@ async def test_se13_failing_call_carries_no_other_offerings_raw_response() -> No
 # --- SE16: a malformed value is a field review, not a crash -----------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE16: normalization runs outside the batch try")
 @pytest.mark.asyncio
 async def test_se16_malformed_term_becomes_a_review_item() -> None:
     bundle, discovery = _mortgage_bundle("Loan term 6 months to 360 months")
@@ -326,7 +322,6 @@ async def test_se16_malformed_term_becomes_a_review_item() -> None:
 # --- SE15: normalizers reshape, never guess ---------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE15: single age number becomes max_age")
 def test_se15_age_string_is_not_guessed_into_max_age() -> None:
     value, _ = normalize_extraction_field_value(
         ExtractionField.AGE_REQUIREMENTS, ["from 21 years"]
@@ -334,7 +329,6 @@ def test_se15_age_string_is_not_guessed_into_max_age() -> None:
     assert "max_age" not in json.dumps(value)
 
 
-@pytest.mark.xfail(strict=True, reason="SE15: rate currency is silently dropped")
 def test_se15_rate_currency_becomes_a_condition() -> None:
     value, _ = normalize_extraction_field_value(
         ExtractionField.INTEREST_RATE,
@@ -347,9 +341,6 @@ def test_se15_rate_currency_becomes_a_condition() -> None:
     assert value[1]["conditions"] == [{"dimension": "currency", "value": "USD"}]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE15: a bare collateral string becomes applicable"
-)
 def test_se15_bare_collateral_string_is_not_guessed_applicable() -> None:
     value, _ = normalize_extraction_field_value(
         ExtractionField.COLLATERAL, ["not required"]
@@ -360,9 +351,6 @@ def test_se15_bare_collateral_string_is_not_guessed_applicable() -> None:
 # --- SE14: keyword substrings do not reject not_stated ----------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE14: 'age' matches 'mortgage' and 'percentage'"
-)
 @pytest.mark.asyncio
 async def test_se14_mortgage_without_age_limit_accepts_not_stated() -> None:
     bundle, discovery = _mortgage_bundle(
@@ -684,3 +672,57 @@ async def test_se25_one_failing_call_uses_the_fallback_for_that_call_only() -> N
         for item in result.review_items
     )
     assert fallback.calls == 1
+
+
+# --- SE23 / SE24: pinned sampling, one SDK attempt, one retry on an unusable answer ----
+
+
+def test_se23_extractor_runs_at_temperature_zero_with_one_sdk_attempt() -> None:
+    from app.services.semantic_extraction import AdkSemanticExtractor
+
+    extractor = AdkSemanticExtractor(
+        "gemini-3.7-flash", api_key="test-key", max_output_tokens=4096
+    )
+    agent = extractor._runner.agent
+    config = agent.generate_content_config
+    assert config.temperature == 0
+    assert config.max_output_tokens == 4096
+    assert agent.model.retry_options.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_se24_unusable_answer_is_asked_once_more_then_fails() -> None:
+    from app.services.semantic_extraction import (
+        AdkSemanticExtractor,
+        ExtractorOutput,
+        SemanticExtractionCallError,
+    )
+
+    bundle, discovery = _mortgage_bundle("Loan amount AMD 3,000,000")
+    batch = (await _service(ScriptedExtractor()).plan(bundle, discovery)).batches[0]
+    good = await ScriptedExtractor().extract(batch)
+    extractor = AdkSemanticExtractor("model-a", api_key="test-key")
+    answers = iter(
+        (
+            SemanticExtractionCallError("cut", raw_response="{", retryable=True),
+            ExtractorOutput(response=good, raw_response="{...}"),
+        )
+    )
+
+    async def once(_batch):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    extractor._extract_once = once
+    assert (await extractor.extract(batch)).raw_response == "{...}"
+    assert extractor.usage.application_retries == 1
+
+    async def always_unusable(_batch):
+        raise SemanticExtractionCallError("cut", raw_response="{", retryable=True)
+
+    extractor._extract_once = always_unusable
+    with pytest.raises(SemanticExtractionCallError) as failure:
+        await extractor.extract(batch)
+    assert failure.value.raw_response == "{"

@@ -246,6 +246,7 @@ def build_application_container(
                     extraction_model,
                     api_key=api_key,
                     thinking_budget=settings.semantic_extraction.thinking_budget,
+                    max_output_tokens=settings.semantic_extraction.max_output_tokens,
                     usage_repository=model_usage,
                 ),
                 extraction_repository,

@@ -243,6 +243,7 @@ def build_extraction_batches(
     settings: SemanticExtractionSettings,
     *,
     canonical_url: str | None = None,
+    offering_id: str | None = None,
 ) -> tuple[ExtractionBatch, ...]:
     if not evidence:
         raise ValueError("semantic extraction requires at least one evidence item")
@@ -281,7 +282,9 @@ def build_extraction_batches(
         ).hexdigest()
         batches.append(
             ExtractionBatch(
-                id=f"extract_{len(batches):03d}",
+                # Named by offering and field group, never by position: the ID
+                # keys raw responses, repairs and review identities.
+                id=f"{offering_id or product.value}:{group}",
                 product=product,
                 group=group,
                 fields=fields,

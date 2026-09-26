@@ -7,6 +7,7 @@ import logging
 import random
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -80,6 +81,7 @@ from app.services.model_call_usage import (
     adk_usage_callbacks,
     record_model_cache_hit,
 )
+from app.services.model_pricing import uses_minimal_thinking_level
 from app.services.source_selection import build_selected_source_bundle
 
 logger = logging.getLogger(__name__)
@@ -233,8 +235,37 @@ class InMemorySemanticExtractionRepository:
             ] = value
 
 
+class SemanticExtractionCallError(RuntimeError):
+    """A call that produced no usable response.
+
+    Carries the raw text the model did return, if any, so the failure is reported
+    with its own output and never with another call's.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_response: str | None = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.raw_response = raw_response
+        self.retryable = retryable
+
+
+@dataclass(frozen=True)
+class ExtractorOutput:
+    """A parsed response with the exact text it was parsed from."""
+
+    response: ExtractionBatchResponse
+    raw_response: str | None = None
+
+
 class SemanticExtractor(Protocol):
-    async def extract(self, batch: ExtractionBatch) -> ExtractionBatchResponse: ...
+    async def extract(
+        self, batch: ExtractionBatch
+    ) -> ExtractionBatchResponse | ExtractorOutput: ...
 
 
 class AdkSemanticExtractor:
@@ -248,9 +279,21 @@ class AdkSemanticExtractor:
         max_backoff_seconds: float = 60,
         retry_jitter_ratio: float = 0.25,
         thinking_budget: int = 0,
+        max_output_tokens: int = 16_384,
+        parse_retries: int = 1,
         usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
+        # Deterministic answers from every model: a re-extraction after a cache
+        # miss must not turn unchanged evidence into a different value, which
+        # change detection would report as a tariff change.
+        self.temperature = 0
+        self.max_output_tokens = max_output_tokens
+        thinking = (
+            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
+            if thinking_budget == 0 and uses_minimal_thinking_level(model_name)
+            else types.ThinkingConfig(thinking_budget=thinking_budget)
+        )
         agent = Agent(
             name="semantic_loan_extractor",
             **adk_usage_callbacks(
@@ -259,27 +302,44 @@ class AdkSemanticExtractor:
             model=Gemini(
                 model=model_name,
                 client=client,
-                retry_options=types.HttpRetryOptions(attempts=3),
+                # One SDK attempt: the loop in `extract` owns retries. Both
+                # layers retrying made one batch cost up to 9 calls.
+                retry_options=types.HttpRetryOptions(attempts=1),
             ),
             instruction=SEMANTIC_EXTRACTION_INSTRUCTION,
             output_schema=ExtractionBatchResponse,
             generate_content_config=types.GenerateContentConfig(
+                temperature=self.temperature,
+                max_output_tokens=max_output_tokens,
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
                 ),
-                thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+                thinking_config=thinking,
             ),
+        )
+        logger.info(
+            "semantic_loan_extractor uses %s at temperature %s, max %s output "
+            "tokens, with %s",
+            model_name,
+            self.temperature,
+            max_output_tokens,
+            "thinking level minimal"
+            if thinking.thinking_level is not None
+            else f"thinking budget {thinking_budget}",
         )
         self._runner = InMemoryRunner(agent=agent, app_name="semantic_loan_extractor")
         self._max_attempts = max_attempts
+        self._parse_retries = parse_retries
         self._backoff_base_seconds = backoff_base_seconds
         self._max_backoff_seconds = max_backoff_seconds
         self._retry_jitter_ratio = retry_jitter_ratio
         self.usage = ClassifierUsage()
-        self.raw_responses: dict[str, str] = {}
 
-    async def extract(self, batch: ExtractionBatch) -> ExtractionBatchResponse:
-        for attempt in range(1, self._max_attempts + 1):
+    async def extract(self, batch: ExtractionBatch) -> ExtractorOutput:
+        parse_retries_left = self._parse_retries
+        attempt = 0
+        while True:
+            attempt += 1
             self.usage.request_attempts += 1
             try:
                 return await self._extract_once(batch)
@@ -298,38 +358,90 @@ class AdkSemanticExtractor:
                     delay,
                 )
                 await asyncio.sleep(delay)
-        raise AssertionError("semantic extraction retry loop exhausted unexpectedly")
+            except SemanticExtractionCallError as exc:
+                # An unparseable or truncated answer is asked once more before
+                # the batch goes to repair or review; it is not an API fault.
+                if not exc.retryable or parse_retries_left <= 0:
+                    raise
+                parse_retries_left -= 1
+                self.usage.application_retries += 1
+                logger.warning(
+                    "Semantic-extraction answer for %s was unusable (%s); asking again",
+                    batch.id,
+                    exc,
+                )
 
-    async def _extract_once(self, batch: ExtractionBatch) -> ExtractionBatchResponse:
+    async def _extract_once(self, batch: ExtractionBatch) -> ExtractorOutput:
         session = await self._runner.session_service.create_session(
             app_name=self._runner.app_name,
             user_id="tariff-pipeline",
         )
         final_text: str | None = None
-        with suppress_handled_adk_exception_logs():
-            async for event in self._runner.run_async(
+        finish_reason: Any = None
+        try:
+            with suppress_handled_adk_exception_logs():
+                async for event in self._runner.run_async(
+                    user_id="tariff-pipeline",
+                    session_id=session.id,
+                    new_message=types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text=build_extraction_prompt(batch))
+                        ],
+                    ),
+                ):
+                    if event.is_final_response() and event.usage_metadata:
+                        metadata = event.usage_metadata
+                        self.usage.input_tokens += metadata.prompt_token_count or 0
+                        self.usage.output_tokens += metadata.candidates_token_count or 0
+                        self.usage.thinking_tokens += metadata.thoughts_token_count or 0
+                        self.usage.total_tokens += metadata.total_token_count or 0
+                    if (
+                        event.is_final_response()
+                        and event.content
+                        and event.content.parts
+                    ):
+                        text = "".join(part.text or "" for part in event.content.parts)
+                        if text:
+                            final_text = text
+                            finish_reason = getattr(event, "finish_reason", None)
+        except APIError:
+            raise
+        except SemanticExtractionCallError:
+            raise
+        except Exception as exc:
+            raise SemanticExtractionCallError(
+                str(exc) or type(exc).__name__, raw_response=None
+            ) from exc
+        finally:
+            # Sessions are per call and never read again; keeping them grows the
+            # long-lived worker's memory without bound.
+            await self._runner.session_service.delete_session(
+                app_name=self._runner.app_name,
                 user_id="tariff-pipeline",
                 session_id=session.id,
-                new_message=types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=build_extraction_prompt(batch))],
-                ),
-            ):
-                if event.is_final_response() and event.usage_metadata:
-                    metadata = event.usage_metadata
-                    self.usage.input_tokens += metadata.prompt_token_count or 0
-                    self.usage.output_tokens += metadata.candidates_token_count or 0
-                    self.usage.thinking_tokens += metadata.thoughts_token_count or 0
-                    self.usage.total_tokens += metadata.total_token_count or 0
-                if event.is_final_response() and event.content and event.content.parts:
-                    text = "".join(part.text or "" for part in event.content.parts)
-                    if text:
-                        final_text = text
+            )
         if final_text is None:
-            raise RuntimeError("semantic extractor returned no final response")
+            raise SemanticExtractionCallError(
+                "semantic extractor returned no final response", retryable=True
+            )
         raw_response = _strip_fence(final_text)
-        self.raw_responses[batch.id] = raw_response
-        return ExtractionBatchResponse.model_validate_json(raw_response)
+        if finish_reason == types.FinishReason.MAX_TOKENS:
+            raise SemanticExtractionCallError(
+                f"answer cut at {self.max_output_tokens} output tokens",
+                raw_response=raw_response,
+                retryable=True,
+            )
+        try:
+            response = ExtractionBatchResponse.model_validate_json(raw_response)
+        except ValidationError as exc:
+            raise SemanticExtractionCallError(
+                f"answer does not match the response schema: {exc.error_count()} "
+                "error(s)",
+                raw_response=raw_response,
+                retryable=True,
+            ) from exc
+        return ExtractorOutput(response=response, raw_response=raw_response)
 
     def _retry_delay(self, failed_attempt: int) -> float:
         base = min(
@@ -374,6 +486,7 @@ class SemanticExtractionService:
             evidence,
             self._settings,
             canonical_url=str(bundle.canonical_url),
+            offering_id=discovery.offering_id,
         )
         cached = await self._repository.get_exact(
             product=discovery.product,
@@ -479,9 +592,14 @@ class SemanticExtractionService:
                 len(batch.evidence),
             )
             try:
-                raw_response_model = await self._extractor.extract(batch)
+                raw_response_model, raw_text = _unpack(
+                    await self._extractor.extract(batch)
+                )
+                response, normalization_notes = _normalize_response_contract(
+                    raw_response_model
+                )
             except Exception as exc:
-                raw_response = _raw_response(self._extractor, batch.id)
+                raw_response = getattr(exc, "raw_response", None)
                 execution_failures.append((batch, exc, raw_response))
                 raw_outputs.append(
                     RawBatchOutput(
@@ -504,19 +622,14 @@ class SemanticExtractionService:
                 batch_count,
                 batch.id,
             )
-            response, normalization_notes = _normalize_response_contract(
-                raw_response_model
-            )
             responses.append(response)
             raw_outputs.append(
                 RawBatchOutput(
                     batch_id=batch.id,
                     group=batch.group,
                     model_name=plan.model_name,
-                    raw_response=(
-                        _raw_response(self._extractor, batch.id)
-                        or raw_response_model.model_dump_json(indent=2)
-                    ),
+                    raw_response=raw_text
+                    or raw_response_model.model_dump_json(indent=2),
                     parsed_response=raw_response_model,
                     normalized_response=response,
                     normalization_notes=normalization_notes,
@@ -655,8 +768,11 @@ class SemanticExtractionService:
                     batch.id,
                     "; ".join(issue.message for issue in issues),
                 )
+                raw_text: str | None = None
                 try:
-                    raw_repaired = await self._extractor.extract(repair_batch)
+                    raw_repaired, raw_text = _unpack(
+                        await self._extractor.extract(repair_batch)
+                    )
                     repaired, normalization_notes = _normalize_response_contract(
                         raw_repaired
                     )
@@ -674,7 +790,7 @@ class SemanticExtractionService:
                         validated,
                     )
                 except Exception as exc:
-                    raw_response = _raw_response(self._extractor, repair_batch.id)
+                    raw_response = getattr(exc, "raw_response", None) or raw_text
                     raw_outputs.append(
                         RawBatchOutput(
                             batch_id=repair_batch.id,
@@ -696,10 +812,7 @@ class SemanticExtractionService:
                         batch_id=repair_batch.id,
                         group=repair_batch.group,
                         model_name=plan.model_name,
-                        raw_response=(
-                            _raw_response(self._extractor, repair_batch.id)
-                            or raw_repaired.model_dump_json(indent=2)
-                        ),
+                        raw_response=raw_text or raw_repaired.model_dump_json(indent=2),
                         parsed_response=raw_repaired,
                         normalized_response=repaired,
                         normalization_notes=normalization_notes,
@@ -775,7 +888,13 @@ def _normalize_field_contract(
         value = _decode_value(result)
     except ValueError:
         return result, ()
-    normalized, notes = normalize_extraction_field_value(result.field, value)
+    try:
+        normalized, notes = normalize_extraction_field_value(result.field, value)
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        # Adapting is best-effort: an answer it cannot reshape is left as the
+        # model gave it, so the field's own validation reports it (repair, then
+        # review) instead of the whole offering failing on it.
+        return result, (f"left as given; could not adapt: {exc}",)
     if normalized == value:
         return result, ()
     if not notes:
@@ -798,21 +917,27 @@ def _normalize_field_contract(
 def normalize_extraction_field_value(
     field: ExtractionField, value: Any
 ) -> tuple[Any, tuple[str, ...]]:
-    """Adapt a loose value to the field's domain contract, with any notes.
+    """Reshape a loose value into the field's domain contract, with any notes.
 
-    Shared by model extraction and human review so a reviewer's plain entry and
-    the model's JSON reach the field contract through the same rules.
+    Shared by model extraction and human review. It only *reshapes*: it renames
+    known alias keys, wraps a bare value in `{value, conditions}`, moves a
+    condition written as a key (a rate's `currency`) into `conditions`, and
+    canonicalizes fractional percentages to points. It never infers meaning from
+    words: an answer it cannot reshape is left for validation to reject. (Human
+    review parses its own documented text formats before calling this.)
     """
     notes: list[str] = []
     if field is ExtractionField.LOAN_AMOUNT:
-        value = _normalize_conditional_sequence(value, _normalize_loan_amount)
+        value = _normalize_conditional_sequence(
+            value, _normalize_loan_amount, _LOAN_AMOUNT_KEYS
+        )
     elif field in {ExtractionField.INTEREST_RATE, ExtractionField.EFFECTIVE_RATE}:
-        value = _normalize_conditional_sequence(value, _normalize_rate)
+        value = _normalize_conditional_sequence(value, _normalize_rate, _RATE_KEYS)
     elif field is ExtractionField.TERM:
-        value = _normalize_conditional_sequence(value, _normalize_term)
+        value = _normalize_conditional_sequence(value, _normalize_term, _TERM_KEYS)
     elif field in {ExtractionField.DOWN_PAYMENT_PCT, ExtractionField.LTV_PCT}:
         fractional_percentage = _contains_fractional_percentage(value)
-        value = _normalize_conditional_sequence(value, _normalize_percentage)
+        value = _normalize_conditional_sequence(value, _normalize_percentage, set())
         if fractional_percentage:
             notes.append("canonicalized percentage values to percentage points")
     elif field is ExtractionField.FEES:
@@ -820,19 +945,25 @@ def normalize_extraction_field_value(
     elif field is ExtractionField.VARIANTS:
         value = _normalize_variants(value)
     elif field is ExtractionField.REPAYMENT:
-        value = _normalize_structured_conditionals(value, _normalize_repayment)
+        value = _normalize_structured_conditionals(
+            value, _normalize_repayment, _REPAYMENT_KEYS
+        )
     elif field is ExtractionField.AGE_REQUIREMENTS:
-        value = _normalize_age_requirements(value)
+        value = _normalize_structured_conditionals(value, _identity, _AGE_KEYS)
     elif field is ExtractionField.APPLICATION_CHANNEL:
         value = _normalize_structured_conditionals(
-            value, _normalize_application_channel
+            value, _normalize_application_channel, _CHANNEL_KEYS
         )
     elif field is ExtractionField.REQUIRED_DOCUMENTS:
         value = _deduplicate_conditionals(
-            _normalize_structured_conditionals(value, _normalize_required_document)
+            _normalize_structured_conditionals(
+                value, _normalize_required_document, _DOCUMENT_KEYS
+            )
         )
     elif field is ExtractionField.COLLATERAL:
-        value = _normalize_structured_conditionals(value, _normalize_collateral)
+        value = _normalize_structured_conditionals(
+            value, _normalize_collateral, _COLLATERAL_KEYS
+        )
     elif field is ExtractionField.FORMAL_TERMS_NAMES:
         value = _deduplicate_strings(value)
     elif field in {
@@ -843,7 +974,76 @@ def normalize_extraction_field_value(
     return value, tuple(notes)
 
 
-def _normalize_conditional_sequence(value: Any, normalizer: Any) -> Any:
+# The keys each value object may carry. A key outside them that names a
+# condition moves into `conditions`; any other stays, for validation to reject.
+_RATE_KEYS = frozenset({"min", "max", "rate_type", "basis", "formula"})
+_TERM_KEYS = frozenset({"min_months", "max_months", "indefinite", "end_condition"})
+_LOAN_AMOUNT_KEYS = frozenset(
+    {
+        "type",
+        "range",
+        "min_multiple",
+        "max_multiple",
+        "min_pct",
+        "max_pct",
+        "basis",
+        "formula",
+        "description",
+    }
+)
+_REPAYMENT_KEYS = frozenset({"method", "description"})
+_AGE_KEYS = frozenset({"min_age", "max_age", "measured_at"})
+_CHANNEL_KEYS = frozenset({"channel", "available"})
+_DOCUMENT_KEYS = frozenset({"name", "requirement"})
+_COLLATERAL_KEYS = frozenset({"description", "applicable"})
+# Condition dimensions a model sometimes writes as a key of the value itself.
+_CONDITION_KEYS = frozenset(
+    {
+        "currency",
+        "borrower_type",
+        "residency",
+        "variant",
+        "variant_id",
+        "card_type",
+        "card_tier",
+        "program",
+        "location",
+        "channel_type",
+        "collateral_type",
+        "term_range",
+        "amount_range",
+    }
+)
+
+
+def _identity(value: Any) -> Any:
+    return value
+
+
+def _split_condition_keys(
+    value: Any, allowed: frozenset[str] | set[str]
+) -> tuple[Any, list[dict[str, str]]]:
+    """Move condition-naming keys out of a value object into conditions."""
+    if not isinstance(value, dict):
+        return value, []
+    moved = [
+        {"dimension": key, "value": str(value[key])}
+        for key in value
+        if key in _CONDITION_KEYS and key not in allowed and value[key] is not None
+    ]
+    if not moved:
+        return value, []
+    kept = {
+        key: part
+        for key, part in value.items()
+        if not (key in _CONDITION_KEYS and key not in allowed)
+    }
+    return kept, moved
+
+
+def _normalize_conditional_sequence(
+    value: Any, normalizer: Any, allowed: frozenset[str] | set[str]
+) -> Any:
     if not isinstance(value, list):
         return value
     normalized = []
@@ -855,11 +1055,14 @@ def _normalize_conditional_sequence(value: Any, normalizer: Any) -> Any:
         raw_value = item.get("value")
         if raw_value is None:
             raw_value = {key: part for key, part in item.items() if key != "conditions"}
-        normalized.append({"value": normalizer(raw_value), "conditions": conditions})
+        reshaped, moved = _split_condition_keys(normalizer(raw_value), allowed)
+        normalized.append({"value": reshaped, "conditions": [*conditions, *moved]})
     return normalized
 
 
-def _normalize_structured_conditionals(value: Any, normalizer: Any) -> Any:
+def _normalize_structured_conditionals(
+    value: Any, normalizer: Any, allowed: frozenset[str]
+) -> Any:
     if not isinstance(value, list):
         value = [value]
     normalized: list[Any] = []
@@ -874,7 +1077,8 @@ def _normalize_structured_conditionals(value: Any, normalizer: Any) -> Any:
         else:
             raw_value = item
             conditions = []
-        normalized.append({"value": normalizer(raw_value), "conditions": conditions})
+        reshaped, moved = _split_condition_keys(normalizer(raw_value), allowed)
+        normalized.append({"value": reshaped, "conditions": [*conditions, *moved]})
     return normalized
 
 
@@ -908,17 +1112,10 @@ def _normalize_conditions(value: Any) -> list[Any]:
 
 
 def _condition_dimension(value: str) -> str:
-    text = value.casefold()
-    if text.strip().upper() in {"AMD", "USD", "EUR"}:
+    # A bare condition string gets a dimension only when it *is* a currency
+    # code; no guessing from words inside it ("state" in "real estate").
+    if value.strip().upper() in {"AMD", "USD", "EUR"}:
         return "currency"
-    if "resident" in text:
-        return "residency"
-    if any(marker in text for marker in ("fixed", "floating", "variable")):
-        return "rate_type"
-    if "collateral" in text:
-        return "collateral"
-    if "program" in text or "state" in text:
-        return "program"
     return "condition"
 
 
@@ -930,8 +1127,11 @@ def _normalize_loan_amount(value: Any) -> Any:
         value = {
             "type": "absolute",
             "range": {
-                key: value[key] for key in ("min", "max", "currency") if key in value
+                key: value.pop(key)
+                for key in ("min", "max", "currency")
+                if key in value
             },
+            **{key: part for key, part in value.items() if key != "type"},
         }
     return value
 
@@ -941,45 +1141,43 @@ def _normalize_rate(value: Any) -> Any:
         return value
     normalized = dict(value)
     if "rate_pct" in normalized:
-        normalized.setdefault("min", normalized["rate_pct"])
-        normalized.setdefault("max", normalized["rate_pct"])
-    if "min_pct" in normalized:
-        normalized.setdefault("min", normalized["min_pct"])
-    if "max_pct" in normalized:
-        normalized.setdefault("max", normalized["max_pct"])
+        rate = normalized.pop("rate_pct")
+        normalized.setdefault("min", rate)
+        normalized.setdefault("max", rate)
+    for alias, key in (("min_pct", "min"), ("max_pct", "max")):
+        if alias in normalized:
+            normalized.setdefault(key, normalized.pop(alias))
     aliases = {"floating": "variable", "adjustable": "variable"}
     if normalized.get("rate_type") in aliases:
         normalized["rate_type"] = aliases[normalized["rate_type"]]
-    return {
-        key: normalized[key]
-        for key in ("min", "max", "rate_type", "basis", "formula")
-        if key in normalized
-    }
+    return normalized
 
 
 def _normalize_term(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
-    if value.get("indefinite") is True:
-        return {
-            key: value[key] for key in ("indefinite", "end_condition") if key in value
-        }
-    if "min_months" in value or "max_months" in value:
-        return {
-            key: value[key]
-            for key in ("min_months", "max_months", "indefinite")
-            if key in value
-        }
-    normalized: dict[str, Any] = {}
+    if "min_months" in value or "max_months" in value or value.get("indefinite"):
+        return value
+    normalized = {
+        key: part for key, part in value.items() if not key.startswith(("min_", "max_"))
+    }
     for side in ("min", "max"):
         raw = value.get(f"{side}_value")
         if raw is None:
             continue
         unit = str(value.get(f"{side}_unit", "month")).casefold()
-        normalized[f"{side}_months"] = (
-            int(Decimal(str(raw)) * 12) if unit.startswith("year") else int(raw)
-        )
-    return normalized or value
+        try:
+            number = Decimal(str(raw))
+        except ArithmeticError:
+            return value  # not a number: leave it for validation to reject
+        if unit.startswith("year"):
+            number *= 12
+        elif not unit.startswith("month"):
+            return value
+        if number != number.to_integral_value():
+            return value
+        normalized[f"{side}_months"] = int(number)
+    return normalized if any(k.endswith("_months") for k in normalized) else value
 
 
 def _normalize_percentage(value: Any) -> Any:
@@ -1022,13 +1220,16 @@ def _normalize_fees(value: Any) -> Any:
             normalized.append(item)
             continue
         fee = dict(item)
-        fee.setdefault(
-            "description", fee.pop("name", fee.pop("purpose", "Unspecified fee"))
-        )
+        if "description" not in fee:
+            for alias in ("name", "purpose"):
+                if alias in fee:
+                    fee["description"] = fee.pop(alias)
+                    break
+        # Spelling variants of the two scopes only; a scope the contract does
+        # not name stays, for validation to reject.
         scope_aliases = {
             "general": FeeScope.GENERAL_LOAN_SERVICE.value,
             "general_service": FeeScope.GENERAL_LOAN_SERVICE.value,
-            "mortgage": FeeScope.PRODUCT.value,
         }
         fee["scope"] = scope_aliases.get(
             str(fee.get("scope", "unknown")).casefold(),
@@ -1048,7 +1249,9 @@ def _normalize_variants(value: Any) -> Any:
             normalized.append({"variant_id": _slug(item), "name": item})
         elif isinstance(item, dict):
             variant = dict(item)
-            name = variant.get("name", variant.get("variant_name"))
+            if "name" not in variant and "variant_name" in variant:
+                variant["name"] = variant.pop("variant_name")
+            name = variant.get("name")
             if name and not variant.get("variant_id"):
                 variant["variant_id"] = _slug(str(name))
             normalized.append(variant)
@@ -1075,77 +1278,38 @@ def _normalize_repayment(value: Any) -> Any:
 
 def _normalize_application_channel(value: Any) -> Any:
     if isinstance(value, str):
-        return {"channel": value, "available": True}
+        return {"channel": value}
     if isinstance(value, dict):
         result = dict(value)
         if "channel" not in result and "name" in result:
             result["channel"] = result.pop("name")
-        result.setdefault("available", True)
         return result
     return value
 
 
 def _normalize_required_document(value: Any) -> Any:
     if isinstance(value, str):
-        text = " ".join(value.split())
-        lowered = text.casefold()
-        requirement = (
-            "upon_request"
-            if "upon request" in lowered
-            else "conditional"
-            if any(marker in lowered for marker in (" if ", " for ", "when "))
-            else "required"
-        )
-        return {"name": text, "requirement": requirement}
+        # A bare name says nothing about whether the document is required.
+        return {"name": " ".join(value.split()), "requirement": "unknown"}
     if isinstance(value, dict):
         result = dict(value)
         if "name" not in result and "document" in result:
             result["name"] = result.pop("document")
-        result.setdefault("requirement", "required")
         return result
     return value
 
 
 def _normalize_collateral(value: Any) -> Any:
     if isinstance(value, str):
-        if value.strip().casefold() in {"n/a", "not applicable", "none"}:
+        if value.strip().casefold() in {"n/a", "not applicable"}:
             return {"description": None, "applicable": False}
-        return {"description": value, "applicable": True}
+        return value  # a bare description says nothing about applicability
     if isinstance(value, dict):
         result = dict(value)
         if "description" not in result and "name" in result:
             result["description"] = result.pop("name")
-        result.setdefault("applicable", True)
         return result
     return value
-
-
-def _normalize_age_requirements(value: Any) -> Any:
-    if isinstance(value, (str, dict)):
-        value = [value]
-    if not isinstance(value, list):
-        return value
-    normalized: list[Any] = []
-    for item in value:
-        conditions: Any = []
-        raw = item
-        if isinstance(item, dict) and ("value" in item or "conditions" in item):
-            raw = item.get("value")
-            conditions = item.get("conditions", ())
-        if isinstance(raw, str):
-            numbers = [int(part) for part in re.findall(r"\b\d{1,3}\b", raw)]
-            if len(numbers) >= 2:
-                raw = {"min_age": numbers[0], "max_age": numbers[1]}
-            elif numbers and any(
-                marker in raw.casefold() for marker in ("at least", "minimum")
-            ):
-                raw = {"min_age": numbers[0]}
-            elif numbers:
-                raw = {"max_age": numbers[0]}
-        normalized.append(
-            {"value": raw, "conditions": _normalize_conditions(conditions)}
-        )
-    return normalized
 
 
 def _deduplicate_conditionals(value: Any) -> Any:
@@ -1199,26 +1363,6 @@ def _normalize_requirement_policy(value: Any) -> Any:
     return policy
 
 
-_COMPLETENESS_FIELDS = frozenset(
-    {
-        ExtractionField.PRODUCT_NAME,
-        ExtractionField.VARIANTS,
-        ExtractionField.PURPOSE,
-        ExtractionField.LOAN_AMOUNT,
-        ExtractionField.INTEREST_RATE,
-        ExtractionField.EFFECTIVE_RATE,
-        ExtractionField.TERM,
-        ExtractionField.REPAYMENT,
-        ExtractionField.RESIDENCY_REQUIREMENTS,
-        ExtractionField.AGE_REQUIREMENTS,
-        ExtractionField.APPLICATION_CHANNEL,
-        ExtractionField.DOWN_PAYMENT_PCT,
-        ExtractionField.LTV_PCT,
-        ExtractionField.COLLATERAL,
-        ExtractionField.PROPERTY_MARKET,
-        ExtractionField.REQUIRED_DOCUMENTS,
-    }
-)
 _CONDITION_SENSITIVE_FIELDS = frozenset(
     {
         ExtractionField.DOWN_PAYMENT_PCT,
@@ -1353,17 +1497,6 @@ def _validate_semantic_completeness(
         in {ProductAssociation.CURRENT_PRODUCT, ProductAssociation.UNKNOWN}
         and not _outside_target_scope(batch, item)
     )
-    if (
-        result.status is ExtractionStatus.NOT_STATED
-        and result.field in _COMPLETENESS_FIELDS
-        and any(
-            field_has_evidence_marker(result.field, item) for item in target_evidence
-        )
-    ):
-        raise ValueError(
-            "not_stated contradicts field-specific current-product evidence"
-        )
-
     if result.status is ExtractionStatus.FOUND and result.evidence:
         cited = {citation.evidence_id for citation in result.evidence}
         cited_items = tuple(
@@ -1773,9 +1906,13 @@ def _safe_input(value: Any) -> str | None:
     return rendered[:4000]
 
 
-def _raw_response(extractor: SemanticExtractor, batch_id: str) -> str | None:
-    values = getattr(extractor, "raw_responses", None)
-    return values.get(batch_id) if isinstance(values, dict) else None
+def _unpack(
+    output: ExtractionBatchResponse | ExtractorOutput,
+) -> tuple[ExtractionBatchResponse, str | None]:
+    """The response and the raw text of *this* call (a plain response has none)."""
+    if isinstance(output, ExtractorOutput):
+        return output.response, output.raw_response
+    return output, None
 
 
 def assemble_loan_product(

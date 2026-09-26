@@ -389,6 +389,8 @@ class SemanticExtractionSettings(SettingsGroup):
     max_chars_per_batch: int = Field(default=20_000, ge=1000, le=100_000)
     max_items_per_batch: int = Field(default=20, ge=1, le=100)
     thinking_budget: int = Field(default=0, ge=-1, le=24_576)
+    # Caps each answer; a cut answer is asked once more, then goes to review.
+    max_output_tokens: int = Field(default=16_384, ge=1024, le=65_536)
     max_repairs_per_run: int = Field(default=3, ge=0, le=50)
 
     @field_validator("fallback_model_names")

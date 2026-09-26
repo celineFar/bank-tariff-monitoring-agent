@@ -120,6 +120,7 @@ class EnvironmentSettings(BaseSettings):
     semantic_extraction_max_chars_per_batch: int = 20_000
     semantic_extraction_max_items_per_batch: int = 20
     semantic_extraction_thinking_budget: int = 0
+    semantic_extraction_max_output_tokens: int = 16_384
     semantic_extraction_max_repairs_per_run: int = 3
     semantic_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
     hitl_document_rank_gap: float = 0.05

@@ -940,23 +940,110 @@ SE14, SE15 ×3, SE16, SE17, SE18 ×2, SE20, SE21, SE25).
 
 ### Phase 1: Contained bug fixes (SE13, SE16, SE15, SE23, SE24, SE14)
 
-- [ ] SE13: remove `raw_responses` from `AdkSemanticExtractor`. `extract()` returns the raw
+- [x] SE13: remove `raw_responses` from `AdkSemanticExtractor`. `extract()` returns the raw
       text with the response; the error carries the raw text or none.
-- [ ] SE13: batch IDs `{offering_id}:{call}`; the review ID is built from offering, field and
+- [x] SE13: batch IDs `{offering_id}:{call}`; the review ID is built from offering, field and
       issue, not position.
-- [ ] SE13: delete the ADK session after each call.
-- [ ] SE16: move `_normalize_response_contract` into the per-batch `try`; a normalizer
+- [x] SE13: delete the ADK session after each call.
+- [x] SE16: move `_normalize_response_contract` into the per-batch `try`; a normalizer
       exception becomes a validation issue.
-- [ ] SE15: rewrite normalizers to reshape only. Unknown condition-like keys move into
+- [x] SE15: rewrite normalizers to reshape only. Unknown condition-like keys move into
       `conditions`; delete the string heuristics and `_condition_dimension`'s substring rules.
-- [ ] SE15: check that review input still normalizes through the same function
+- [x] SE15: check that review input still normalizes through the same function
       (`review_input.py`).
-- [ ] SE23: `temperature=0` from the model registry flag; add `max_output_tokens` to
+- [x] SE23: `temperature=0` from the model registry flag; add `max_output_tokens` to
       `SemanticExtractionSettings`; record both in usage.
-- [ ] SE24: SDK `HttpRetryOptions(attempts=1)`; one retry on parse or schema failure or
+- [x] SE24: SDK `HttpRetryOptions(attempts=1)`; one retry on parse or schema failure or
       truncation, before repair.
-- [ ] SE14: delete the keyword-based `not_stated` completeness check.
-- [ ] Remove the matching `xfail` markers; the full suite is green.
+- [x] SE14: delete the keyword-based `not_stated` completeness check.
+- [x] Remove the matching `xfail` markers; the full suite is green.
+
+#### Phase 1 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 1: contained bug fixes*. Full suite:
+**1,009 passed**, 5 skipped, 14 xfailed (later phases). The same 4 Gemini-key tests fail as
+at baseline.
+
+**SE13 (raw responses, batch IDs, sessions).**
+- `AdkSemanticExtractor` no longer keeps `raw_responses`.
+  - `extract()` returns `ExtractorOutput(response, raw_response)`.
+  - A call that yields nothing usable raises `SemanticExtractionCallError`, carrying *its
+    own* raw text, or `None`.
+  - The service unpacks either form (`_unpack`), so test fakes that return a plain
+    `ExtractionBatchResponse` still work.
+  - API errors pass through unchanged, so `is_model_fallback_error` still sees them.
+- Batch IDs are `{offering_id}:{group}` (`build_extraction_batches(..., offering_id=)`, fed
+  from `discovery.offering_id`; the product value when there is none). The review ID
+  already hashed the batch ID, so it is now positional-free with no further change.
+- The ADK session is deleted after every call.
+- The two demonstration scripts read the raw text from the error now.
+
+**SE16.** Normalization runs inside the per-batch `try`. `_normalize_field_contract` also
+catches a normalizer error per field and leaves that field as the model gave it, so the
+field's own validation reports it (repair, then review). One malformed field no longer
+costs the batch, let alone the offering.
+
+**SE15 (reshape only).**
+- Value models used in field contracts now derive from `ValueModel` with
+  `extra="forbid"`. Before, pydantic silently *ignored* unknown keys, so a rate's
+  `currency` vanished even without the normalizer. That was a second cause of SE15's
+  dropped currency, found while implementing.
+- The normalizer moves condition-naming keys (`currency`, `borrower_type`, `variant_id`,
+  `card_tier`, …) into `conditions`. It keeps every other unknown key, for validation to
+  reject.
+- Deleted guesses:
+  - age prose parsing (`"from 21"` → `max_age`);
+  - `" for "` / `"when "` → conditional documents: a bare document string is now
+    `requirement: unknown`;
+  - bare collateral strings → `applicable: true`: now left for repair, except the literal
+    `n/a` / `not applicable`;
+  - `"state"` / `"collateral"` / `"program"` substrings as condition dimensions: only a
+    bare currency code gets a dimension;
+  - the `mortgage` → `product` fee-scope alias;
+  - `int("6 months")`-style conversions that raised.
+- `_normalize_rate` and `_normalize_term` keep unknown keys instead of dropping them.
+- **Review input**: human reviewers type plain text, which the old guesses served. Their
+  documented formats now have explicit parsers in `review_input.py`: ages (`18-65`,
+  `at least 18`, `21+`, `up to 65`), documents (`… upon request`), collateral (`none`).
+  The shared normalizer only reshapes the result. Parsing a documented input syntax is
+  not guessing at model prose.
+
+**SE23.**
+- Temperature 0 for every model, as in discovery (Q9 there). The model registry only
+  decides the thinking form (`thinking_level=MINIMAL` for
+  `gemini-3.5-flash-lite` when the budget is 0).
+- `max_output_tokens` (default 16,384) is a new setting:
+  `SEMANTIC_EXTRACTION_MAX_OUTPUT_TOKENS`, in `.env.example` and `docs/configuration.md`.
+- Both values are logged when the extractor is built, and kept on it as attributes.
+  They are not written to `model_call_usage`: that table has no column for them.
+
+**SE24.**
+- SDK `HttpRetryOptions(attempts=1)`; the application loop keeps backoff.
+- An answer that is empty, cut at `MAX_TOKENS`, or does not parse against the schema is
+  asked once more (`parse_retries=1`), then fails with its raw text.
+
+**SE14.** The keyword `not_stated` completeness check and `_COMPLETENESS_FIELDS` are
+deleted. `field_has_evidence_marker` is still used by the product-name anchor; SE19 reviews
+that check in Phase 6.
+
+**Tests changed.**
+- Four older tests encoded the deleted guesses and now assert the new behaviour: the
+  document requirement is `unknown`; a channel is wrapped without a guessed `available`;
+  the age case uses an object.
+- The bounded-repair test is now triggered by a malformed term shape: a `not_stated`
+  answer is no longer "suspicious".
+- New tests: temperature, output cap and one SDK attempt (SE23); one retry, then the raw
+  text on failure (SE24); the reviewer age grammar and `none` collateral.
+
+**Measured.** The fake-extractor check
+([data/extraction-check-phase1-fake.json](data/extraction-check-phase1-fake.json)) went
+from 92 `review` and 117 calls to **0 `review` and 78 calls**: no repair is spent on a
+`not_stated` answer any more.
+
+**Remaining.** The prompt, schema and cache versions are not bumped. Cached responses are
+re-validated on every read, and one that now fails validation is ignored. Phase 7 replaces
+the cache key anyway.
+
 
 ### Phase 2: Upstream structure (SE1, SE2, SE3)
 

@@ -385,9 +385,15 @@ def _write_failure(
             "model_attempts": attempts,
         },
     )
-    _write_json(output_directory / "pre_validation.json", extractor.raw_responses)
+    # The raw text travels with the failure itself (SE13), never on the extractor.
+    raw_responses = (
+        {"failed_call": error.raw_response}
+        if getattr(error, "raw_response", None)
+        else {}
+    )
+    _write_json(output_directory / "pre_validation.json", raw_responses)
     (output_directory / "pre_validation.md").write_text(
-        render_unparsed_pre_validation(extractor.raw_responses, error),
+        render_unparsed_pre_validation(raw_responses, error),
         encoding="utf-8",
     )
     (output_directory / "extraction.md").write_text(

@@ -171,6 +171,7 @@ def load_settings(
             max_chars_per_batch=raw.semantic_extraction_max_chars_per_batch,
             max_items_per_batch=raw.semantic_extraction_max_items_per_batch,
             thinking_budget=raw.semantic_extraction_thinking_budget,
+            max_output_tokens=raw.semantic_extraction_max_output_tokens,
             max_repairs_per_run=raw.semantic_extraction_max_repairs_per_run,
             fallback_model_names=raw.semantic_extraction_fallback_model_names,
         ),

@@ -148,7 +148,10 @@ downloader receives `settings.http` and the PDF extraction service receives
   selected-evidence fingerprints jointly define exact extraction-batch cache reuse.
   `SEMANTIC_EXTRACTION_THINKING_BUDGET` (default `0`) sets the model thinking
   budget for extraction and its repairs; raise it only if bounded reasoning
-  measurably improves extraction quality. `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN`
+  measurably improves extraction quality. Extraction always runs at temperature 0.
+  `SEMANTIC_EXTRACTION_MAX_OUTPUT_TOKENS` (default `16384`) caps each answer; an
+  answer cut at the cap, or one that does not parse, is asked once more before the
+  batch goes to repair or review. `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN`
   (default `3`) caps how many suspicious fields may be re-asked in one run, so a
   batch that keeps failing its contract falls through to human review instead of
   issuing an unbounded number of paid repair calls.

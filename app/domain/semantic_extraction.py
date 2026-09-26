@@ -25,6 +25,17 @@ class ExtractionModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class ValueModel(ExtractionModel):
+    """A value the model or a reviewer supplies for a field.
+
+    Unknown keys are rejected, not dropped: a key the contract does not know (a
+    rate's `currency`, say) would otherwise vanish silently and turn two
+    currency-specific rates into two unconditional ones.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
 class ExtractionStatus(StrEnum):
     FOUND = "found"
     NOT_STATED = "not_stated"
@@ -66,18 +77,18 @@ class PropertyMarket(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
-class Condition(ExtractionModel):
+class Condition(ValueModel):
     dimension: str = Field(min_length=1, max_length=200)
     operator: str | None = Field(default=None, max_length=50)
     value: str = Field(min_length=1, max_length=1000)
 
 
-class ConditionalValue(ExtractionModel, Generic[T]):
+class ConditionalValue(ValueModel, Generic[T]):
     value: T
     conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
 
 
-class MoneyRange(ExtractionModel):
+class MoneyRange(ValueModel):
     min: Decimal | None = Field(default=None, ge=0)
     max: Decimal | None = Field(default=None, ge=0)
     currency: Literal["AMD", "USD", "EUR"] | None = None
@@ -91,12 +102,12 @@ class MoneyRange(ExtractionModel):
         return self
 
 
-class AbsoluteMoneyRange(ExtractionModel):
+class AbsoluteMoneyRange(ValueModel):
     type: Literal["absolute"] = "absolute"
     range: MoneyRange
 
 
-class SalaryMultiple(ExtractionModel):
+class SalaryMultiple(ValueModel):
     type: Literal["salary_multiple"] = "salary_multiple"
     min_multiple: Decimal | None = Field(default=None, ge=0)
     max_multiple: Decimal | None = Field(default=None, ge=0)
@@ -114,7 +125,7 @@ class SalaryMultiple(ExtractionModel):
         return self
 
 
-class PropertyValuePercentage(ExtractionModel):
+class PropertyValuePercentage(ValueModel):
     type: Literal["property_value_percentage"] = "property_value_percentage"
     min_pct: Decimal | None = Field(default=None, ge=0, le=100)
     max_pct: Decimal | None = Field(default=None, ge=0, le=100)
@@ -132,7 +143,7 @@ class PropertyValuePercentage(ExtractionModel):
         return self
 
 
-class OtherAmountFormula(ExtractionModel):
+class OtherAmountFormula(ValueModel):
     type: Literal["other_formula"] = "other_formula"
     expression: str = Field(min_length=1, max_length=2000)
 
@@ -143,7 +154,7 @@ LoanAmount = Annotated[
 ]
 
 
-class Rate(ExtractionModel):
+class Rate(ValueModel):
     min: Decimal | None = Field(default=None, ge=0)
     max: Decimal | None = Field(default=None, ge=0)
     rate_type: RateType = RateType.UNKNOWN
@@ -165,7 +176,7 @@ class FeeScope(StrEnum):
     UNKNOWN = "unknown"
 
 
-class LoanFee(ExtractionModel):
+class LoanFee(ValueModel):
     description: str = Field(min_length=1, max_length=2000)
     scope: FeeScope
     amount: Decimal | None = Field(default=None, ge=0)
@@ -174,7 +185,7 @@ class LoanFee(ExtractionModel):
     conditions: tuple[Condition, ...] = Field(default=(), max_length=30)
 
 
-class RequirementPolicy(ExtractionModel):
+class RequirementPolicy(ValueModel):
     default_required: bool | None = None
     exceptions: tuple[ConditionalValue[bool], ...] = Field(default=(), max_length=30)
 
@@ -185,7 +196,7 @@ class RequirementPolicy(ExtractionModel):
         return self
 
 
-class TermRange(ExtractionModel):
+class TermRange(ValueModel):
     min_months: int | None = Field(default=None, gt=0)
     max_months: int | None = Field(default=None, gt=0)
     indefinite: bool = False
@@ -212,30 +223,30 @@ class TermRange(ExtractionModel):
         return self
 
 
-class ProductVariant(ExtractionModel):
+class ProductVariant(ValueModel):
     variant_id: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
     name: str = Field(min_length=1, max_length=500)
     purpose: str | None = Field(default=None, max_length=2000)
 
 
-class RequiredDocument(ExtractionModel):
+class RequiredDocument(ValueModel):
     name: str = Field(min_length=1, max_length=2000)
     requirement: Literal["required", "upon_request", "conditional", "unknown"] = (
         "required"
     )
 
 
-class RepaymentMethod(ExtractionModel):
+class RepaymentMethod(ValueModel):
     method: str = Field(min_length=1, max_length=500)
     description: str | None = Field(default=None, max_length=2000)
 
 
-class ApplicationChannel(ExtractionModel):
+class ApplicationChannel(ValueModel):
     channel: str = Field(min_length=1, max_length=1000)
     available: bool = True
 
 
-class AgeRange(ExtractionModel):
+class AgeRange(ValueModel):
     min_age: int | None = Field(default=None, ge=0, le=120)
     max_age: int | None = Field(default=None, ge=0, le=120)
     measured_at: str | None = Field(default=None, max_length=500)
@@ -253,7 +264,7 @@ class AgeRange(ExtractionModel):
         return self
 
 
-class CollateralTerm(ExtractionModel):
+class CollateralTerm(ValueModel):
     description: str | None = Field(default=None, max_length=2000)
     applicable: bool = True
 
