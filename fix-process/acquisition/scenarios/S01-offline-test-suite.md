@@ -13,17 +13,17 @@ makes any attempt to create a Gemini client fail loudly.
 
 ## Result: **PASS**
 
-Run 2026-09-26, branch `integration/process-fixes`. Raw result: [results/S01.json](results/S01.json).
+Re-run 2026-09-26 after the F1 fix (`733c4ba`), branch `integration/process-fixes`. Raw result: [results/S01.json](results/S01.json).
 
-143 tests passed, 0 skipped, across 13 files: the acquisition, identity, completeness,
-freshness, failure-mapping, URL, parser, pipeline and monitoring-node unit tests; the local
-Chromium DOM tests (fade-in without `<h1>`, `display:none` stays hidden, never-visible content
-parses empty, interaction cap, navigating button stays on the page); and the two Postgres
-integration tests (snapshots; baseline drop, reset and audit event), run against the scratch
-test database.
+145 tests passed, 0 skipped (143 in the first run, plus the two F1 tests: a 404 is a
+`linked_document_missing` warning, and such an acquisition is still stored and reused).
 
 ### Cost
 
 | Gemini calls | Gemini cost | Bank HTTP requests | Browser renders | Data captured | Wall time |
 |---|---|---|---|---|---|
-| 0 | $0.00 | 0 | 0 | 0.0 MB | 16.5 s |
+| 0 | $0.00 | 0 | 0 | 0.0 MB | 17.4 s |
+
+### Earlier run
+
+PASS: 143 tests, 16.5 s, $0.

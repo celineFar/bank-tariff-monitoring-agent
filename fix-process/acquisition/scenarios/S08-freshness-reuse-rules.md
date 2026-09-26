@@ -13,19 +13,22 @@ makes any attempt to create a Gemini client fail loudly.
 
 ## Result: **PASS**
 
-Run 2026-09-26, branch `integration/process-fixes`. Raw result: [results/S08.json](results/S08.json).
+Re-run 2026-09-26 after the F1 fix (`733c4ba`), branch `integration/process-fixes`. Raw result: [results/S08.json](results/S08.json).
 
-- **(a)** The first acquisition was fetched (1 static request, 1 render) and stored. The
-  second, seconds later, was served from the store: `reused = true`, same `retrieved_at`,
-  **0 bank requests, 0 renders**.
-- **(b)** With a PDF downloader limited to 1 kB and cap 2, both PDFs failed
-  (`linked_document_failed: … source.size_rejected`), alongside the cap warning. **Nothing was
-  stored.** The next acquisition fetched and rendered again (1 request, 1 render).
-- **(c)** With the browser disabled, the acquisition failed the floor
-  (`source.incomplete_content`), and nothing was stored.
+Same outcome as the first run, which matters after F1: a download that fails for a reason
+other than 404 still blocks reuse.
+- **(a)** First acquisition fetched and stored; the second `reused`, with 0 bank requests
+  and 0 renders.
+- **(b)** Two `linked_document_failed: … source.size_rejected` warnings; **nothing stored**;
+  the next acquisition fetched again.
+- **(c)** Browser disabled: `source.incomplete_content`, nothing stored.
 
 ### Cost
 
 | Gemini calls | Gemini cost | Bank HTTP requests | Browser renders | Data captured | Wall time |
 |---|---|---|---|---|---|
-| 0 | $0.00 | 6 | 3 | 2.36 MB | 40.0 s |
+| 0 | $0.00 | 6 | 3 | 2.36 MB | 38.6 s |
+
+### Earlier run
+
+PASS, same outcome. Cost: 6 bank requests, 3 renders, 2.4 MB, 40 s, $0.

@@ -1,30 +1,36 @@
 # Acquisition scenarios: results
 
 Run 2026-09-26 on `integration/process-fixes`, against the live bank site and a scratch
-database (`tariff_acquisition_scenarios`). Each scenario is described, with its result and
+database (`tariff_acquisition_scenarios`). Two rounds: all ten scenarios, then, after the
+fix for finding F1 (`733c4ba`), a re-run of the four it could affect (S01, S04, S08, S09).
+The table shows each scenario's latest result. Each scenario is described, with its result and
 cost, in [scenarios/](scenarios/); raw results are in
 [scenarios/results/](scenarios/results/). The fixes under test are in
 [acquisition-fix-plan.md](acquisition-fix-plan.md).
 
-**Result: 9 of 10 pass. Total Gemini cost: $0.00 (0 calls).** The one failure (S04) is caused
-by dead PDF links on the bank's site. The code handled them correctly, but they expose a
-design issue (F1).
+**Result: 10 of 10 pass. Total Gemini cost: $0.00 (0 calls), across both rounds.** In the
+first round S04 failed: dead PDF links on the bank's site made two pages permanently
+ineligible for reuse (F1). That is now fixed, and S04 passes with a check added for it.
 
 ## Scenarios
 
 | # | Scenario | Result | Gemini | Bank requests | Renders | Data | Time |
 |---|---|---|---|---|---|---|---|
-| [S01](scenarios/S01-offline-test-suite.md) | Offline test suite (143 tests, incl. local Chromium and Postgres) | **PASS** | $0 | 0 | 0 | 0 MB | 17 s |
+| [S01](scenarios/S01-offline-test-suite.md) | Offline test suite (145 tests, incl. local Chromium and Postgres) | **PASS** | $0 | 0 | 0 | 0 MB | 17 s |
 | [S02](scenarios/S02-live-all-seeds.md) | All 13 seeds render completely | **PASS** | $0 | 13 | 13 | 29.7 MB | 181 s |
 | [S03](scenarios/S03-page-identity-stable.md) | Page ids stable across two fetches | **PASS** | $0 | 13 | 13 | 29.7 MB | 184 s |
-| [S04](scenarios/S04-pdf-downloads-and-cap.md) | PDFs downloaded; the cap is never silent | **FAIL** (bank's dead links; behaviour correct) | $0 | 41 | 3 | 13.9 MB | 60 s |
+| [S04](scenarios/S04-pdf-downloads-and-cap.md) | PDFs downloaded; the cap is never silent; a dead link doesn't block reuse | **PASS** (first round: FAIL, see F1) | $0 | 58 | 4 | 18.8 MB | 83 s |
 | [S05](scenarios/S05-browser-failure-no-fallback.md) | Browser failure fails; no static fallback | **PASS** | $0 | 2 | 2 | 0 MB | 6 s |
 | [S06](scenarios/S06-static-html-fails-floor.md) | Static HTML fails the floor on every seed | **PASS** | $0 | 13 | 0 | 0 MB | 24 s |
 | [S07](scenarios/S07-baseline-drop-and-reset.md) | Sharp drop fails until the operator resets | **PASS** | $0 | 3 | 3 | 4.7 MB | 42 s |
-| [S08](scenarios/S08-freshness-reuse-rules.md) | Reuse serves only complete acquisitions | **PASS** | $0 | 6 | 3 | 2.4 MB | 40 s |
-| [S09](scenarios/S09-pipeline-records-acquisition.md) | The run records how and when the page was acquired | **PASS** | $0 | 2 | 1 | — | 15 s |
+| [S08](scenarios/S08-freshness-reuse-rules.md) | Reuse serves only complete acquisitions | **PASS** | $0 | 6 | 3 | 2.4 MB | 39 s |
+| [S09](scenarios/S09-pipeline-records-acquisition.md) | The run records how and when the page was acquired | **PASS** | $0 | 2 | 1 | — | 16 s |
 | [S10](scenarios/S10-url-safety.md) | Unsafe URLs refused before any request | **PASS** | $0 | 0 | 0 | 0 MB | 0 s |
-| | **Total** | **9 / 10** | **$0.00** | **93** | **38** | **80.4 MB** | **9.5 min** |
+| | **Total (latest results)** | **10 / 10** | **$0.00** | **110** | **39** | **85.2 MB** | **9.9 min** |
+
+Cost of both rounds together: **$0.00 of Gemini**, 159 bank requests, 46 browser renders,
+101.5 MB, 12 minutes (first round: 93 requests, 38 renders, 80.4 MB, 9.5 min; re-run: 66
+requests, 8 renders, 21.2 MB, 2.6 min).
 
 How cost was measured:
 - **Gemini**: acquisition makes no model calls. The harness proved this for every
@@ -48,20 +54,24 @@ How cost was measured:
 - **Unchanged pages keep their identity.** Page ids, content hashes and inventories were
   identical across two passes over all 13 seeds (S03), so extractions stay cached.
 - **Reuse is safe and visible.** A reused acquisition costs 0 requests and is marked on the
-  run. Partial and failed acquisitions are never stored for reuse (S08, S09).
+  run. Partial and failed acquisitions are never stored for reuse (S08, S09). A page whose
+  only gap is a dead link is still reused (S04).
 - **Unsafe URLs never produce a request** (S10).
 
 ## Findings
 
-**F1: A permanently dead PDF link turns off reuse for its page (design, low).**
+**F1: A permanently dead PDF link turned off reuse for its page (design, low). Fixed.**
 `mortgage_online` and `mortgage_construction` link to three historical-terms PDFs that
 return 404 on the bank's site. The code records each as `acquisition.linked_document_failed`,
 which is correct. But the A5 rule treats any failed download as a partial acquisition and
 never stores it for reuse, so these two seeds are refetched in full on every run, even within
 the freshness window. There is no Gemini cost (transcription is cached by PDF hash), only
-repeated bank traffic. Candidate fix: treat `source.not_found` as permanent. It stays a
-warning, but doesn't block reuse; timeouts, transport errors and 5xx still would.
-**Needs your decision.**
+repeated bank traffic.
+**Fixed in `733c4ba`** (agreed 2026-09-26): a 404 now produces its own warning,
+`acquisition.linked_document_missing`, which reaches the manifest but does not block reuse.
+Timeouts, transport errors, 5xx and rejected responses keep `linked_document_failed` and still
+block it. Re-tested: S04(c) stores the dead-link page and serves it again with 0 requests;
+S08(b) confirms a size-rejected PDF still blocks reuse.
 
 **O1: The main-text floor has little margin on the static side (observation).** Static
 `credit_line` has 1,238 main characters against a floor of 1,500. The rule that reliably

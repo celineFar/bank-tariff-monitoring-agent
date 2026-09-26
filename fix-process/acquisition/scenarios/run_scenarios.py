@@ -315,8 +315,10 @@ async def s02_s03() -> None:
 
 
 async def s04() -> None:
+    await _fresh_schema(SCENARIO_DB)
     meter = Meter()
     details: dict[str, Any] = {}
+    missing = AcquisitionWarningCode.LINKED_DOCUMENT_MISSING.value
     async with _client(meter) as client:
         full = _service(client, _settings(max_linked_documents=40), meter)
         for offering in ("mortgage_online", "mortgage_construction"):
@@ -327,16 +329,63 @@ async def s04() -> None:
         artifact = await capped.acquire(SEEDS["overdraft"])
         meter.keep(artifact)
         details["overdraft_cap_5"] = _summary(artifact)
+
+        # F1: a page whose only gap is a dead link is still reused.
+        engine, sessions = _db()
+        try:
+            settings = _settings(max_linked_documents=40)
+            reuse = FreshnessGatedAcquisitionService(
+                CompletenessGatedAcquisitionService(
+                    _service(client, settings, meter),
+                    PostgresAcquisitionBaselineRepository(sessions),
+                    settings.acquisition,
+                ),
+                PostgresAcquisitionSnapshotRepository(sessions),
+                freshness_hours=1.0,
+                artifact_reader=FileSystemArtifactStore(
+                    settings.application.artifact_temp_dir
+                ),
+            )
+            first = await reuse.acquire(SEEDS["mortgage_construction"])
+            meter.keep(first)
+            stored = (await _sql("SELECT count(*) AS n FROM acquisition_snapshots"))[0][
+                "n"
+            ]
+            before = (meter.bank_requests, meter.renders)
+            second = await reuse.acquire(SEEDS["mortgage_construction"])
+            details["dead_link_page_reuse"] = {
+                "first_warnings": _summary(first)["warnings"],
+                "stored_after_first": stored,
+                "second_reused": second.reused,
+                "second_bank_requests": meter.bank_requests - before[0],
+                "second_renders": meter.renders - before[1],
+            }
+        finally:
+            await engine.dispose()
+
+    def only_missing(summary: dict[str, Any]) -> bool:
+        return all(w.startswith(missing) for w in summary["warnings"])
+
     full_ok = all(
-        d["documents_downloaded"] == d["inventory"]["pdf_links"] and not d["warnings"]
-        for k, d in details.items()
-        if k != "overdraft_cap_5"
+        details[o]["documents_downloaded"]
+        == details[o]["inventory"]["pdf_links"] - len(details[o]["warnings"])
+        and only_missing(details[o])
+        for o in ("mortgage_online", "mortgage_construction")
     )
     capped = details["overdraft_cap_5"]
     cap_ok = capped["documents_downloaded"] == 5 and [
         w.split(":", 1)[0] for w in capped["warnings"]
     ] == [AcquisitionWarningCode.LINKED_DOCUMENT_CAP_REACHED.value]
-    _write("S04", full_ok and cap_ok, details, meter)
+    reuse_step = details["dead_link_page_reuse"]
+    reuse_ok = (
+        bool(reuse_step["first_warnings"])
+        and all(w.startswith(missing) for w in reuse_step["first_warnings"])
+        and reuse_step["stored_after_first"] == 1
+        and reuse_step["second_reused"] is True
+        and reuse_step["second_bank_requests"] == 0
+        and reuse_step["second_renders"] == 0
+    )
+    _write("S04", full_ok and cap_ok and reuse_ok, details, meter)
 
 
 async def s05() -> None:

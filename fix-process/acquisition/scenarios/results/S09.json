@@ -7,7 +7,7 @@
   "bank_http_requests": 2,
   "browser_renders": 1,
   "megabytes_kept": 0.0,
-  "wall_seconds": 14.6
+  "wall_seconds": 16.2
  },
  "runs": {
   "run_1_fresh": {
@@ -16,7 +16,7 @@
     "status": "failed",
     "current_stage": "normalization",
     "failure_code": "source.parsing_failed",
-    "source_retrieved_at": "2026-09-26 07:14:52.248109+00:00",
+    "source_retrieved_at": "2026-09-26 07:32:23.710523+00:00",
     "acquisition_reused": "False"
    },
    "audit_reasons": []
@@ -27,7 +27,7 @@
     "status": "failed",
     "current_stage": "normalization",
     "failure_code": "source.parsing_failed",
-    "source_retrieved_at": "2026-09-26 07:14:52.248109+00:00",
+    "source_retrieved_at": "2026-09-26 07:32:23.710523+00:00",
     "acquisition_reused": "True"
    },
    "audit_reasons": []

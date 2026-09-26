@@ -13,23 +13,19 @@ makes any attempt to create a Gemini client fail loudly.
 
 ## Result: **PASS**
 
-Run 2026-09-26, branch `integration/process-fixes`. Raw result: [results/S09.json](results/S09.json).
+Re-run 2026-09-26 after the F1 fix (`733c4ba`), branch `integration/process-fixes`. Raw result: [results/S09.json](results/S09.json).
 
-Three runs through the real `TariffPipeline`, with `overdraft` on the scratch database:
-
-| Run | Stopped at | Code | `source_retrieved_at` | `acquisition_reused` |
-|---|---|---|---|---|
-| 1, fresh | normalization (harness stop) | `source.parsing_failed` (the stub) | 07:14:52 UTC | false |
-| 2, within the window | normalization (harness stop) | `source.parsing_failed` (the stub) | 07:14:52 UTC (same) | **true** |
-| 3, browser disabled | **acquisition** | **`source.incomplete_content`** | — | — |
-
-Run 3's audit payload carries the reasons `["main_chars 433 < 1500", "no tables, PDF links
-or payloads"]`. `model_call_usage` has **0 rows**: no model was reached. The
-`source.parsing_failed` on runs 1 and 2 is the harness stopping the run before normalization,
-not a product failure.
+Same outcome as the first run: runs 1 and 2 record the same `source_retrieved_at`, with
+`acquisition_reused` false and then true, and stop at the harness's normalization stub. Run 3
+fails at acquisition with `source.incomplete_content`, with its reasons in the audit payload.
+`model_call_usage` has 0 rows.
 
 ### Cost
 
 | Gemini calls | Gemini cost | Bank HTTP requests | Browser renders | Data captured | Wall time |
 |---|---|---|---|---|---|
-| 0 | $0.00 | 2 | 1 | 0.0 MB | 14.6 s |
+| 0 | $0.00 | 2 | 1 | 0.0 MB | 16.2 s |
+
+### Earlier run
+
+PASS, same outcome. Cost: 2 bank requests, 1 render, 15 s, $0.
