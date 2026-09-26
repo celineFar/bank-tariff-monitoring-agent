@@ -431,7 +431,6 @@ async def test_ix8_vector_search_uses_a_partial_index_over_active_vectors(
     assert "knowledge_chunks_embedding_hnsw_idx" in plan
 
 
-@pytest.mark.xfail(strict=True, reason="IX9: rejected documents are kept and marked")
 @pytest.mark.asyncio
 async def test_ix9_rejection_deletes_only_unshared_candidate_documents(
     monitoring_session_factory: async_sessionmaker[AsyncSession],

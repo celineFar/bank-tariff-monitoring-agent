@@ -47,6 +47,11 @@ Table(
     KnowledgeBase.metadata,
     Column("id", Uuid, primary_key=True),
 )
+Table(
+    "tariff_snapshots",
+    KnowledgeBase.metadata,
+    Column("id", Uuid, primary_key=True),
+)
 
 
 class KnowledgeDocumentRecord(KnowledgeBase):
@@ -69,6 +74,9 @@ class KnowledgeDocumentRecord(KnowledgeBase):
     final_url: Mapped[str] = mapped_column(Text, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Hash of the projected chunks: the same raw bytes projected differently is
+    # another version (IX2).
+    projection_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
     retrieved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -93,6 +101,7 @@ class KnowledgeDocumentRecord(KnowledgeBase):
             "document_kind",
             "document_key",
             "content_sha256",
+            "projection_sha256",
             name="knowledge_documents_version_uq",
         ),
         Index(
@@ -131,8 +140,10 @@ class KnowledgeChunkRecord(KnowledgeBase):
         Computed("to_tsvector('simple', content)", persisted=True),
         nullable=False,
     )
-    embedding: Mapped[list[float]] = mapped_column(
-        Vector(EMBEDDING_DIMENSIONS), nullable=False
+    # NULL until the chunk is embedded: content under review is stored as text
+    # only, and a quota-deferred run is published before its vectors (IX5, IX7).
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMENSIONS), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -155,17 +166,37 @@ class KnowledgeChunkRecord(KnowledgeBase):
             "language",
             "is_active",
         ),
+        # Partial: retrieval reads only active chunks (IX8, migration 023).
         Index(
             "knowledge_chunks_search_gin_idx",
             "search_vector",
             postgresql_using="gin",
+            postgresql_where=text("is_active"),
         ),
         Index(
             "knowledge_chunks_embedding_hnsw_idx",
             "embedding",
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_where=text("is_active AND embedding IS NOT NULL"),
         ),
+    )
+
+
+class SnapshotDocumentRecord(KnowledgeBase):
+    """The document versions one snapshot was built from (migration 023)."""
+
+    __tablename__ = "snapshot_documents"
+
+    snapshot_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("tariff_snapshots.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    document_id: Mapped[UUID] = mapped_column(
+        Uuid,
+        ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+        primary_key=True,
     )
 
 

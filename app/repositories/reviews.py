@@ -116,10 +116,9 @@ class PostgresReviewRepository:
             )
             if superseded_rows:
                 for superseded in superseded_rows:
-                    await self._mark_documents(
+                    await self._discard_documents(
                         session,
                         (superseded.run_id,),
-                        "superseded",
                         offering_id=OfferingId(superseded.offering_id),
                     )
                     await session.execute(
@@ -442,10 +441,9 @@ class PostgresReviewRepository:
                 )
             ).one()
             if status is ReviewStatus.REJECTED:
-                await self._mark_documents(
+                await self._discard_documents(
                     session,
                     (current.run_id,),
-                    "rejected",
                     offering_id=current.offering_id,
                 )
                 await session.execute(
@@ -506,10 +504,9 @@ class PostgresReviewRepository:
                     },
                 )
             ).one()
-            await self._mark_documents(
+            await self._discard_documents(
                 session,
                 (current.run_id,),
-                ("superseded" if status is ReviewStatus.SUPERSEDED else "rejected"),
                 offering_id=current.offering_id,
             )
         return _review_from_row(row)
@@ -711,23 +708,26 @@ class PostgresReviewRepository:
         return _review_from_row(row)
 
     @staticmethod
-    async def _mark_documents(
+    async def _discard_documents(
         session: AsyncSession,
         run_ids: tuple[UUID, ...],
-        state: str,
         *,
         offering_id: OfferingId | None = None,
     ) -> None:
+        """Delete a rejected or superseded run's never-published documents.
+
+        Nothing reads a discarded version (migration 023 removed the `rejected`
+        and `superseded` states); its chunks go with it by cascade.
+        """
         offering_clause = ""
-        parameters: dict[str, object] = {"run_ids": list(run_ids), "state": state}
+        parameters: dict[str, object] = {"run_ids": list(run_ids)}
         if offering_id is not None:
             offering_clause = "AND offering_id = :offering_id"
             parameters["offering_id"] = offering_id.value
         await session.execute(
             text(
                 f"""
-                UPDATE knowledge_documents
-                SET publication_state = :state
+                DELETE FROM knowledge_documents
                 WHERE run_id = ANY(:run_ids)
                   AND publication_state = 'pending_review'
                   AND is_active = false

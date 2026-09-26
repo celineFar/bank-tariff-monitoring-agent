@@ -264,6 +264,9 @@ async def test_vector_and_lexical_indexes_exist_and_vector_plan_uses_hnsw(
             await session.execute(
                 text(
                     "EXPLAIN SELECT id FROM knowledge_chunks "
+                    # The index is partial (migration 023): the query repeats
+                    # its predicate, as retrieval does.
+                    "WHERE is_active AND embedding IS NOT NULL "
                     "ORDER BY embedding <=> CAST(:embedding AS vector) LIMIT 1"
                 ),
                 {"embedding": query_vector},
@@ -402,7 +405,9 @@ async def test_normal_rag_excludes_every_quarantined_publication_state(
 ) -> None:
     run_id = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
     store = PostgresKnowledgeStore(session_factory)
-    states = ("active", "pending_review", "rejected", "superseded")
+    # Migration 023: a document never published is deleted, not kept as
+    # rejected/superseded; these are the states a stored document can have.
+    states = ("active", "pending_review", "retired")
     for index, publication_state in enumerate(states):
         checksum = str(index + 1) * 64
         await store.upsert_document(

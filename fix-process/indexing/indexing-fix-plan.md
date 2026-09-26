@@ -1,7 +1,7 @@
 # Indexing: fix plan
 
 Date: 2026-09-26 · Branch: `fix/indexing` (to create from `integration/process-fixes` at
-`a812f69`) · Status: **in progress** (Phase 0 done).
+`a812f69`) · Status: **in progress** (Phases 0–1 done).
 
 The four design choices this plan depends on (D1–D4) were confirmed by the user on
 2026-09-26. The other decisions (D5–D12) are Claude's; each is listed in
@@ -580,20 +580,51 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
 
 ### Phase 1: Schema (migration 023)
 
-- [ ] Write `migrations/023_indexing_publication_sets.sql`:
-  - [ ] `knowledge_chunks.embedding` drop `NOT NULL`;
-  - [ ] `knowledge_documents.projection_sha256 char(64) NOT NULL DEFAULT repeat('0', 64)`;
+- [x] Write `migrations/023_indexing_publication_sets.sql`:
+  - [x] `knowledge_chunks.embedding` drop `NOT NULL`;
+  - [x] `knowledge_documents.projection_sha256 char(64) NOT NULL DEFAULT repeat('0', 64)`;
         rebuild `knowledge_documents_version_uq` to include it;
-  - [ ] create `snapshot_documents` (see Target design) with an index on `document_id`;
-  - [ ] backfill `snapshot_documents` (active → latest accepted snapshot of the
+  - [x] create `snapshot_documents` (see Target design) with an index on `document_id`;
+  - [x] backfill `snapshot_documents` (active → latest accepted snapshot of the
         offering; `pending_review` → the `review_required` snapshot of its `run_id`);
-  - [ ] delete documents in `rejected`/`superseded`; add the `publication_state`
+  - [x] delete documents in `rejected`/`superseded`; add the `publication_state`
         `CHECK (pending_review, active, retired)`;
-  - [ ] replace the HNSW and GIN indexes with the partial ones (IX8).
-- [ ] Mirror the schema in the ORM records (nullable `embedding`, `projection_sha256`,
+  - [x] replace the HNSW and GIN indexes with the partial ones (IX8).
+- [x] Mirror the schema in the ORM records (nullable `embedding`, `projection_sha256`,
       partial indexes) and add a `SnapshotDocumentRecord`.
-- [ ] Update `tests/unit/test_knowledge_schema.py`; apply the migration to the test DB.
-- [ ] Apply to a copy of the dev DB and record row counts before and after (IXS08 input).
+- [x] Update `tests/unit/test_knowledge_schema.py`; apply the migration to the test DB.
+- [x] Apply to a copy of the dev DB and record row counts before and after (IXS08 input).
+
+**Phase 1 notes (done).**
+- [migrations/023_indexing_publication_sets.sql](../../migrations/023_indexing_publication_sets.sql):
+  nullable `embedding`; `projection_sha256` (legacy rows: 64 zeros) in the version unique
+  constraint; `snapshot_documents` (+ index on `document_id`) with the backfill; delete of
+  `rejected`/`superseded` documents; state check `pending_review | active | retired`;
+  partial HNSW (`WHERE is_active AND embedding IS NOT NULL`) and GIN (`WHERE is_active`);
+  `knowledge_chunks_missing_embedding_idx` for the Phase 5 sweep.
+- **Found: `source_manifests.document_id` had no `ON DELETE` rule**, so deleting a
+  discarded document a manifest recorded would fail. 023 recreates the FK as
+  `ON DELETE SET NULL` (the manifest row keeps key, URL and checksum).
+- ORM mirror in `knowledge_store.py`: `projection_sha256`, nullable `embedding`, partial
+  indexes, `SnapshotDocumentRecord` (plus a `tariff_snapshots` stub table for the FK).
+  The move to `knowledge_records.py` is Phase 2 (IX15).
+- **Interim IX9 (to be replaced in Phase 4).** The new state check forbids `rejected`, so
+  `_mark_documents` became `_discard_documents`: it **deletes** the run's
+  `pending_review`, inactive documents (still selected by `run_id`). This already makes
+  `test_ix9_…` pass, so its `xfail` was removed; Phase 4 re-bases it on
+  `snapshot_documents`.
+- Tests adjusted to the schema: `test_knowledge_schema.py` (partial indexes, nullable
+  vector, 023 text); `test_knowledge_store_postgres.py` (states `active`,
+  `pending_review`, `retired`; the HNSW plan query repeats the partial predicate).
+- **Dev copy (IXS08 input):** `ixs08_dev_copy` database in the dev container, restored
+  from the Phase 0 dump; 023 applied with `ON_ERROR_STOP`. Counts in
+  [data/ixs08-migration-counts.txt](data/ixs08-migration-counts.txt): documents 10 active +
+  7 rejected → 10 active; chunks 993 → 493 (the 506 rejected chunks deleted); all 10
+  active documents mapped to the accepted snapshot, 0 without a set; still 5 active
+  `api:*` documents with 67 active HTML chunks, and 22/246 unlinked evidence rows (these
+  are cleared by the first accepted publication, Phase 6). **The real dev DB is
+  untouched** (deployment needs approval).
+- Suite: 1065 passed, 5 skipped, 18 xfailed (the 4 known Gemini-key tests excluded).
 
 ### Phase 2: Version identity and projection (IX2, IX10, IX11, IX13, IX14, IX15)
 
