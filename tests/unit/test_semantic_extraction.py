@@ -36,7 +36,6 @@ from app.domain.source_discovery import (
     Authority,
     DecisionSource,
     DiscoveryScope,
-    ExtractionContext,
     InformationRole,
     ProductAssociation,
     Relevance,
@@ -127,7 +126,6 @@ def _fixture() -> tuple[NormalizedSourceBundle, SourceDiscoveryResult]:
         prompt_version="1",
         model_name="test-model",
         assessments=assessments,
-        extraction_context=ExtractionContext(product=ProductType.CONSUMER_LOAN),
         llm_batch_count=1,
         reused_assessment_count=0,
     )

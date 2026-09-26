@@ -1020,15 +1020,62 @@ fallback deterministic too. Left for the user to decide.
 
 ### Phase 6: One selection path (SD7)
 
-- [ ] `select_sources(discovery) → SourceSelection` in `source_selection.py`, one precedence
+- [x] `select_sources(discovery) → SourceSelection` in `source_selection.py`, one precedence
       function; remove `_precedence` from `source_discovery.py`.
-- [ ] `build_selected_source_bundle` uses it; the pipeline projects the selected bundle, not
+- [x] `build_selected_source_bundle` uses it; the pipeline projects the selected bundle, not
       the full one.
-- [ ] Replace `ExtractionContext` with `SourceSelection`; update the pipeline audit record.
-- [ ] Add product association, temporal status, authority and precedence to chunk metadata.
-- [ ] Legacy retriever: leave out related-product, navigation, historical and future chunks.
-- [ ] Remove the `xfail` marker; integration test on Postgres: the menu and a sibling table are
+- [x] Replace `ExtractionContext` with `SourceSelection`; update the pipeline audit record.
+- [x] Add product association, temporal status, authority and precedence to chunk metadata.
+- [x] Legacy retriever: leave out related-product, navigation, historical and future chunks
+      (done at projection time: such units are never indexed; see the notes).
+- [x] Remove the `xfail` marker; integration test on Postgres: the menu and a sibling table are
       not in `knowledge_chunks` for the offering.
+
+#### Phase 6 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 6: one selection path*.
+
+**What changed.**
+- **`SourceSelection`** ([domain](../../app/domain/source_discovery.py)) replaces
+  `ExtractionContext`/`ExtractionContextItem`, and `SourceDiscoveryResult.extraction_context`
+  is gone (with its 12,000-character text copies). `select_sources(discovery)` in
+  [source_selection.py](../../app/services/source_selection.py) returns the selected items
+  (each with its deciding assessment) and the documents with selected content;
+  `build_selected_source_bundle` is built on it. `assessment_precedence` is the only
+  precedence function; `_precedence` and `_build_extraction_context` are removed from
+  `source_discovery.py`.
+- **Pipeline.** The projection now receives `build_selected_source_bundle(bundle, discovery)`
+  and `labels=select_sources(discovery).items`, instead of the full bundle filtered by
+  document id. The menu, cross-sell cards and sibling tables no longer reach the offering's
+  RAG index.
+- **Projection** ([knowledge_projection.py](../../app/services/knowledge_projection.py)).
+  Each unit carries its label. Units labelled `related_product`, `global_navigation`,
+  `historical_version` or `future_version`, or stale/future, are left out; a document with
+  nothing left is not projected. A chunk never mixes units of different product associations
+  (own content vs generic bank material). Chunk metadata gains `product_associations`,
+  `temporal_statuses`, `authorities` and `precedence` (the best of its units).
+- **Design decision: filter at projection, not at retrieval.** The plan said "the legacy
+  retriever leaves out chunks labelled related product, navigation, historical or future".
+  Leaving those units out of the index does that for every reader of `knowledge_chunks` and
+  keeps the retrieval SQL unchanged. Chunks from earlier runs are deactivated when the next run
+  publishes its documents, as before.
+- **Scripts.** The source-discovery demonstration writes `source_selection.json` instead of
+  `extraction_context.json`; the extraction demonstration counts selected items.
+- **Docs.** [docs/source-discovery.md](../../docs/source-discovery.md) ("Source selection"
+  replaces "Extraction context") and [docs/architecture.md](../../docs/architecture.md).
+
+**Tests.** The SD7 regression test passes (marker removed; no `xfail` remains anywhere). New
+unit test: the projected chunks hold the offering's rate, not the menu (unselected) or the
+sibling table (selected, related), own content and generic material are separate chunks, and
+labels and precedence are in the metadata. New Postgres test
+(`test_only_selected_offering_content_reaches_knowledge_chunks`): after projection and
+`upsert_document`, `knowledge_chunks` for the offering hold the rate and neither the menu nor
+the sibling table. Fixtures that built `ExtractionContext` were updated. Full suite:
+947 passed, 45 skipped, plus the 4 known key-dependent failures; 40 Postgres tests pass.
+`ruff` clean.
+
+**One-time effect.** The first run after deploy re-embeds each offering's source chunks: their
+content and metadata change.
 
 ### Phase 7: Validation
 

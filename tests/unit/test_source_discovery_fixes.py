@@ -8,7 +8,7 @@ marker, and `strict` fails the suite if a fix makes a test pass without that.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -854,3 +854,115 @@ def test_sd6_a_link_selector_that_cannot_answer_hands_over() -> None:
     assert is_model_fallback_error(PdfLinkResponseError("ids"))
     assert is_model_fallback_error(DiscoveryResponseError("ids"))
     assert not is_model_fallback_error(ValueError("bug"))
+
+
+# --- Phase 6: one selection path (SD7) ----------------------------------------------
+
+
+def _labelled_bundle_and_discovery():
+    """A page with the offering's rate, a menu, and a sibling's tariff table."""
+    from app.domain.normalization import (
+        NormalizedTable,
+        NormalizedTableCell,
+        NormalizedTableRow,
+    )
+    from app.domain.source_discovery import SourceAssessment, SourceDiscoveryResult
+
+    cell = lambda text: NormalizedTableCell(  # noqa: E731
+        raw_text=text, text=text, source_refs=(_ref("t-express"),)
+    )
+    sibling = NormalizedTable(
+        id="t-express",
+        title="Express Home Mortgage Loan",
+        headers=("Item", "Terms"),
+        rows=(NormalizedTableRow(id="r1", cells=(cell("Rate"), cell("12.5%"))),),
+        source_refs=(_ref("t-express"),),
+    )
+    page = _page(
+        _block(
+            "rate", "Nominal interest rate 12.9%", heading_path=("Primary", "Rates")
+        ),
+        _block("menu", "Cards Deposits Transfers", block_type=NormalizedBlockType.LIST),
+        _block("fees", "Loan service fee 0.5%", heading_path=("Primary", "Fees")),
+    ).model_copy(update={"tables": (sibling,)})
+
+    def assessment(item, association, relevance, scope=DiscoveryScope.BLOCK):
+        return SourceAssessment(
+            source_id=f"page:1::block::{item}",
+            document_id="page:1",
+            scope=scope,
+            product_association=association,
+            role=InformationRole.PRICING,
+            relevance=relevance,
+            authority=Authority.OFFICIAL_PRODUCT_CONTENT,
+            temporal_status=TemporalStatus.CURRENT,
+            reason="fixture",
+            decision_source=DecisionSource.LLM,
+            input_fingerprint="a" * 64,
+            structural_fingerprint="b" * 64,
+            source_refs=(_ref(item),),
+        )
+
+    discovery = SourceDiscoveryResult(
+        product=ProductType.MORTGAGE,
+        input_content_hash="d" * 64,
+        policy_version="2",
+        prompt_version="2",
+        model_name="m",
+        assessments=(
+            assessment("rate", ProductAssociation.CURRENT_PRODUCT, Relevance.RELEVANT),
+            assessment(
+                "fees",
+                ProductAssociation.GENERIC_BANK_INFORMATION,
+                Relevance.POSSIBLY_RELEVANT,
+            ),
+            assessment(
+                "menu", ProductAssociation.GLOBAL_NAVIGATION, Relevance.IRRELEVANT
+            ),
+            assessment(
+                "t-express",
+                ProductAssociation.RELATED_PRODUCT,
+                Relevance.POSSIBLY_RELEVANT,
+                DiscoveryScope.TABLE,
+            ),
+        ),
+        llm_batch_count=1,
+        reused_assessment_count=0,
+    )
+    return _bundle(page), discovery
+
+
+def test_sd7_projection_indexes_the_selection_with_its_labels() -> None:
+    from uuid import uuid4
+
+    from app.services.knowledge_projection import KnowledgeProjectionService
+    from app.services.source_selection import (
+        build_selected_source_bundle,
+        select_sources,
+    )
+
+    bundle, discovery = _labelled_bundle_and_discovery()
+    selection = select_sources(discovery)
+
+    documents = KnowledgeProjectionService().project_sources(
+        run_id=uuid4(),
+        product=ProductType.MORTGAGE,
+        offering_id=OfferingId.MORTGAGE_PRIMARY,
+        bundle=build_selected_source_bundle(bundle, discovery),
+        retrieved_at=datetime.now(UTC),
+        language="en",
+        labels=selection.items,
+    )
+
+    chunks = [chunk for document in documents for chunk in document.chunks]
+    text = "\n".join(chunk.content for chunk in chunks)
+    assert "Nominal interest rate 12.9%" in text
+    assert "Cards Deposits Transfers" not in text  # not selected
+    assert "Express Home Mortgage Loan" not in text  # selected, but a sibling's
+    assert selection.document_ids == ("page:1",)
+    # Own content and generic bank material never share a chunk.
+    assert [chunk.metadata["product_associations"] for chunk in chunks] == [
+        ["current_product"],
+        ["generic_bank_information"],
+    ]
+    assert chunks[0].metadata["precedence"] == 3

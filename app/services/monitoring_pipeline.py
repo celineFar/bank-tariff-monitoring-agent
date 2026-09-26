@@ -68,6 +68,10 @@ from app.services.snapshot_lifecycle import (
     evidence_changed,
     non_reviewable_extraction_failure,
 )
+from app.services.source_selection import (
+    build_selected_source_bundle,
+    select_sources,
+)
 from app.services.telemetry import get_tracer
 
 logger = logging.getLogger(__name__)
@@ -344,17 +348,17 @@ class IndexingPipeline:
                 self._large_rate_change_percentage_points
             ),
         )
-        selected_document_ids = frozenset(
-            item.document_id for item in discovery.extraction_context.items
-        )
+        # The same selection extraction used: the RAG index holds only what
+        # source discovery selected for this offering, with its labels.
+        selection = select_sources(discovery)
         source_documents = self._projection.project_sources(
             run_id=run_id,
             product=offering.product,
             offering_id=offering.offering_id,
-            bundle=bundle,
+            bundle=build_selected_source_bundle(bundle, discovery),
             retrieved_at=artifact.retrieved_at,
             language=offering.language or artifact.language or "en",
-            selected_document_ids=selected_document_ids,
+            labels=selection.items,
         )
         if not source_documents:
             raise OfferingPipelineError(

@@ -34,6 +34,7 @@ from app.services.source_discovery import (
     InMemorySourceDiscoveryRepository,
     SourceDiscoveryService,
 )
+from app.services.source_selection import select_sources
 from scripts.demonstrate_source_discovery import (
     SourceDiscoveryRunFailed,
     _render_classification_results,
@@ -275,7 +276,7 @@ async def test_discovery_prefilters_inherits_and_reuses_exact_assessments() -> N
     assert any(item.inherited_from == "document::api:1" for item in first.assessments)
     assert all(
         item.role is not InformationRole.NAVIGATION
-        for item in first.extraction_context.items
+        for item in select_sources(first).items.values()
     )
 
 

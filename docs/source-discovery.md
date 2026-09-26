@@ -148,11 +148,20 @@ contains an assessment for every block, and a member's own assessment decides
 whether it is selected: a section's references never re-select a member the
 classifier excluded.
 
-## Extraction context
+## Source selection
 
-Python converts assessments into a bounded `ExtractionContext`. Irrelevant material
-is excluded, while relevant and possibly relevant material is ordered using this
-precedence:
+`select_sources()` (`app/services/source_selection.py`) turns the assessments into
+one `SourceSelection`: each selected block or table with the assessment that
+decides it, and the documents that have selected content. Semantic extraction
+(`build_selected_source_bundle`) and the RAG projection read the same selection.
+Irrelevant, possibly stale and future material is excluded. A block's or table's own
+assessment decides it; a section's or document's references count only for items
+without one. The projection further leaves out units labelled as another product,
+navigation, or a superseded or future version, never puts the offering's own
+content and generic bank material in one chunk, and stamps every chunk's metadata
+with the product associations, temporal statuses, authorities and best precedence
+of its units. When one item has several selected assessments, the precedence
+decides:
 
 1. product-specific official terms;
 2. product terms/pricing/fees tables;
@@ -192,7 +201,7 @@ be updated when the provider changes rates.
 To execute the classifier explicitly, set `GEMINI_API_KEY` and add
 `--execute-llm`. Live outputs go to a new `llm_run_NNN/` directory and never
 overwrite `preflight/` or a previous live run. The live directory adds
-`source_discovery_result.json`, `assessments.json`, `extraction_context.json`, and
+`source_discovery_result.json`, `assessments.json`, `source_selection.json`, and
 `actual_usage_and_cost.json`. It also writes `classification_results.md`, a readable
 review grouped into relevant, possibly relevant, irrelevant, and deterministic/reused
 decisions. The report lists direct units only and summarizes inherited children. A
@@ -604,4 +613,4 @@ Most importantly:
 - `discovery_plan.json` is the complete combined preflight object.
 - `summary.txt` is the quick overview.
 
-There are no final LLM classifications or final extraction context in this directory because this demonstration intentionally stops immediately before Gemini invocation.
+There are no final LLM classifications or final source selection in this directory because this demonstration intentionally stops immediately before Gemini invocation.

@@ -298,23 +298,16 @@ class SourceDiscoveryPlan(DiscoveryModel):
     inherited_item_count: int = Field(default=0, ge=0)
 
 
-class ExtractionContextItem(DiscoveryModel):
-    source_id: str
-    document_id: str
-    scope: DiscoveryScope
-    role: InformationRole
-    authority: Authority
-    temporal_status: TemporalStatus
-    precedence: int = Field(ge=1)
-    text: str = Field(min_length=1)
-    conditions: tuple[str, ...] = ()
-    effective_periods: tuple[EffectivePeriod, ...] = ()
-    source_refs: tuple[SourceReference, ...] = Field(min_length=1)
+class SourceSelection(DiscoveryModel):
+    """What source discovery hands to extraction and to the RAG projection.
 
+    `items` maps each selected source item (block, table) to the assessment
+    that decides it; `document_ids` are the documents with any selected
+    content, or selected as a whole. One selection for both consumers.
+    """
 
-class ExtractionContext(DiscoveryModel):
-    product: ProductType
-    items: tuple[ExtractionContextItem, ...] = ()
+    document_ids: tuple[str, ...] = ()
+    items: dict[str, SourceAssessment] = Field(default_factory=dict)
 
 
 class SourceDiscoveryResult(DiscoveryModel):
@@ -325,7 +318,6 @@ class SourceDiscoveryResult(DiscoveryModel):
     prompt_version: str
     model_name: str
     assessments: tuple[SourceAssessment, ...]
-    extraction_context: ExtractionContext
     llm_batch_count: int = Field(ge=0)
     reused_assessment_count: int = Field(ge=0)
     # Invalid answers asked again, and batches split to isolate one (SD6).

@@ -13,7 +13,6 @@ from app.domain.source_discovery import (
     Authority,
     DecisionSource,
     DiscoveryScope,
-    ExtractionContext,
     InformationRole,
     ProductAssociation,
     Relevance,
@@ -56,7 +55,6 @@ def test_selected_bundle_keeps_layout_order_and_removes_rejected_blocks() -> Non
             _assessment(kept, Relevance.RELEVANT),
             _assessment(removed, Relevance.IRRELEVANT),
         ),
-        extraction_context=ExtractionContext(product=ProductType.MORTGAGE),
         llm_batch_count=1,
         reused_assessment_count=0,
     )

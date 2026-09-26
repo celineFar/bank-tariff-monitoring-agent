@@ -40,6 +40,7 @@ from app.services.source_discovery import (
     SourceDiscoveryService,
     offering_context_for,
 )
+from app.services.source_selection import select_sources
 
 
 def _blank_pdf() -> bytes:
@@ -331,7 +332,7 @@ async def test_relevant_historical_pdf_skips_discovery_llm_but_not_temporal_rule
     direct = discovery_plan.deterministic_assessments[0]
     assert direct.product_association is ProductAssociation.HISTORICAL_VERSION
     assert direct.temporal_status is TemporalStatus.POSSIBLY_STALE
-    assert result.extraction_context.items == ()
+    assert select_sources(result).items == {}
 
 
 def test_metadata_admission_can_reject_off_topic_documents() -> None:

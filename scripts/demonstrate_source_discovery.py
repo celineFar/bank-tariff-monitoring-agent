@@ -38,6 +38,7 @@ from app.services.source_discovery import (
     SourceDiscoveryService,
     offering_context_for,
 )
+from app.services.source_selection import select_sources
 
 
 class SourceDiscoveryRunFailed(RuntimeError):
@@ -287,8 +288,8 @@ def write_live_bundle(
         result.model_dump_json(indent=2), encoding="utf-8"
     )
     _write_json(output_directory / "assessments.json", result.assessments)
-    (output_directory / "extraction_context.json").write_text(
-        result.extraction_context.model_dump_json(indent=2), encoding="utf-8"
+    (output_directory / "source_selection.json").write_text(
+        select_sources(result).model_dump_json(indent=2), encoding="utf-8"
     )
     (output_directory / "actual_usage_and_cost.json").write_text(
         json.dumps(actual_cost, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -477,9 +477,11 @@ Exact reuse requires matching product, offering, content fingerprint, policy ver
 prompt version, and model name; every classifier batch names the offering its product
 association is judged against. Stable structure with changed content supplies only a prior
 hint and still requires reassessment. Deterministic Python validates response IDs,
-persists assessments, expands inheritance, and constructs the precedence-ordered
-extraction context. See `docs/source-discovery.md` for the full contract and no-LLM
-preflight workflow.
+persists assessments, expands inheritance, and builds one `SourceSelection` that
+semantic extraction and the RAG projection both read: the knowledge index holds only
+selected content of this offering (no sibling products, navigation, or superseded
+versions), each chunk labelled with its discovery assessments. See
+`docs/source-discovery.md` for the full contract and no-LLM preflight workflow.
 
 ## Semantic extraction boundary
 

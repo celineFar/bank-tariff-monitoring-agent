@@ -33,8 +33,6 @@ from app.domain.source_discovery import (
     DiscoveryPromptItem,
     DiscoveryScope,
     EffectivePeriod,
-    ExtractionContext,
-    ExtractionContextItem,
     InformationRole,
     ModelSourceAssessment,
     OfferingContext,
@@ -389,7 +387,6 @@ class SourceDiscoveryService:
             ),
         )
         inherited = _inherited_assessments(direct, candidates_by_id, bundle)
-        context = _build_extraction_context(product, direct, candidates_by_id)
         return SourceDiscoveryResult(
             product=product,
             offering_id=offering.offering_id,
@@ -398,7 +395,6 @@ class SourceDiscoveryService:
             prompt_version=plan.prompt_version,
             model_name=plan.model_name,
             assessments=(*direct, *inherited),
-            extraction_context=context,
             llm_batch_count=len(plan.batches),
             reused_assessment_count=len(plan.cache_hits),
             batch_retries=counters.retries,
@@ -937,57 +933,3 @@ def _member_references(
             if table.source_refs:
                 values[f"{document.id}::table::{table.id}"] = table.source_refs[0]
     return values
-
-
-def _build_extraction_context(
-    product: ProductType,
-    direct: tuple[SourceAssessment, ...],
-    candidates: dict[str, DiscoveryCandidate],
-) -> ExtractionContext:
-    items: list[ExtractionContextItem] = []
-    for assessment in direct:
-        if (
-            assessment.relevance is Relevance.IRRELEVANT
-            or assessment.temporal_status
-            in {
-                TemporalStatus.POSSIBLY_STALE,
-                TemporalStatus.FUTURE,
-            }
-        ):
-            continue
-        candidate = candidates[assessment.source_id]
-        items.append(
-            ExtractionContextItem(
-                source_id=assessment.source_id,
-                document_id=assessment.document_id,
-                scope=assessment.scope,
-                role=assessment.role,
-                authority=assessment.authority,
-                temporal_status=assessment.temporal_status,
-                precedence=_precedence(assessment),
-                text=candidate.context_text,
-                conditions=assessment.conditions,
-                effective_periods=assessment.effective_periods,
-                source_refs=candidate.source_refs,
-            )
-        )
-    items.sort(key=lambda item: (item.precedence, item.document_id, item.source_id))
-    return ExtractionContext(product=product, items=tuple(items))
-
-
-def _precedence(assessment: SourceAssessment) -> int:
-    if assessment.authority is Authority.OFFICIAL_TERMS:
-        return 1
-    if assessment.scope is DiscoveryScope.TABLE and assessment.role in {
-        InformationRole.PRODUCT_TERMS,
-        InformationRole.PRICING,
-        InformationRole.FEES,
-    }:
-        return 2
-    if assessment.authority is Authority.OFFICIAL_PRODUCT_CONTENT:
-        return 3
-    if assessment.authority is Authority.OFFICIAL_FAQ:
-        return 4
-    if assessment.authority is Authority.OFFICIAL_CAMPAIGN_CONTENT:
-        return 5
-    return 6

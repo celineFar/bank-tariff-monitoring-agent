@@ -31,6 +31,7 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredTariffQueryRepository,
 )
 from app.services.intent_resolution import RequestResolver
+from app.services.source_selection import select_sources
 from app.services.structured_backfill import StructuredProjectionBackfill
 from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
@@ -221,7 +222,7 @@ def _describe_input(result: ScenarioResult, capture: Capture) -> None:
     )
     result.step(
         f"Source discovery assessed {len(capture.discovery.assessments)} items and "
-        f"admitted {len(capture.discovery.extraction_context.items)} as evidence."
+        f"selected {len(select_sources(capture.discovery).items)} as evidence."
     )
     plan = capture.plan
     # A cached batch was packeted and answered by an earlier identical run, so

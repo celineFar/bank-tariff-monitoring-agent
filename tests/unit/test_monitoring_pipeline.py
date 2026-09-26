@@ -52,8 +52,6 @@ from app.domain.source_discovery import (
     Authority,
     DecisionSource,
     DiscoveryScope,
-    ExtractionContext,
-    ExtractionContextItem,
     InformationRole,
     ProductAssociation,
     Relevance,
@@ -162,17 +160,6 @@ def _discovery() -> SourceDiscoveryResult:
             block_id="rate",
         ),
     )
-    item = ExtractionContextItem(
-        source_id="rate",
-        document_id="page",
-        scope=DiscoveryScope.BLOCK,
-        role=InformationRole.PRICING,
-        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
-        temporal_status=TemporalStatus.CURRENT,
-        precedence=1,
-        text="Consumer loan rate 13.5%",
-        source_refs=(reference,),
-    )
     assessment = SourceAssessment(
         source_id="rate",
         document_id="page",
@@ -192,10 +179,6 @@ def _discovery() -> SourceDiscoveryResult:
         product=ProductType.CONSUMER_LOAN,
         input_content_hash="b" * 64,
         assessments=(assessment,),
-        extraction_context=ExtractionContext(
-            product=ProductType.CONSUMER_LOAN,
-            items=(item,),
-        ),
     )
 
 
@@ -997,7 +980,6 @@ class _MenuNormalization(_Normalization):
         )
 
 
-@pytest.mark.xfail(strict=True, reason="SD7 not fixed yet")
 @pytest.mark.asyncio
 async def test_sd7_projection_indexes_only_the_selected_blocks() -> None:
     events = []
