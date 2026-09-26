@@ -123,6 +123,9 @@ def _offering_from_row(row: object) -> OfferingExecution:
         review_count=values["review_count"],
         failure_code=values["failure_code"],
         failure_detail=values["failure_detail"],
+        # Read softly: a database without migration 018 still lists executions.
+        source_retrieved_at=values.get("source_retrieved_at"),
+        acquisition_reused=values.get("acquisition_reused"),
     )
 
 
@@ -789,6 +792,31 @@ class PostgresRunRepository:
                 f"offering execution {offering_execution_id} cannot be started"
             )
         return _offering_from_row(row)
+
+    async def record_acquisition(
+        self,
+        offering_execution_id: UUID,
+        *,
+        retrieved_at: datetime,
+        reused: bool,
+    ) -> None:
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    """
+                    UPDATE offering_executions
+                    SET source_retrieved_at = :retrieved_at,
+                        acquisition_reused = :reused,
+                        updated_at = now()
+                    WHERE id = :id
+                    """
+                ),
+                {
+                    "id": offering_execution_id,
+                    "retrieved_at": retrieved_at,
+                    "reused": reused,
+                },
+            )
 
     async def list_offering_executions(
         self, run_id: UUID

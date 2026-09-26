@@ -71,7 +71,7 @@ class FreshnessGatedAcquisitionService:
                 span.set_attribute(
                     "tariff.acquisition.content_hash", reusable.content_hash
                 )
-                return reusable
+                return reusable.model_copy(update={"reused": True})
             artifact = await self._acquisition.acquire(url)
             span.set_attribute("tariff.acquisition.content_hash", artifact.content_hash)
         if self._reusable_later(artifact):

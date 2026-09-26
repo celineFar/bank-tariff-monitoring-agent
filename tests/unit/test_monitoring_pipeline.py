@@ -686,11 +686,17 @@ async def test_indexing_refresh_persists_progress_before_each_stage() -> None:
         async def start_offering_execution(self, execution_id, *, stage):
             self.stages.append(stage)
 
+        async def record_acquisition(self, execution_id, *, retrieved_at, reused):
+            self.acquisition = (execution_id, retrieved_at, reused)
+
     runs = _StageRuns()
     service._runs = runs
+    execution_id = uuid4()
 
-    await service.refresh(_offering(), uuid4(), uuid4())
+    await service.refresh(_offering(), uuid4(), execution_id)
 
+    # When the page was fetched, and whether it was a reuse, is on the execution.
+    assert runs.acquisition == (execution_id, NOW, False)
     assert runs.stages == [
         "acquisition",
         "normalization",

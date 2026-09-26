@@ -111,6 +111,14 @@ class RunRepository(Protocol):
         self, offering_execution_id: UUID, *, stage: str = "starting"
     ) -> OfferingExecution: ...
 
+    async def record_acquisition(
+        self,
+        offering_execution_id: UUID,
+        *,
+        retrieved_at: datetime,
+        reused: bool,
+    ) -> None: ...
+
     async def list_offering_executions(
         self, run_id: UUID
     ) -> tuple[OfferingExecution, ...]: ...

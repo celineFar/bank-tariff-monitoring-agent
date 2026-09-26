@@ -205,6 +205,20 @@ class IndexingPipeline:
             OfferingFailureCode.ACQUISITION_FAILED,
             self._acquisition.acquire(str(offering.seed_url)),
         )
+        if self._runs is not None:
+            try:
+                await self._runs.record_acquisition(
+                    offering_execution_id,
+                    retrieved_at=artifact.retrieved_at,
+                    reused=artifact.reused,
+                )
+            except Exception:
+                # Informational: the run's result does not depend on it.
+                logger.warning(
+                    "Could not record the acquisition time of %s",
+                    offering.offering_id.value,
+                    exc_info=True,
+                )
         bundle = await stage(
             "normalization",
             OfferingFailureCode.NORMALIZATION_FAILED,

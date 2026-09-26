@@ -115,6 +115,8 @@ async def test_a_recent_acquisition_is_reused_without_fetching() -> None:
 
     assert acquisition.calls == []
     assert result.retrieved_at == stored.retrieved_at
+    assert result.reused is True
+    assert stored.reused is False
 
 
 @pytest.mark.asyncio
@@ -126,6 +128,7 @@ async def test_an_acquisition_past_the_window_is_fetched_again() -> None:
 
     assert acquisition.calls == [URL]
     assert result.retrieved_at == NOW
+    assert result.reused is False
 
 
 @pytest.mark.asyncio

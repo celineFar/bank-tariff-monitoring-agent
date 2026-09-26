@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Protocol
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from google.adk.agents.context import Context
 from google.adk.events.event import Event
@@ -53,6 +54,8 @@ from app.services.review_resolution import (
 )
 from app.services.run_service import RunServicePort, run_covers_command
 
+_YEREVAN = ZoneInfo("Asia/Yerevan")
+
 logger = logging.getLogger(__name__)
 
 MONITORING_NODE_NAME = "monitoring"
@@ -83,6 +86,9 @@ class OfferingOutcome(NodeModel):
     stage: str | None = None
     failure_code: str | None = None
     failure_summary: str | None = None
+    # Set when the run reused a recent fetch of the bank's page instead of
+    # fetching it again, so the reply can say how old the checked page is.
+    source_note: str | None = None
 
 
 class MonitoringResult(NodeModel):
@@ -526,6 +532,18 @@ def _offering_outcome(execution: OfferingExecution) -> OfferingOutcome:
             if execution.failure_code
             else None
         ),
+        source_note=_source_note(execution),
+    )
+
+
+def _source_note(execution: OfferingExecution) -> str | None:
+    if not execution.acquisition_reused or execution.source_retrieved_at is None:
+        return None
+    fetched = execution.source_retrieved_at.astimezone(_YEREVAN)
+    return (
+        "Checked against the bank's page as fetched at "
+        f"{fetched:%Y-%m-%d %H:%M} (Yerevan time) by an earlier run, "
+        "not fetched again."
     )
 
 

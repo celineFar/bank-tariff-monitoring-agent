@@ -244,6 +244,9 @@ class PageArtifact(AcquisitionModel):
     warnings: tuple[AcquisitionWarning, ...] = ()
     inventory: AcquisitionInventory
     interactions: int = Field(default=0, ge=0)
+    # Set by the freshness gate on the copy it serves again; never part of the
+    # stored artifact or its hashes.
+    reused: bool = False
     retrieved_at: datetime
     # `content_hash` identifies the whole acquisition -- the page plus the
     # documents and API payloads reached from it -- and is what change
