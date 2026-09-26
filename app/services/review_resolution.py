@@ -551,6 +551,19 @@ def review_policy(
             "it, reject the candidate snapshot, or provide an evidence-linked "
             "structured override.",
         )
+    if reason is ReviewReason.EXTRACTION_INVALID:
+        # Q1: accepting Gemini's value is a candidate selection a human made
+        # after checking it; there is no accepted value to `approve`.
+        return (
+            (
+                ReviewDecisionType.SELECT_CANDIDATE,
+                ReviewDecisionType.OVERRIDE,
+                ReviewDecisionType.REJECT_ALL,
+            ),
+            "Gemini proposed a value for this field that failed a check. Check it "
+            "against the passages: select it if it is right, enter the correct "
+            "value with its passage, or reject the candidate snapshot.",
+        )
     return (
         (ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE),
         "Reject the candidate snapshot or provide a structured value with a reason "

@@ -126,7 +126,9 @@ class ReviewDecisionService:
         task: ReviewTask,
         snapshot: SnapshotAttempt,
     ) -> ReviewSnapshotUpdate:
-        validation = _without_review_signal(snapshot.validation, task.issue_scope)
+        validation = _without_review_signal(
+            snapshot.validation, task.issue_scope, task.reason
+        )
         validation["accepted"] = not validation["review_signals"]
         return await self._build_update(
             task,
@@ -219,7 +221,9 @@ class ReviewDecisionService:
         # at review_required until a decision arrives ready_for_activation with
         # no unresolved review left, so the last decision of the batch is the one
         # that publishes and an incomplete batch still publishes nothing.
-        validation = _without_review_signal(snapshot.validation, task.issue_scope)
+        validation = _without_review_signal(
+            snapshot.validation, task.issue_scope, task.reason
+        )
         validation.update(
             {
                 "accepted": (
@@ -316,14 +320,23 @@ def _evidence_items(task: ReviewTask) -> dict[str, dict[str, Any]]:
     }
 
 
-def _without_review_signal(validation: dict, issue_scope: str) -> dict:
+def _without_review_signal(
+    validation: dict, issue_scope: str, reason: ReviewReason
+) -> dict:
+    """The validation without the decided review's own signal.
+
+    Matched on reason *and* scope: approving the OCR review of `interest_rate`
+    must leave that field's `large_rate_change` signal pending (RV6/B4).
+    """
     updated = dict(validation)
     signals = validation.get("review_signals", [])
     signal_items = signals if isinstance(signals, list) else []
     updated["review_signals"] = [
         signal
         for signal in signal_items
-        if not isinstance(signal, dict) or signal.get("issue_scope") != issue_scope
+        if not isinstance(signal, dict)
+        or signal.get("issue_scope") != issue_scope
+        or signal.get("reason") != reason.value
     ]
     return updated
 

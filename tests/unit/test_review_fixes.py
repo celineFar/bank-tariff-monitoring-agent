@@ -98,9 +98,6 @@ def _signal(result, field: str):
 # --- RV1 / RV2: the set is decided at signal time, from the field's call ------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RV1/RV2: not_stated points at the first 20 entries"
-)
 @pytest.mark.asyncio
 async def test_rv1_not_stated_signal_is_seeded_from_the_fields_call() -> None:
     result = await _result(_long_page())
@@ -115,9 +112,6 @@ async def test_rv1_not_stated_signal_is_seeded_from_the_fields_call() -> None:
 # --- RV3 / RV5: unknown IDs apart; a failed value is extraction_invalid ---------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RV3/RV5: failed values are missing_required_field"
-)
 @pytest.mark.asyncio
 async def test_rv5_failed_value_is_extraction_invalid_with_its_candidate() -> None:
     result = await _result(_long_page(), _CitesUnknownEvidence())
@@ -168,7 +162,6 @@ async def test_rv4_review_stores_the_signals_evidence_set_not_the_catalog() -> N
     assert task.evidence["set"] == signal["evidence_set"]
 
 
-@pytest.mark.xfail(strict=True, reason="RV4/B6: a rate review has no evidence link")
 @pytest.mark.asyncio
 async def test_rv4_rate_change_review_links_the_new_values_citations() -> None:
     def rate(value: str):
@@ -201,7 +194,6 @@ async def test_rv4_rate_change_review_links_the_new_values_citations() -> None:
 # --- RV6: a decision removes only its own signal ----------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RV6: signals are removed by scope alone")
 def test_rv6_resolving_the_ocr_review_keeps_the_rate_signal() -> None:
     from app.services.review_decisions import _without_review_signal
 
@@ -362,3 +354,95 @@ async def test_rv13_override_citing_outside_the_shown_units_is_audited() -> None
     )
     events = reviews.updates[0].audit_events
     assert events[0]["event_type"] == "review_citation_outside_shown_units"
+
+
+# --- Evidence-set details (RV1, RV3, RV5, RV9) ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_section_unit_is_a_window_around_the_cited_block() -> None:
+    from app.services.review_evidence import cited_evidence_set
+
+    result = await _result(_long_page())
+    seed = _row(result, "Paragraph 10 ")
+    evidence_set = cited_evidence_set(
+        result.evidence_catalog, [seed.evidence_id], why="cited"
+    )
+    (unit,) = evidence_set.units
+    shown = [
+        next(i for i in result.evidence_catalog if i.evidence_id == e).content
+        for e in unit.evidence_ids
+    ]
+    assert unit.kind == "section"
+    assert [text.split()[1] for text in shown] == ["8", "9", "10", "11", "12"]
+    assert unit.seed_ids == (seed.evidence_id,)
+    assert unit.omitted == 20
+
+
+@pytest.mark.asyncio
+async def test_page_table_and_its_pdf_copy_count_once() -> None:
+    from app.services.review_evidence import cited_evidence_set
+
+    result = await _result(_long_page())
+    rows = [i for i in result.evidence_catalog if ":row:" in i.source_item_id]
+    copies = [
+        row.model_copy(
+            update={
+                "evidence_id": "ev_" + f"{index:024x}",
+                "document_id": "pdf:bbbbbbbbbbbbbbbb",
+                "order": 1000 + index,
+            }
+        )
+        for index, row in enumerate(rows)
+    ]
+    catalog = (*result.evidence_catalog, *copies)
+    evidence_set = cited_evidence_set(
+        catalog,
+        [rows[0].evidence_id, copies[0].evidence_id, copies[1].evidence_id],
+        why="cited",
+    )
+    assert [unit.key.split("|")[0] for unit in evidence_set.units] == [
+        "pdf:bbbbbbbbbbbbbbbb"
+    ]
+
+
+class _OmitsField(ScriptedExtractor):
+    """Answers every field of the call except `omitted`."""
+
+    def __init__(self, omitted: ExtractionField) -> None:
+        super().__init__()
+        self.omitted = omitted
+
+    async def extract(self, batch):
+        response = await super().extract(batch)
+        kept = tuple(r for r in response.results if r.field is not self.omitted)
+        # A repair call asks for the omitted field alone; it is omitted there too.
+        return ExtractionBatchResponse(
+            results=kept
+            or (
+                ModelFieldResult(
+                    field=ExtractionField.PRODUCT_NAME,
+                    status=ExtractionStatus.NOT_STATED,
+                ),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_required_field_missing_from_the_answer_stays_missing_required_field() -> (
+    None
+):
+    result = await _result(_long_page(), _OmitsField(ExtractionField.INTEREST_RATE))
+    signal = _signal(result, "interest_rate")
+    assert signal["reason"] == "missing_required_field"
+    assert signal["evidence_set"]["units"][0]["why"] == "batch"
+    assert "candidates" not in signal
+
+
+@pytest.mark.asyncio
+async def test_optional_field_missing_from_the_answer_is_extraction_invalid() -> None:
+    result = await _result(_long_page(), _OmitsField(ExtractionField.COLLATERAL))
+    signal = _signal(result, "collateral")
+    assert signal["reason"] == "extraction_invalid"
+    assert "candidates" not in signal
+    assert signal["failed_checks"]

@@ -94,6 +94,12 @@ class PostgresReviewRepository:
                               AND offering_id = :offering_id
                               AND issue_scope = :issue_scope
                               AND status = 'pending'
+                              -- A sibling review of the same snapshot (same
+                              -- field, another reason) is not superseded.
+                              AND (
+                                  snapshot_id IS DISTINCT FROM :snapshot_id
+                                  OR reason_code = :reason_code
+                              )
                             RETURNING id, run_id, offering_execution_id, offering_id
                             """
                         ),
@@ -101,6 +107,8 @@ class PostgresReviewRepository:
                             "product": review.product.value,
                             "offering_id": review.offering_id.value,
                             "issue_scope": review.issue_scope,
+                            "snapshot_id": review.snapshot_id,
+                            "reason_code": review.reason.value,
                             "created_at": review.created_at,
                         },
                     )

@@ -78,3 +78,19 @@ Decisions the review-process report left open, taken without asking (plan table 
   model.
 - **The model gets at most 5 seed passages (600 characters each)** per review; the CLI
   renders the units itself.
+
+### Reviews Phase 1 decisions (2026-09-26)
+
+- **Sibling reviews (found, fixed).** Two reviews of one field in one snapshot (OCR +
+  large rate change) superseded each other through `human_reviews_active_scope_uq` and
+  the repository's supersede-on-create. Fixed in migration `022` (pending reviews unique
+  per field *and* reason) and the supersede query; not in the report.
+- **Unknown IDs with no valid citation.** An `extraction_invalid` answer citing only
+  IDs that do not exist has no candidate (a candidate needs a real reference); its set
+  falls back to the field's call passages, and the unknown IDs are listed.
+- **Empty sets are allowed.** A not-stated field with no labelled passage gets no unit;
+  the CLI says so and offers `?`. No keyword or embedding fallback (Q4).
+- **Test database.** Postgres tests need
+  `TEST_DATABASE_URL=postgresql+asyncpg://tariff:tariff@localhost:5434/tariff_acquisition_test`
+  (local test container); without it they skip.
+

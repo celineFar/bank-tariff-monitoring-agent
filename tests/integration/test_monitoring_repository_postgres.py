@@ -932,6 +932,44 @@ async def test_newer_same_scope_review_supersedes_pending_review(
 
 
 @pytest.mark.asyncio
+async def test_two_reasons_on_one_field_of_one_snapshot_both_stay_pending(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """An OCR review and a rate-change review of the same field are siblings:
+    neither supersedes the other (reviews fix, migration 022)."""
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await PostgresSnapshotRepository(monitoring_session_factory).save_attempt(snapshot)
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    ocr = await reviews.create(
+        _review_task(
+            run.id,
+            execution.id,
+            snapshot.id,
+            idempotency_key="review:ocr",
+            created_at=snapshot.created_at,
+        ).model_copy(update={"reason": ReviewReason.OCR_EVIDENCE})
+    )
+    rate = await reviews.create(
+        _review_task(
+            run.id,
+            execution.id,
+            snapshot.id,
+            idempotency_key="review:rate",
+            created_at=snapshot.created_at,
+        ).model_copy(
+            update={"reason": ReviewReason.LARGE_RATE_CHANGE, "candidates": ()}
+        )
+    )
+
+    stored = await reviews.get(ocr.id)
+    assert stored is not None and stored.status is ReviewStatus.PENDING
+    assert rate.status is ReviewStatus.PENDING
+
+
+@pytest.mark.asyncio
 async def test_a_paused_chat_review_resumes_in_a_fresh_runner_over_postgres(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:

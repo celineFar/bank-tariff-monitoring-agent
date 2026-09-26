@@ -754,6 +754,10 @@ class SemanticExtractionService:
                 for batch in (*plan.cached_batches, *plan.batches)
                 if batch.units_left_out
             },
+            call_evidence={
+                batch.id: tuple(item.evidence_id for item in batch.evidence)
+                for batch in (*plan.cached_batches, *plan.batches)
+            },
         )
 
     async def _call(

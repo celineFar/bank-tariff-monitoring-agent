@@ -163,6 +163,7 @@ class IndexingPipeline:
         runs: RunRepository | None = None,
         audit_archive: PipelineAuditArchive | None = None,
         large_rate_change_percentage_points: float = 3.0,
+        review_rank_gap: float = 0.05,
         pdf_selection: PdfLinkSelectionPort | None = None,
         catalog: SeedCatalog | None = None,
     ) -> None:
@@ -179,6 +180,7 @@ class IndexingPipeline:
         self._publications = publications
         self._runs = runs
         self._audit_archive = audit_archive
+        self._review_rank_gap = review_rank_gap
         self._large_rate_change_percentage_points = Decimal(
             str(large_rate_change_percentage_points)
         )
@@ -374,6 +376,7 @@ class IndexingPipeline:
             large_rate_change_percentage_points=(
                 self._large_rate_change_percentage_points
             ),
+            review_rank_gap=self._review_rank_gap,
         )
         # The same selection extraction used: the RAG index holds only what
         # source discovery selected for this offering, with its labels.

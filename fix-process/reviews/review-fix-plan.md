@@ -341,17 +341,67 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 
 ### Phase 1: What the signal knows (RV2, RV3, RV1, RV5, RV4, RV6)
 
-- [ ] RV2: `SemanticExtractionResult.call_evidence` (call id → evidence IDs), for fresh
+- [x] RV2: `SemanticExtractionResult.call_evidence` (call id → evidence IDs), for fresh
       calls and cache hits; the field → call mapping from the batches.
-- [ ] RV1/RV3: `app/services/review_evidence.py`: units (table, section window, passage),
+- [x] RV1/RV3: `app/services/review_evidence.py`: units (table, section window, passage),
       near-duplicate merge, seeds per reason, label scoring with `extraction_terms`, bounds,
       `unknown_ids`.
-- [ ] RV5: `ReviewReason.EXTRACTION_INVALID`; `detect_review_signals` splits review items
+- [x] RV5: `ReviewReason.EXTRACTION_INVALID`; `detect_review_signals` splits review items
       into `extraction_invalid` (with candidate) and `missing_required_field` (required and
       not stated or absent); policy and guidance.
-- [ ] RV4: every signal carries `evidence_set`; `large_rate_change` gets the new value's
+- [x] RV4: every signal carries `evidence_set`; `large_rate_change` gets the new value's
       citations.
-- [ ] RV6: `_without_review_signal` matches reason and scope.
+- [x] RV6: `_without_review_signal` matches reason and scope.
+- [x] (Found during the work) Two reviews of one field in one snapshot superseded each
+      other; migration `022` keys pending reviews on field *and* reason (see notes).
+
+**Phase 1 notes (done).**
+- **RV2.** `SemanticExtractionResult.call_evidence` maps every call (fresh or cached)
+  to the evidence IDs it was given; `evidence_read_by(batch_id)` also resolves a repair
+  call (`<batch>__repair_<field>`) to its batch, since a repair reads the same packet.
+  Results stored before this change have no map: the builder then scores the whole
+  catalog (R3's fallback), never "the first 20".
+- **RV1/RV3.** [app/services/review_evidence.py](../../app/services/review_evidence.py):
+  `cited_evidence_set` (citations, candidates, OCR pages, the new rate value) and
+  `field_evidence_set` (a field with nothing extracted: the call's passages ranked with
+  the planner's own label scoring, `field_unit_scores`/`labelled_for`, newly public in
+  `extraction_planner.py`). Units: a table (`<table id>:row|note` family per document),
+  a section (window: seeds ± 2 blocks, ≤ 3,000 characters, seeds always shown), or a
+  single passage. A table over 30 passages shows seeds ± 3 rows (± 1, then seeds only,
+  if that still exceeds 30). Near-duplicates: word-set Jaccard ≥ 0.8 against a unit
+  ranked above it (a page table and its PDF copy). IDs not in the catalog go to
+  `unknown_ids` and never into units or candidate references. Models
+  `ReviewEvidenceSet`/`ReviewEvidenceUnit` live in `app/domain/review.py`.
+- **RV5.** `ReviewReason.EXTRACTION_INVALID`. A review item with a proposed value is
+  `extraction_invalid`, with the candidate `extracted:<review item id>` (Gemini's
+  parsed value, its valid citations as references, the first quote) plus
+  `proposed_value` and `failed_checks` on the signal. A required field not stated or
+  missing from the answer stays `missing_required_field` (seeded from its call); any
+  other failure (e.g. an optional field missing from the answer) is
+  `extraction_invalid` without a candidate (Q2). If none of the cited IDs exists, the
+  set falls back to the field's call passages and keeps the `unknown_ids`. Policy:
+  `select_candidate`, `override`, `reject_all` (Q1).
+- **RV4.** Every signal carries `evidence_set` (and `evidence_references` = its seeds,
+  for readers of old signals). `large_rate_change` signals get the validated field's
+  citations (`why=rate_new`). The rank gap is `HITL_DOCUMENT_RANK_GAP`, passed through
+  `TariffMonitoringPipeline(review_rank_gap=)` → `build_snapshot_attempt`.
+- **RV6.** `_without_review_signal(validation, scope, reason)`.
+- **Found: sibling reviews superseded each other.** `human_reviews_active_scope_uq`
+  and the repository's supersede-on-create keyed on (product, offering, field). An
+  OCR review and a rate-change review of `interest_rate` in one snapshot therefore
+  collided: the second superseded the first. Before RV6 the remaining decision
+  removed both signals (the OCR reading was never checked); after RV6 the superseded
+  review's signal could never be cleared. Migration
+  [022](../../migrations/022_review_evidence_sets.sql) makes the pending index
+  (field, reason); the supersede query skips a same-snapshot review with another
+  reason. A newer snapshot still supersedes every pending review of the field.
+  Postgres test: `test_two_reasons_on_one_field_of_one_snapshot_both_stay_pending`.
+- Suite: 1049 passed, 5 skipped, 6 xfailed (Phase 2–4 items); the 4 known Gemini-key
+  failures. Postgres tests need `TEST_DATABASE_URL` (the local test database on
+  port 5434); without it 42 tests skip.
+- A field with no labelled passage gets an **empty** set (e.g. `fees` when nothing is
+  labelled "fee"): the reviewer reads `?` and may cite any passage (logged, RV13).
+  This is Q4's accepted risk.
 
 ### Phase 2: How reviews store and show it (RV7, RV9, RV11)
 

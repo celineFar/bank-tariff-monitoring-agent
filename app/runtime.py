@@ -312,6 +312,7 @@ def build_application_container(
         large_rate_change_percentage_points=(
             settings.hitl.large_rate_change_percentage_points
         ),
+        review_rank_gap=settings.hitl.document_rank_gap,
     )
     answer_service = RagAnswerService(
         RagRetriever(
