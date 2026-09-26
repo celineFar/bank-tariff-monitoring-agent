@@ -519,3 +519,33 @@ async def test_rv8_history_payload_keeps_values_but_not_evidence() -> None:
     (stored,) = tariff_history_payload(result)["snapshots"]
     assert stored["normalized_tariff"] == snapshot.normalized_tariff
     assert not {"evidence", "semantic_extraction", "validation"} & stored.keys()
+
+
+@pytest.mark.asyncio
+async def test_missing_field_review_adds_the_table_after_a_headline_section() -> None:
+    """A headline block names many fields and outscores the tariff table; the
+    table still gets the second slot (R03)."""
+    from app.services.review_evidence import field_evidence_set
+
+    headline = _block(
+        "hero",
+        "Loan amount\nNominal interest rate\nAnnual interest rate\nTerm",
+        ("Mortgage loan",),
+    )
+    bundle = _bundle(
+        (_block("title", "Mortgage loan for primary market"), headline),
+        (
+            _table(
+                rows=(("Loan terms", "Annual interest rate", "14%"),),
+                notes=(),
+                stub_columns=2,
+            ),
+        ),
+    )
+    result = await _result(bundle)
+
+    evidence_set = field_evidence_set(
+        result.evidence_catalog, ExtractionField.INTEREST_RATE, read_ids=None
+    )
+
+    assert [unit.kind for unit in evidence_set.units] == ["passage", "table"]

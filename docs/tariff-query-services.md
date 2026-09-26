@@ -16,8 +16,11 @@ offering. The default freshness threshold is seven days:
 A newer `candidate` or `review_required` snapshot is represented only by
 `pending_newer_review=true`. Its values and evidence are not returned.
 
-The same typed result is available through the `get_current_tariffs` ADK tool and
-`GET /api/v1/tariffs/current`.
+`GET /api/v1/tariffs/current` returns the full typed result. The `get_current_tariffs`
+ADK tool returns what the model needs to decide on monitoring: per offering, freshness,
+`accepted_at`, `age_seconds`, `snapshot_id`, `pending_newer_review` and each field's
+status (`found`, `not_stated`, ...), never values or evidence. Values reach the model
+only through `answer_tariff_query`, with their citations.
 
 ## Accepted history and changes
 
@@ -27,8 +30,9 @@ one of `first_observation`, `unchanged_in_window`, or `unavailable`, and include
 recent older change timestamp when one exists. “Show history” defaults to thirty days.
 Explicit date bounds and result limits remain bounded by configuration.
 
-The same typed result is available through the `get_tariff_history` ADK tool and
-`GET /api/v1/tariffs/history`.
+`GET /api/v1/tariffs/history` returns the full typed result. The `get_tariff_history`
+ADK tool returns the same result without each snapshot's evidence catalog, extraction
+record and validation (hundreds of kB per snapshot); values, times and change sets stay.
 
 ## Read scope in chat
 

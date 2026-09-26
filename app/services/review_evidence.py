@@ -133,8 +133,9 @@ def field_evidence_set(
     The passages the field's extraction call read (RV2) -- the whole catalog
     for results that did not record them -- are ranked with the planner's label
     scoring for the field (never the body text). The best unit is shown, and a
-    second one when its score is within `rank_gap` of the best (R4). The seeds
-    are the unit's items labelled for the field.
+    second one when its score is within `rank_gap` of the best (R4); when none
+    is and the best is not a table, the second slot goes to the best table. The
+    seeds are the unit's items labelled for the field.
     """
     read = set(read_ids) if read_ids is not None else None
     pool = tuple(item for item in catalog if read is None or item.evidence_id in read)
@@ -142,11 +143,21 @@ def field_evidence_set(
         return ReviewEvidenceSet()
     scored_units = build_units(pool, canonical_url)
     scores = field_unit_scores(scored_units, field)
+
+    def is_table(unit) -> bool:
+        return "|table:" in unit.key
+
+    # Equal label scores are common (every unit of a terms page names "interest
+    # rate"); page order then put a navigation section or an FAQ ahead of the
+    # tariff table. Ties go to the higher source precedence, then to tables,
+    # where tariff values are stated (R03).
     ranked = sorted(
         (unit for unit in scored_units if scores[unit.key] > 0),
         key=lambda unit: (
             unit.related,
-            -scores[unit.key],
+            -round(scores[unit.key], 6),
+            min(item.precedence for item in unit.items),
+            not is_table(unit),
             not unit.canonical,
             unit.order,
         ),
@@ -159,6 +170,15 @@ def field_evidence_set(
         for unit in ranked[1:UNITS_PER_REVIEW]
         if scores[unit.key] >= best * (1 - rank_gap)
     ]
+    if len(chosen) < UNITS_PER_REVIEW and not is_table(ranked[0]):
+        # A headline or calculator section names many fields and outscores the
+        # table; the second slot then goes to the best table (R03).
+        table = next(
+            (unit for unit in ranked[1:] if is_table(unit) and not unit.related),
+            None,
+        )
+        if table is not None:
+            chosen.append(table)
     display = _units(catalog)
     picked: list[tuple[_Unit, tuple[str, ...]]] = []
     for unit in chosen:

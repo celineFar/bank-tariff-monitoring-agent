@@ -1,7 +1,9 @@
 # Review process: problem report
 
-Date: 2026-09-25 · Status: **paused** (see below). Findings and first decisions are recorded;
-see [Decisions and open questions](#decisions-and-open-questions) at the end.
+Date: 2026-09-25 · Status: **resolved** (2026-09-26): implemented and validated on
+`fix/reviews`; see [reviews/review-fix-plan.md](reviews/review-fix-plan.md) and
+[reviews/scenario-results.md](reviews/scenario-results.md). The text below is the report
+as written; the pause note is kept for its history.
 
 > **Paused on 2026-09-25, during the ranking brainstorm (Part 4).** The monitoring pipeline is
 > about to change. After that change, each seed may produce much less data, so the scale

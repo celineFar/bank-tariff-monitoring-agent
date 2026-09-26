@@ -118,3 +118,16 @@ Decisions the review-process report left open, taken without asking (plan table 
 - **Run attribution uses `temp:` state**, so nothing about the run is persisted in the
   chat session; it is matched on the invocation id as well.
 
+### Reviews Phase 5 (validation) decisions (2026-09-26)
+
+- **R03 input changed.** The plan assumed the semantic-extraction cache held real answers
+  for all 13 seeds; it holds one seed's 3 calls, the S06 reports keep no citations, and
+  the $2 budget is spent. R03 ran on that seed's real answers plus all 13 real catalogs
+  with an extractor that finds nothing. No paid call was made.
+- **Ranking change from R03.** Ties broken by precedence then tables, and the best table
+  takes the second slot after a non-table unit. Chosen because the misses were
+  structural (page order, headline sections), not vocabulary; it adds no keyword.
+- **No live chat review** was run (needs Gemini spend). Covered by unit and Postgres tests.
+- **Merge.** `fix/reviews` is merged into `integration/process-fixes`, like the earlier
+  fixes (see Branches).
+

@@ -1,7 +1,7 @@
 # Review process: fix plan
 
 Date: 2026-09-26 · Branch: `fix/reviews` (from `integration/process-fixes` after the
-semantic-extraction merge) · Status: **in progress**. Source report:
+semantic-extraction merge) · Status: **implemented and validated** (Phases 0–5 done; deployment needs approval). Source report:
 [../review-process-report.md](../review-process-report.md). Decisions the report left open
 were taken without asking the user, as instructed; each is recorded in
 [Decisions](#decisions) and in [../note.md](../note.md).
@@ -67,19 +67,21 @@ The report was paused before the pipeline change. The semantic-extraction fix
 
 | ID | Problem (report ref) | Severity | Status |
 |---|---|---|---|
-| RV1 | The review's relevant evidence is re-guessed at every step (P1, R1, Part 3.1) | **high** | proposed |
-| RV2 | A `not_stated` field's review points at the first 20 catalog entries (P2, R3) | **high** | proposed |
-| RV3 | Unvalidated Gemini evidence IDs reach references (P3) | medium | proposed |
-| RV4 | Signal-level references are dropped when the review is created (P4, B6) | **high** | proposed |
-| RV5 | Validation failures are reported as `missing_required_field` (B1, D2) | **high** | proposed |
-| RV6 | Resolving one review removes another review's signal (B4) | medium | proposed |
-| RV7 | Every review row stores a full copy of the snapshot's evidence (B5, D4) | medium | proposed |
-| RV8 | `get_current_tariffs` hands the model the whole evidence catalog (P6, D5) | **high** (cost) | proposed |
-| RV9 | Whole tables/sections as display units, bounded (R2, R4, R5, R7) | medium | proposed |
-| RV10 | `?` has no path to the captured content (R5, P6) | medium | proposed |
-| RV11 | The reviewer sees less of a passage than the check uses (B8) | low | proposed |
-| RV12 | Chat model calls cannot be attributed to a run (B7) | low | proposed |
-| RV13 | Ranking misses are invisible (R4 "log when the citation is outside the units") | low | proposed |
+| RV1 | The review's relevant evidence is re-guessed at every step (P1, R1, Part 3.1) | **high** | **fixed** |
+| RV2 | A `not_stated` field's review points at the first 20 catalog entries (P2, R3) | **high** | **fixed** |
+| RV3 | Unvalidated Gemini evidence IDs reach references (P3) | medium | **fixed** |
+| RV4 | Signal-level references are dropped when the review is created (P4, B6) | **high** | **fixed** |
+| RV5 | Validation failures are reported as `missing_required_field` (B1, D2) | **high** | **fixed** |
+| RV6 | Resolving one review removes another review's signal (B4) | medium | **fixed** |
+| RV7 | Every review row stores a full copy of the snapshot's evidence (B5, D4) | medium | **fixed** |
+| RV8 | `get_current_tariffs` hands the model the whole evidence catalog (P6, D5) | **high** (cost) | **fixed** |
+| RV9 | Whole tables/sections as display units, bounded (R2, R4, R5, R7) | medium | **fixed** |
+| RV10 | `?` has no path to the captured content (R5, P6) | medium | **fixed** |
+| RV11 | The reviewer sees less of a passage than the check uses (B8) | low | **fixed** |
+| RV12 | Chat model calls cannot be attributed to a run (B7) | low | **fixed** |
+| RV13 | Ranking misses are invisible (R4 "log when the citation is outside the units") | low | **fixed** |
+| — | Sibling reviews of one field superseded each other (found in Phase 1) | high | **fixed** (migration 022) |
+| — | `get_tariff_history` sends whole snapshots to the model (same cause as RV8) | high (cost) | **fixed** (Phase 4) |
 | — | Overrides fail with several reviews (B2) | — | **already fixed** (`4bf3d3f`, merged in `91c5189`) |
 | — | Table rows hard to read (P5, D6) | — | **resolved by SE1/SE4** (records) |
 | — | Override not checked against its passage (B3, D7) | — | **accepted risk** (report decision) |
@@ -516,7 +518,7 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
 
 ### Phase 5: Validation
 
-- [ ] Run the offline scenarios:
+- [x] Run the offline scenarios:
   - R01: the test suite;
   - R02: the report's confirmed problems fixed;
   - R03: review sets on the 13 seeds' real extraction results (regenerated from the cache,
@@ -524,7 +526,29 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`.
   - R04: the 4 stored old-format reviews still build views;
   - R05: the tool payload size;
   - R06: the ranking-miss event.
-- [ ] Update [docs/native-hitl-review.md](../../docs/native-hitl-review.md),
+- [x] Update [docs/native-hitl-review.md](../../docs/native-hitl-review.md),
       [docs/review-quarantine.md](../../docs/review-quarantine.md),
       [docs/architecture.md](../../docs/architecture.md) and the report's status line.
-- [ ] Update this plan's Summary statuses; write `scenario-results.md`.
+- [x] Update this plan's Summary statuses; write `scenario-results.md`.
+
+**Phase 5 notes (done).** Results: [scenario-results.md](scenario-results.md).
+- R01–R06 all pass. R03's input changed (the extraction cache holds one seed, not 13;
+  budget spent): Part A runs that seed's real answers, Part B every seed's real catalog
+  with an extractor that finds nothing.
+- **R03 changed the code.** 6 of 48 missing-field reviews missed the labelled value on
+  the first run; `field_evidence_set` now breaks score ties by precedence then tables,
+  and gives the second slot to the best table after a non-table unit (46/48 after).
+  Test: `test_missing_field_review_adds_the_table_after_a_headline_section`.
+- Docs updated: `docs/native-hitl-review.md` (new "What a review shows"),
+  `docs/review-quarantine.md`, `docs/architecture.md`, `docs/tariff-query-services.md`;
+  the report's status line.
+
+## Deployment (not done: needs human approval)
+
+- Apply migration `022_review_evidence_sets.sql` (drops `human_reviews_active_scope_uq`,
+  adds `human_reviews_active_scope_reason_uq` and `tariff_snapshots.selected_sources_markdown`).
+- One-time effects: see [Decisions](#decisions). Reviews already pending keep their
+  `evidence.items` and are shown from it; snapshots written before have no `?` text.
+- After deploy, watch `review_citation_outside_shown_units` events: each is a review
+  whose units missed the passage the reviewer used.
+
