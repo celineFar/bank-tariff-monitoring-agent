@@ -34,6 +34,7 @@ from app.repositories.contracts import (
     ReviewRepository,
     RunRepository,
 )
+from app.repositories.reviews import StaleReviewError
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.review_evidence import (
     MODEL_EXCERPT_CHARS,
@@ -206,6 +207,16 @@ class ReviewResolutionService:
                 for sibling in await self.pending(task.run_id):
                     if sibling.id != task.id:
                         await self._reviews.supersede(sibling.id)
+        except StaleReviewError:
+            # A newer snapshot was accepted while this review waited (the race
+            # the publication-time supersession cannot close): approving would
+            # roll the offering back, so the review is superseded instead (IX4).
+            await self._runs.record_audit(
+                task.run_id,
+                "review.superseded_stale",
+                payload={"review_ids": [str(task.id)]},
+            )
+            return await self._reviews.supersede(task.id)
         except ValueError as exc:
             await self._runs.record_audit(
                 task.run_id,

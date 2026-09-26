@@ -238,7 +238,6 @@ async def test_ix2_review_required_run_never_rewrites_live_chunks(
     assert versions == 2
 
 
-@pytest.mark.xfail(strict=True, reason="IX3: activation selects documents by run_id")
 @pytest.mark.asyncio
 async def test_ix3_approval_activates_a_version_first_seen_by_an_earlier_run(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -259,7 +258,6 @@ async def test_ix3_approval_activates_a_version_first_seen_by_an_earlier_run(
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="IX4: accepted runs leave older reviews pending")
 @pytest.mark.asyncio
 async def test_ix4_accepted_publication_supersedes_older_pending_reviews(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -281,7 +279,6 @@ async def test_ix4_accepted_publication_supersedes_older_pending_reviews(
     assert stored.status is ReviewStatus.SUPERSEDED
 
 
-@pytest.mark.xfail(strict=True, reason="IX4: a stale approval rolls back newer data")
 @pytest.mark.asyncio
 async def test_ix4_approval_is_refused_when_a_newer_snapshot_was_accepted(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
@@ -307,7 +304,6 @@ async def test_ix4_approval_is_refused_when_a_newer_snapshot_was_accepted(
     ]
 
 
-@pytest.mark.xfail(strict=True, reason="IX6: approval never publishes a summary")
 @pytest.mark.asyncio
 async def test_ix6_approval_activates_the_summary_it_carries(
     monitoring_session_factory: async_sessionmaker[AsyncSession],

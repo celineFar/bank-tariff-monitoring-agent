@@ -262,3 +262,79 @@ async def activate_snapshot_set(
         parameters,
     )
     return retired, activated
+
+
+async def discard_snapshot_documents(session: AsyncSession, snapshot_id: UUID) -> int:
+    """Drop a rejected or superseded snapshot's set and its never-published versions.
+
+    A version is deleted (chunks by cascade) only when it never became active and
+    no other snapshot still names it: a version shared with a pending or
+    accepted snapshot stays (IX9). Returns the number of documents deleted.
+    """
+    return (
+        await session.execute(
+            text(
+                """
+                WITH released AS (
+                    DELETE FROM snapshot_documents
+                    WHERE snapshot_id = :snapshot_id
+                    RETURNING document_id
+                )
+                DELETE FROM knowledge_documents AS d
+                WHERE d.id IN (SELECT document_id FROM released)
+                  AND d.publication_state = 'pending_review'
+                  AND NOT d.is_active
+                  AND NOT EXISTS (
+                      SELECT 1 FROM snapshot_documents AS other
+                      WHERE other.document_id = d.id
+                        AND other.snapshot_id <> :snapshot_id
+                  )
+                """
+            ),
+            {"snapshot_id": snapshot_id},
+        )
+    ).rowcount
+
+
+def publication_lock_key(bank: str, product: str, offering_id: str) -> str:
+    return f"publication:{bank.lower()}:{product}:{offering_id}"
+
+
+async def lock_offering_publication(
+    session: AsyncSession, *, bank: str, product: str, offering_id: str
+) -> None:
+    """The offering's publication lock, held until the transaction ends.
+
+    Everything that changes an offering's index or its pending reviews takes it
+    first, before any row lock: publication, approval, rejection, supersession.
+    One order everywhere means no deadlock between a run publishing (which
+    supersedes reviews, IX4) and a reviewer deciding.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": publication_lock_key(bank, product, offering_id)},
+    )
+
+
+async def lock_review_publication(session: AsyncSession, review_id: UUID) -> None:
+    """`lock_offering_publication` for a review's offering, before locking the review."""
+    scope = (
+        await session.execute(
+            text(
+                """
+                SELECT coalesce(s.bank, 'ameria') AS bank, r.product, r.offering_id
+                FROM human_reviews AS r
+                LEFT JOIN tariff_snapshots AS s ON s.id = r.snapshot_id
+                WHERE r.id = :review_id
+                """
+            ),
+            {"review_id": review_id},
+        )
+    ).first()
+    if scope is not None and scope.product and scope.offering_id:
+        await lock_offering_publication(
+            session,
+            bank=scope.bank,
+            product=scope.product,
+            offering_id=scope.offering_id,
+        )

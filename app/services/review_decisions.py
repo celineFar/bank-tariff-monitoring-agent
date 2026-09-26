@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
+from app.domain.knowledge import EmbeddedKnowledgeDocument, KnowledgeDocument
 from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.review import (
     ReviewDecision,
@@ -38,6 +39,10 @@ from app.services.snapshot_lifecycle import (
 )
 
 
+class OfferingSummaries(Protocol):
+    def project(self, snapshot: SnapshotAttempt) -> KnowledgeDocument: ...
+
+
 class ReviewDecisionService:
     """Validate native reviewer input and atomically update candidate publication."""
 
@@ -46,10 +51,14 @@ class ReviewDecisionService:
         reviews: ReviewRepository,
         snapshots: MonitoringSnapshotRepository,
         memory: ReviewDecisionMemory | None = None,
+        summaries: OfferingSummaries | None = None,
     ) -> None:
         self._reviews = reviews
         self._snapshots = snapshots
         self._memory = memory
+        # Builds the approved snapshot's offering summary (IX6). Without it an
+        # approval activates the source documents only.
+        self._summaries = summaries
 
     async def apply(
         self,
@@ -280,6 +289,15 @@ class ReviewDecisionService:
             offering_id=task.offering_id,
             before_run_id=snapshot.run_id,
         )
+        ready = bool(validation.get("accepted"))
+        # Only the decision that activates the snapshot carries its summary,
+        # built from the final values (overrides included). It is text only:
+        # vectors are made after the approval commits (IX5, IX6).
+        summary = (
+            EmbeddedKnowledgeDocument.text_only(self._summaries.project(candidate))
+            if ready and self._summaries is not None
+            else None
+        )
         return ReviewSnapshotUpdate(
             snapshot_id=snapshot.id,
             expected_canonical_sha256=snapshot.canonical_sha256,
@@ -287,8 +305,9 @@ class ReviewDecisionService:
             semantic_extraction=semantic_extraction,
             validation=validation,
             canonical_sha256=candidate.canonical_sha256,
-            ready_for_activation=bool(validation.get("accepted")),
+            ready_for_activation=ready,
             changes=compare_accepted_snapshots(previous, candidate),
+            summary=summary,
         )
 
 

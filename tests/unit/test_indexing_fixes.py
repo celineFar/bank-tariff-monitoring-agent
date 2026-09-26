@@ -131,7 +131,6 @@ async def test_ix5_review_required_run_embeds_nothing_and_publishes_text(
 # IX6 -------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="IX6: approval builds no offering summary")
 @pytest.mark.asyncio
 async def test_ix6_final_decision_carries_a_summary_of_the_final_snapshot() -> None:
     from app.services.knowledge_projection import OfferingSummaryProjector

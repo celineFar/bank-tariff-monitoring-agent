@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, HttpUrl
 
 from app.domain.acquisition import SourceLocator
+from app.domain.catalog import SeedCatalog
 from app.domain.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 from app.domain.monitoring import SnapshotAttempt
@@ -345,6 +346,33 @@ class KnowledgeProjectionService:
         if not chunks:
             raise ValueError("projection produced no knowledge chunks")
         return tuple(chunks)
+
+
+class OfferingSummaryProjector:
+    """The offering summary of a snapshot, from the catalog's offering entry.
+
+    The pipeline projects an accepted run's summary itself; an approval builds it
+    from the *final* snapshot (the reviewer's decisions applied), which exists
+    only at decision time (IX6).
+    """
+
+    def __init__(
+        self, projection: KnowledgeProjectionService, catalog: SeedCatalog
+    ) -> None:
+        self._projection = projection
+        self._catalog = catalog
+
+    def project(self, snapshot: SnapshotAttempt) -> KnowledgeDocument:
+        offering = self._catalog.get(snapshot.product, snapshot.offering_id)
+        return self._projection.project_summary(
+            run_id=snapshot.run_id,
+            product=snapshot.product,
+            offering_id=snapshot.offering_id,
+            display_name=offering.display_name,
+            source_url=offering.seed_url,
+            value=snapshot,
+            language=offering.language or "en",
+        )
 
 
 def render_offering_summary(

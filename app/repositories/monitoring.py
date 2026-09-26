@@ -27,8 +27,10 @@ from app.domain.monitoring import (
 from app.repositories.knowledge_publication import (
     activate_snapshot_set,
     link_snapshot_documents,
+    lock_offering_publication,
     store_document_version,
 )
+from app.repositories.review_supersession import supersede_reviews_older_than
 from app.repositories.structured_projection import publish_structured_projection
 from app.services.telemetry import inject_trace_context
 
@@ -1208,14 +1210,11 @@ class PostgresOfferingPublicationRepository:
         now = datetime.now(UTC)
 
         async with self._session_factory() as session, session.begin():
-            await session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-                {
-                    "lock_key": (
-                        f"publication:{snapshot.bank.lower()}:"
-                        f"{snapshot.product.value}:{snapshot.offering_id.value}"
-                    )
-                },
+            await lock_offering_publication(
+                session,
+                bank=snapshot.bank,
+                product=snapshot.product.value,
+                offering_id=snapshot.offering_id.value,
             )
             execution = (
                 await session.execute(
@@ -1262,6 +1261,9 @@ class PostgresOfferingPublicationRepository:
                 if document_results:
                     await activate_snapshot_set(session, snapshot_id, now)
                 await publish_structured_projection(session, snapshot)
+                # Approving a review of an older snapshot would now roll the
+                # offering back, so those reviews are closed (IX4).
+                await supersede_reviews_older_than(session, snapshot_id, now)
             for manifest in publication.manifests:
                 await session.execute(
                     text(

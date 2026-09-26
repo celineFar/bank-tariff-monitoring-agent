@@ -47,7 +47,10 @@ from app.services.knowledge_index import (
     GeminiQueryEmbeddingProvider,
     KnowledgeIndexer,
 )
-from app.services.knowledge_projection import KnowledgeProjectionService
+from app.services.knowledge_projection import (
+    KnowledgeProjectionService,
+    OfferingSummaryProjector,
+)
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     configure_default_model_usage_repository,
@@ -262,6 +265,9 @@ def build_application_container(
             for extraction_model in extraction_models
         )
     )
+    projection = KnowledgeProjectionService(
+        max_chunk_chars=settings.rag.chunk_size_chars
+    )
     embedding_client = genai.Client(api_key=api_key) if api_key else genai.Client()
     indexer = KnowledgeIndexer(
         GeminiEmbeddingProvider(
@@ -302,9 +308,7 @@ def build_application_container(
         catalog=catalog,
         discovery=discovery,
         extraction=extraction,
-        projection=KnowledgeProjectionService(
-            max_chunk_chars=settings.rag.chunk_size_chars
-        ),
+        projection=projection,
         embedder=indexer,
         snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
@@ -371,7 +375,10 @@ def build_application_container(
         runs=runs,
         reviews=reviews,
         decisions=ReviewDecisionService(
-            reviews, snapshots, memory=PostgresReviewDecisionMemory(sessions)
+            reviews,
+            snapshots,
+            memory=PostgresReviewDecisionMemory(sessions),
+            summaries=OfferingSummaryProjector(projection, catalog),
         ),
         snapshots=snapshots,
     )

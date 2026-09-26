@@ -785,3 +785,33 @@ async def test_abort_api_requires_configured_admin_token() -> None:
             headers={"X-Review-Admin-Token": "secret-token"},
         )
     assert unconfigured.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_a_review_made_stale_by_a_newer_accepted_run_is_superseded() -> None:
+    """IX4: approving would roll the offering back, so the review is closed."""
+    from app.repositories.reviews import StaleReviewError
+
+    run = _run()
+    task = _review(run)
+    service, runs, reviews, _ = _service(
+        run,
+        task,
+        fail=StaleReviewError("a newer accepted snapshot exists for this offering"),
+    )
+
+    decided = await service.apply(
+        task,
+        ReviewDecision(
+            decision_type=ReviewDecisionType.SELECT_CANDIDATE,
+            candidate_id="candidate-1",
+        ),
+        reviewer="cli-user",
+    )
+
+    assert decided.status is ReviewStatus.SUPERSEDED
+    assert reviews.tasks[task.id].status is ReviewStatus.SUPERSEDED
+    assert [event for event, _ in runs.audits] == [
+        "review.resume_attempt",
+        "review.superseded_stale",
+    ]

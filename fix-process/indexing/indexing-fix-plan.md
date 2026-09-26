@@ -1,7 +1,7 @@
 # Indexing: fix plan
 
 Date: 2026-09-26 · Branch: `fix/indexing` (to create from `integration/process-fixes` at
-`a812f69`) · Status: **in progress** (Phases 0–3 done).
+`a812f69`) · Status: **in progress** (Phases 0–4 done).
 
 The four design choices this plan depends on (D1–D4) were confirmed by the user on
 2026-09-26. The other decisions (D5–D12) are Claude's; each is listed in
@@ -736,18 +736,58 @@ Each phase ends green on `uv run pytest tests/unit tests/integration`. Postgres 
 
 ### Phase 4: Reviews (IX3, IX4, IX6, IX9)
 
-- [ ] IX3: `_activate_snapshot` calls `activate_snapshot_set`; delete the `run_id`
+- [x] IX3: `_activate_snapshot` calls `activate_snapshot_set`; delete the `run_id`
       candidate queries and `identity_match`.
-- [ ] IX6: `ReviewDecisionService` gets the projection service and the seed catalog;
+- [x] IX6: `ReviewDecisionService` gets the projection service and the seed catalog;
       builds the summary from the final snapshot; `ReviewSnapshotUpdate.summary`;
       the repository inserts it and its `snapshot_documents` row before activation.
-- [ ] IX4: accepted `publish` supersedes older pending reviews of the offering (audit
+- [x] IX4: accepted `publish` supersedes older pending reviews of the offering (audit
       event with `replacement_snapshot_id`); `approve_with_snapshot` raises
       `ReviewConflictError` when a newer accepted snapshot exists; the resolution
       service supersedes on that conflict.
-- [ ] IX9: on rejection or supersession, delete the snapshot's `snapshot_documents`
+- [x] IX9: on rejection or supersession, delete the snapshot's `snapshot_documents`
       rows and orphaned `pending_review` documents; delete `_mark_documents`.
-- [ ] Record the Phase 4 notes here.
+- [x] Record the Phase 4 notes here.
+
+**Phase 4 notes (done).**
+- **IX3.** `_activate_snapshot` stores the approval's summary (if any), links it to the
+  snapshot, and calls `activate_snapshot_set`. The `run_id` candidate queries and
+  `identity_match` are gone, so a version first stored by an earlier run is activated
+  like any other.
+- **IX6.** `OfferingSummaryProjector(projection, catalog).project(snapshot)` in
+  `knowledge_projection.py` (display name, seed URL and language from
+  `SeedCatalog.get`). `ReviewDecisionService(..., summaries=)` builds the summary from
+  the final snapshot **only on the decision that activates it** (`ready_for_activation`);
+  earlier decisions of a multi-review batch carry none. It travels as
+  `ReviewSnapshotUpdate.summary` (text only). `runtime.py` shares one
+  `KnowledgeProjectionService` between the pipeline and the projector.
+- **IX4.** New module [app/repositories/review_supersession.py](../../app/repositories/review_supersession.py):
+  - `supersede_reviews_older_than(session, snapshot_id, now)`: pending reviews of the
+    offering's snapshots created before this one become `superseded`, with a
+    `review.superseded` audit event (`reason: newer_accepted_snapshot`,
+    `replacement_snapshot_id`), and their snapshots' documents are discarded. Called by
+    accepted `publish` **and by approval** (an approval publishes too).
+  - `newer_accepted_snapshot_exists`: `approve_with_snapshot` raises the new
+    `StaleReviewError` (a `ReviewConflictError`; message "a newer accepted snapshot exists
+    for this offering") before writing anything. `ReviewResolutionService.apply` catches
+    it, records `review.superseded_stale`, and supersedes the review.
+  - As before, superseding does not change the old snapshot's or execution's status
+    (the existing supersede path never did); `complete_runs_without_pending_reviews`
+    finishes the run.
+- **IX9.** `discard_snapshot_documents(session, snapshot_id)` (in
+  `knowledge_publication.py`) deletes the snapshot's `snapshot_documents` rows, then the
+  `pending_review`, inactive versions that no other snapshot names. Used on rejection,
+  on `supersede`/`fail` (`_terminal_update`) and when a newer review supersedes. The
+  Phase 1 interim `_discard_documents` (by `run_id`) is deleted.
+- **Found: lock order.** Publication now updates review rows (IX4) while holding the
+  offering's publication lock, and review paths lock the review row first; the opposite
+  order could deadlock. Every path that touches an offering's documents or pending
+  reviews now takes `lock_offering_publication` **first**: `publish`, `create` (before
+  its `review:` lock), `_decide`, `_terminal_update` and `approve_with_snapshot`
+  (`lock_review_publication` reads the review's scope without locking it).
+- Tests: IX3, IX4 ×2, IX6 ×2 markers removed; new
+  `test_a_review_made_stale_by_a_newer_accepted_run_is_superseded`
+  (`test_review_resolution.py`). Suite: 1077 passed, 5 skipped, 4 xfailed.
 
 ### Phase 5: Embedding lifecycle and retrieval (IX5, IX7, IX8)
 

@@ -16,12 +16,28 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
+from app.repositories.knowledge_publication import (
+    activate_snapshot_set,
+    discard_snapshot_documents,
+    link_snapshot_documents,
+    lock_offering_publication,
+    lock_review_publication,
+    store_document_version,
+)
 from app.repositories.monitoring import _snapshot_from_row
+from app.repositories.review_supersession import (
+    newer_accepted_snapshot_exists,
+    supersede_reviews_older_than,
+)
 from app.repositories.structured_projection import publish_structured_projection
 
 
 class ReviewConflictError(RuntimeError):
     pass
+
+
+class StaleReviewError(ReviewConflictError):
+    """A newer snapshot of the offering was accepted; approving would roll it back."""
 
 
 def _json(value: object) -> str:
@@ -66,6 +82,23 @@ class PostgresReviewRepository:
         if review.status is not ReviewStatus.PENDING:
             raise ValueError("new review must be pending")
         async with self._session_factory() as session, session.begin():
+            # Superseding discards the older snapshot's documents: the offering's
+            # publication lock comes first, as everywhere (see
+            # `lock_offering_publication`).
+            bank = (
+                await session.scalar(
+                    text("SELECT bank FROM tariff_snapshots WHERE id = :id"),
+                    {"id": review.snapshot_id},
+                )
+                if review.snapshot_id is not None
+                else None
+            )
+            await lock_offering_publication(
+                session,
+                bank=bank or "ameria",
+                product=review.product.value,
+                offering_id=review.offering_id.value,
+            )
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
                 {
@@ -100,7 +133,8 @@ class PostgresReviewRepository:
                                   snapshot_id IS DISTINCT FROM :snapshot_id
                                   OR reason_code = :reason_code
                               )
-                            RETURNING id, run_id, offering_execution_id, offering_id
+                            RETURNING id, run_id, offering_execution_id, offering_id,
+                                      snapshot_id
                             """
                         ),
                         {
@@ -116,11 +150,10 @@ class PostgresReviewRepository:
             )
             if superseded_rows:
                 for superseded in superseded_rows:
-                    await self._discard_documents(
-                        session,
-                        (superseded.run_id,),
-                        offering_id=OfferingId(superseded.offering_id),
-                    )
+                    if superseded.snapshot_id is not None:
+                        await discard_snapshot_documents(
+                            session, superseded.snapshot_id
+                        )
                     await session.execute(
                         text(
                             """
@@ -271,6 +304,7 @@ class PostgresReviewRepository:
             raise ValueError("reviewer must contain 1 to 200 characters")
         now = datetime.now(UTC)
         async with self._session_factory() as session, session.begin():
+            await lock_review_publication(session, review_id)
             current = await self._lock(session, review_id)
             if current.status is ReviewStatus.APPROVED and current.decision == decision:
                 return current
@@ -297,6 +331,11 @@ class PostgresReviewRepository:
                 raise ReviewConflictError("candidate snapshot is no longer reviewable")
             if snapshot.canonical_sha256 != update.expected_canonical_sha256:
                 raise ReviewConflictError("candidate snapshot changed during review")
+            if await newer_accepted_snapshot_exists(session, update.snapshot_id):
+                # Approving would retire the newer accepted index and facts (IX4).
+                raise StaleReviewError(
+                    "a newer accepted snapshot exists for this offering"
+                )
             row = (
                 await session.execute(
                     text(
@@ -413,6 +452,7 @@ class PostgresReviewRepository:
             raise ValueError("reviewer must contain 1 to 200 characters")
         now = datetime.now(UTC)
         async with self._session_factory() as session, session.begin():
+            await lock_review_publication(session, review_id)
             current = await self._lock(session, review_id)
             if current.status is status and current.decision == decision:
                 return current
@@ -441,11 +481,8 @@ class PostgresReviewRepository:
                 )
             ).one()
             if status is ReviewStatus.REJECTED:
-                await self._discard_documents(
-                    session,
-                    (current.run_id,),
-                    offering_id=current.offering_id,
-                )
+                if current.snapshot_id is not None:
+                    await discard_snapshot_documents(session, current.snapshot_id)
                 await session.execute(
                     text(
                         """
@@ -481,6 +518,7 @@ class PostgresReviewRepository:
         failure_detail: str | None = None,
     ) -> ReviewTask:
         async with self._session_factory() as session, session.begin():
+            await lock_review_publication(session, review_id)
             current = await self._lock(session, review_id)
             if current.status is status:
                 return current
@@ -504,11 +542,8 @@ class PostgresReviewRepository:
                     },
                 )
             ).one()
-            await self._discard_documents(
-                session,
-                (current.run_id,),
-                offering_id=current.offering_id,
-            )
+            if current.snapshot_id is not None:
+                await discard_snapshot_documents(session, current.snapshot_id)
         return _review_from_row(row)
 
     @staticmethod
@@ -518,93 +553,15 @@ class PostgresReviewRepository:
         update: ReviewSnapshotUpdate,
         now: datetime,
     ) -> None:
-        identity_match = """
-            old.bank = candidate.bank
-            AND old.product = candidate.product
-            AND old.offering_id = candidate.offering_id
-            AND old.document_kind = candidate.document_kind
-            AND old.document_key = candidate.document_key
-            AND old.id <> candidate.id
-        """
-        await session.execute(
-            text(
-                f"""
-                WITH candidate AS (
-                    SELECT * FROM knowledge_documents
-                    WHERE run_id = :run_id
-                      AND offering_id = :offering_id
-                      AND publication_state = 'pending_review'
-                ), old_documents AS (
-                    SELECT DISTINCT old.id
-                    FROM knowledge_documents AS old
-                    JOIN candidate ON {identity_match}
-                    WHERE old.is_active = true
-                )
-                UPDATE knowledge_chunks
-                SET is_active = false, retired_at = :now, updated_at = :now
-                WHERE document_id IN (SELECT id FROM old_documents)
-                  AND is_active = true
-                """
-            ),
-            {
-                "run_id": review.run_id,
-                "offering_id": review.offering_id.value,
-                "now": now,
-            },
-        )
-        await session.execute(
-            text(
-                f"""
-                WITH candidate AS (
-                    SELECT * FROM knowledge_documents
-                    WHERE run_id = :run_id
-                      AND offering_id = :offering_id
-                      AND publication_state = 'pending_review'
-                )
-                UPDATE knowledge_documents AS old
-                SET is_active = false, publication_state = 'retired',
-                    retired_at = :now
-                FROM candidate
-                WHERE {identity_match}
-                  AND old.is_active = true
-                """
-            ),
-            {
-                "run_id": review.run_id,
-                "offering_id": review.offering_id.value,
-                "now": now,
-            },
-        )
-        await session.execute(
-            text(
-                """
-                UPDATE knowledge_documents
-                SET is_active = true, publication_state = 'active', retired_at = NULL
-                WHERE run_id = :run_id
-                  AND offering_id = :offering_id
-                  AND publication_state = 'pending_review'
-                """
-            ),
-            {"run_id": review.run_id, "offering_id": review.offering_id.value},
-        )
-        await session.execute(
-            text(
-                """
-                UPDATE knowledge_chunks AS chunk
-                SET is_active = true, retired_at = NULL, updated_at = :now
-                FROM knowledge_documents AS document
-                WHERE chunk.document_id = document.id
-                  AND document.run_id = :run_id
-                  AND document.offering_id = :offering_id
-                  AND document.publication_state = 'active'
-                """
-            ),
-            {
-                "run_id": review.run_id,
-                "offering_id": review.offering_id.value,
-                "now": now,
-            },
-        )
+        # The offering's publication lock is held (`approve_with_snapshot`).
+        if update.summary is not None:
+            summary = await store_document_version(session, update.summary, now)
+            await link_snapshot_documents(
+                session, update.snapshot_id, (summary.document_id,)
+            )
+        # The snapshot's set -- including versions first stored by an earlier
+        # run (IX3) -- becomes the offering's whole index (IX1).
+        await activate_snapshot_set(session, update.snapshot_id, now)
         await session.execute(
             text(
                 """
@@ -621,16 +578,10 @@ class PostgresReviewRepository:
                 {"id": update.snapshot_id},
             )
         ).one()
-        await session.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-            {
-                "lock_key": (
-                    f"publication:{accepted_row.bank.lower()}:"
-                    f"{review.product.value}:{review.offering_id.value}"
-                )
-            },
-        )
         await publish_structured_projection(session, _snapshot_from_row(accepted_row))
+        # An approval publishes like an accepted run: older pending reviews of
+        # the offering are now moot (IX4).
+        await supersede_reviews_older_than(session, update.snapshot_id, now)
         await session.execute(
             text(
                 """
@@ -706,33 +657,3 @@ class PostgresReviewRepository:
         if row is None:
             raise LookupError(str(review_id))
         return _review_from_row(row)
-
-    @staticmethod
-    async def _discard_documents(
-        session: AsyncSession,
-        run_ids: tuple[UUID, ...],
-        *,
-        offering_id: OfferingId | None = None,
-    ) -> None:
-        """Delete a rejected or superseded run's never-published documents.
-
-        Nothing reads a discarded version (migration 023 removed the `rejected`
-        and `superseded` states); its chunks go with it by cascade.
-        """
-        offering_clause = ""
-        parameters: dict[str, object] = {"run_ids": list(run_ids)}
-        if offering_id is not None:
-            offering_clause = "AND offering_id = :offering_id"
-            parameters["offering_id"] = offering_id.value
-        await session.execute(
-            text(
-                f"""
-                DELETE FROM knowledge_documents
-                WHERE run_id = ANY(:run_ids)
-                  AND publication_state = 'pending_review'
-                  AND is_active = false
-                  {offering_clause}
-                """
-            ),
-            parameters,
-        )
