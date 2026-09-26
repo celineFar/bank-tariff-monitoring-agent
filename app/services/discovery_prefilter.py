@@ -14,7 +14,11 @@ from app.domain.normalization import (
     SourceReference,
     normalize_text,
 )
-from app.domain.source_discovery import DiscoveryCandidate, DiscoveryScope
+from app.domain.source_discovery import (
+    CandidateLayout,
+    DiscoveryCandidate,
+    DiscoveryScope,
+)
 
 _MAX_CONTEXT_CHARS = 12_000
 _TARIFF_TERMS = (
@@ -37,6 +41,8 @@ _TARIFF_TERMS = (
     "գումար",
     "վարկ",
 )
+_SITE_CHROME_KEY = ("<site-chrome>",)
+_PAGE_HEADER_KEY = ("<page-header>",)
 
 
 def build_discovery_candidates(
@@ -81,26 +87,42 @@ def _page_section_candidates(
     document: NormalizedDocument,
 ) -> tuple[DiscoveryCandidate, ...]:
     links = {link.id: link for link in document.links}
+    blocks_by_id = {block.id: block for block in document.blocks}
     groups: dict[tuple[str, ...], list[NormalizedBlock]] = defaultdict(list)
+    seen_heading = False
     for block in document.blocks:
         if block.table_id:
             continue
-        if block.heading_path:
+        if block.heading_path or block.type is NormalizedBlockType.HEADING:
+            seen_heading = True
+        if block.site_chrome:
+            # The site's navigation, banner and footer: one auditable decision,
+            # never mixed into the content section whose heading it inherited.
+            key = _SITE_CHROME_KEY
+        elif block.heading_path:
             key = (*block.heading_path, f"parent:{block.parent_id or '-'}")
-        elif block.type is NormalizedBlockType.LIST:
-            # The site emits its global menu as many adjacent unheaded list
-            # blocks. Grouping them makes one auditable navigation decision.
-            key = ("<root-navigation-lists>",)
+        elif not seen_heading:
+            # Above the first heading: language switch, phone, "About Bank".
+            key = _PAGE_HEADER_KEY
         else:
-            # Root material is kept granular so global navigation does not absorb
-            # an otherwise useful unheaded product block.
-            key = ("<root>", block.id)
+            # Unheaded content below the first heading stays granular, so a
+            # useful list is decided on its own. Keyed by text, not by the
+            # positional block id, so an inserted block renames nothing.
+            key = ("<root>", _hash(block.text)[:16])
         groups[key].append(block)
 
     result: list[DiscoveryCandidate] = []
     for key, blocks in groups.items():
-        heading_path = blocks[0].heading_path
-        title = heading_path[-1] if heading_path else "Unheaded page content"
+        layout = CandidateLayout.CONTENT
+        if key == _SITE_CHROME_KEY:
+            layout = CandidateLayout.SITE_CHROME
+            title, heading_path = "Site navigation, header and footer", ()
+        elif key == _PAGE_HEADER_KEY:
+            layout = CandidateLayout.PAGE_HEADER
+            title, heading_path = "Page header", ()
+        else:
+            heading_path = blocks[0].heading_path
+            title = heading_path[-1] if heading_path else "Unheaded page content"
         member_ids = tuple(
             member_source_id(document.id, "block", block.id) for block in blocks
         )
@@ -126,6 +148,7 @@ def _page_section_candidates(
             sort_keys=True,
         )
         group_id = hashlib.sha256(identity.encode()).hexdigest()[:16]
+        parent = blocks_by_id.get(blocks[0].parent_id or "")
         result.append(
             _candidate(
                 source_id=f"{document.id}::section::{group_id}",
@@ -138,20 +161,29 @@ def _page_section_candidates(
                 refs=_block_refs(blocks),
                 all_hidden=all(not block.visible for block in blocks),
                 has_scalars=any(block.scalar_candidates for block in blocks),
+                # Content only: block ids are positional, and one new block
+                # near the top would otherwise change every section's key.
                 content_identity=tuple(
                     (
-                        block.id,
                         block.text,
                         block.markdown,
                         block.fields,
                         block.visible,
-                        block.link_ids,
+                        tuple(
+                            str(links[link_id].url)
+                            for link_id in block.link_ids
+                            if link_id in links
+                        ),
                     )
                     for block in blocks
                 ),
                 selection_reason=(
                     "Page blocks sharing heading and parent context are assessed together."
                 ),
+                # Sections under one heading are told apart by their parent
+                # (the accordion or card title) in the structural key too.
+                parent=parent.text[:200] if parent is not None else None,
+                layout=layout,
             )
         )
     return tuple(result)
@@ -181,29 +213,14 @@ def _table_candidate(
         has_scalars=any(
             cell.scalar_candidates for row in table.rows for cell in row.cells
         ),
-        content_identity=table.model_dump(mode="json"),
+        content_identity=_table_identity(table),
         selection_reason="Structured tables are assessed independently from surrounding prose.",
     )
 
 
 def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
-    scope = (
-        DiscoveryScope.API_PAYLOAD
-        if document.source_type is SourceType.API
-        else DiscoveryScope.DOCUMENT
-    )
     blocks = list(document.blocks)
-    context = _representative_blocks(blocks)
-    table_context = "\n".join(
-        " | ".join(table.headers)
-        + "\n"
-        + "\n".join(" | ".join(cell.text for cell in row.cells) for row in table.rows)
-        for table in document.tables
-    )
-    if table_context:
-        context = _bounded(f"{context}\n{table_context}")
-    if not context:
-        context = f"Document has no extracted text. URL: {document.source_url}"
+    context = _document_context(document)
     member_ids = tuple(
         member_source_id(document.id, "block", block.id) for block in blocks
     ) + tuple(
@@ -212,7 +229,7 @@ def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
     return _candidate(
         source_id=f"document::{document.id}",
         document=document,
-        scope=scope,
+        scope=DiscoveryScope.DOCUMENT,
         title=document.name,
         heading_path=(),
         context=context,
@@ -234,19 +251,67 @@ def _document_candidate(document: NormalizedDocument) -> DiscoveryCandidate:
         ),
         content_identity={
             "sha256": document.content_sha256,
+            "extraction_method": document.extraction_method,
             "pdf_admission": (
                 document.pdf_admission.model_dump(mode="json")
                 if document.pdf_admission
                 else None
             ),
         },
-        selection_reason=(
-            "API leaves are grouped at payload scope to avoid one model decision per JSON leaf."
-            if scope is DiscoveryScope.API_PAYLOAD
-            else "Linked documents are first assessed as one source-level unit."
-        ),
+        selection_reason="Linked documents are first assessed as one source-level unit.",
         pdf_admission=document.pdf_admission,
     )
+
+
+def _document_context(document: NormalizedDocument) -> str:
+    """A linked document's text in reading order, tables shown compactly.
+
+    Page by page: the page's blocks, then its tables as title, headers and the
+    first cell of every row. Tables used to follow *all* the blocks, so a long
+    document's tables -- where the tariffs are -- never reached the classifier.
+    """
+    pages: dict[int, list[str]] = defaultdict(list)
+    for block in document.blocks:
+        pages[_page_number(block.source_refs)].append(block.text)
+    for table in document.tables:
+        pages[_page_number(table.source_refs)].append(_compact_table(table))
+    parts = [f"Document: {document.name}"]
+    for page in sorted(pages):
+        parts.extend(text for text in pages[page] if text)
+    if len(parts) == 1:
+        parts.append(f"Document has no extracted text. URL: {document.source_url}")
+    return _bounded("\n".join(parts))
+
+
+def _page_number(refs: tuple[SourceReference, ...]) -> int:
+    for ref in refs:
+        if ref.locator.pdf_page is not None:
+            return ref.locator.pdf_page
+    return 0
+
+
+def _compact_table(table: NormalizedTable) -> str:
+    lines = [f"TABLE: {table.title}" if table.title else "TABLE"]
+    if table.headers:
+        lines.append(" | ".join(table.headers))
+    labels = [
+        row.cells[0].text for row in table.rows if row.cells and row.cells[0].text
+    ]
+    if labels:
+        lines.append("Rows: " + "; ".join(labels))
+    return "\n".join(lines)
+
+
+def _table_identity(table: NormalizedTable) -> dict[str, object]:
+    """A table's content without its positional ids."""
+    return {
+        "title": table.title,
+        "headers": table.headers,
+        "rows": [
+            [row.section, [cell.text for cell in row.cells]] for row in table.rows
+        ],
+        "notes": [[note.marker, note.text] for note in table.notes],
+    }
 
 
 def _candidate(
@@ -264,6 +329,8 @@ def _candidate(
     content_identity: object,
     selection_reason: str,
     pdf_admission=None,
+    parent: str | None = None,
+    layout: CandidateLayout = CandidateLayout.CONTENT,
 ) -> DiscoveryCandidate:
     structural = {
         "document_url": str(document.source_url),
@@ -273,6 +340,8 @@ def _candidate(
         "source_type": document.source_type.value,
         "title": title,
     }
+    if parent is not None:
+        structural["parent"] = parent
     content = {**structural, "content_identity": content_identity}
     return DiscoveryCandidate(
         source_id=source_id,
@@ -293,6 +362,7 @@ def _candidate(
         structural_fingerprint=_hash(structural),
         selection_reason=selection_reason,
         pdf_admission=pdf_admission,
+        layout=layout,
     )
 
 

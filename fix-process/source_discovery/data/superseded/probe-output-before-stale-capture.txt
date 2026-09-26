@@ -1,84 +1,85 @@
 == 1. Candidates per seed (page only) ==
-    shared_structural_groups=1
-consumer_standard                candidates= 33 rule= 2 gemini= 31 batches=4 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3935 chars  Consumer loan
+consumer_standard                candidates= 32 rule= 2 gemini= 30 batches=4 cut>3000=3 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section  11770 chars  Terms and conditions
+    cut: section   3802 chars  Consumer finance
     cut: table     4556 chars  Consumer Loan Not Secured by Property — Consumer loan not se
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-credit_line                      candidates= 35 rule= 2 gemini= 33 batches=5 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3944 chars  Credit line
-    cut: section  10825 chars  Terms and conditions
-    cut: table     6003 chars  Credit line unsecured
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_commercial              candidates= 18 rule= 2 gemini= 16 batches=2 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3858 chars  Purchase commercial real estate
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x12: Terms and conditions
+    shared structural fingerprint x2: Consumer finance
+credit_line                      candidates= 34 rule= 2 gemini= 32 batches=4 cut>3000=3 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
+    cut: section  10866 chars  Terms and conditions
+    cut: section   3800 chars  Consumer finance
+    cut: table     5659 chars  Credit line unsecured
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x11: Terms and conditions
+    shared structural fingerprint x2: Consumer finance
+mortgage_commercial              candidates= 17 rule= 2 gemini= 15 batches=2 cut>3000=3 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section  12000 chars  Terms and conditions
+    cut: section   3789 chars  Construction loan
     cut: table    11999 chars  Tariffs — Loan for Purchase of Commercial Real Estate
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_construction            candidates= 20 rule= 2 gemini= 18 batches=3 cut>3000=5 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3944 chars  Construction loan
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Construction loan
+mortgage_construction            candidates= 19 rule= 2 gemini= 17 batches=3 cut>3000=5 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section  12000 chars  Terms and conditions
+    cut: section   3812 chars  Renovation loan
     cut: table    12000 chars  Home Construction Loan
     cut: table    12000 chars  Loan for construction of commercial real estate
     cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_diaspora                candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=1 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3823 chars  Your home in Armenia
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_express                 candidates= 23 rule= 2 gemini= 21 batches=3 cut>3000=1 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   4042 chars  Quick mortgage loan
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_no_income_verification  candidates= 25 rule= 2 gemini= 23 batches=3 cut>3000=2 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3990 chars  Get a mortgage without income verification
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Renovation loan
+mortgage_diaspora                candidates= 21 rule= 2 gemini= 19 batches=3 cut>3000=1 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
+    cut: section   3717 chars  Frequently asked questions
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x8: Frequently asked questions
+mortgage_express                 candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=1 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
+    cut: section   4979 chars  Terms and conditions
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Terms and conditions
+mortgage_no_income_verification  candidates= 23 rule= 2 gemini= 21 batches=3 cut>3000=2 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
+    cut: section   4457 chars  Terms and conditions
     cut: table     3177 chars  Terms
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_online                  candidates= 32 rule= 2 gemini= 30 batches=4 cut>3000=4 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   4028 chars  Real estate online loan for primary and secondary market
-    cut: section  12000 chars  Terms and conditions
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Terms and conditions
+mortgage_online                  candidates= 31 rule= 2 gemini= 29 batches=4 cut>3000=4 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
+    cut: section  11999 chars  Terms and conditions
+    cut: section   3758 chars  Construction loan
     cut: table     9765 chars  Tariffs in the case of the primary market
     cut: table     7090 chars  Tariffs in the case of the secondary market
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_primary                 candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=4 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3643 chars  Real estate loan for primary market
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x7: Terms and conditions
+    shared structural fingerprint x2: Construction loan
+mortgage_primary                 candidates= 21 rule= 2 gemini= 19 batches=3 cut>3000=4 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section  12000 chars  Terms and conditions
+    cut: section   3573 chars  Construction loan
     cut: table    12000 chars  Tariffs — Home Purchase Loan (primary market)
     cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_renovation              candidates= 18 rule= 2 gemini= 16 batches=2 cut>3000=5 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   4165 chars  Renovation loan
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Construction loan
+mortgage_renovation              candidates= 17 rule= 2 gemini= 15 batches=2 cut>3000=5 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section  12000 chars  Terms and conditions
+    cut: section   3756 chars  Mortgage from secondary market
     cut: table    12000 chars  Home Renovation Loan
     cut: table    11705 chars  Loan for renovation of commercial real estate
     cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-mortgage_secondary_market        candidates= 22 rule= 2 gemini= 20 batches=3 cut>3000=4 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3929 chars  Real estate loan for secondary market
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Mortgage from secondary market
+mortgage_secondary_market        candidates= 21 rule= 2 gemini= 19 batches=3 cut>3000=4 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section  12000 chars  Terms and conditions
+    cut: section   3789 chars  Construction loan
     cut: table    12000 chars  Tarifs — Home Purchase Loan (secondary market)
     cut: table    12000 chars  Express Home Mortgage Loan (Purchase, Construction and Renov
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-online_consumer_finance          candidates= 17 rule= 2 gemini= 15 batches=2 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3887 chars  Online consumer finance
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Construction loan
+online_consumer_finance          candidates= 16 rule= 2 gemini= 14 batches=2 cut>3000=2 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
     cut: section   5033 chars  Partners
-    cut: section   3310 chars  Terms and conditions
-    shared structural fingerprint x4: Unheaded page content
-    shared_structural_groups=1
-overdraft                        candidates= 32 rule= 2 gemini= 30 batches=4 cut>3000=3 nav_group=[14] nav_rule=[True] gemini_items_with_chrome=4
-    cut: section   3926 chars  Overdraft
-    cut: section   4622 chars  Terms and conditions
+    cut: section   6881 chars  Terms and conditions
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x2: Terms and conditions
+overdraft                        candidates= 31 rule= 2 gemini= 29 batches=4 cut>3000=2 nav_group=[15] nav_rule=[True] pure_chrome_gemini_items=3
+    cut: section   8251 chars  Terms and conditions
     cut: table     5280 chars  Overdrafts via Cards not secured with property (unsecured)
-    shared structural fingerprint x4: Unheaded page content
+    shared structural fingerprint x2: Unheaded page content
+    shared structural fingerprint x12: Terms and conditions
 
 == 2. Admitted PDF links: who decides ==
 consumer_standard                current    relevant  product_terms    rule    Consumer_loan_unsecured_eng.pdf

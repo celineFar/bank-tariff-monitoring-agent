@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections import Counter
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -16,6 +17,7 @@ from app.domain.pdf_extraction import (
 )
 from app.domain.source_discovery import (
     Authority,
+    CandidateLayout,
     DecisionSource,
     DiscoveryBatch,
     DiscoveryBatchResponse,
@@ -154,6 +156,12 @@ class SourceDiscoveryService:
     async def plan(
         self, bundle: NormalizedSourceBundle, product: ProductType
     ) -> SourceDiscoveryPlan:
+        plan, _ = await self._plan(bundle, product)
+        return plan
+
+    async def _plan(
+        self, bundle: NormalizedSourceBundle, product: ProductType
+    ) -> tuple[SourceDiscoveryPlan, tuple[DiscoveryCandidate, ...]]:
         candidates = build_discovery_candidates(bundle)
         rule_assessments: list[SourceAssessment] = []
         unresolved: list[DiscoveryCandidate] = []
@@ -197,13 +205,22 @@ class SourceDiscoveryService:
                 item.structural_fingerprint for item in llm_candidates
             ],
         )
+        # A prior is a hint about *this* section. When two sections on the
+        # page share a structural fingerprint, the stored prior may belong to
+        # the other one, so neither gets it.
+        structural_counts = Counter(item.structural_fingerprint for item in candidates)
+        priors = {
+            fingerprint: prior
+            for fingerprint, prior in priors.items()
+            if structural_counts[fingerprint] == 1
+        }
         batches = _build_batches(
             product,
             llm_candidates,
             priors,
             self._settings,
         )
-        return SourceDiscoveryPlan(
+        plan = SourceDiscoveryPlan(
             product=product,
             canonical_url=str(bundle.canonical_url),
             input_content_hash=bundle.acquisition_content_hash,
@@ -218,11 +235,12 @@ class SourceDiscoveryService:
                 len(candidate.member_source_ids) for candidate in candidates
             ),
         )
+        return plan, candidates
 
     async def discover(
         self, bundle: NormalizedSourceBundle, product: ProductType
     ) -> SourceDiscoveryResult:
-        plan = await self.plan(bundle, product)
+        plan, all_candidates = await self._plan(bundle, product)
         await record_model_cache_hit(
             self._usage_repository,
             stage="discovery.classification",
@@ -274,7 +292,6 @@ class SourceDiscoveryService:
             *plan.cache_hits,
             *llm_assessments,
         )
-        all_candidates = build_discovery_candidates(bundle)
         candidates_by_id = {
             candidate.source_id: candidate for candidate in all_candidates
         }
@@ -341,6 +358,15 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
     ) = None
     if (
         candidate.scope is DiscoveryScope.DOCUMENT
+        and candidate.source_type is not SourceType.PAGE
+        and not candidate.member_source_ids
+    ):
+        # A linked document with no content: skipped before transcription, or
+        # its transcription failed. There is nothing for a model to read, and
+        # nothing for extraction to use; the normalization warning reports why.
+        values = _no_content_values(candidate)
+    elif (
+        candidate.scope is DiscoveryScope.DOCUMENT
         and candidate.source_type is SourceType.PDF
         and candidate.pdf_admission is not None
         and candidate.pdf_admission.relevance is PdfAdmissionRelevance.RELEVANT
@@ -382,7 +408,7 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
             structural_fingerprint=candidate.structural_fingerprint,
             source_refs=candidate.source_refs,
         )
-    if (
+    elif (
         candidate.scope is DiscoveryScope.DOCUMENT
         and candidate.source_type is SourceType.PAGE
     ):
@@ -403,25 +429,23 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
             TemporalStatus.UNKNOWN,
             "All members were marked hidden by browser acquisition.",
         )
-    elif candidate.scope is DiscoveryScope.API_PAYLOAD and _is_template_payload(
-        candidate
-    ):
-        values = (
-            ProductAssociation.GENERIC_BANK_INFORMATION,
-            InformationRole.OTHER,
-            Relevance.IRRELEVANT,
-            Authority.UNKNOWN,
-            TemporalStatus.UNKNOWN,
-            "Payload is a reusable HTML presentation template, not product data.",
-        )
-    elif _is_navigation(candidate):
+    elif candidate.layout is CandidateLayout.SITE_CHROME:
         values = (
             ProductAssociation.GLOBAL_NAVIGATION,
             InformationRole.NAVIGATION,
             Relevance.IRRELEVANT,
             Authority.UNKNOWN,
             TemporalStatus.UNKNOWN,
-            "Unheaded content matches the repeated global navigation structure.",
+            "Blocks sit in the site's navigation, banner or footer.",
+        )
+    elif candidate.layout is CandidateLayout.PAGE_HEADER:
+        values = (
+            ProductAssociation.GLOBAL_NAVIGATION,
+            InformationRole.NAVIGATION,
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.UNKNOWN,
+            "Unheaded blocks above the page's first heading are the site header.",
         )
     if values is None:
         return None
@@ -443,29 +467,44 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
     )
 
 
-def _is_template_payload(candidate: DiscoveryCandidate) -> bool:
-    value = candidate.title.casefold()
-    return ".html" in value and any(
-        token in value for token in ("/contentthemes/", "templates.view.html")
+def _no_content_values(
+    candidate: DiscoveryCandidate,
+) -> tuple[
+    ProductAssociation, InformationRole, Relevance, Authority, TemporalStatus, str
+]:
+    admission = candidate.pdf_admission
+    if (
+        admission is not None
+        and admission.temporal_status is PdfTemporalStatus.HISTORICAL
+    ):
+        return (
+            ProductAssociation.HISTORICAL_VERSION,
+            InformationRole.OTHER,
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.POSSIBLY_STALE,
+            "Superseded edition, skipped before transcription; it has no content.",
+        )
+    if (
+        admission is not None
+        and admission.relevance is PdfAdmissionRelevance.IRRELEVANT
+    ):
+        return (
+            ProductAssociation.UNKNOWN,
+            InformationRole.OTHER,
+            Relevance.IRRELEVANT,
+            Authority.UNKNOWN,
+            TemporalStatus.UNKNOWN,
+            "Off-topic link metadata, skipped before transcription; it has no content.",
+        )
+    return (
+        ProductAssociation.UNKNOWN,
+        InformationRole.OTHER,
+        Relevance.IRRELEVANT,
+        Authority.UNKNOWN,
+        TemporalStatus.UNKNOWN,
+        f"Linked document has no extracted content ({candidate.extraction_method}).",
     )
-
-
-def _is_navigation(candidate: DiscoveryCandidate) -> bool:
-    if candidate.scope is not DiscoveryScope.SECTION or candidate.heading_path:
-        return False
-    text = candidate.context_text.casefold()
-    markers = (
-        "personal",
-        "business",
-        "investment",
-        "about bank",
-        "branches",
-        "cards",
-        "loans",
-        "accounts",
-        "contact center",
-    )
-    return sum(marker in text for marker in markers) >= 4
 
 
 def _build_batches(

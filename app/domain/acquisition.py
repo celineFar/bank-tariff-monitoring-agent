@@ -67,6 +67,9 @@ class ContentBlock(AcquisitionModel):
     table_id: str | None = None
     # A `dt` and its `dd` values, when `type` is KEY_VALUE and they were paired.
     key_value: tuple[str, str] | None = None
+    # Inside the site's navigation, banner or footer. Left out of the page
+    # identity hash; artifacts stored before this field read as False.
+    site_chrome: bool = False
 
 
 class TableCellArtifact(AcquisitionModel):

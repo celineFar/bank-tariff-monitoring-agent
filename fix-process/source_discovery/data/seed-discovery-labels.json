@@ -1,14 +1,33 @@
 {
-  "_about": "Hand labels of what belongs to each offering on the 13 seed pages (capture of 2026-09-26), for checking source discovery. Page blocks are labelled by rules on their heading path (first matching rule wins; `default` otherwise), then by text overrides. Blocks inside the parser's site chrome (nav, header, footer, navigation role), unheaded blocks before the first heading, and every block from the first `footer_from` match onward are `navigation`. Tables are labelled by title, PDFs by file name (admitted links only; historical editions are skipped before discovery). Labels: `current` (about this offering, including shared terms that apply to it), `related` (another Ameria product or a variant this offering does not cover), `navigation` (site chrome, footer), `any` (not scored: calculators, generic regulatory text, teaser cards whose status is debatable). PDF labels: `current_product`, `shared_terms` (applies to this offering among others), `related_product`, `generic_bank_information`, `irrelevant`. Scoring: see survey/check_discovery_labels.py. Status: drafted by Claude from the rendered pages and PDF labels; to be confirmed by the user.",
+  "_about": "Hand labels of what belongs to each offering on the 13 seed pages (the normalization fix's last live capture, `fix-process/normalization/.cache-live-2`, 2026-09-26), for checking source discovery. Page blocks are labelled by rules on their heading path (first matching rule wins; `default` otherwise), then by text overrides. Blocks inside the parser's site chrome (nav, header, footer, navigation role), unheaded blocks before the first heading, and every block from the first `footer_from` match onward are `navigation`. Tables are labelled by title, PDFs by file name (admitted links only; historical editions are skipped before discovery). Labels: `current` (about this offering, including shared terms that apply to it), `related` (another Ameria product or a variant this offering does not cover), `navigation` (site chrome, footer), `any` (not scored: calculators, generic regulatory text, teaser cards whose status is debatable). PDF labels: `current_product`, `shared_terms` (applies to this offering among others), `related_product`, `generic_bank_information`, `irrelevant`. Scoring: see survey/check_discovery_labels.py. Status: drafted by Claude from the rendered pages and PDF labels; to be confirmed by the user. Generic FAQ questions on the consumer-loan pages (heading ends with `?`) are `any`: the same questions appear on every consumer-loan page.",
   "as_of": "2026-09-26",
-  "footer_from": ["Last updated on", "Dear User,"],
+  "footer_from": [
+    "Last updated on",
+    "Dear User,"
+  ],
   "seeds": {
     "consumer_standard": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Credit line", "label": "related"},
-        {"path_endswith": "Terms and conditions > Overdraft", "label": "related"},
-        {"path_endswith": "Terms and conditions > Consumer finance", "label": "related"},
-        {"path_contains": "Loan calculator", "label": "any"}
+        {
+          "path_endswith": "> Credit line",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Overdraft",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Consumer finance",
+          "label": "related"
+        },
+        {
+          "path_contains": "Loan calculator",
+          "label": "any"
+        },
+        {
+          "path_endswith": "?",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -25,9 +44,22 @@
     },
     "credit_line": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Overdraft", "label": "related"},
-        {"path_endswith": "Terms and conditions > Consumer loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Consumer finance", "label": "related"}
+        {
+          "path_endswith": "> Overdraft",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Consumer loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Consumer finance",
+          "label": "related"
+        },
+        {
+          "path_endswith": "?",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -44,9 +76,18 @@
     },
     "mortgage_commercial": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Online mortgage loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Construction loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Loan Calculators", "label": "any"}
+        {
+          "path_endswith": "> Online mortgage loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Construction loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Loan Calculators",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -62,12 +103,23 @@
     },
     "mortgage_construction": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Renovation loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Online mortgage", "label": "related"},
-        {"path_endswith": "Terms and conditions > Loan calculators", "label": "any"}
+        {
+          "path_endswith": "> Renovation loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Online mortgage",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Loan calculators",
+          "label": "any"
+        }
       ],
       "default": "current",
-      "text_any": ["Express"],
+      "text_any": [
+        "Express"
+      ],
       "tables": {
         "Home Construction Loan": "current",
         "Loan for construction of commercial real estate": "current",
@@ -86,7 +138,14 @@
     },
     "mortgage_diaspora": {
       "sections": [
-        {"path_contains": "Calculate the monthly payment", "label": "any"}
+        {
+          "path_contains": "Calculate the monthly payment",
+          "label": "any"
+        },
+        {
+          "path_endswith": "Can I open an Ameriabank account remotely?",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {},
@@ -94,7 +153,10 @@
     },
     "mortgage_express": {
       "sections": [
-        {"path_contains": "Mortgage calculator", "label": "any"}
+        {
+          "path_contains": "Mortgage calculator",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -111,7 +173,10 @@
     },
     "mortgage_no_income_verification": {
       "sections": [
-        {"path_contains": "What homes can you afford with your salary?", "label": "any"}
+        {
+          "path_contains": "What homes can you afford with your salary?",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -123,10 +188,22 @@
     },
     "mortgage_online": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Real estate loan for secondary market", "label": "related"},
-        {"path_endswith": "Terms and conditions > Construction loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Loan Calculators", "label": "any"},
-        {"path_contains": "Mortgage calculator", "label": "any"}
+        {
+          "path_endswith": "> Real estate loan for secondary market",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Construction loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Loan Calculators",
+          "label": "any"
+        },
+        {
+          "path_contains": "Mortgage calculator",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -145,14 +222,32 @@
     },
     "mortgage_primary": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Real estate loan for secondary market", "label": "related"},
-        {"path_endswith": "Terms and conditions > Construction loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Loan Calculators", "label": "any"},
-        {"path_contains": "Mortgage calculator", "label": "any"},
-        {"path_contains": "Find your new home online", "label": "any"}
+        {
+          "path_endswith": "> Real estate loan for secondary market",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Construction loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Loan Calculators",
+          "label": "any"
+        },
+        {
+          "path_contains": "Mortgage calculator",
+          "label": "any"
+        },
+        {
+          "path_contains": "Find your new home online",
+          "label": "any"
+        }
       ],
       "default": "current",
-      "text_any": ["Express", "flexible opportunities"],
+      "text_any": [
+        "Express",
+        "flexible opportunities"
+      ],
       "tables": {
         "Tariffs — Home Purchase Loan (primary market)": "current",
         "Express Home Mortgage Loan (Purchase, Construction and Renovation)": "related",
@@ -170,12 +265,23 @@
     },
     "mortgage_renovation": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Mortgage from secondary market", "label": "related"},
-        {"path_endswith": "Terms and conditions > Online mortgage", "label": "related"},
-        {"path_endswith": "Terms and conditions > Loan calculators", "label": "any"}
+        {
+          "path_endswith": "> Mortgage from secondary market",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Online mortgage",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Loan calculators",
+          "label": "any"
+        }
       ],
       "default": "current",
-      "text_any": ["Express"],
+      "text_any": [
+        "Express"
+      ],
       "tables": {
         "Home Renovation Loan": "current",
         "Loan for renovation of commercial real estate": "current",
@@ -192,14 +298,31 @@
     },
     "mortgage_secondary_market": {
       "sections": [
-        {"path_endswith": "Terms and conditions > Online mortgage loan", "label": "related"},
-        {"path_endswith": "Terms and conditions > Construction loan", "label": "related"},
-        {"path_endswith": "Want to buy a home from primary market?", "label": "related"},
-        {"path_endswith": "Terms and conditions > Loan Calculators", "label": "any"},
-        {"path_contains": "Mortgage calculator", "label": "any"}
+        {
+          "path_endswith": "> Online mortgage loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Construction loan",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Want to buy a home from primary market?",
+          "label": "related"
+        },
+        {
+          "path_endswith": "> Loan Calculators",
+          "label": "any"
+        },
+        {
+          "path_contains": "Mortgage calculator",
+          "label": "any"
+        }
       ],
       "default": "current",
-      "text_any": ["Express"],
+      "text_any": [
+        "Express"
+      ],
       "tables": {
         "Tarifs — Home Purchase Loan (secondary market)": "current",
         "Express Home Mortgage Loan (Purchase, Construction and Renovation)": "related",
@@ -216,7 +339,10 @@
     },
     "online_consumer_finance": {
       "sections": [
-        {"path_endswith": "Online consumer finance > Partners", "label": "any"}
+        {
+          "path_endswith": "Online consumer finance > Partners",
+          "label": "any"
+        }
       ],
       "default": "current",
       "tables": {
@@ -232,7 +358,12 @@
       }
     },
     "overdraft": {
-      "sections": [],
+      "sections": [
+        {
+          "path_endswith": "?",
+          "label": "any"
+        }
+      ],
       "default": "current",
       "tables": {
         "Overdrafts via Cards not secured with property (unsecured)": "current",

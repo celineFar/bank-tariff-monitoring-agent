@@ -84,6 +84,16 @@ class DiscoveryScope(StrEnum):
     API_PAYLOAD = "api_payload"
 
 
+class CandidateLayout(StrEnum):
+    """Where on the page a candidate sits, as far as layout alone can tell."""
+
+    CONTENT = "content"
+    # Inside the site's navigation, banner or footer.
+    SITE_CHROME = "site_chrome"
+    # Unheaded blocks above the page's first heading (language switch, phone).
+    PAGE_HEADER = "page_header"
+
+
 class EffectivePeriod(DiscoveryModel):
     raw: str = Field(min_length=1, max_length=1000)
     start: date | None = None
@@ -115,6 +125,7 @@ class DiscoveryCandidate(DiscoveryModel):
     structural_fingerprint: str
     selection_reason: str = Field(min_length=1, max_length=1000)
     pdf_admission: PdfAdmission | None = None
+    layout: CandidateLayout = CandidateLayout.CONTENT
 
     @model_validator(mode="after")
     def validate_fingerprints(self) -> DiscoveryCandidate:

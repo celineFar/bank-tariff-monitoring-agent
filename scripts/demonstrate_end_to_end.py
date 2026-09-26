@@ -638,7 +638,7 @@ def _document_selection_decision(
             for item in result.assessments
             if item.document_id == document.id
             and item.source_id == f"document::{document.id}"
-            and item.scope in {DiscoveryScope.DOCUMENT, DiscoveryScope.API_PAYLOAD}
+            and item.scope is DiscoveryScope.DOCUMENT
         ),
         None,
     )

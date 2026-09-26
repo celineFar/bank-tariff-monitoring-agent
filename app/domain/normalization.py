@@ -171,6 +171,8 @@ class NormalizedBlock(NormalizationModel):
     parent_id: str | None = None
     link_ids: tuple[str, ...] = ()
     visible: bool = True
+    # Inside the site's navigation, banner or footer (see `ContentBlock`).
+    site_chrome: bool = False
     table_id: str | None = None
     fields: dict[str, str] = Field(default_factory=dict)
     scalar_candidates: tuple[NormalizedScalar, ...] = ()

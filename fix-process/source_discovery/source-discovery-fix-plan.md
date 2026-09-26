@@ -30,7 +30,7 @@ chunks across documents in the RAG index. They get their own plan.
 - **Code.** Read on `integration/process-fixes` at `f5c4e44`, after the normalization fix.
 - **Probe.** [survey/probe_discovery.py](survey/probe_discovery.py) runs today's candidate
   builder, rules and batcher on the 13 captured seed pages
-  (`fix-process/normalization/.cache`), replays PDF admission against the 91 hand-labelled PDFs
+  (`fix-process/normalization/.cache-live-2`, the normalization fix's last live capture), replays PDF admission against the 91 hand-labelled PDFs
   (`fix-process/normalization/data/seed-pdf-labels.json`), and compares % values between each
   current PDF and its page. No Gemini call. Output before any fix:
   [data/probe-output-before.txt](data/probe-output-before.txt). Run it with
@@ -333,14 +333,17 @@ PDF extraction and semantic extraction also have no fallback; that is noted, not
 **Confirmed.**
 - On all 13 seeds, the group is the 15 header-menu blocks, none has a number, and the rule
   fires. So nothing is lost today.
-- Every seed sends **3 Gemini items that are pure site chrome** (39 across the seeds): single
-  unheaded header paragraphs, and footer blocks such as "HEAD OFFICE".
-- **Footer blocks join the last content section.** They inherit the page's last heading path,
-  so they share its group. On mortgage_primary, the "Construction loan" cross-sell section has
-  13 content blocks and 12 footer blocks ("Corporate Governance", "Contacts and Feedback", …)
-  as one item and one label.
-- 5 of the 14 unheaded header lists (language switch, "IR", "About Bank", phone, "Branches")
-  are outside the semantic chrome elements. They sit before the page's first main heading.
+- Every seed sends **4 Gemini items that contain site-chrome blocks** (52 across the seeds, on
+  the current capture): single unheaded header paragraphs, and footer blocks such as
+  "HEAD OFFICE".
+- **Footer blocks join a content section.** They inherit a heading path, so they share that
+  section's group. On the current capture the whole footer (about 30 blocks from "Dear User,"
+  onward) sits under the page's top heading and is classified with the page's opening section.
+  In the Phase 0 Gemini baseline those ~30 blocks per page came back `current` (386 blocks in
+  all). On the older capture the footer sat under the last cross-sell card instead (on
+  mortgage_primary, 13 content blocks and 12 footer blocks as one "Construction loan" item).
+- Some unheaded header blocks (language switch, "IR", "About Bank", phone, "Branches") are
+  outside the semantic chrome elements. They sit before the page's first main heading.
 
 **Fix.**
 - Carry the parser's chrome flag: `ContentBlock.site_chrome` → `NormalizedBlock.site_chrome`
@@ -468,11 +471,15 @@ Keep 12,000 only as a hard upper bound on a single member's text.
 and gives no rule for content with no date. `gemini-3.1-flash-lite` then marks undated tables
 `possibly_stale`. Selection drops everything `possibly_stale`.
 
-**Confirmed.** On mortgage_primary, all three tables came back `possibly_stale` with the reason
-"no explicit effective date is provided", in the baseline and again in a separate re-run
-([data/discovery-check-before-primary-rerun.json](data/discovery-check-before-primary-rerun.json)).
-That excludes **"Tariffs — Home Purchase Loan (primary market)"**, the offering's own tariff
-table, and the fee table.
+**Confirmed, but not on every capture.** On the older capture
+(`fix-process/normalization/.cache`, before the normalization fix), all three mortgage_primary
+tables came back `possibly_stale` with the reason "no explicit effective date is provided", in
+two separate runs ([superseded/discovery-check-before-stale-capture.json](data/superseded/discovery-check-before-stale-capture.json),
+[superseded/discovery-check-before-primary-rerun-stale-capture.json](data/superseded/discovery-check-before-primary-rerun-stale-capture.json)).
+That excluded **"Tariffs — Home Purchase Loan (primary market)"**, the offering's own tariff
+table, and the fee table. On the current capture (`.cache-live-2`) the same tables came back
+`current`. So the outcome depends on small differences in the table text: nothing in the
+instruction or the code prevents it.
 
 **Fix.**
 - Instruction: content on the live product page with no date is `unknown`, not
@@ -596,22 +603,34 @@ each page block and table: `lost` (a current item excluded or called another pro
 refuses to start over the guard. It works with both the old `discover(bundle, product)` and the
 new `discover(bundle, offering, as_of=…)` signature.
 
+**Capture used.** The first baseline ran on `fix-process/normalization/.cache`, which was
+captured *before* the normalization fix: its stored blocks differ from what this branch's parser
+produces, so its chrome and footer labels were misaligned. It is kept in
+[data/superseded/](data/superseded/) and not used. Every result below, and every later run, uses
+`fix-process/normalization/.cache-live-2`, the normalization fix's last live capture, whose
+stored blocks, tables and links match the parser exactly. The survey scripts re-parse each
+capture's rendered HTML, so they also see `site_chrome` (Phase 1). The labels were then
+re-fitted to that capture's heading paths (the normalization fix moved the cross-sell cards out
+of "Terms and conditions").
+
 **Gemini baseline** ([data/discovery-check-before.json](data/discovery-check-before.json)):
-`gemini-3.1-flash-lite`, 40 calls, 101,510 input + 38,918 output tokens, **$0.084**
-(estimated $0.090). The Gemini key came from the sibling project's `.env`, read into the process
-environment only; this repository has no `.env`.
+the Phase 0 code (`51fc659`, run from a separate worktree) on `.cache-live-2`,
+`gemini-3.1-flash-lite`, 41 calls, 105,398 input + 40,188 output tokens, **$0.087** (estimated
+$0.095). The report stores every assessment, so it can be re-scored after label changes with
+`--rescore` at no cost. The Gemini key came from the sibling project's `.env`, read into the
+process environment only; this repository has no `.env`.
 
 | | Count | What it is |
 |---|---|---|
-| Scored page blocks | 1,818 | |
-| `leak` | 10 | The Express table as current on construction, renovation and secondary-market; sibling cross-sell cards as current |
-| `lost` | 12 | The primary page's **own tariff table and fee table** (SD18); 8 Express tab titles on the Express page; consumer_standard's fee table as related |
-| `noise` | 177 | Almost all are footer blocks merged into the page's last section (SD9) |
+| Scored page blocks and tables | 1,845 | |
+| `leak` | 20 | The Express table as current on the construction, renovation, primary and secondary-market pages; sibling cross-sell cards ("Credit line", "Overdraft", "Online mortgage", "Construction loan") as current (SD1) |
+| `lost` | 0 | |
+| `noise` | 386 | The site footer, merged into the page's opening section and called current (SD9) |
 | PDF `leak` | 8 | Express terms on 4 pages, the website-profile PDF on 3, flexible-mortgage terms on the primary page (SD2) |
 | PDF `lost` | 0 | |
 
-A second run of mortgage_primary alone ($0.006) gave the same three `possibly_stale` tables,
-which led to **SD18**.
+SD18 came from the superseded run: see its entry for the evidence and why it did not reproduce
+on `.cache-live-2`.
 
 **Regression tests.** [tests/unit/test_source_discovery_fixes.py](../../tests/unit/test_source_discovery_fixes.py)
 has 10 `xfail(strict=True)` tests (SD1 ×2, SD4, SD5, SD6 ×2, SD9, SD10, SD11, SD18), and
@@ -620,25 +639,84 @@ SD7. Each asserts the target behaviour and API (`OfferingContext`,
 `discover(bundle, offering, as_of=…)`, `NormalizedBlock.site_chrome`, `DiscoveryResponseError`).
 All 11 were checked with `--runxfail` to fail today.
 
-**Spend so far: $0.090** of the ~$1 budget.
+**Spend so far: $0.26** of the ~$1 budget: $0.090 on the superseded capture (baseline and
+the primary re-run), and two $0.087 baseline runs on `.cache-live-2` (the first did not yet store
+its assessments for re-scoring).
 
 ### Phase 1: Deterministic groundwork (SD9, SD10, SD11, SD15, SD16, SD4 rules, SD12)
 
-- [ ] SD15: delete the template rule and the `API_PAYLOAD` branches; keep the enum value.
-- [ ] SD16: build candidates once; `plan()` carries them to `discover()`.
-- [ ] SD9: add `site_chrome` to `ContentBlock` and `NormalizedBlock`, set by the parser.
-- [ ] SD9: check that stored artifacts load and that the acquisition content hash and page
+- [x] SD15: delete the template rule and the `API_PAYLOAD` branches; keep the enum value.
+- [x] SD16: build candidates once; `plan()` carries them to `discover()`.
+- [x] SD9: add `site_chrome` to `ContentBlock` and `NormalizedBlock`, set by the parser.
+- [x] SD9: check that stored artifacts load and that the acquisition content hash and page
       identity are unchanged on the 13 captures.
-- [ ] SD9: `site_chrome` in the grouping key; rules for all-chrome groups and the page-header
+- [x] SD9: `site_chrome` in the grouping key; rules for all-chrome groups and the page-header
       group; remove `<root-navigation-lists>` and the English word list.
-- [ ] SD10: content-only section fingerprints; root groups keyed by text hash.
-- [ ] SD11: parent text in the structural fingerprint; no prior when a fingerprint repeats on
+- [x] SD10: content-only section fingerprints; root groups keyed by text hash.
+- [x] SD11: parent text in the structural fingerprint; no prior when a fingerprint repeats on
       the page.
-- [ ] SD4: rules for PDF documents with no content (skipped historical, skipped irrelevant,
+- [x] SD4: rules for PDF documents with no content (skipped historical, skipped irrelevant,
       failed).
-- [ ] SD12: PDF context in document order with compact tables.
-- [ ] Remove the matching `xfail` markers. Re-run the probe: 0 Gemini items with any
+- [x] SD12: PDF context in document order with compact tables.
+- [x] Remove the matching `xfail` markers. Re-run the probe: 0 Gemini items with any
       site-chrome member, no shared structural fingerprints within a page.
+
+#### Phase 1 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 1: deterministic groundwork*.
+
+**What changed.**
+- **SD9, site chrome.** `ContentBlock.site_chrome` (set by the HTML parser from its existing
+  nav/header/footer detection) is carried to `NormalizedBlock.site_chrome`. The candidate
+  builder ([discovery_prefilter.py](../../app/services/discovery_prefilter.py)) now puts every
+  chrome block in one "Site navigation, header and footer" group, and unheaded blocks above the
+  page's first heading in one "Page header" group. Both are decided by rule
+  (`global_navigation`, `irrelevant`) via the new `DiscoveryCandidate.layout`
+  (`CandidateLayout`). Every other unheaded block, lists included, is its own item. The
+  `<root-navigation-lists>` group and the English word rule are gone.
+- **Page identity is unchanged.** `site_chrome` is left out of the page-content hash (chrome
+  blocks were already excluded from it). Checked on the 13 captures: the re-parsed page hash is
+  identical before and after the change, so no page id, evidence id or extraction cache key
+  moves.
+- **SD10.** Section fingerprints use block content (text, markdown, fields, visibility, link
+  URLs), not block or link ids. Unheaded root groups are keyed by a text hash. Tables are
+  fingerprinted by title, headers, row texts, sections and notes, not their positional ids
+  (the plan only named sections; tables had the same problem).
+- **SD11.** The parent block's text (the accordion or card title) is part of a section's
+  structural fingerprint. `plan()` drops the prior for any structural fingerprint that occurs
+  more than once on the page.
+- **SD4.** A linked document with no blocks and no tables is decided by rule before anything
+  else, with no Gemini call: superseded edition → `historical_version`/`possibly_stale`,
+  off-topic admission → `irrelevant`, anything else (failed transcription) → `irrelevant` with
+  the extraction method in the reason. This also stops a *relevant*-admission PDF whose
+  transcription failed from being passed to extraction as an empty official document.
+- **SD12.** A PDF's context is its text page by page, each page's tables shown as title,
+  headers and the first cell of every row. The PDF content fingerprint now includes the
+  extraction method, so an assessment of a failed transcription is never reused for a later
+  successful one.
+- **SD15.** The HTML-template rule and the `API_PAYLOAD` scope branch are deleted; the enum
+  value stays for old cache rows. **SD16.** `discover()` reuses the candidates `plan()` built.
+
+**Measured** ([data/probe-output-phase1.txt](data/probe-output-phase1.txt) against
+[data/probe-output-before.txt](data/probe-output-before.txt), both on `.cache-live-2`):
+- Gemini items with any site-chrome member: **4 per page → 0** on all 13 seeds.
+- Structural fingerprints shared within a page: **1 → 0** on all 13 seeds.
+- Gemini items per page: 15–33 → 12–30 (3 fewer on every seed).
+
+**Tests.** SD10 and SD11 regression tests pass; markers removed. New direct tests for SD9
+(chrome and page-header groups, footer kept apart, an unheaded product list as its own item),
+SD4 (all four no-content cases) and SD12. **The SD4 and SD9 regression tests are still
+`xfail`**: they call the Phase 2 signature (`discover(bundle, offering)`) and are cleared in
+Phase 2. Full suite: 919 passed, 42 skipped, 9 xfailed, plus the 4 known key-dependent
+failures. `ruff check` and `ruff format --check` clean.
+
+**Remaining issues.**
+- Artifacts stored before this change have `site_chrome=False` on every block. Until a page is
+  acquired again, only the page-header rule applies to it, and footer blocks go to Gemini as
+  before. Acquisition reuses a stored artifact only within its freshness window, so this ends
+  on the next fetch of each page.
+- The existing discovery tests still use an `api` document in their fixture; it is now
+  assessed as a plain linked document, which is what the code does with it.
 
 ### Phase 2: Offering identity and cache scope (SD1)
 

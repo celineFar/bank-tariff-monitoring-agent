@@ -3,7 +3,7 @@
     uv run python fix-process/source_discovery/survey/check_discovery_labels.py \
         --classifier gemini --label before --max-usd 0.40
 
-For every captured seed (`fix-process/normalization/.cache`, or `SURVEY_CACHE`), the
+For every captured seed (`fix-process/normalization/.cache-live-2`, or `SURVEY_CACHE`), the
 page is normalized without PDFs and discovery runs on it with the chosen classifier:
 
 - `gemini`: the real classifier, `GEMINI_API_KEY` from the environment. Before any
@@ -24,7 +24,9 @@ PDF links are scored separately: `current_product` and `shared_terms` must be
 selected for transcription; `related_product` and `irrelevant` must not be.
 `generic_bank_information` is not scored.
 
-With `--label`, the result is written to `data/discovery-check-<label>.json`.
+With `--label`, the result is written to `data/discovery-check-<label>.json`. The
+report keeps every block and table assessment, so `--rescore <report>` can score it
+again after the labels change, without calling Gemini.
 """
 
 from __future__ import annotations
@@ -41,7 +43,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path(__file__).resolve().parents[1]
-CACHE = Path(os.environ.get("SURVEY_CACHE", ROOT / "fix-process/normalization/.cache"))
+CACHE = Path(
+    os.environ.get("SURVEY_CACHE", ROOT / "fix-process/normalization/.cache-live-2")
+)
 sys.path.insert(0, str(ROOT))
 
 from app.config import load_settings  # noqa: E402
@@ -72,6 +76,21 @@ PDF_LABELS = json.loads(
 AS_OF = date.fromisoformat(LABELS["as_of"])
 
 
+def reparsed(artifact: PageArtifact, parser: HtmlArtifactParser) -> PageArtifact:
+    """The capture's page as this branch's parser reads it.
+
+    Captures were stored before blocks carried `site_chrome`; re-parsing the
+    stored rendered HTML gives the blocks, tables and links acquisition would
+    produce today (as the normalization survey does for PDF link context).
+    """
+    parsed = parser.parse(
+        artifact.rendered_html or "", source_url=str(artifact.final_url)
+    )
+    return artifact.model_copy(
+        update={"blocks": parsed.blocks, "tables": parsed.tables, "links": parsed.links}
+    )
+
+
 class _GuardedClassifier:
     """Refuses to call the model once the running estimate passes the budget."""
 
@@ -91,7 +110,9 @@ class _GuardedClassifier:
 
     async def classify(self, batch: Any) -> Any:
         if self.spent_usd() >= self.max_usd:
-            raise RuntimeError(f"spend guard: ${self.spent_usd():.4f} >= ${self.max_usd}")
+            raise RuntimeError(
+                f"spend guard: ${self.spent_usd():.4f} >= ${self.max_usd}"
+            )
         self.calls += 1
         return await self.inner.classify(batch)
 
@@ -110,7 +131,10 @@ def _outcome(assessment: SourceAssessment | None) -> str:
         return "missing"
     if assessment.relevance is Relevance.IRRELEVANT:
         return "excluded"
-    if assessment.temporal_status in {TemporalStatus.POSSIBLY_STALE, TemporalStatus.FUTURE}:
+    if assessment.temporal_status in {
+        TemporalStatus.POSSIBLY_STALE,
+        TemporalStatus.FUTURE,
+    }:
         return "excluded"
     return {
         ProductAssociation.CURRENT_PRODUCT: "current",
@@ -136,7 +160,9 @@ def _verdict(expected: str, outcome: str) -> str | None:
     raise ValueError(expected)
 
 
-def _block_label(spec: dict, block, *, in_footer: bool, before_heading: bool, chrome: bool) -> str:
+def _block_label(
+    spec: dict, block, *, in_footer: bool, before_heading: bool, chrome: bool
+) -> str:
     if chrome or in_footer or before_heading:
         return "navigation"
     if any(token in block.text for token in spec.get("text_any", ())):
@@ -156,7 +182,9 @@ async def _discover(service: SourceDiscoveryService, bundle, entry: SeedCatalogE
     if "offering" in parameters:
         from app.domain.source_discovery import OfferingContext
 
-        offering = OfferingContext.from_catalog_entry(entry, page_title=bundle.documents[0].name)
+        offering = OfferingContext.from_catalog_entry(
+            entry, page_title=bundle.documents[0].name
+        )
         kwargs = {"as_of": AS_OF} if "as_of" in parameters else {}
         return await service.discover(bundle, offering, **kwargs)
     return await service.discover(bundle, entry.product)
@@ -178,7 +206,9 @@ def _estimate_usd(plan, price, settings) -> float:
 
 def _pdf_decisions(seed: str, artifact: PageArtifact, parser) -> dict[str, bool]:
     """file name -> selected for transcription, as the code on this branch decides."""
-    parsed = parser.parse(artifact.rendered_html or "", source_url=str(artifact.final_url))
+    parsed = parser.parse(
+        artifact.rendered_html or "", source_url=str(artifact.final_url)
+    )
     decisions: dict[str, bool] = {}
     for document in artifact.downloadable_documents:
         origin = (
@@ -187,13 +217,20 @@ def _pdf_decisions(seed: str, artifact: PageArtifact, parser) -> dict[str, bool]
             else {}
         )
         rebuilt = document.model_copy(
-            update={"origin_block_id": None, "origin_heading_path": (), "nearby_text": "", **origin}
+            update={
+                "origin_block_id": None,
+                "origin_heading_path": (),
+                "nearby_text": "",
+                **origin,
+            }
         )
         admission = assess_pdf_metadata(rebuilt, as_of=AS_OF)
         if admission.temporal_status.value == "historical":
             continue
         name = PDF_LABELS.get(document.sha256, {}).get("file") or document.document_name
-        decisions[name] = decisions.get(name, False) or admission.relevance.value != "irrelevant"
+        decisions[name] = (
+            decisions.get(name, False) or admission.relevance.value != "irrelevant"
+        )
     return decisions
 
 
@@ -205,7 +242,10 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
     parser = HtmlArtifactParser(settings.http.allowed_source_hosts)
     catalog = _catalog()
     guard = None
-    if args.classifier == "gemini":
+    stored = json.loads(Path(args.rescore).read_text()) if args.rescore else None
+    if stored is not None:
+        model = stored["model"]
+    if args.classifier == "gemini" and stored is None:
         from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
 
         key = os.environ.get("GEMINI_API_KEY")
@@ -222,17 +262,22 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         seed = path.name.removesuffix(".artifact.json")
         if args.seed and seed not in args.seed:
             continue
-        artifact = PageArtifact.model_validate_json(path.read_text())
+        artifact = reparsed(PageArtifact.model_validate_json(path.read_text()), parser)
         page_only = artifact.model_copy(update={"downloadable_documents": ()})
-        normalizer = StructuralNormalizationService(artifact_reader=None, pdf_extractor=None)
+        normalizer = StructuralNormalizationService(
+            artifact_reader=None, pdf_extractor=None
+        )
         bundle = await normalizer.normalize(page_only)
         bundles[seed] = (artifact, bundle)
 
     # Estimate the whole run before the first call.
     estimate = 0.0
-    for seed, (artifact, bundle) in bundles.items():
+    for seed, (_artifact, bundle) in bundles.items():
         service = SourceDiscoveryService(
-            None, InMemorySourceDiscoveryRepository(), discovery_settings, model_name=model
+            None,
+            InMemorySourceDiscoveryRepository(),
+            discovery_settings,
+            model_name=model,
         )
         plan_parameters = inspect.signature(service.plan).parameters
         if "offering" in plan_parameters:
@@ -240,14 +285,18 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
 
             plan = await service.plan(
                 bundle,
-                OfferingContext.from_catalog_entry(catalog[seed], page_title=bundle.documents[0].name),
+                OfferingContext.from_catalog_entry(
+                    catalog[seed], page_title=bundle.documents[0].name
+                ),
             )
         else:
             plan = await service.plan(bundle, catalog[seed].product)
         plans.append(plan)
         estimate += _estimate_usd(plan, price, discovery_settings)
     print(f"estimated Gemini cost: ${estimate:.4f} (guard ${args.max_usd:.2f})")
-    if guard is not None and estimate > args.max_usd:
+    if stored is not None:
+        print(f"re-scoring {args.rescore} without Gemini")
+    elif guard is not None and estimate > args.max_usd:
         raise SystemExit("estimate exceeds the spend guard; nothing was sent")
 
     totals = {"lost": 0, "leak": 0, "noise": 0, "scored": 0, "tables_scored": 0}
@@ -255,16 +304,27 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         spec = LABELS["seeds"][seed]
         entry = catalog[seed]
         service = SourceDiscoveryService(
-            guard, InMemorySourceDiscoveryRepository(), discovery_settings, model_name=model
+            guard,
+            InMemorySourceDiscoveryRepository(),
+            discovery_settings,
+            model_name=model,
         )
-        if guard is None:
+        if guard is None or stored is not None:
             result = None
         else:
             result = await _discover(service, bundle, entry)
-        parsed = parser.parse(artifact.rendered_html or "", source_url=str(artifact.final_url))
+        parsed = parser.parse(
+            artifact.rendered_html or "", source_url=str(artifact.final_url)
+        )
         page = bundle.documents[0]
         by_item: dict[str, SourceAssessment] = {}
-        if result is not None:
+        if stored is not None:
+            by_item = {
+                item_id: SourceAssessment.model_validate(value)
+                for item_id, value in stored["seeds"][seed]["assessments"].items()
+            }
+            result = True
+        elif result is not None:
             for assessment in result.assessments:
                 if assessment.scope in {DiscoveryScope.BLOCK, DiscoveryScope.TABLE}:
                     for ref in assessment.source_refs:
@@ -301,13 +361,19 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                         "text": block.text[:100],
                         "expected": expected,
                         "outcome": outcome,
-                        "reason": (by_item[block.id].reason[:200] if block.id in by_item else None),
+                        "reason": (
+                            by_item[block.id].reason[:200]
+                            if block.id in by_item
+                            else None
+                        ),
                     }
                 )
         tables = []
         for table in page.tables:
             expected = spec["tables"].get(table.title or "", "unlabelled")
-            outcome = _outcome(by_item.get(table.id)) if result is not None else "not run"
+            outcome = (
+                _outcome(by_item.get(table.id)) if result is not None else "not run"
+            )
             kind = (
                 _verdict(expected, outcome)
                 if result is not None and expected not in {"unlabelled"}
@@ -327,7 +393,14 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             if kind:
                 counts[kind] += 1
                 failures.append(
-                    {"kind": kind, "item": "table", "path": table.title or "", "text": "", "expected": expected, "outcome": outcome}
+                    {
+                        "kind": kind,
+                        "item": "table",
+                        "path": table.title or "",
+                        "text": "",
+                        "expected": expected,
+                        "outcome": outcome,
+                    }
                 )
         pdf_selected = _pdf_decisions(seed, artifact, parser)
         pdfs = []
@@ -341,17 +414,31 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                 verdict = "leak" if selected else None
             else:
                 verdict = None
-            pdfs.append({"file": name, "label": label, "selected": selected, "failure": verdict})
+            pdfs.append(
+                {"file": name, "label": label, "selected": selected, "failure": verdict}
+            )
         seeds[seed] = {
             "counts": counts,
             "tables": tables,
             "pdfs": pdfs,
             "failures": failures,
-            "llm_batches": result.llm_batch_count if result is not None else None,
+            "llm_batches": (
+                result.llm_batch_count
+                if result is not None and result is not True
+                else None
+            ),
+            # Every block and table assessment, so the run can be re-scored
+            # against changed labels with `--rescore`, without Gemini.
+            "assessments": {
+                item_id: assessment.model_dump(mode="json")
+                for item_id, assessment in by_item.items()
+            },
         }
         for key in ("lost", "leak", "noise", "scored"):
             totals[key] += counts[key]
-        totals["tables_scored"] += sum(1 for t in tables if t["expected"] != "unlabelled")
+        totals["tables_scored"] += sum(
+            1 for t in tables if t["expected"] != "unlabelled"
+        )
         print(
             f"{seed:32} scored={counts['scored']:3} lost={counts['lost']:3} "
             f"leak={counts['leak']:3} noise={counts['noise']:3} "
@@ -373,7 +460,11 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         "pdf_totals": pdf_totals,
         "seeds": seeds,
     }
-    if guard is not None:
+    if stored is not None:
+        report["rescored_from"] = args.rescore
+        report["usage"] = stored.get("usage")
+        report["classifier"] = stored.get("classifier")
+    if guard is not None and stored is None:
         usage = guard.inner.usage
         report["usage"] = {
             "calls": guard.calls,
@@ -394,6 +485,11 @@ def main() -> None:
     parser.add_argument("--max-usd", type=float, default=0.40)
     parser.add_argument("--label", default=None)
     parser.add_argument("--seed", action="append")
+    parser.add_argument(
+        "--rescore",
+        default=None,
+        help="score the assessments stored in an earlier report instead of running discovery",
+    )
     args = parser.parse_args()
     report = asyncio.run(run(args))
     if args.label:

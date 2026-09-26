@@ -223,9 +223,7 @@ def _skipped_pdf(relevance: PdfAdmissionRelevance) -> NormalizedDocument:
 @pytest.mark.asyncio
 async def test_sd4_a_pdf_with_no_content_is_decided_by_rule() -> None:
     classifier = _Classifier()
-    bundle = _bundle(
-        _rates_page(), _skipped_pdf(PdfAdmissionRelevance.IRRELEVANT)
-    )
+    bundle = _bundle(_rates_page(), _skipped_pdf(PdfAdmissionRelevance.IRRELEVANT))
 
     result = await _service(classifier).discover(bundle, _offering())
 
@@ -304,7 +302,9 @@ class _FlakyClassifier(_Classifier):
 def _many_sections_page() -> NormalizedDocument:
     return _page(
         *(
-            _block(f"b{index}", f"Section {index} text", heading_path=(f"Heading {index}",))
+            _block(
+                f"b{index}", f"Section {index} text", heading_path=(f"Heading {index}",)
+            )
             for index in range(1, 7)
         )
     )
@@ -318,7 +318,9 @@ async def test_sd6_an_invalid_batch_is_retried_and_split() -> None:
 
     result = await service.discover(_bundle(_many_sections_page()), _offering())
 
-    assert len([a for a in result.assessments if a.scope is DiscoveryScope.SECTION]) == 6
+    assert (
+        len([a for a in result.assessments if a.scope is DiscoveryScope.SECTION]) == 6
+    )
 
 
 @pytest.mark.xfail(strict=True, reason="SD6 not fixed yet")
@@ -377,7 +379,6 @@ async def test_sd9_site_chrome_is_decided_by_rule_and_kept_apart() -> None:
 # --- SD10 --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SD10 not fixed yet")
 def test_sd10_inserting_a_block_leaves_other_section_fingerprints_alone() -> None:
     before = _page(
         _block("b1", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
@@ -404,7 +405,6 @@ def test_sd10_inserting_a_block_leaves_other_section_fingerprints_alone() -> Non
 # --- SD11 --------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SD11 not fixed yet")
 def test_sd11_same_heading_under_different_parents_is_structurally_distinct() -> None:
     page = _page(
         _block("p1", "Fees", heading_path=("Primary", "Terms")),
@@ -417,7 +417,9 @@ def test_sd11_same_heading_under_different_parents_is_structurally_distinct() ->
         candidate
         for candidate in build_discovery_candidates(_bundle(page))
         if candidate.scope is DiscoveryScope.SECTION
-        and any(member.endswith(("::c1", "::c2")) for member in candidate.member_source_ids)
+        and any(
+            member.endswith(("::c1", "::c2")) for member in candidate.member_source_ids
+        )
     ]
 
     assert len(children) == 2
@@ -438,3 +440,149 @@ async def test_sd18_undated_content_is_not_stale_without_evidence() -> None:
 
     section = next(a for a in result.assessments if a.scope is DiscoveryScope.SECTION)
     assert section.temporal_status is TemporalStatus.UNKNOWN
+
+
+# --- Phase 1: candidates and rules, independent of the discovery signature --------
+
+
+def _rule(candidate):
+    from app.services.source_discovery import _rule_assessment
+
+    return _rule_assessment(candidate)
+
+
+def test_sd9_chrome_and_page_header_are_their_own_rule_decided_groups() -> None:
+    from app.domain.source_discovery import CandidateLayout
+
+    page = _page(
+        _block("b1", "Personal", block_type=NormalizedBlockType.LIST, site_chrome=True),
+        _block("b2", "EN • ՀԱՅ", block_type=NormalizedBlockType.LIST),
+        _block("b3", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING),
+        _block("b4", "Rates are 12.9%", heading_path=("Primary", "Construction loan")),
+        _block(
+            "b5",
+            "Down payment from 10%\nNo appraisal fee",
+            block_type=NormalizedBlockType.LIST,
+        ),
+        _block(
+            "b6",
+            "Corporate Governance",
+            heading_path=("Primary", "Construction loan"),
+            block_type=NormalizedBlockType.LIST,
+            site_chrome=True,
+        ),
+    )
+
+    sections = {
+        candidate.layout: candidate
+        for candidate in build_discovery_candidates(_bundle(page))
+        if candidate.scope is DiscoveryScope.SECTION
+        and candidate.layout is not CandidateLayout.CONTENT
+    }
+    content = [
+        candidate
+        for candidate in build_discovery_candidates(_bundle(page))
+        if candidate.scope is DiscoveryScope.SECTION
+        and candidate.layout is CandidateLayout.CONTENT
+    ]
+
+    chrome = sections[CandidateLayout.SITE_CHROME]
+    header = sections[CandidateLayout.PAGE_HEADER]
+    assert chrome.member_source_ids == ("page:1::block::b1", "page:1::block::b6")
+    assert header.member_source_ids == ("page:1::block::b2",)
+    assert _rule(chrome).relevance is Relevance.IRRELEVANT
+    assert _rule(header).product_association is ProductAssociation.GLOBAL_NAVIGATION
+    # The footer block no longer joins the section whose heading it inherited,
+    # and an unheaded list below the first heading is its own item for Gemini.
+    construction = next(c for c in content if c.title == "Construction loan")
+    assert construction.member_source_ids == ("page:1::block::b4",)
+    assert any(
+        c.member_source_ids == ("page:1::block::b5",) and _rule(c) is None
+        for c in content
+    )
+
+
+def test_sd4_pdfs_without_content_get_rule_decisions() -> None:
+    historical = _skipped_pdf(PdfAdmissionRelevance.RELEVANT).model_copy(
+        update={
+            "pdf_admission": PdfAdmission(
+                relevance=PdfAdmissionRelevance.RELEVANT,
+                role=PdfAdmissionRole.PRODUCT_TERMS,
+                temporal_status=PdfTemporalStatus.HISTORICAL,
+                reason="fixture",
+            )
+        }
+    )
+    failed = _skipped_pdf(PdfAdmissionRelevance.AMBIGUOUS).model_copy(
+        update={"extraction_method": "gemini_pdf_unavailable", "pdf_admission": None}
+    )
+
+    decisions = {
+        name: _rule(build_discovery_candidates(_bundle(_rates_page(), document))[-1])
+        for name, document in (
+            ("irrelevant", _skipped_pdf(PdfAdmissionRelevance.IRRELEVANT)),
+            ("ambiguous", _skipped_pdf(PdfAdmissionRelevance.AMBIGUOUS)),
+            ("historical", historical),
+            ("failed", failed),
+        )
+    }
+
+    assert all(value is not None for value in decisions.values())
+    assert all(value.relevance is Relevance.IRRELEVANT for value in decisions.values())
+    assert decisions["historical"].temporal_status is TemporalStatus.POSSIBLY_STALE
+    assert "gemini_pdf_unavailable" in decisions["failed"].reason
+
+
+def test_sd12_pdf_context_keeps_each_page_tables_with_the_page() -> None:
+    from app.domain.normalization import (
+        NormalizedTable,
+        NormalizedTableCell,
+        NormalizedTableRow,
+    )
+
+    def pdf_ref(identifier: str, page: int) -> SourceReference:
+        return SourceReference(
+            source_item_id=identifier,
+            locator=SourceLocator(
+                source_url=PDF_URL, source_type=SourceType.PDF, pdf_page=page
+            ),
+        )
+
+    long_text = "Clause text. " * 2000
+    blocks = tuple(
+        NormalizedBlock(
+            id=f"d:page:{page}:block:0",
+            type=NormalizedBlockType.PARAGRAPH,
+            raw_text=long_text if page == 2 else f"Page {page} opening",
+            text=long_text if page == 2 else f"Page {page} opening",
+            source_refs=(pdf_ref(f"d:page:{page}:block:0", page),),
+        )
+        for page in (1, 2)
+    )
+    cell = NormalizedTableCell(
+        raw_text="Nominal rate", text="Nominal rate", source_refs=(pdf_ref("c", 1),)
+    )
+    table = NormalizedTable(
+        id="d:page:1:table:0",
+        title="Tariffs",
+        headers=("Item", "Value"),
+        rows=(NormalizedTableRow(id="r", cells=(cell, cell)),),
+        source_refs=(pdf_ref("d:page:1:table:0", 1),),
+    )
+    document = NormalizedDocument(
+        id="document:pdf",
+        name="Terms",
+        source_url=PDF_URL,
+        source_type=SourceType.PDF,
+        mime_type="application/pdf",
+        content_sha256="f" * 64,
+        extraction_method="gemini",
+        blocks=blocks,
+        tables=(table,),
+    )
+
+    candidate = build_discovery_candidates(_bundle(_rates_page(), document))[-1]
+
+    text = candidate.context_text
+    assert text.index("TABLE: Tariffs") < text.index("Clause text.")
+    assert "Rows: Nominal rate" in text

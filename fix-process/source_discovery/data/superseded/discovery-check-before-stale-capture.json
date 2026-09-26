@@ -1,0 +1,2352 @@
+{
+  "as_of": "2026-09-26",
+  "classifier": "gemini",
+  "model": "gemini-3.1-flash-lite",
+  "estimated_usd": 0.0904,
+  "totals": {
+    "lost": 12,
+    "leak": 10,
+    "noise": 177,
+    "scored": 1818,
+    "tables_scored": 35
+  },
+  "pdf_totals": {
+    "lost": 0,
+    "leak": 8
+  },
+  "seeds": {
+    "consumer_standard": {
+      "counts": {
+        "lost": 1,
+        "leak": 0,
+        "noise": 1,
+        "scored": 158
+      },
+      "tables": [
+        {
+          "title": "Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Required documents",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "related",
+          "failure": "lost"
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Consumer_loan_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Consumer_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "web-info-eng.pdf",
+          "label": "irrelevant",
+          "selected": true,
+          "failure": "leak"
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Consumer loan",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "lost",
+          "item": "table",
+          "path": "Loan service fees",
+          "text": "",
+          "expected": "current",
+          "outcome": "related"
+        }
+      ],
+      "llm_batches": 4
+    },
+    "credit_line": {
+      "counts": {
+        "lost": 0,
+        "leak": 2,
+        "noise": 27,
+        "scored": 167
+      },
+      "tables": [
+        {
+          "title": "Credit line unsecured",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Required documents",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loans service fee",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Credit_line_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "unsecured_credit_line_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "web-info-eng.pdf",
+          "label": "irrelevant",
+          "selected": true,
+          "failure": "leak"
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Credit line",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer loan",
+          "text": "Consumer loan is a good choice if you are planning to make purchases or payments in cash and repay t",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "We offer a quick and convenient option for purchasing household appliances, computer equipment, smar",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Last updated on 13.07.26 11:00",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Dear User,",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "If you find any discrepancies in the website materials in Armenian, English and Russian languages, o",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "About Bank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Developments & Achievements",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Reports",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Material information",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Ethics in Ameriabank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Bank management",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Corporate Governance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Significant shareholders",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Branches and ATMs",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Shareholders and Investors",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Contacts and Feedback",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Ameria Assistant",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Bank structure",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "News",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "CSR",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Stop Tools",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Ameria team",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Why Ameria",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "For youth",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Generation A",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "Vacancies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Credit line > Terms and conditions > Consumer finance",
+          "text": "HEAD OFFICE",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 4
+    },
+    "mortgage_commercial": {
+      "counts": {
+        "lost": 0,
+        "leak": 1,
+        "noise": 2,
+        "scored": 161
+      },
+      "tables": [
+        {
+          "title": "Tariffs — Loan for Purchase of Commercial Real Estate",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loan service fee",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_commercial_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Purchase commercial real estate",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Purchase commercial real estate > Terms and conditions > Online mortgage loan",
+          "text": "Buying an apartment from the primary market online is real now. On the estate.ameriabank.am platform",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Purchase commercial real estate > Terms and conditions > Construction loan > HEAD OFFICE",
+          "text": "Phone number (+37410) 56 11 11 or (+37412) 56 11 11",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 2
+    },
+    "mortgage_construction": {
+      "counts": {
+        "lost": 0,
+        "leak": 3,
+        "noise": 37,
+        "scored": 169
+      },
+      "tables": [
+        {
+          "title": "Home Construction Loan",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loan for construction of commercial real estate",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "current",
+          "failure": "leak"
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortage_personal_construction_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_commercial_construction_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": true,
+          "failure": "leak"
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Construction loan",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Online mortgage",
+          "text": "Apply online, and, if your application is approved, provide the necessary information and sign\nthe a",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Our renovation loans are intended\nboth for residential and commercial property. Once renovated, the ",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Last updated on 06.08.26 14:42",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Dear User,",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "If you find any discrepancies in the website materials in Armenian, English and Russian languages, o",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "About Bank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Developments & Achievements",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Reports",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Material information",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Ethics in Ameriabank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Bank management",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Corporate Governance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Significant shareholders",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Branches and ATMs",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Shareholders and Investors",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Contacts and Feedback",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Ameria Assistant",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Bank structure",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "News",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "CSR",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Procurement of Bank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Legal acts",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Main correspondent accounts",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Customer rights",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Online form for feedback/complaint",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "List of insurance companies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "List of appraisal companies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Useful links",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Financial security tips",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Stop Tools",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Ameria team",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Why Ameria",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "For youth",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Generation A",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "Vacancies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan",
+          "text": "HEAD OFFICE",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Construction loan > Terms and conditions > Renovation loan > HEAD OFFICE",
+          "text": "Phone number (+37410) 56 11 11 or (+37412) 56 11 11",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "table",
+          "path": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "text": "",
+          "expected": "related",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 3
+    },
+    "mortgage_diaspora": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 20,
+        "scored": 97
+      },
+      "tables": [],
+      "pdfs": [],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Your home\nin Armenia",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Ethics in Ameriabank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Bank management",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Corporate Governance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Significant shareholders",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Branches and ATMs",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Shareholders and Investors",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Contacts and Feedback",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Ameria Assistant",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Bank structure",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "News",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "CSR",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Stop Tools",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Ameria team",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Why Ameria",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "For youth",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Generation A",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "Vacancies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Your home in Armenia > Frequently asked questions",
+          "text": "HEAD OFFICE",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 3
+    },
+    "mortgage_express": {
+      "counts": {
+        "lost": 8,
+        "leak": 0,
+        "noise": 2,
+        "scored": 82
+      },
+      "tables": [
+        {
+          "title": "1. Express Home Purchase Loan (primary market)",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "2. Express Home Purchase Loan (secondary market)",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "3. Express Home Construction Loan",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "4. Express Home Renovation Loan",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_14.07.26_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Quick mortgage loan",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Express Home Purchase Loan (primary market)",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Express Home Purchase Loan (secondary market)",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Express Home Construction Loan",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Express Home Renovation Loan",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Useful information",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Terms of express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Loan service fees",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions",
+          "text": "Loan service fees (effective from 14.07.2026)",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Quick mortgage loan > Terms and conditions > HEAD OFFICE",
+          "text": "Phone number (+37410) 56 11 11 or (+37412) 56 11 11",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 3
+    },
+    "mortgage_no_income_verification": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 26,
+        "scored": 99
+      },
+      "tables": [
+        {
+          "title": "Terms",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "no-verification-mortgage-eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Get a mortgage without income verification",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Dear User,",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "If you find any discrepancies in the website materials in Armenian, English and Russian languages, o",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "About Bank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Developments & Achievements",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Reports",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Material information",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Ethics in Ameriabank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Bank management",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Corporate Governance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Significant shareholders",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Branches and ATMs",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Shareholders and Investors",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Contacts and Feedback",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Ameria Assistant",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Bank structure",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "News",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "CSR",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Stop Tools",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Ameria team",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Why Ameria",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "For youth",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Generation A",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "Vacancies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Get a mortgage without income verification > Terms and conditions",
+          "text": "HEAD OFFICE",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 3
+    },
+    "mortgage_online": {
+      "counts": {
+        "lost": 1,
+        "leak": 1,
+        "noise": 10,
+        "scored": 174
+      },
+      "tables": [
+        {
+          "title": "Tariffs in the case of the primary market",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Tariffs in the case of the secondary market",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_personal_online_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_online_secondary_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Real estate online loan for primary and secondary market",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "lost",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > MyHome.am",
+          "text": "The only unified real estate platform in Armenia.",
+          "expected": "current",
+          "outcome": "related"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Real estate loan for secondary market",
+          "text": "If you have already found your ideal home on the secondary market and are looking for financing opti",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Procurement of Bank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Legal acts",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Main correspondent accounts",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Customer rights",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Online form for feedback/complaint",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "List of insurance companies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "List of appraisal companies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Useful links",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Real estate online loan for primary and secondary market > Terms and conditions > Construction loan",
+          "text": "Financial security tips",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 4
+    },
+    "mortgage_primary": {
+      "counts": {
+        "lost": 2,
+        "leak": 0,
+        "noise": 1,
+        "scored": 169
+      },
+      "tables": [
+        {
+          "title": "Tariffs — Home Purchase Loan (primary market)",
+          "expected": "current",
+          "outcome": "excluded",
+          "failure": "lost"
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "excluded",
+          "failure": null
+        },
+        {
+          "title": "Loan service fees",
+          "expected": "current",
+          "outcome": "excluded",
+          "failure": "lost"
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortgage_personal_purchase_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": true,
+          "failure": "leak"
+        },
+        {
+          "file": "terms_flexible_mortgage_eng.pdf",
+          "label": "related_product",
+          "selected": true,
+          "failure": "leak"
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Real estate loan for primary market",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "lost",
+          "item": "table",
+          "path": "Tariffs — Home Purchase Loan (primary market)",
+          "text": "",
+          "expected": "current",
+          "outcome": "excluded"
+        },
+        {
+          "kind": "lost",
+          "item": "table",
+          "path": "Loan service fees",
+          "text": "",
+          "expected": "current",
+          "outcome": "excluded"
+        }
+      ],
+      "llm_batches": 3
+    },
+    "mortgage_renovation": {
+      "counts": {
+        "lost": 0,
+        "leak": 2,
+        "noise": 1,
+        "scored": 164
+      },
+      "tables": [
+        {
+          "title": "Home Renovation Loan",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loan for renovation of commercial real estate",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "current",
+          "failure": "leak"
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortage_personal_renovation_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_commercial_renovation_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "renovation_loan_special_offer_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": true,
+          "failure": "leak"
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Renovation loan",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "block",
+          "path": "Renovation loan > Terms and conditions > Online mortgage",
+          "text": "Apply online, and, if your application is approved, provide the necessary information and sign\nthe a",
+          "expected": "related",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "table",
+          "path": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "text": "",
+          "expected": "related",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 2
+    },
+    "mortgage_secondary_market": {
+      "counts": {
+        "lost": 0,
+        "leak": 1,
+        "noise": 1,
+        "scored": 171
+      },
+      "tables": [
+        {
+          "title": "Tarifs — Home Purchase Loan (secondary market)",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "expected": "related",
+          "outcome": "current",
+          "failure": "leak"
+        },
+        {
+          "title": "Loan service fee",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "mortage_personal_purchase_Secondary_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "mortgage_personal_express_eng.pdf",
+          "label": "related_product",
+          "selected": true,
+          "failure": "leak"
+        },
+        {
+          "file": "terms_mortgage_lending_campaign_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Floating_Agreement_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "insured-properties.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Real estate loan\nfor secondary market",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "leak",
+          "item": "table",
+          "path": "Express Home Mortgage Loan (Purchase, Construction and Renovation)",
+          "text": "",
+          "expected": "related",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 3
+    },
+    "online_consumer_finance": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 23,
+        "scored": 83
+      },
+      "tables": [
+        {
+          "title": "Terms of installment financing for the purchase of goods",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Payment methods",
+          "expected": "any",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Credit history and score",
+          "expected": "any",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Leaflet_consumer_finance_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "basic_conditions_of_installment_financing-service_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Payment_terminals_arm.pdf",
+          "label": "generic_bank_information",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "web-info.pdf",
+          "label": "irrelevant",
+          "selected": true,
+          "failure": "leak"
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "",
+          "text": "Online consumer finance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Reports",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Material information",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Ethics in Ameriabank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Bank management",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Corporate Governance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Significant shareholders",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Branches and ATMs",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Shareholders and Investors",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Contacts and Feedback",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Ameria Assistant",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Bank structure",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "News",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "CSR",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Stop Tools",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Ameria team",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Why Ameria",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "For youth",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Generation A",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "Vacancies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions",
+          "text": "HEAD OFFICE",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Online consumer finance > Terms and conditions > HEAD OFFICE",
+          "text": "Phone number (+37410) 56 11 11 or (+37412) 56 11 11",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 2
+    },
+    "overdraft": {
+      "counts": {
+        "lost": 0,
+        "leak": 0,
+        "noise": 26,
+        "scored": 124
+      },
+      "tables": [
+        {
+          "title": "Overdrafts via Cards not secured with property (unsecured)",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Required documents",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        },
+        {
+          "title": "Loans service fee",
+          "expected": "current",
+          "outcome": "current",
+          "failure": null
+        }
+      ],
+      "pdfs": [
+        {
+          "file": "Overdraft_unsecured_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "unsecured_overdraft_eng.pdf",
+          "label": "current_product",
+          "selected": true,
+          "failure": null
+        },
+        {
+          "file": "Loan_tariffs_eng.pdf",
+          "label": "shared_terms",
+          "selected": true,
+          "failure": null
+        }
+      ],
+      "failures": [
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Last updated on13.07.26 11:00",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Dear User,",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "If you find any discrepancies in the website materials in Armenian, English and Russian languages, o",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "About Bank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Developments & Achievements",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Reports",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Material information",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Ethics in Ameriabank",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Bank management",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Corporate Governance",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Significant shareholders",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Branches and ATMs",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Shareholders and Investors",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Contacts and Feedback",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Ameria Assistant",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Bank structure",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "News",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "CSR",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Stop Tools",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Ameria team",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Why Ameria",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "For youth",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Generation A",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "Vacancies",
+          "expected": "navigation",
+          "outcome": "current"
+        },
+        {
+          "kind": "noise",
+          "item": "block",
+          "path": "Overdraft > Terms and conditions",
+          "text": "HEAD OFFICE",
+          "expected": "navigation",
+          "outcome": "current"
+        }
+      ],
+      "llm_batches": 4
+    }
+  },
+  "usage": {
+    "calls": 40,
+    "request_attempts": 40,
+    "input_tokens": 101510,
+    "output_tokens": 38918,
+    "thinking_tokens": 0,
+    "spent_usd": 0.0838
+  }
+}

@@ -6,8 +6,8 @@ Reads the normalization survey's captures (`fix-process/normalization/.cache`),
 normalizes each page without PDFs, builds discovery candidates, and reports:
 
 1. per seed: candidates, rule decisions, Gemini items, batches, items cut to the
-   per-item budget, the navigation group, candidates that are pure site chrome,
-   and structural fingerprints shared by several candidates;
+   per-item budget, the navigation group, Gemini items with any site-chrome
+   member, and structural fingerprints shared by several candidates;
 2. per admitted PDF link: the admission result and whether discovery would send
    it to Gemini or decide it by rule, against the hand labels;
 3. for four seeds: how many % values in each current PDF also appear on the page.
@@ -21,6 +21,7 @@ import asyncio
 import collections
 import hashlib
 import json
+import os
 import re
 import sys
 from datetime import date
@@ -42,20 +43,45 @@ from app.services.source_discovery import (  # noqa: E402
     _rule_assessment,
 )
 
-CACHE = ROOT / "fix-process/normalization/.cache"
+# The last live capture of the normalization fix: its stored blocks match this
+# branch's parser. `SURVEY_CACHE` picks another capture folder.
+CACHE = Path(
+    os.environ.get("SURVEY_CACHE", ROOT / "fix-process/normalization/.cache-live-2")
+)
 LABELS = json.loads(
     (ROOT / "fix-process/normalization/data/seed-pdf-labels.json").read_text()
 )
 AS_OF = date.fromisoformat(LABELS["as_of"])
 PERCENT = re.compile(r"\d+(?:[.,]\d+)?\s*%")
-OVERLAP_SEEDS = ("consumer_standard", "mortgage_primary", "overdraft", "mortgage_express")
+OVERLAP_SEEDS = (
+    "consumer_standard",
+    "mortgage_primary",
+    "overdraft",
+    "mortgage_express",
+)
+
+
+def reparsed(artifact: PageArtifact, parser: HtmlArtifactParser) -> PageArtifact:
+    """The capture's page as this branch's parser reads it.
+
+    Captures were stored before blocks carried `site_chrome`; re-parsing the
+    stored rendered HTML gives the blocks, tables and links acquisition would
+    produce today (as the normalization survey does for PDF link context).
+    """
+    parsed = parser.parse(
+        artifact.rendered_html or "", source_url=str(artifact.final_url)
+    )
+    return artifact.model_copy(
+        update={"blocks": parsed.blocks, "tables": parsed.tables, "links": parsed.links}
+    )
 
 
 def _artifacts():
+    parser = HtmlArtifactParser(load_settings().http.allowed_source_hosts)
     for path in sorted(CACHE.glob("*.artifact.json")):
         yield (
             path.name.removesuffix(".artifact.json"),
-            PageArtifact.model_validate_json(path.read_text()),
+            reparsed(PageArtifact.model_validate_json(path.read_text()), parser),
         )
 
 
@@ -69,7 +95,9 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
     settings = load_settings().source_discovery
     print("== 1. Candidates per seed (page only) ==")
     for seed, artifact in _artifacts():
-        parsed = parser.parse(artifact.rendered_html or "", source_url=str(artifact.final_url))
+        parsed = parser.parse(
+            artifact.rendered_html or "", source_url=str(artifact.final_url)
+        )
         bundle = await _page_bundle(artifact)
         candidates = build_discovery_candidates(bundle)
         rules = [c for c in candidates if _rule_assessment(c)]
@@ -84,8 +112,7 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
         chrome = [
             c
             for c in llm
-            if c.member_source_ids
-            and all(m.split("::")[-1] in parsed.chrome_ids for m in c.member_source_ids)
+            if any(m.split("::")[-1] in parsed.chrome_ids for m in c.member_source_ids)
         ]
         shared = collections.Counter(c.structural_fingerprint for c in candidates)
         shared_groups = [
@@ -93,16 +120,19 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
             for fp, n in shared.items()
             if n > 1
         ]
+        print(f"    shared_structural_groups={len(shared_groups)}")
         print(
             f"{seed:32} candidates={len(candidates):3} rule={len(rules):2} "
             f"gemini={len(llm):3} batches={len(batches)} "
             f"cut>{settings.max_chars_per_item}={len(cut)} "
             f"nav_group={[len(c.member_source_ids) for c in nav]} "
             f"nav_rule={[bool(_rule_assessment(c)) for c in nav]} "
-            f"pure_chrome_gemini_items={len(chrome)}"
+            f"gemini_items_with_chrome={len(chrome)}"
         )
         for c in cut:
-            print(f"    cut: {c.scope.value:7} {len(c.context_text):6} chars  {c.title[:60]}")
+            print(
+                f"    cut: {c.scope.value:7} {len(c.context_text):6} chars  {c.title[:60]}"
+            )
         for n, title in shared_groups:
             print(f"    shared structural fingerprint x{n}: {title[:60]}")
 
@@ -111,7 +141,9 @@ def pdf_report(parser: HtmlArtifactParser) -> None:
     print("\n== 2. Admitted PDF links: who decides ==")
     tally: collections.Counter[tuple[str, str]] = collections.Counter()
     for seed, artifact in _artifacts():
-        parsed = parser.parse(artifact.rendered_html or "", source_url=str(artifact.final_url))
+        parsed = parser.parse(
+            artifact.rendered_html or "", source_url=str(artifact.final_url)
+        )
         for document in artifact.downloadable_documents:
             origin = (
                 AcquisitionService._document_origin(parsed, document.link_id)

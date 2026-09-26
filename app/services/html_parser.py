@@ -363,6 +363,7 @@ class HtmlArtifactParser:
                     visible=True,
                     table_id=table_id,
                     key_value=key_value,
+                    site_chrome=block_id in chrome_block_ids,
                 )
             )
         return tuple(blocks), tuple(tables), frozenset(chrome_block_ids)
