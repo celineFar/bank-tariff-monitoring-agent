@@ -210,10 +210,7 @@ class AcquisitionService:
         stored.extend(document.artifact for document in documents)
 
         page_content_hash = self._page_content_hash(
-            canonical_url=parsed.canonical_url,
-            raw_sha256=retrieved.sha256,
-            rendered_html=rendered_html,
-            parsed=parsed,
+            canonical_url=parsed.canonical_url, parsed=parsed
         )
         content_hash = self._content_hash(
             page_content_hash=page_content_hash,
@@ -342,22 +339,18 @@ class AcquisitionService:
         return filename[:1000] or "linked-document.pdf"
 
     @staticmethod
-    def _page_content_hash(
-        *,
-        canonical_url: str,
-        raw_sha256: str,
-        rendered_html: str | None,
-        parsed: ParsedHtml,
-    ) -> str:
-        """Identify the page by its own markup, with nothing linked folded in."""
+    def _page_content_hash(*, canonical_url: str, parsed: ParsedHtml) -> str:
+        """Identify the page by what it shows, with nothing linked folded in.
+
+        Built from the parsed structure only, never from the raw or rendered
+        HTML bytes: the bank's ASP.NET pages carry `__VIEWSTATE`,
+        `__EVENTVALIDATION` and `__RequestVerificationToken` values that change
+        on every request, so hashing the bytes gave an unchanged page a new id
+        on every fetch -- and, through the evidence ids built on it, missed
+        every extraction cache. The bytes are still stored as artifacts.
+        """
         material = {
             "canonical_url": canonical_url,
-            "raw_sha256": raw_sha256,
-            "rendered_sha256": (
-                hashlib.sha256(rendered_html.encode("utf-8")).hexdigest()
-                if rendered_html is not None
-                else None
-            ),
             "blocks": [block.model_dump(mode="json") for block in parsed.blocks],
             "tables": [table.model_dump(mode="json") for table in parsed.tables],
             "links": [link.model_dump(mode="json") for link in parsed.links],
