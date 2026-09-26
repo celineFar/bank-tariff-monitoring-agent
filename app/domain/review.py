@@ -20,6 +20,43 @@ class ReviewReason(StrEnum):
     SOURCE_APPLICABILITY = "source_applicability"
     MISSING_REQUIRED_FIELD = "missing_required_field"
     OCR_EVIDENCE = "ocr_evidence"
+    # Gemini returned a value for the field and it failed a check (RV5).
+    EXTRACTION_INVALID = "extraction_invalid"
+
+
+class ReviewEvidenceUnit(ReviewModel):
+    """One display unit of a review: a table, a window of a section, or a passage.
+
+    It holds references only; the passages' content is read from the snapshot's
+    evidence, which never changes after the snapshot is created (RV7).
+    """
+
+    kind: str = Field(pattern=r"^(table|section|passage)$")
+    key: str = Field(min_length=1, max_length=2000)
+    # The passages shown, in source order, within the display bounds (RV9).
+    evidence_ids: tuple[str, ...] = Field(min_length=1, max_length=60)
+    # The passages that put this unit in the review.
+    seed_ids: tuple[str, ...] = Field(min_length=1, max_length=60)
+    # cited | batch | candidate | ocr | rate_new
+    why: str = Field(min_length=1, max_length=50)
+    # Passages of the unit left out by the bounds.
+    omitted: int = Field(default=0, ge=0)
+
+
+class ReviewEvidenceSet(ReviewModel):
+    """The passages a review is about, decided once, when its signal is raised (RV1)."""
+
+    units: tuple[ReviewEvidenceUnit, ...] = Field(default=(), max_length=10)
+    # IDs Gemini cited that are not in the evidence catalog (RV3).
+    unknown_ids: tuple[str, ...] = Field(default=(), max_length=60)
+
+    @property
+    def shown_ids(self) -> frozenset[str]:
+        return frozenset(i for unit in self.units for i in unit.evidence_ids)
+
+    @property
+    def seed_ids(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(i for unit in self.units for i in unit.seed_ids))
 
 
 class ReviewStatus(StrEnum):
@@ -192,3 +229,6 @@ class ReviewSnapshotUpdate(ReviewModel):
     canonical_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     ready_for_activation: bool
     changes: SnapshotChangeSet | None = None
+    # Audit events written in the same transaction as the decision, e.g.
+    # `review_citation_outside_shown_units` (RV13): {"event_type", "payload"}.
+    audit_events: tuple[dict[str, JsonValue], ...] = ()

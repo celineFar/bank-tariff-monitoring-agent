@@ -301,6 +301,10 @@ class SnapshotAttempt(MonitoringModel):
     previous_accepted_snapshot_id: UUID | None = None
     created_at: datetime
     accepted_at: datetime | None = None
+    # The selected sources as Markdown, for the reviewer's `?` (RV10); never sent
+    # to the model. Written with the snapshot; the repository's general reads
+    # leave it out (it is large) and `selected_sources_markdown(id)` fetches it.
+    selected_sources_markdown: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_state(self) -> SnapshotAttempt:

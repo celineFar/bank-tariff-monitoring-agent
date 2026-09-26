@@ -1,0 +1,224 @@
+{
+ "as_of": "2026-09-26T17:57:20.363517+00:00",
+ "r04": [
+  {
+   "review": "cc9a843f-74d3-51c4-b5ac-9b1c047a9952",
+   "reason": "missing_required_field",
+   "field": "product_name",
+   "status": "rejected",
+   "stored_items": 262,
+   "new_units": [
+    [
+     "table",
+     "Overdraft > Terms and conditions > Card type ¹ > Overdrafts ",
+     25,
+     0
+    ],
+    [
+     "table",
+     "Overdraft > Terms and conditions > Purpose > Loans service f",
+     12,
+     0
+    ]
+   ],
+   "new_seed_passages": [
+    "These terms have been previously known as Retail Lending Terms and Conditions under code 11RBD PL 72",
+    "Card service and cash withdrawal tariffs are subject to Ameriabank CJSC Card Rates and Fees (11RBD P",
+    "If the loan application is considered outside the scoring system, the minimum loan limit is AMD 300,",
+    "Other terms can be applied for applications for scoring-based loans or loans to workers of specific ",
+    "The annual percentage rate (APR) may differ from the above specified values if there is any or a few",
+    "This service is available to the clients who don’t have a line of credit/overdraft.",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Card type ¹ |  | Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Mas",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 1. Term extension for mortgage/investment loans | 0.1% ",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 10. Provision of loan before submitting to the Bank the",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 11. Issuing other consent not established by this docum",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 12. Revision/modification of another loan term not spec",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 2. Granting a grace period for the principal amount of ",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 3. Modification of the condition subsequent for the loa",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 4. Change of the overdraft/line of credit account/card ",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 5. Change of the borrower/co-borrower/guarantor | AMD 5",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 6. Release/substitution of the collateral | AMD 50,000",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 7. Issuing consent for change of a pledged vehicle plat",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 8. Collateral-related change (including change of the c",
+    "Headers: Purpose | Rates and Fees (AMD)\nRow: 9. Change of the loan repayment date | AMD 10,000"
+   ],
+   "new_view_excerpts": 5,
+   "new_view_bytes": 3197,
+   "old_view_excerpts": 20,
+   "old_view_bytes": 9147,
+   "old_view_first": [
+    "Effective date: July 07, 2026 Terms and conditions specified in the Guide may be outdated. For more ",
+    "Information Guide Overdrafts via Cards not secured with property (unsecured)",
+    "The overdraft issued through payment cards offers you an opportunity to use money within the limit o"
+   ],
+   "override_reference_resolves": true,
+   "decision_passages": 262
+  },
+  {
+   "review": "6335829a-6f95-5e46-a655-4c5804f57946",
+   "reason": "missing_required_field",
+   "field": "repayment",
+   "status": "superseded",
+   "stored_items": 262,
+   "new_units": [
+    [
+     "table",
+     "Overdraft > Terms and conditions > Card type ¹ > Overdrafts ",
+     25,
+     0
+    ],
+    [
+     "section",
+     "Overdraft > Terms and conditions",
+     5,
+     72
+    ]
+   ],
+   "new_seed_passages": [
+    "The annual percentage rate (APR) may differ from the above specified values if there is any or a few",
+    "How can I make repayments?"
+   ],
+   "new_view_excerpts": 2,
+   "new_view_bytes": 1331,
+   "old_view_excerpts": 20,
+   "old_view_bytes": 12301,
+   "old_view_first": [
+    "4 The annual percentage rate (APR) may differ from the above specified values if there is any or a f",
+    "4 The annual percentage rate (APR) may differ from the above specified values if there is any or a f",
+    "Headers: Loan attribute | Details Category 1 | Details Category 2\nRow: Early repayment fee | N/A | N"
+   ],
+   "override_reference_resolves": true,
+   "decision_passages": 262
+  },
+  {
+   "review": "f125c1ba-e9a1-5f9e-b613-1d0b25231e4f",
+   "reason": "missing_required_field",
+   "field": "eligibility",
+   "status": "rejected",
+   "stored_items": 262,
+   "new_units": [
+    [
+     "table",
+     "Overdraft > Terms and conditions > Card type ¹ > Overdrafts ",
+     25,
+     0
+    ],
+    [
+     "section",
+     "Overdraft > Terms and conditions",
+     10,
+     67
+    ]
+   ],
+   "new_seed_passages": [
+    "The annual percentage rate (APR) may differ from the above specified values if there is any or a few",
+    "More\n• Procurement of Bank\n• Legal acts\n• Main correspondent accounts\n• Customer rights\n• Online for",
+    "Customer rights"
+   ],
+   "new_view_excerpts": 3,
+   "new_view_bytes": 1811,
+   "old_view_excerpts": 20,
+   "old_view_bytes": 9146,
+   "old_view_first": [
+    "Effective date: July 07, 2026 Terms and conditions specified in the Guide may be outdated. For more ",
+    "Information Guide Overdrafts via Cards not secured with property (unsecured)",
+    "The overdraft issued through payment cards offers you an opportunity to use money within the limit o"
+   ],
+   "override_reference_resolves": true,
+   "decision_passages": 262
+  },
+  {
+   "review": "b8a83cec-372b-5d16-95fb-c05a0aad874c",
+   "reason": "missing_required_field",
+   "field": "repayment",
+   "status": "superseded",
+   "stored_items": 262,
+   "new_units": [
+    [
+     "table",
+     "Overdraft > Terms and conditions > Card type ¹ > Overdrafts ",
+     25,
+     0
+    ],
+    [
+     "section",
+     "Overdraft > Terms and conditions",
+     5,
+     72
+    ]
+   ],
+   "new_seed_passages": [
+    "The annual percentage rate (APR) may differ from the above specified values if there is any or a few",
+    "How can I make repayments?"
+   ],
+   "new_view_excerpts": 2,
+   "new_view_bytes": 1331,
+   "old_view_excerpts": 20,
+   "old_view_bytes": 12301,
+   "old_view_first": [
+    "4 The annual percentage rate (APR) may differ from the above specified values if there is any or a f",
+    "4 The annual percentage rate (APR) may differ from the above specified values if there is any or a f",
+    "Headers: Loan attribute | Details Category 1 | Details Category 2\nRow: Early repayment fee | N/A | N"
+   ],
+   "override_reference_resolves": true,
+   "decision_passages": 262
+  }
+ ],
+ "r05": {
+  "current_before_bytes": 265845,
+  "current_after_bytes": 755,
+  "current_after": {
+   "bank": "ameria",
+   "as_of": "2026-09-26T17:57:20.891692+00:00",
+   "items": [
+    {
+     "product": "consumer_loan",
+     "offering_id": "overdraft",
+     "freshness": "stale",
+     "snapshot_id": "f96de36b-41bb-47c0-add3-7ef8d60f932d",
+     "accepted_at": "2026-09-23T03:46:34.213845+00:00",
+     "age_seconds": 310246.677847,
+     "pending_newer_review": false,
+     "fields": {
+      "fees": "found",
+      "term": "found",
+      "purpose": "found",
+      "variants": "not_stated",
+      "repayment": "found",
+      "eligibility": "found",
+      "loan_amount": "found",
+      "product_name": "found",
+      "interest_rate": "found",
+      "effective_rate": "found",
+      "age_requirements": "found",
+      "formal_terms_names": "not_stated",
+      "required_documents": "found",
+      "special_conditions": "found",
+      "application_channel": "found",
+      "residency_requirements": "found"
+     }
+    }
+   ]
+  },
+  "history_before_bytes": 796542,
+  "history_after_bytes": 10919
+ }
+}

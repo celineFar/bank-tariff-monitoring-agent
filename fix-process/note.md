@@ -58,3 +58,76 @@ decided, why, and where it matters.
 - **Live run settings.** Repairs capped at 1 per offering (production default 3) and a
   $1.55 guard, to fit the $2 budget. The budgeted-mode live pass was dropped when the
   budget ran out; budgeted mode is measured offline only.
+
+## Reviews (fix-process/reviews/)
+
+Decisions the review-process report left open, taken without asking (plan table Q1–Q11):
+- **`extraction_invalid`** is the new reason for a value that failed a check. Allowed:
+  `select_candidate` (accept Gemini's value after checking), `override`, `reject_all`.
+- **A validation failure on a non-required field is still a review** (as
+  `extraction_invalid`). Dropping it silently would lose data.
+- **Bounds are code constants** (1 unit, a second within `HITL_DOCUMENT_RANK_GAP`; tables
+  whole up to 30 rows; section windows ±2 blocks, ≤ 3,000 characters).
+- **No embeddings** in review ranking; ranking misses are logged instead.
+- **The generic "Information Guide" tagged `current_product` on Overdraft** is a
+  source-discovery issue: hand-off, not fixed here.
+- **No separate table display rendering**: the semantic-extraction row records already are
+  the readable form.
+- **`get_current_tariffs` returns freshness and field statuses only** (D5 option i).
+- **`?` shows the selected sources' Markdown saved with the snapshot**, never sent to the
+  model.
+- **The model gets at most 5 seed passages (600 characters each)** per review; the CLI
+  renders the units itself.
+
+### Reviews Phase 1 decisions (2026-09-26)
+
+- **Sibling reviews (found, fixed).** Two reviews of one field in one snapshot (OCR +
+  large rate change) superseded each other through `human_reviews_active_scope_uq` and
+  the repository's supersede-on-create. Fixed in migration `022` (pending reviews unique
+  per field *and* reason) and the supersede query; not in the report.
+- **Unknown IDs with no valid citation.** An `extraction_invalid` answer citing only
+  IDs that do not exist has no candidate (a candidate needs a real reference); its set
+  falls back to the field's call passages, and the unknown IDs are listed.
+- **Empty sets are allowed.** A not-stated field with no labelled passage gets no unit;
+  the CLI says so and offers `?`. No keyword or embedding fallback (Q4).
+- **Test database.** Postgres tests need
+  `TEST_DATABASE_URL=postgresql+asyncpg://tariff:tariff@localhost:5434/tariff_acquisition_test`
+  (local test container); without it they skip.
+
+### Reviews Phase 2 decisions (2026-09-26)
+
+- **Override scope = the whole snapshot.** A reviewer may cite any passage of the
+  snapshot (as before, when the review copied all of it); a citation outside the shown
+  units is allowed and logged (RV13). Restricting to the units would block the
+  reviewer exactly when ranking missed.
+- **Citation quote limit 4,000.** The plan assumed the stored citation already allowed
+  4,000 characters; it allowed 1,500. `EvidenceCitation.quote` now allows 4,000 so
+  the displayed passage, the override check and the saved quote are the same text.
+- **Old rows with non-catalog items** show each cited item as its own passage; no
+  keyword fallback for uncited ones.
+
+### Reviews Phase 4 decisions (2026-09-26)
+
+- **Scope-only questions.** With `get_current_tariffs` reduced to freshness (D5, decided
+  in the report), the `answer_tariff_query` hint for scope-only plans now asks the model
+  to ask which field is wanted, instead of pointing it at `get_current_tariffs` for
+  values. Risk: "show me the overdraft terms" now needs one clarification turn; every
+  value shown stays citable.
+- **History payload trimmed too** (not in the plan; same cause). `get_tariff_history`
+  keeps values and change sets, drops each snapshot's evidence and extraction record.
+- **Run attribution uses `temp:` state**, so nothing about the run is persisted in the
+  chat session; it is matched on the invocation id as well.
+
+### Reviews Phase 5 (validation) decisions (2026-09-26)
+
+- **R03 input changed.** The plan assumed the semantic-extraction cache held real answers
+  for all 13 seeds; it holds one seed's 3 calls, the S06 reports keep no citations, and
+  the $2 budget is spent. R03 ran on that seed's real answers plus all 13 real catalogs
+  with an extractor that finds nothing. No paid call was made.
+- **Ranking change from R03.** Ties broken by precedence then tables, and the best table
+  takes the second slot after a non-table unit. Chosen because the misses were
+  structural (page order, headline sections), not vocabulary; it adds no keyword.
+- **No live chat review** was run (needs Gemini spend). Covered by unit and Postgres tests.
+- **Merge.** `fix/reviews` is merged into `integration/process-fixes`, like the earlier
+  fixes (see Branches).
+

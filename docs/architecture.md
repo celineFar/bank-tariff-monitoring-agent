@@ -91,7 +91,11 @@ shell, or SQL tool.
   `get_current_tariffs` and `get_tariff_history` take no scope argument and read only
   that grant; the monitoring offer is derived from it; `run_tariff_monitoring`
   needs a separate spend grant bound to the invocation. See
-  `docs/agent-and-tool-architecture.md` §3.
+  `docs/agent-and-tool-architecture.md` §3. The model-facing payloads are not the
+  stored records: `get_current_tariffs` returns freshness and each field's status
+  (no values, no evidence), and `get_tariff_history` returns snapshot values and
+  change sets without the evidence catalog or extraction record. The REST routes
+  return the full results.
 - `POST /api/v1/tariffs/query`: resolves a query server-side and uses the same
   `StructuredTariffQueryService` as ADK. It rejects caller-supplied scope fields
   and never triggers acquisition.
@@ -105,7 +109,10 @@ shell, or SQL tool.
   builds an equivalent typed plan from its own product/offering scope and
   returns fact-evidence citations; the model cannot change the switch.
 - `app/services/model_call_usage.py` and `model_call_usage`: redacted, dated paid-tier
-  model call/cost ledger shared by direct Gemini adapters and ADK callbacks. The
+  model call/cost ledger shared by direct Gemini adapters and ADK callbacks. A chat
+  model call made in an invocation that executes or resumes a monitoring run records
+  that run: the monitoring node sets `temp:monitoring_active_run` on the invocation's
+  state. The
   read-only `scripts/model_cost_report.py` reports known and unknown costs;
   `docs/model-cost-monitoring.md` records coverage and pricing assumptions.
 - `app/repositories/embedding_cache.py` and migration `012`: document-text vectors
@@ -658,8 +665,21 @@ re-reads business state on every run.
 Typed review tasks are durable business records tied to candidate snapshots. Candidate
 documents and chunks are persisted
 inactive; they cannot displace the prior accepted active version. Same-scope newer reviews
-supersede older pending reviews under a database lock and uniqueness constraint. A native
-decision is validated against its field schema and captured evidence. After all reviews
+supersede older pending reviews under a database lock and uniqueness constraint (pending
+reviews are unique per field *and* reason since migration `022`, so sibling reviews of one
+snapshot coexist). A native decision is validated against its field schema and captured
+evidence.
+
+`app/services/review_evidence.py` decides each review's evidence set when its signal is
+raised (`detect_review_signals`): bounded display units (a table, a section window, a
+passage) stored as evidence IDs on the review. `ReviewResolutionService` and
+`ReviewDecisionService` resolve those IDs against the snapshot's evidence; the pause sent
+through the conversation carries at most 5 seed excerpts, and the CLI renders the units
+through `ReviewDisplayService` (`ApplicationContainer.review_display`). Snapshots store the
+selected sources' Markdown (`tariff_snapshots.selected_sources_markdown`, read on its own)
+for the reviewer's `?`. An override citing a passage outside the shown units writes
+`review_citation_outside_shown_units` in the decision's transaction
+(`ReviewSnapshotUpdate.audit_events`). After all reviews
 for a snapshot are approved, one database transaction updates and accepts the snapshot,
 records its change set, activates candidate documents/chunks, retires replaced active
 versions, and completes the offering. Rejection leaves the previous accepted publication

@@ -429,6 +429,22 @@ def select_units(
     return items, left_out, limited
 
 
+def field_unit_scores(
+    units: tuple[EvidenceUnit, ...], field: ExtractionField
+) -> dict[str, float]:
+    """Each unit's label score for `field`, as the budgeted selection ranks it.
+
+    Reviews use it to find the unit a field would have been read from (RV1)."""
+    weights = _term_weights(units)
+    return {unit.key: _score(unit, field, weights) for unit in units}
+
+
+def labelled_for(item: EvidenceItem, field: ExtractionField) -> bool:
+    """Whether the item's labels (never its body) name `field`."""
+    text = " ".join(_labels(item))
+    return any(term_pattern(term).search(text) for term in FIELD_TERMS[field])
+
+
 def _term_weights(units: tuple[EvidenceUnit, ...]) -> dict[str, float]:
     """Inverse unit frequency: a term on every unit ("loan") counts for little."""
     count = len(units)

@@ -94,6 +94,12 @@ class PostgresReviewRepository:
                               AND offering_id = :offering_id
                               AND issue_scope = :issue_scope
                               AND status = 'pending'
+                              -- A sibling review of the same snapshot (same
+                              -- field, another reason) is not superseded.
+                              AND (
+                                  snapshot_id IS DISTINCT FROM :snapshot_id
+                                  OR reason_code = :reason_code
+                              )
                             RETURNING id, run_id, offering_execution_id, offering_id
                             """
                         ),
@@ -101,6 +107,8 @@ class PostgresReviewRepository:
                             "product": review.product.value,
                             "offering_id": review.offering_id.value,
                             "issue_scope": review.issue_scope,
+                            "snapshot_id": review.snapshot_id,
+                            "reason_code": review.reason.value,
                             "created_at": review.created_at,
                         },
                     )
@@ -329,6 +337,28 @@ class PostgresReviewRepository:
                     "canonical_sha256": update.canonical_sha256,
                 },
             )
+            for event in update.audit_events:
+                # Written with the decision, so a logged ranking miss (RV13)
+                # always belongs to a decision that was committed.
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO audit_events (
+                            run_id, offering_execution_id, event_type, payload
+                        )
+                        VALUES (
+                            :run_id, :offering_execution_id, :event_type,
+                            CAST(:payload AS jsonb)
+                        )
+                        """
+                    ),
+                    {
+                        "run_id": current.run_id,
+                        "offering_execution_id": current.offering_execution_id,
+                        "event_type": str(event["event_type"]),
+                        "payload": _json(event.get("payload") or {}),
+                    },
+                )
             unresolved = await session.scalar(
                 text(
                     """

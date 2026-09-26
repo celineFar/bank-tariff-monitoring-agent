@@ -42,6 +42,7 @@ from app.domain.review import ReviewDecisionInput, ReviewDecisionType, ReviewTas
 from app.repositories.contracts import RunRepository
 from app.services.contracts import TariffPipeline
 from app.services.failure_mapping import explain_failure_code
+from app.services.model_call_usage import ACTIVE_RUN_STATE_KEY
 from app.services.monitoring_progress import (
     PipelineProgress,
     ProgressKind,
@@ -192,6 +193,12 @@ def build_monitoring_node(
                 ).model_dump(mode="json")
                 return
 
+        # The chat model calls of this invocation now belong to this run (RV12).
+        ctx.state[ACTIVE_RUN_STATE_KEY] = {
+            "run_id": str(run.id),
+            "invocation_id": ctx.invocation_id,
+        }
+
         # 2. Execute it here if nobody has claimed it yet.
         if run.status is RunStatus.QUEUED:
             claimed = await runs.claim(run.id, owner)
@@ -244,10 +251,12 @@ def build_monitoring_node(
             for task in pending:
                 position = ordered.index(task.id) + 1 if task.id in ordered else 1
                 attempt, reply = _latest_reply(resume, run.id, task.id)
+                passages = await resolution.passages(task)
                 if reply is None:
                     yield _review_request(
                         resolution,
                         task,
+                        passages,
                         run_id=run.id,
                         attempt=1,
                         position=position,
@@ -256,7 +265,7 @@ def build_monitoring_node(
                     return
                 try:
                     decision = resolution.validate(
-                        task, ReviewDecisionInput.model_validate(reply)
+                        task, ReviewDecisionInput.model_validate(reply), passages
                     )
                     await resolution.apply(task, decision, reviewer=ctx.user_id)
                 except ValidationError as exc:
@@ -268,6 +277,7 @@ def build_monitoring_node(
                     yield _review_request(
                         resolution,
                         task,
+                        passages,
                         run_id=run.id,
                         attempt=attempt + 1,
                         position=position,
@@ -279,6 +289,7 @@ def build_monitoring_node(
                     yield _review_request(
                         resolution,
                         task,
+                        passages,
                         run_id=run.id,
                         attempt=attempt + 1,
                         position=position,
@@ -373,6 +384,7 @@ def _latest_reply(
 def _review_request(
     resolution: ReviewResolutionService,
     task: ReviewTask,
+    passages: tuple[dict[str, Any], ...],
     *,
     run_id: UUID,
     attempt: int,
@@ -380,7 +392,7 @@ def _review_request(
     total: int,
     rejected: ReviewInputRejected | None = None,
 ) -> RequestInput:
-    view = resolution.prompt_view(task)
+    view = resolution.prompt_view(task, passages)
     payload: dict[str, Any] = {
         "kind": "tariff_review",
         "view": view.model_dump(mode="json"),

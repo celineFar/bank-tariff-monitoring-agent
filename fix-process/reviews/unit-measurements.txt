@@ -1,0 +1,14 @@
+seed                             passages units tables sections max_table_rows max_section_passages max_section_chars
+consumer_standard                     259    43     12       31             25                   62              8272
+credit_line                           252    46     12       34             29                   61              6687
+mortgage_commercial                   276    32     11       21             50                   80              8979
+mortgage_construction                 443    42     20       22             70                   88              9253
+mortgage_diaspora                      52    17      0       17              0                   11               510
+mortgage_express                      179    29     14       15             13                   17              1261
+mortgage_no_income_verification        72    19      4       15             12                    9               327
+mortgage_online                       361    51     17       34             39                   69              7920
+mortgage_primary                      424    48     21       27             70                   86              9207
+mortgage_renovation                   431    36     16       20             70                   87              9382
+mortgage_secondary_market             387    41     16       25             70                   88              9409
+online_consumer_finance               156    22     14        8             12                   28              3159
+overdraft                             239    53     16       37             24                   22              5378

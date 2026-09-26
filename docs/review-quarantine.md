@@ -2,12 +2,17 @@
 
 Review records are durable business state. `ReviewTask` binds one review reason and issue
 scope to a run, offering execution, candidate snapshot, bounded candidate choices, and
-captured evidence references. The repository creates tasks idempotently, serializes
+captured evidence references: the review's evidence set (`evidence.set`, units of
+evidence IDs decided when the signal was raised), never a copy of the evidence. Rows
+written before migration `022` carry a copy (`evidence.items`) and still work. The repository creates tasks idempotently, serializes
 decisions with row locks, stores ADK workflow correlation separately, and supports
 approved, rejected, superseded, and failed terminal states.
 
 A newer review for the same product, offering, and issue scope deterministically
-supersedes the older pending review. Repeated creation and repeated identical decisions
+supersedes the older pending review from an earlier snapshot. Reviews of the same field
+with different reasons in one snapshot (an OCR reading that is also a large rate change)
+are siblings and both stay pending (migration `022`); each decision removes only its own
+signal. Repeated creation and repeated identical decisions
 are idempotent; a conflicting late decision is rejected.
 
 Documents published with a `candidate` or `review_required` snapshot are inserted with
@@ -30,9 +35,12 @@ decision. See `docs/native-hitl-review.md`.
 
 Snapshot validation blocks unresolved `ambiguous` and `conflicting` fields. Conflicting
 web/PDF citations are preserved as distinct candidates with their evidence references,
-source types, quoted values, and conditions. Missing core tariff fields route to review
-when captured evidence remains usable; a model execution failure without a valid response
-fails the offering without creating a human task. A `found` empty or inapplicable value
+source types, quoted values, and conditions. A required field the extraction did not
+state (or left out of its answer) routes to `missing_required_field`, showing the
+passages its extraction call read. A value Gemini proposed that failed a check, for any
+field, routes to `extraction_invalid` with that value as the candidate and the failed
+checks named. A model execution failure without a valid response fails the offering
+without creating a human task. A `found` empty or inapplicable value
 with official evidence is distinct from unsupported `not_stated` output.
 
 Nominal and effective rate endpoints are compared entry by entry, and an absolute change

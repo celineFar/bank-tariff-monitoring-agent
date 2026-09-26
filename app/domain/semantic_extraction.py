@@ -351,7 +351,8 @@ class EvidenceCitation(ExtractionModel):
     source_item_id: str = Field(min_length=1, max_length=200)
     source_url: HttpUrl
     source_type: SourceType
-    quote: str = Field(min_length=1, max_length=1500)
+    # A reviewer's override quotes the whole passage they were shown (RV11).
+    quote: str = Field(min_length=1, max_length=4000)
     section: str | None = Field(default=None, max_length=1000)
     locator: SourceLocator
     authority: Authority
@@ -640,3 +641,11 @@ class SemanticExtractionResult(ExtractionModel):
     units_left_out: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     # Fields answered by a remembered review decision instead of a new review.
     reused_review_decisions: tuple[dict[str, str], ...] = ()
+    # Per extraction call (batch id), the evidence IDs it was given, for fresh
+    # calls and cache hits alike. A review of a field the call found nothing for
+    # starts from what that call read (RV2). A repair call reads its batch's packet.
+    call_evidence: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    def evidence_read_by(self, batch_id: str) -> tuple[str, ...] | None:
+        """The evidence IDs the call `batch_id` (or the batch it repairs) read."""
+        return self.call_evidence.get(batch_id.split("__repair_", 1)[0])

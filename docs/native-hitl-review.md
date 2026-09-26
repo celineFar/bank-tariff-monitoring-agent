@@ -29,8 +29,8 @@ scheduler or the API started. ADK Web (`/dev-ui/`) is a development surface.
 3. If the pipeline finishes with candidates that need review, the node lists the
    run's pending reviews and yields one `RequestInput` for the first. The invocation
    pauses without calling the model. The CLI renders the review: field, reason,
-   candidate values, and the captured passages that mention the field (ranked
-   before general context, at most 20; `?` shows every passage).
+   candidate values, and the review's evidence units (see
+   [What a review shows](#what-a-review-shows)).
 4. The reviewer types a decision. The CLI validates it locally (a malformed reply is
    re-prompted and never sent) and resumes the invocation. ADK replays the original
    tool call; the node re-runs, finds the answer in `ctx.resume_inputs`, validates it
@@ -44,6 +44,46 @@ scheduler or the API started. ADK Web (`/dev-ui/`) is a development surface.
 
 The pipeline runs once. Re-running the node on each resume costs one PostgreSQL read
 per review, not another acquisition or extraction.
+
+## What a review shows
+
+The passages a review is about are decided once, when its signal is raised, from what
+the pipeline knows at that point (`app/services/review_evidence.py`), and stored on
+the review as references (`evidence.set`); their content is the snapshot's evidence,
+which never changes once the snapshot exists.
+
+| Reason | The review's passages |
+|---|---|
+| `missing_required_field` (a required field not stated, or missing from the answer) | the passages that field's extraction call read, ranked with the planner's label scoring for the field; ties go to higher source precedence, then to tables |
+| `extraction_invalid` (Gemini proposed a value that failed a check) | Gemini's citations that exist; IDs that do not exist are listed apart. The candidate is Gemini's value, and the guidance names the failed checks |
+| `source_applicability`, `ocr_evidence` | the field's (OCR) citations |
+| `official_source_conflict` | one unit per candidate |
+| `large_rate_change` | the new value's citations; before and after in the guidance |
+
+A **unit** is a table, a window of a section (the seed block ± 2 blocks, ≤ 3,000
+characters), or one passage. A review shows one unit, and a second when it ranks within
+`HITL_DOCUMENT_RANK_GAP` of the first (or, for a missing field, the best table when the
+first unit is not one). A table up to 30 passages is shown whole; a larger one shows the
+seed rows ± 3 and says how many it left out. Near-duplicate units (a page table and its
+PDF copy) count once.
+
+The CLI prints each unit with its rows numbered and the rows that put it in the review
+marked `▶`, each passage whole (up to 4,000 characters, the same text the override check
+uses and the saved citation quotes). `?` opens the selected sources as captured
+(Markdown saved with the snapshot) in a pager; `all` lists every passage of the snapshot
+so an override can cite one outside the units. Such a citation is accepted and logged
+as `review_citation_outside_shown_units`: a direct measure of the units missing what the
+reviewer needed.
+
+**The model sees less.** The pause payload carries the guidance, candidates, input
+format and at most 5 seed passages of 600 characters; the CLI reads the units itself,
+through `ReviewDisplayService`. Reviews stored before this change carry a copy of the
+whole evidence catalog (`evidence.items`) and are shown from it.
+
+`extraction_invalid` allows `select_candidate` (accept Gemini's value after checking it),
+`override` and `reject_all`. A decision removes only its own signal (reason and field),
+so an OCR review and a rate-change review of the same field are both decided before the
+snapshot activates.
 
 ## Reviews from runs started elsewhere
 

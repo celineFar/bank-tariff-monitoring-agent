@@ -8,6 +8,7 @@ from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.review import (
     ReviewDecision,
     ReviewDecisionType,
+    ReviewEvidenceSet,
     ReviewReason,
     ReviewSnapshotUpdate,
     ReviewTask,
@@ -24,6 +25,7 @@ from app.domain.semantic_extraction import (
 )
 from app.repositories.contracts import MonitoringSnapshotRepository, ReviewRepository
 from app.repositories.review_memory import ReviewDecisionMemory
+from app.services.review_evidence import PASSAGE_MAX_CHARS, review_passages
 from app.services.semantic_extraction import (
     assemble_reviewed_loan_product,
     validate_review_field_value,
@@ -62,7 +64,6 @@ class ReviewDecisionService:
         if decision.decision_type is ReviewDecisionType.REJECT_ALL:
             return await self._reviews.reject(review_id, reviewer=reviewer)
 
-        evidence_items = _evidence_items(task)
         selected = None
         if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
             selected = next(
@@ -75,11 +76,6 @@ class ReviewDecisionService:
             )
             if selected is None:
                 raise ValueError("selected candidate is outside the review scope")
-            if not set(selected.evidence_references) <= evidence_items.keys():
-                raise ValueError("selected candidate references unavailable evidence")
-        elif decision.decision_type is ReviewDecisionType.OVERRIDE:
-            if decision.evidence_reference not in evidence_items:
-                raise ValueError("override evidence is outside the review scope")
         elif (
             decision.decision_type is ReviewDecisionType.APPROVE
             and task.reason
@@ -94,6 +90,16 @@ class ReviewDecisionService:
         snapshot = await self._snapshots.get(task.snapshot_id)
         if snapshot is None:
             raise LookupError(str(task.snapshot_id))
+        evidence_items = _evidence_items(task, snapshot)
+        if selected is not None and not (
+            set(selected.evidence_references) <= evidence_items.keys()
+        ):
+            raise ValueError("selected candidate references unavailable evidence")
+        if (
+            decision.decision_type is ReviewDecisionType.OVERRIDE
+            and decision.evidence_reference not in evidence_items
+        ):
+            raise ValueError("override evidence is outside the review scope")
         if snapshot.status is not SnapshotStatus.REVIEW_REQUIRED:
             raise ValueError("candidate snapshot is no longer reviewable")
 
@@ -108,6 +114,9 @@ class ReviewDecisionService:
                 evidence_items,
                 selected,
             )
+        miss = _citation_outside_shown_units(task, decision)
+        if miss is not None:
+            update = update.model_copy(update={"audit_events": (miss,)})
         approved = await self._reviews.approve_with_snapshot(
             review_id,
             decision,
@@ -126,7 +135,9 @@ class ReviewDecisionService:
         task: ReviewTask,
         snapshot: SnapshotAttempt,
     ) -> ReviewSnapshotUpdate:
-        validation = _without_review_signal(snapshot.validation, task.issue_scope)
+        validation = _without_review_signal(
+            snapshot.validation, task.issue_scope, task.reason
+        )
         validation["accepted"] = not validation["review_signals"]
         return await self._build_update(
             task,
@@ -219,7 +230,9 @@ class ReviewDecisionService:
         # at review_required until a decision arrives ready_for_activation with
         # no unresolved review left, so the last decision of the batch is the one
         # that publishes and an incomplete batch still publishes nothing.
-        validation = _without_review_signal(snapshot.validation, task.issue_scope)
+        validation = _without_review_signal(
+            snapshot.validation, task.issue_scope, task.reason
+        )
         validation.update(
             {
                 "accepted": (
@@ -305,25 +318,64 @@ def _remembered(
     )
 
 
-def _evidence_items(task: ReviewTask) -> dict[str, dict[str, Any]]:
-    raw_items = task.evidence.get("items", [])
-    if not isinstance(raw_items, list):
-        return {}
+def _evidence_items(
+    task: ReviewTask, snapshot: SnapshotAttempt
+) -> dict[str, dict[str, Any]]:
+    """Every passage a decision may cite: the snapshot's evidence (RV7), or the
+    copy a review row written before this change carries."""
     return {
         str(item["evidence_id"]): item
-        for item in raw_items
-        if isinstance(item, dict) and item.get("evidence_id") is not None
+        for item in review_passages(task, snapshot.evidence)
+        if item.get("evidence_id") is not None
     }
 
 
-def _without_review_signal(validation: dict, issue_scope: str) -> dict:
+def _citation_outside_shown_units(
+    task: ReviewTask, decision: ReviewDecision
+) -> dict[str, Any] | None:
+    """An override citing a passage the review's units did not show: a direct
+    measure of the evidence set missing what the reviewer needed (RV13).
+
+    Only for reviews that store their set; rows written before it showed a
+    ranked copy of everything, so "outside" has no meaning there.
+    """
+    if decision.decision_type is not ReviewDecisionType.OVERRIDE:
+        return None
+    raw = task.evidence.get("set")
+    if not isinstance(raw, dict):
+        return None
+    evidence_set = ReviewEvidenceSet.model_validate(raw)
+    if decision.evidence_reference in evidence_set.shown_ids:
+        return None
+    return {
+        "event_type": "review_citation_outside_shown_units",
+        "payload": {
+            "review_id": str(task.id),
+            "reason": task.reason.value,
+            "field": task.issue_scope,
+            "evidence_id": decision.evidence_reference,
+            "shown_units": [unit.key for unit in evidence_set.units],
+        },
+    }
+
+
+def _without_review_signal(
+    validation: dict, issue_scope: str, reason: ReviewReason
+) -> dict:
+    """The validation without the decided review's own signal.
+
+    Matched on reason *and* scope: approving the OCR review of `interest_rate`
+    must leave that field's `large_rate_change` signal pending (RV6/B4).
+    """
     updated = dict(validation)
     signals = validation.get("review_signals", [])
     signal_items = signals if isinstance(signals, list) else []
     updated["review_signals"] = [
         signal
         for signal in signal_items
-        if not isinstance(signal, dict) or signal.get("issue_scope") != issue_scope
+        if not isinstance(signal, dict)
+        or signal.get("issue_scope") != issue_scope
+        or signal.get("reason") != reason.value
     ]
     return updated
 
@@ -382,7 +434,7 @@ def _citation(
         source_item_id=raw["source_item_id"],
         source_url=raw["locator"]["source_url"],
         source_type=raw["locator"]["source_type"],
-        quote=quote or content[:1500],
+        quote=quote or content[:PASSAGE_MAX_CHARS],
         section=raw.get("section"),
         locator=raw["locator"],
         authority=raw["authority"],

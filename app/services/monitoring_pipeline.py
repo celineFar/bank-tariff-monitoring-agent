@@ -61,7 +61,9 @@ from app.services.monitoring_progress import (
     ProgressSink,
     report_safely,
 )
+from app.services.normalized_renderer import render_normalized_markdown
 from app.services.pipeline_audit_archive import AuditContext, PipelineAuditArchive
+from app.services.review_evidence import cited_evidence_set, evidence_items
 from app.services.snapshot_lifecycle import (
     build_snapshot_attempt,
     compare_accepted_snapshots,
@@ -163,6 +165,7 @@ class IndexingPipeline:
         runs: RunRepository | None = None,
         audit_archive: PipelineAuditArchive | None = None,
         large_rate_change_percentage_points: float = 3.0,
+        review_rank_gap: float = 0.05,
         pdf_selection: PdfLinkSelectionPort | None = None,
         catalog: SeedCatalog | None = None,
     ) -> None:
@@ -179,6 +182,7 @@ class IndexingPipeline:
         self._publications = publications
         self._runs = runs
         self._audit_archive = audit_archive
+        self._review_rank_gap = review_rank_gap
         self._large_rate_change_percentage_points = Decimal(
             str(large_rate_change_percentage_points)
         )
@@ -363,6 +367,7 @@ class IndexingPipeline:
                 before_run_id=run_id,
             ),
         )
+        selected_bundle = build_selected_source_bundle(bundle, discovery)
         snapshot = build_snapshot_attempt(
             run_id=run_id,
             offering_execution_id=offering_execution_id,
@@ -374,6 +379,8 @@ class IndexingPipeline:
             large_rate_change_percentage_points=(
                 self._large_rate_change_percentage_points
             ),
+            review_rank_gap=self._review_rank_gap,
+            selected_sources_markdown=render_normalized_markdown(selected_bundle),
         )
         # The same selection extraction used: the RAG index holds only what
         # source discovery selected for this offering, with its labels.
@@ -382,7 +389,7 @@ class IndexingPipeline:
             run_id=run_id,
             product=offering.product,
             offering_id=offering.offering_id,
-            bundle=build_selected_source_bundle(bundle, discovery),
+            bundle=selected_bundle,
             retrieved_at=artifact.retrieved_at,
             language=offering.language or artifact.language or "en",
             labels=selection.items,
@@ -875,11 +882,17 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
                         },
                     )
                 )
-        evidence: dict[str, object] = {"items": list(snapshot.evidence)}
+        # References, not a copy of the snapshot's evidence (RV7): the passages'
+        # content is read from the snapshot, which never changes once created.
+        evidence: dict[str, object] = {
+            "set": _signal_evidence_set(snapshot, raw_signal)
+        }
+        for key in ("failed_checks", "proposed_value"):
+            if raw_signal.get(key):
+                evidence[key] = raw_signal[key]
         # A rate signal carries the jump it detected, and nothing else on the
-        # review does: it has no candidates, and its evidence is the whole
-        # snapshot's. Without this the reviewer is asked to confirm a change
-        # without being told its size.
+        # review does: it has no candidates. Without this the reviewer is asked
+        # to confirm a change without being told its size.
         if all(key in raw_signal for key in ("previous", "current")):
             evidence["rate_change"] = {
                 "previous": str(raw_signal["previous"]),
@@ -908,6 +921,20 @@ def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:
             )
         )
     return tuple(tasks)
+
+
+def _signal_evidence_set(snapshot, signal: dict) -> dict:
+    """The signal's evidence set; a signal stored before sets existed gets one
+    from its references (RV4)."""
+    raw = signal.get("evidence_set")
+    if isinstance(raw, dict):
+        return raw
+    references = signal.get("evidence_references")
+    return cited_evidence_set(
+        evidence_items(snapshot.evidence),
+        [str(item) for item in references] if isinstance(references, list) else [],
+        why="cited",
+    ).model_dump(mode="json")
 
 
 def _manifest_item(

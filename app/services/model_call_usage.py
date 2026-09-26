@@ -329,6 +329,28 @@ async def observe_model_call(
             _logger.exception("model usage ledger write failed stage=%s", stage)
 
 
+# Set by the monitoring node on the invocation's state while it runs or resumes
+# a run, so the chat model calls of that invocation are attributed to it (RV12).
+# `temp:` state lives for one invocation and is never persisted.
+ACTIVE_RUN_STATE_KEY = "temp:monitoring_active_run"
+
+
+def active_run_id(callback_context) -> UUID | None:
+    """The run the invocation is executing or resuming, if any."""
+    try:
+        value = callback_context.state.get(ACTIVE_RUN_STATE_KEY)
+    except Exception:
+        return None
+    if isinstance(value, dict):
+        if value.get("invocation_id") not in (None, callback_context.invocation_id):
+            return None
+        value = value.get("run_id")
+    try:
+        return UUID(str(value)) if value else None
+    except ValueError:
+        return None
+
+
 def adk_usage_callbacks(
     repository: PostgresModelCallUsageRepository | None,
     *,
@@ -362,9 +384,10 @@ def adk_usage_callbacks(
             latency_ms=max(0, round((time.perf_counter() - started) * 1000)),
             call_id=call_id,
             # A chat model call belongs to its turn (the invocation id above),
-            # not to a monitoring run; pipeline model calls record their run.
+            # and to the monitoring run that turn executes, once the node has
+            # found it (RV12); calls outside a run stay NULL.
             request_id=key[:100],
-            run_id=None,
+            run_id=active_run_id(callback_context),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             error_class=provider_error_class(error),

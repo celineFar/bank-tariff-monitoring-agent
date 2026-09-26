@@ -932,6 +932,44 @@ async def test_newer_same_scope_review_supersedes_pending_review(
 
 
 @pytest.mark.asyncio
+async def test_two_reasons_on_one_field_of_one_snapshot_both_stay_pending(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """An OCR review and a rate-change review of the same field are siblings:
+    neither supersedes the other (reviews fix, migration 022)."""
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id).model_copy(
+        update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+    )
+    await PostgresSnapshotRepository(monitoring_session_factory).save_attempt(snapshot)
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    ocr = await reviews.create(
+        _review_task(
+            run.id,
+            execution.id,
+            snapshot.id,
+            idempotency_key="review:ocr",
+            created_at=snapshot.created_at,
+        ).model_copy(update={"reason": ReviewReason.OCR_EVIDENCE})
+    )
+    rate = await reviews.create(
+        _review_task(
+            run.id,
+            execution.id,
+            snapshot.id,
+            idempotency_key="review:rate",
+            created_at=snapshot.created_at,
+        ).model_copy(
+            update={"reason": ReviewReason.LARGE_RATE_CHANGE, "candidates": ()}
+        )
+    )
+
+    stored = await reviews.get(ocr.id)
+    assert stored is not None and stored.status is ReviewStatus.PENDING
+    assert rate.status is ReviewStatus.PENDING
+
+
+@pytest.mark.asyncio
 async def test_a_paused_chat_review_resumes_in_a_fresh_runner_over_postgres(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -1807,3 +1845,67 @@ async def test_renderer_upgrade_rerenders_units_and_drops_stale_vectors(
     assert all(row.content != "stale" for row in rows)
     assert all(row.vector_cleared and row.embedding_model is None for row in rows)
     assert any("minimum nominal interest rate" in row.detail_text for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_keeps_selected_sources_markdown_and_decision_audit_events(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """RV10: the `?` text is saved with the snapshot and read on its own.
+    RV13: audit events on a decision are written in its transaction."""
+    _, run, execution = await _running_offering(monitoring_session_factory)
+    snapshots = PostgresSnapshotRepository(monitoring_session_factory)
+    pending = _snapshot(run.id, execution.id).model_copy(
+        update={
+            "status": SnapshotStatus.REVIEW_REQUIRED,
+            "accepted_at": None,
+            "selected_sources_markdown": "# Overdraft\n\n| Rate | 14% |\n",
+        }
+    )
+    await snapshots.save_attempt(pending)
+    reviews = PostgresReviewRepository(monitoring_session_factory)
+    review = await reviews.create(
+        _review_task(
+            run.id,
+            execution.id,
+            pending.id,
+            idempotency_key="citation-miss",
+            created_at=pending.created_at,
+        )
+    )
+    update = ReviewSnapshotUpdate(
+        snapshot_id=pending.id,
+        expected_canonical_sha256=pending.canonical_sha256,
+        normalized_tariff=pending.normalized_tariff,
+        semantic_extraction=pending.semantic_extraction,
+        validation={"accepted": False, "review_signals": []},
+        canonical_sha256=pending.canonical_sha256,
+        ready_for_activation=False,
+        audit_events=(
+            {
+                "event_type": "review_citation_outside_shown_units",
+                "payload": {"review_id": str(review.id), "evidence_id": "ev_x"},
+            },
+        ),
+    )
+    await reviews.approve_with_snapshot(
+        review.id,
+        ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
+        update,
+        reviewer="reviewer@example.test",
+    )
+
+    assert await snapshots.selected_sources_markdown(pending.id) == (
+        "# Overdraft\n\n| Rate | 14% |\n"
+    )
+    stored = await snapshots.get(pending.id)
+    assert stored is not None and stored.selected_sources_markdown is None
+    async with monitoring_session_factory() as session:
+        payload = await session.scalar(
+            text(
+                "SELECT payload FROM audit_events WHERE run_id = :run_id "
+                "AND event_type = 'review_citation_outside_shown_units'"
+            ),
+            {"run_id": run.id},
+        )
+    assert payload["evidence_id"] == "ev_x"

@@ -981,6 +981,17 @@ class PostgresSnapshotRepository:
         async with self._session_factory() as session, session.begin():
             return await _insert_snapshot(session, snapshot)
 
+    async def selected_sources_markdown(self, snapshot_id: UUID) -> str | None:
+        """The selected sources' Markdown saved with a snapshot (RV10)."""
+        async with self._session_factory() as session:
+            return await session.scalar(
+                text(
+                    "SELECT selected_sources_markdown FROM tariff_snapshots "
+                    "WHERE id = :id"
+                ),
+                {"id": snapshot_id},
+            )
+
     async def get_latest_accepted(
         self,
         *,
@@ -1456,7 +1467,8 @@ async def _insert_snapshot(session: AsyncSession, snapshot: SnapshotAttempt) -> 
                     canonical_sha256,
                     previous_accepted_snapshot_id,
                     created_at,
-                    accepted_at
+                    accepted_at,
+                    selected_sources_markdown
                 )
                 VALUES (
                     :id,
@@ -1473,7 +1485,8 @@ async def _insert_snapshot(session: AsyncSession, snapshot: SnapshotAttempt) -> 
                     :canonical_sha256,
                     :previous_accepted_snapshot_id,
                     :created_at,
-                    :accepted_at
+                    :accepted_at,
+                    :selected_sources_markdown
                 )
                 ON CONFLICT (run_id, offering_id) DO NOTHING
                 RETURNING id
@@ -1497,6 +1510,7 @@ async def _insert_snapshot(session: AsyncSession, snapshot: SnapshotAttempt) -> 
                 ),
                 "created_at": snapshot.created_at,
                 "accepted_at": snapshot.accepted_at,
+                "selected_sources_markdown": snapshot.selected_sources_markdown,
             },
         )
     ).scalar_one_or_none()

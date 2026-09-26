@@ -7,10 +7,11 @@ matter who asked. It has no ADK dependency.
 
 from __future__ import annotations
 
+import json
 import logging
-import re
 from collections import defaultdict
-from typing import Protocol
+from collections.abc import Sequence
+from typing import Any, Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -28,8 +29,19 @@ from app.domain.review import (
     ReviewTask,
 )
 from app.domain.semantic_extraction import ExtractionField
-from app.repositories.contracts import ReviewRepository, RunRepository
+from app.repositories.contracts import (
+    MonitoringSnapshotRepository,
+    ReviewRepository,
+    RunRepository,
+)
 from app.services.review_decisions import coerce_review_candidate_value
+from app.services.review_evidence import (
+    MODEL_EXCERPT_CHARS,
+    PASSAGE_MAX_CHARS,
+    model_excerpts,
+    review_evidence_set,
+    review_passages,
+)
 from app.services.review_input import (
     ReviewInputError,
     parse_review_field_text,
@@ -42,7 +54,6 @@ logger = logging.getLogger(__name__)
 # One run never carries more reviews than this; a family run creates at most a
 # handful per offering.
 _REVIEW_PAGE = 100
-_EVIDENCE_LIMIT = 20
 
 
 class ReviewDecisionPort(Protocol):
@@ -89,10 +100,12 @@ class ReviewResolutionService:
         runs: RunRepository,
         reviews: ReviewRepository,
         decisions: ReviewDecisionPort,
+        snapshots: MonitoringSnapshotRepository | None = None,
     ) -> None:
         self._runs = runs
         self._reviews = reviews
         self._decisions = decisions
+        self._snapshots = snapshots
 
     async def pending(self, run_id: UUID) -> tuple[ReviewTask, ...]:
         """Pending reviews of one run, in a stable order."""
@@ -106,8 +119,19 @@ class ReviewResolutionService:
         tasks = await self._reviews.list(run_id=run_id, limit=_REVIEW_PAGE)
         return tuple(sorted(tasks, key=lambda task: (task.created_at, str(task.id))))
 
-    def prompt_view(self, task: ReviewTask) -> ReviewPromptView:
-        return build_review_view(task)
+    async def passages(self, task: ReviewTask) -> tuple[dict[str, Any], ...]:
+        """The passages the review's references resolve against (RV7)."""
+        snapshot = (
+            await self._snapshots.get(task.snapshot_id)
+            if self._snapshots is not None and "items" not in task.evidence
+            else None
+        )
+        return review_passages(task, snapshot.evidence if snapshot else ())
+
+    def prompt_view(
+        self, task: ReviewTask, passages: Sequence[dict[str, Any]] = ()
+    ) -> ReviewPromptView:
+        return build_review_view(task, passages)
 
     def input_format(self, task: ReviewTask) -> dict[str, object]:
         return review_input_format(task.issue_scope)
@@ -116,6 +140,7 @@ class ReviewResolutionService:
         self,
         task: ReviewTask,
         reply: ReviewDecision | ReviewDecisionInput,
+        passages: Sequence[dict[str, Any]] = (),
     ) -> ReviewDecision:
         """Return the decision to apply, or raise `ReviewInputRejected`.
 
@@ -145,7 +170,9 @@ class ReviewResolutionService:
         if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
             return self._validate_candidate(task, decision)
         if decision.decision_type is ReviewDecisionType.OVERRIDE:
-            return self._validate_override(task, decision)
+            return self._validate_override(
+                task, decision, review_passages(task, passages)
+            )
         return decision
 
     async def apply(
@@ -350,13 +377,16 @@ class ReviewResolutionService:
         return decision
 
     def _validate_override(
-        self, task: ReviewTask, decision: ReviewDecision
+        self,
+        task: ReviewTask,
+        decision: ReviewDecision,
+        passages: Sequence[dict[str, Any]],
     ) -> ReviewDecision:
-        excerpt = _evidence_excerpt(task, decision.evidence_reference)
+        excerpt = _evidence_excerpt(passages, decision.evidence_reference)
         if excerpt is None:
             raise ReviewInputRejected(
                 "review.invalid_input",
-                "The cited evidence is not part of this review; cite one of the "
+                "The cited evidence is not part of this snapshot; cite one of the "
                 "passages shown.",
             )
         field = _field(task)
@@ -389,12 +419,15 @@ def _field(task: ReviewTask) -> ExtractionField:
         ) from exc
 
 
-def _evidence_excerpt(task: ReviewTask, evidence_id: str | None) -> str | None:
-    raw_items = task.evidence.get("items", [])
-    for raw in raw_items if isinstance(raw_items, list) else ():
-        if isinstance(raw, dict) and raw.get("evidence_id") == evidence_id:
+def _evidence_excerpt(
+    passages: Sequence[dict[str, Any]], evidence_id: str | None
+) -> str | None:
+    """The cited passage as the reviewer saw it: whole, up to the display limit
+    (RV11), so a value is never checked against text the reviewer was not shown."""
+    for raw in passages:
+        if raw.get("evidence_id") == evidence_id:
             content = raw.get("content")
-            return content if isinstance(content, str) else ""
+            return content[:PASSAGE_MAX_CHARS] if isinstance(content, str) else ""
     return None
 
 
@@ -462,43 +495,38 @@ def _with_rate_change(guidance: str, change: object) -> str:
     )[:2000]
 
 
-def build_review_view(task: ReviewTask) -> ReviewPromptView:
-    """The bounded, reason-specific view a reviewer decides from.
+def _with_failed_checks(guidance: str, evidence: dict) -> str:
+    """Name Gemini's value and what it failed, so the reviewer knows what to check."""
+    checks = evidence.get("failed_checks")
+    if not isinstance(checks, list) or not checks:
+        return guidance
+    proposed = evidence.get("proposed_value")
+    lead = (
+        f"Gemini proposed {json.dumps(proposed, ensure_ascii=False)[:600]}; "
+        if proposed is not None
+        else "Gemini gave no usable value; "
+    )
+    failed = "; ".join(str(item) for item in checks[:3])
+    return f"{lead}check failed: {failed}. {guidance}"[:2000]
 
-    Evidence is ranked so candidate passages come first, then passages that
-    name the field, before the 20-passage limit applies.
+
+def build_review_view(
+    task: ReviewTask, passages: Sequence[dict[str, Any]] = ()
+) -> ReviewPromptView:
+    """The bounded, reason-specific view sent with the review pause.
+
+    It is what the model sees: guidance, candidates and at most 5 seed passages,
+    600 characters each (R6, Q11). The reviewer's terminal shows the review's
+    units in full from its own repositories (`ReviewDisplayService`).
     """
     allowed, guidance = review_policy(task.reason)
     guidance = _with_rate_change(guidance, task.evidence.get("rate_change"))
-    raw_items = task.evidence.get("items", [])
-    raw_items = raw_items if isinstance(raw_items, list) else []
-    candidate_references = {
-        reference
-        for candidate in task.candidates
-        for reference in candidate.evidence_references
-    }
-
-    def rank(raw: object) -> int:
-        if not isinstance(raw, dict):
-            return 4
-        if raw.get("evidence_id") in candidate_references:
-            return 0
-        content = str(raw.get("content", "")).casefold()
-        field = task.issue_scope.replace("_", " ").casefold()
-        if field == "term" and re.search(
-            r"\bterm\s*\(months?\)|\bindefinite term\b",
-            content,
-        ):
-            return 1
-        if field in content:
-            return 2
-        return 3
-
+    guidance = _with_failed_checks(guidance, task.evidence)
+    passages = review_passages(task, passages)
+    by_id = {str(raw["evidence_id"]): raw for raw in passages if raw.get("evidence_id")}
+    excerpts = model_excerpts(review_evidence_set(task, passages), by_id)
     evidence = tuple(
-        view
-        for raw in sorted(raw_items, key=rank)
-        if isinstance(raw, dict)
-        if (view := evidence_view(raw)) is not None
+        view for raw in excerpts if (view := evidence_view(raw)) is not None
     )
     return ReviewPromptView(
         review_id=task.id,
@@ -512,7 +540,7 @@ def build_review_view(task: ReviewTask) -> ReviewPromptView:
             ReviewCandidateView.model_validate(candidate.model_dump(mode="json"))
             for candidate in task.candidates
         ),
-        evidence=evidence[:_EVIDENCE_LIMIT],
+        evidence=evidence,
     )
 
 
@@ -551,6 +579,19 @@ def review_policy(
             "it, reject the candidate snapshot, or provide an evidence-linked "
             "structured override.",
         )
+    if reason is ReviewReason.EXTRACTION_INVALID:
+        # Q1: accepting Gemini's value is a candidate selection a human made
+        # after checking it; there is no accepted value to `approve`.
+        return (
+            (
+                ReviewDecisionType.SELECT_CANDIDATE,
+                ReviewDecisionType.OVERRIDE,
+                ReviewDecisionType.REJECT_ALL,
+            ),
+            "Gemini proposed a value for this field that failed a check. Check it "
+            "against the passages: select it if it is right, enter the correct "
+            "value with its passage, or reject the candidate snapshot.",
+        )
     return (
         (ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE),
         "Reject the candidate snapshot or provide a structured value with a reason "
@@ -578,5 +619,5 @@ def evidence_view(raw: dict) -> ReviewEvidenceView | None:
         document_id=(str(raw["document_id"]) if raw.get("document_id") else None),
         page=page if isinstance(page, int) else None,
         section=str(raw["section"]) if raw.get("section") else None,
-        excerpt=content[:1500],
+        excerpt=content[:MODEL_EXCERPT_CHARS],
     )

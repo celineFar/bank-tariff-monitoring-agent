@@ -17,15 +17,22 @@ from app.domain.monitoring import (
     SnapshotStatus,
 )
 from app.domain.pdf_extraction import is_ocr_source_item
+from app.domain.review import ReviewEvidenceSet
 from app.domain.semantic_extraction import (
     EvidenceItem,
     ExtractionField,
+    ExtractionReviewItem,
     ExtractionStatus,
     LoanProduct,
     SemanticExtractionResult,
     SemanticExtractionRunStatus,
 )
 from app.domain.source_discovery import Authority
+from app.services.review_evidence import (
+    UNITS_PER_REVIEW,
+    cited_evidence_set,
+    field_evidence_set,
+)
 
 _OFFICIAL_EVIDENCE_AUTHORITIES = frozenset(
     {
@@ -107,8 +114,10 @@ def build_snapshot_attempt(
     previous_accepted_snapshot_id: UUID | None,
     previous_accepted_snapshot: SnapshotAttempt | None = None,
     large_rate_change_percentage_points: Decimal = Decimal("3"),
+    review_rank_gap: float = 0.05,
+    selected_sources_markdown: str | None = None,
 ) -> SnapshotAttempt:
-    review_signals = detect_review_signals(result)
+    review_signals = detect_review_signals(result, rank_gap=review_rank_gap)
     accepted = extraction_is_acceptable(result) and not review_signals
     source_value: LoanProduct | dict[str, Any]
     if result.loan_product is not None:
@@ -137,6 +146,9 @@ def build_snapshot_attempt(
             previous_accepted_snapshot.normalized_tariff,
             payload,
             threshold=large_rate_change_percentage_points,
+        )
+        rate_signals = tuple(
+            _with_new_value_evidence(signal, result) for signal in rate_signals
         )
         review_signals = (*review_signals, *rate_signals)
         accepted = accepted and not rate_signals
@@ -170,6 +182,7 @@ def build_snapshot_attempt(
         previous_accepted_snapshot_id=previous_accepted_snapshot_id,
         created_at=created_at,
         accepted_at=created_at if accepted else None,
+        selected_sources_markdown=selected_sources_markdown,
     )
 
 
@@ -222,10 +235,25 @@ def non_reviewable_extraction_failure(
 
 def detect_review_signals(
     result: SemanticExtractionResult,
+    *,
+    rank_gap: float = 0.05,
 ) -> tuple[dict[str, JsonValue], ...]:
-    evidence_by_id = {item.evidence_id: item for item in result.evidence_catalog}
+    """One signal per question a human must answer, each with its evidence set.
+
+    The set is decided here, from what the pipeline knows at this point (the
+    field's citations, a candidate's passage, the OCR page, or the passages the
+    field's extraction call read), and stored as references (RV1).
+    """
+    catalog = result.evidence_catalog
+    evidence_by_id = {item.evidence_id: item for item in catalog}
+    canonical_url = _canonical_url(result)
     signals: list[dict[str, JsonValue]] = []
+
+    def cited(ids, why: str, max_units: int = UNITS_PER_REVIEW):
+        return cited_evidence_set(catalog, ids, why=why, max_units=max_units)
+
     for field in result.validated_fields:
+        cited_ids = [item.evidence_id for item in field.evidence]
         if field.status is ExtractionStatus.FOUND:
             ocr_citations = [
                 item
@@ -237,14 +265,11 @@ def detect_review_signals(
                 # read from a text layer. A misrecognised digit must not become
                 # an accepted interest rate without a human looking at it.
                 signals.append(
-                    {
-                        "reason": "ocr_evidence",
-                        "issue_scope": field.field.value,
-                        "field": field.field.value,
-                        "evidence_references": [
-                            item.evidence_id for item in ocr_citations
-                        ],
-                        "candidates": [
+                    _signal(
+                        "ocr_evidence",
+                        field.field.value,
+                        cited([item.evidence_id for item in ocr_citations], "ocr"),
+                        candidates=[
                             {
                                 "candidate_id": item.evidence_id,
                                 "value": item.quote,
@@ -256,7 +281,7 @@ def detect_review_signals(
                             }
                             for item in ocr_citations
                         ],
-                    }
+                    )
                 )
         if field.status is ExtractionStatus.FOUND and any(
             item.authority not in _OFFICIAL_EVIDENCE_AUTHORITIES
@@ -266,49 +291,52 @@ def detect_review_signals(
             for item in field.evidence
         ):
             signals.append(
-                {
-                    "reason": "source_applicability",
-                    "issue_scope": field.field.value,
-                    "field": field.field.value,
-                    "evidence_references": [
-                        item.evidence_id for item in field.evidence
-                    ],
-                }
+                _signal(
+                    "source_applicability",
+                    field.field.value,
+                    cited(cited_ids, "cited"),
+                )
             )
         if field.status is ExtractionStatus.CONFLICTING:
             candidates = _conflict_candidates(field, evidence_by_id)
             signals.append(
-                {
-                    "reason": "official_source_conflict",
-                    "issue_scope": field.field.value,
-                    "field": field.field.value,
-                    "candidates": candidates,
-                }
+                _signal(
+                    "official_source_conflict",
+                    field.field.value,
+                    cited(
+                        [c["candidate_id"] for c in candidates],
+                        "candidate",
+                        max_units=max(UNITS_PER_REVIEW, min(len(candidates), 4)),
+                    ),
+                    candidates=candidates,
+                )
             )
         elif field.status is ExtractionStatus.AMBIGUOUS:
             signals.append(
-                {
-                    "reason": "source_applicability",
-                    "issue_scope": field.field.value,
-                    "field": field.field.value,
-                    "evidence_references": [
-                        item.evidence_id for item in field.evidence
-                    ],
-                }
+                _signal(
+                    "source_applicability",
+                    field.field.value,
+                    cited(cited_ids, "cited"),
+                )
             )
         elif (
             field.field in _REQUIRED_TARIFF_FIELDS
             and field.status is ExtractionStatus.NOT_STATED
         ):
+            # Where the field would have been read from: the passages its own
+            # extraction call read, not the first entries of the catalog (RV2).
             signals.append(
-                {
-                    "reason": "missing_required_field",
-                    "issue_scope": field.field.value,
-                    "field": field.field.value,
-                    "evidence_references": [
-                        item.evidence_id for item in result.evidence_catalog[:20]
-                    ],
-                }
+                _signal(
+                    "missing_required_field",
+                    field.field.value,
+                    field_evidence_set(
+                        catalog,
+                        field.field,
+                        read_ids=result.evidence_read_by(field.batch_id),
+                        canonical_url=canonical_url,
+                        rank_gap=rank_gap,
+                    ),
+                )
             )
     existing_scopes = {
         str(signal["issue_scope"]) for signal in signals if "issue_scope" in signal
@@ -319,14 +347,145 @@ def detect_review_signals(
         if item.raw_result is None and item.raw_response is None:
             continue
         signals.append(
-            {
-                "reason": "missing_required_field",
-                "issue_scope": item.field.value,
-                "field": item.field.value,
-                "evidence_references": list(item.evidence_ids),
-            }
+            _review_item_signal(
+                result,
+                item,
+                canonical_url=canonical_url,
+                rank_gap=rank_gap,
+            )
         )
     return tuple(signals)
+
+
+def _review_item_signal(
+    result: SemanticExtractionResult,
+    item: ExtractionReviewItem,
+    *,
+    canonical_url: str | None,
+    rank_gap: float,
+) -> dict[str, JsonValue]:
+    """A field extraction could not accept (RV5).
+
+    A value that failed a check is `extraction_invalid`, with Gemini's value as
+    the candidate and the failed checks named. A required field Gemini found
+    nothing for (not stated, or missing from its answer) is
+    `missing_required_field`, set from the passages its call read. Any other
+    failure is `extraction_invalid` without a candidate: a field that does not
+    validate is never dropped silently (Q2).
+    """
+    raw = item.raw_result
+    failed_checks = [issue.message[:300] for issue in item.validation_issues][:10]
+    proposed = raw is not None and raw.value_json is not None
+    if (
+        not proposed
+        and item.field in _REQUIRED_TARIFF_FIELDS
+        and (raw is None or raw.status is ExtractionStatus.NOT_STATED)
+    ):
+        return _signal(
+            "missing_required_field",
+            item.field.value,
+            field_evidence_set(
+                result.evidence_catalog,
+                item.field,
+                read_ids=result.evidence_read_by(item.batch_id),
+                canonical_url=canonical_url,
+                rank_gap=rank_gap,
+            ),
+            failed_checks=failed_checks,
+        )
+    cited_ids = [citation.evidence_id for citation in raw.evidence] if raw else []
+    evidence_set = cited_evidence_set(result.evidence_catalog, cited_ids, why="cited")
+    if not evidence_set.units:
+        # Nothing it cited exists: show where the field would have been read.
+        evidence_set = field_evidence_set(
+            result.evidence_catalog,
+            item.field,
+            read_ids=result.evidence_read_by(item.batch_id),
+            canonical_url=canonical_url,
+            rank_gap=rank_gap,
+        ).model_copy(update={"unknown_ids": evidence_set.unknown_ids})
+    candidates: list[dict[str, JsonValue]] = []
+    known = {i.evidence_id: i for i in result.evidence_catalog}
+    valid_citations = [
+        c for c in (raw.evidence if raw else ()) if c.evidence_id in known
+    ]
+    if proposed and valid_citations:
+        candidates.append(
+            {
+                "candidate_id": f"extracted:{item.review_id}",
+                "value": _proposed_value(raw.value_json),
+                "evidence_references": list(
+                    dict.fromkeys(c.evidence_id for c in valid_citations)
+                )[:20],
+                "source_type": known[
+                    valid_citations[0].evidence_id
+                ].locator.source_type.value,
+                "quote": valid_citations[0].quote,
+                "conditions": [],
+            }
+        )
+    signal = _signal(
+        "extraction_invalid",
+        item.field.value,
+        evidence_set,
+        candidates=candidates,
+        failed_checks=failed_checks,
+    )
+    if proposed:
+        signal["proposed_value"] = _proposed_value(raw.value_json)
+    return signal
+
+
+def _with_new_value_evidence(
+    signal: dict[str, JsonValue], result: SemanticExtractionResult
+) -> dict[str, JsonValue]:
+    """A rate change is confirmed against the passages the new value came from
+    (RV4/B6); before and after stay in the signal for the guidance."""
+    cited_ids = [
+        citation.evidence_id
+        for field in result.validated_fields
+        if field.field.value == signal.get("field")
+        for citation in field.evidence
+    ]
+    evidence_set = cited_evidence_set(
+        result.evidence_catalog, cited_ids, why="rate_new"
+    )
+    return {
+        **signal,
+        "evidence_references": list(evidence_set.seed_ids)[:20],
+        "evidence_set": evidence_set.model_dump(mode="json"),
+    }
+
+
+def _proposed_value(value_json: str) -> JsonValue:
+    try:
+        return json.loads(value_json)
+    except ValueError:
+        return value_json
+
+
+def _signal(
+    reason: str,
+    field: str,
+    evidence_set: ReviewEvidenceSet,
+    **extra: JsonValue,
+) -> dict[str, JsonValue]:
+    signal: dict[str, JsonValue] = {
+        "reason": reason,
+        "issue_scope": field,
+        "field": field,
+        # Kept for readers of older signals; the set is the source of truth.
+        "evidence_references": list(evidence_set.seed_ids)[:20],
+        "evidence_set": evidence_set.model_dump(mode="json"),
+    }
+    signal.update({key: value for key, value in extra.items() if value})
+    return signal
+
+
+def _canonical_url(result: SemanticExtractionResult) -> str | None:
+    product = result.loan_product or result.partial_product
+    url = getattr(product, "canonical_url", None) if product else None
+    return str(url) if url else None
 
 
 def detect_large_rate_changes(

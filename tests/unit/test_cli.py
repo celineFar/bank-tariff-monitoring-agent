@@ -21,6 +21,7 @@ from app.domain.models import OfferingId
 from app.domain.monitoring import RunStatus
 from app.domain.review import ReviewDecisionType, ReviewReason
 from app.services.monitoring_node import parse_review_interrupt_id
+from app.services.review_evidence import DisplayPassage, DisplayUnit, ReviewDisplay
 from tests.fixtures.monitoring_node import (
     APP_NAME,
     OFFERING,
@@ -415,21 +416,6 @@ def test_every_cli_process_gets_a_distinct_owner() -> None:
 # --- kept from the pre-redesign CLI -----------------------------------------------
 
 
-def test_cli_evidence_ranks_review_field_passage_first() -> None:
-    item = SimpleNamespace(
-        issue_scope="term",
-        candidates=(),
-        evidence=(
-            SimpleNamespace(evidence_id="generic", excerpt="General conditions"),
-            SimpleNamespace(
-                evidence_id="term",
-                excerpt="Row: Term (months) | Indefinite term",
-            ),
-        ),
-    )
-    assert cli._ordered_evidence(item)[0].evidence_id == "term"
-
-
 def test_cli_bootstrap_hides_adk_experimental_notices() -> None:
     result = subprocess.run(
         [sys.executable, "app/cli_entry.py", "--help"],
@@ -523,49 +509,98 @@ async def test_cli_hides_adk_429_traceback_and_shows_retry_delay(
     assert "Root node" not in caplog.text
 
 
-def test_cli_review_shows_field_passages_before_other_context(capsys) -> None:
-    item = SimpleNamespace(
-        offering_id=OfferingId.OVERDRAFT,
-        issue_scope="term",
-        reason=ReviewReason.MISSING_REQUIRED_FIELD,
-        guidance="Provide a structured override.",
-        candidates=(),
-        evidence=(
-            SimpleNamespace(
-                evidence_id="term-source",
-                source_url="https://example.com/term.pdf",
-                page=2,
-                excerpt="Row: Term (months) | Indefinite term",
-            ),
-            SimpleNamespace(
-                evidence_id="rate-source",
-                source_url="https://example.com/rate.pdf",
-                page=3,
-                excerpt="Nominal interest rate 15%",
-            ),
-            SimpleNamespace(
-                evidence_id="fee-source",
-                source_url="https://example.com/fees.pdf",
-                page=4,
-                excerpt="Fee for revision of another loan term: 0.1%",
-            ),
+def _item(**overrides):
+    values = {
+        "review_id": uuid4(),
+        "offering_id": OfferingId.OVERDRAFT,
+        "issue_scope": "term",
+        "reason": ReviewReason.MISSING_REQUIRED_FIELD,
+        "guidance": "Provide a structured override.",
+        "allowed_decisions": (
+            ReviewDecisionType.OVERRIDE,
+            ReviewDecisionType.REJECT_ALL,
         ),
+        "candidates": (),
+        "evidence": (),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _passage(evidence_id: str, content: str, *, seed: bool = False):
+    return DisplayPassage(
+        evidence_id=evidence_id,
+        content=content,
+        seed=seed,
+        section="Loan terms",
+        source_url="https://example.com/terms.pdf",
+        page=2,
     )
-    cli._show_review(item, 1, 1)
+
+
+def _display(*units, all_passages=(), markdown=None):
+    return ReviewDisplay(
+        units=units,
+        unknown_ids=(),
+        all_passages=all_passages or tuple(p for u in units for p in u.passages),
+        selected_sources_markdown=markdown,
+    )
+
+
+def test_cli_review_shows_units_with_numbered_rows_and_marked_seeds(capsys) -> None:
+    long_row = "Term (months): Indefinite term (until requested back) " + "x" * 900
+    display = _display(
+        DisplayUnit(
+            kind="table",
+            title="Loan terms",
+            passages=(
+                _passage("rate", "Nominal interest rate: 15%"),
+                _passage("term", long_row, seed=True),
+            ),
+            omitted=12,
+            why="batch",
+        )
+    )
+
+    cli._show_review(_item(), 1, 1, display)
+
     output = capsys.readouterr().out
-    assert "term-source" not in output  # Reviewers choose the displayed passage number.
-    assert "Indefinite term" in output
-    assert "Nominal interest rate" not in output
-    assert "revision of another loan term" not in output
-    assert "2 other captured passages" in output
+    assert "term-source" not in output  # Reviewers choose the displayed number.
+    assert "▶ 2" in output and "▶ 1" not in output
+    assert (
+        "Nominal interest rate: 15%" in output
+    )  # the whole unit, not a keyword filter
+    assert output.count("x") >= 900  # whole passages (RV11), not 400 characters
+    assert "12 more passages of this table are not shown" in output
+
+
+def test_cli_review_without_units_points_to_the_sources(capsys) -> None:
+    cli._show_review(_item(), 1, 1, _display())
+
+    assert "No captured passage is labelled for this field" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_cli_override_may_cite_a_passage_outside_the_units(monkeypatch) -> None:
+    shown = _passage("shown", "Loan terms apply", seed=True)
+    elsewhere = _passage("elsewhere", "Repayment: monthly annuity payments")
+    display = _display(
+        DisplayUnit("section", "Loan terms", (shown,), 0, "batch"),
+        all_passages=(shown, elsewhere),
+    )
+    _answers(monkeypatch, "monthly annuity payments", "all", "2")
+
+    decision = await cli._ask_review_decision(
+        _item(issue_scope="repayment"), 1, 1, display
+    )
+
+    assert decision.evidence_reference == "elsewhere"
 
 
 def test_cli_accepts_bare_indefinite_only_with_matching_end_condition() -> None:
     from app.domain.semantic_extraction import ExtractionField
 
-    passage = SimpleNamespace(
-        excerpt="Term (months): Indefinite term (until requested back)"
-    )
+    passage = _passage("term", "Term (months): Indefinite term (until requested back)")
     assert cli._review_value(
         ExtractionField.TERM, "Indefinite term", evidence=(passage,)
     ) == [
@@ -575,7 +610,7 @@ def test_cli_accepts_bare_indefinite_only_with_matching_end_condition() -> None:
         cli._review_value(
             ExtractionField.TERM,
             "Indefinite term",
-            evidence=(SimpleNamespace(excerpt="An indefinite term applies"),),
+            evidence=(_passage("term", "An indefinite term applies"),),
         )
 
 
@@ -649,3 +684,23 @@ async def _in_memory_session_service():
 
 async def _raises_unexpectedly(*args, **kwargs) -> None:
     raise AttributeError("'NoneType' object has no attribute 'run_async'")
+
+
+def test_cli_question_mark_pages_the_saved_sources(monkeypatch, capsys) -> None:
+    from contextlib import nullcontext
+
+    paged = []
+    monkeypatch.setattr(
+        cli.console, "pager", lambda **kwargs: paged.append(kwargs) or nullcontext()
+    )
+    cli._show_sources(_item(), _display(markdown="# Overdraft\n\nRate: 14% a year\n"))
+
+    assert paged and "Rate: 14% a year" in capsys.readouterr().out
+
+
+def test_cli_question_mark_without_saved_sources_lists_every_passage(capsys) -> None:
+    passage = _passage("only", "Repayment: monthly")
+    cli._show_sources(_item(), _display(all_passages=(passage,)))
+
+    output = capsys.readouterr().out
+    assert "no saved source text" in output and "Repayment: monthly" in output
