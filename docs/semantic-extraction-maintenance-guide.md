@@ -5,6 +5,14 @@ guarantees it provides, what it deliberately does not yet do, and how to extend 
 safely. It is intended as a maintenance and implementation guide. For commands and
 artifact names, see [semantic-extraction.md](semantic-extraction.md).
 
+> **Updated by the semantic-extraction fix (2026-09-26).** Sections 4–11 describe the
+> pipeline before that fix in places (row-level keyword packets, cue-word checks,
+> cache-only-when-valid). The current behaviour is summarised in
+> [semantic-extraction.md](semantic-extraction.md) and specified item by item in
+> `fix-process/semantic_extraction/semantic-extraction-fix-plan.md` (SE1–SE26). Of the
+> gaps in section 13, deterministic numeric grounding (13.3) and completeness policy
+> by product subtype (13.7) are now implemented, as SE18 and SE21.
+
 ## 1. Purpose and pipeline boundary
 
 Semantic extraction converts the evidence accepted by source discovery into typed

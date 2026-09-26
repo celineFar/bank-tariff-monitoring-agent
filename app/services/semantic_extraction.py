@@ -21,7 +21,6 @@ from google.genai.errors import APIError
 from pydantic import TypeAdapter, ValidationError
 
 from app.config import SemanticExtractionSettings
-from app.domain.extraction_terms import mentions_field
 from app.domain.models import ProductType
 from app.domain.normalization import NormalizedSourceBundle
 from app.domain.semantic_extraction import (
@@ -426,6 +425,9 @@ class AdkSemanticExtractor:
                         self.usage.output_tokens += metadata.candidates_token_count or 0
                         self.usage.thinking_tokens += metadata.thoughts_token_count or 0
                         self.usage.total_tokens += metadata.total_token_count or 0
+                        self.usage.cached_input_tokens += (
+                            getattr(metadata, "cached_content_token_count", None) or 0
+                        )
                     if (
                         event.is_final_response()
                         and event.content
@@ -1953,13 +1955,14 @@ def _validate_semantic_completeness(
         and batch.canonical_url is not None
     ):
         canonical = str(batch.canonical_url).rstrip("/").casefold()
+        # Any current-product item of the canonical page anchors the name. The
+        # S06 run showed that requiring a product-name *term* in it rejected the
+        # page's own heading ("Real estate loan for primary market") on 7 of 9
+        # mortgage offerings; the rule's point is only "not a PDF title".
         canonical_candidates = tuple(
             item
             for item in target_evidence
             if str(item.locator.source_url).rstrip("/").casefold() == canonical
-            and mentions_field(
-                ExtractionField.PRODUCT_NAME, f"{item.section or ''} {item.content}"
-            )
         )
         cited = {citation.evidence_id for citation in result.evidence}
         if canonical_candidates and not any(

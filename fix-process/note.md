@@ -52,3 +52,9 @@ decided, why, and where it matters.
   for one. On your earlier question "should the fallback list be empty by default?":
   no. Each call now falls back on its own, so one configured successor costs nothing
   until the primary fails.
+- **S06 pass bar.** Adopted as proposed in the scenario, not agreed with the user: ≥ 85%
+  `match` over labelled fields, and no rate or amount `wrong_value` from a wrong column or
+  currency. Result: 104/120 (87%), no wrong values, after re-scoring.
+- **Live run settings.** Repairs capped at 1 per offering (production default 3) and a
+  $1.55 guard, to fit the $2 budget. The budgeted-mode live pass was dropped when the
+  budget ran out; budgeted mode is measured offline only.

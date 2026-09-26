@@ -10,4 +10,9 @@
 
 **Gemini.** None (fake extractor).
 
-## Result: **not run**
+## Result: **PASS**
+
+Raw result: [results/S02.json](results/S02.json). `36 passed, 2 warnings in 3.02s` in
+`tests/unit/test_semantic_extraction_fixes.py`: every Phase 0 reproduction (SE1, SE2, SE4,
+SE10, SE11, SE13–SE18, SE20, SE21, SE25) and the tests added in later phases (SE6 modes,
+SE12 memory, SE19 threshold, SE22 dimensions, SE23/SE24, SE26).

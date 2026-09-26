@@ -10,4 +10,11 @@
 
 **Gemini.** None.
 
-## Result: **not run**
+## Result: **PASS**
+
+Run 2026-09-26, branch `fix/semantic-extraction`. Raw result: [results/S01.json](results/S01.json).
+
+- `1 failed, 1040 passed, 5 skipped, 18 warnings, 3 errors in 153.61s (0:02:33)`.
+- The one failure and three errors are the four tests that need a Gemini key
+  (`test_agent_stream`, three `test_server_e2e` tests); no other failure.
+- `xfail` markers left in `test_semantic_extraction_fixes.py`: **0** (20 at Phase 0).

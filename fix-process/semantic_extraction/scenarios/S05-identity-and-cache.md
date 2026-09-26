@@ -10,4 +10,13 @@
 
 **Gemini.** None (the live re-run uses the cache only).
 
-## Result: **not run**
+## Result: **PASS**
+
+Raw result: [results/S05.json](results/S05.json) (offline);
+[../data/extraction-check-after.json](../data/extraction-check-after.json) `rerun` (live).
+
+- Offline: a paragraph inserted at the start of Mortgage Primary's `<body>` shifts every
+  block id and sets a new page hash; **all 54 tariff-table evidence IDs are unchanged**.
+  A fake extractor's second run on the same cache makes **0 calls**.
+- **Live: re-running the 13 seeds after S06 with the same cache made 0 calls and cost $0.**
+- Budgeted mode: calls whose units did not change keep their key (unit test).

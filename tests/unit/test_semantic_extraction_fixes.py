@@ -1046,3 +1046,66 @@ async def test_se26_repairs_go_to_rates_before_other_fields() -> None:
     # `purpose` is broken in the first call and `fees` in a later one; the one
     # repair allowed goes to the tariff field.
     assert extractor.repaired == [ExtractionField.FEES]
+
+
+def test_se19_product_name_anchored_by_the_page_heading_is_accepted() -> None:
+    """Found by S06: the anchor rule demanded a product-name *term* ("mortgage loan")
+    in the cited canonical-page item and rejected the page's own heading."""
+    from app.domain.semantic_extraction import (
+        EvidenceItem,
+        ExtractionBatch,
+        ValidatedFieldResult,
+    )
+    from app.services.semantic_extraction import _validate_semantic_completeness
+
+    def item(source_item_id: str, text: str, url: str) -> EvidenceItem:
+        return EvidenceItem(
+            evidence_id="ev_" + source_item_id.encode().hex()[:24].ljust(24, "0"),
+            document_id="doc",
+            source_item_id=source_item_id,
+            content=text,
+            role=InformationRole.PRODUCT_TERMS,
+            authority=Authority.OFFICIAL_TERMS,
+            temporal_status=TemporalStatus.CURRENT,
+            precedence=1,
+            product_association=ProductAssociation.CURRENT_PRODUCT,
+            locator=SourceLocator(source_url=url, source_type=SourceType.PAGE),
+        )
+
+    heading = item("b17", "Real estate loan for primary market", URL)
+    faq = item("b90", "Can a mortgage loan be refinanced?", URL)
+    pdf = item(
+        "pdfb1",
+        "Terms of the loan for purchase of residential real estate",
+        "https://ameriabank.am/files/mortgage_personal_purchase_eng.pdf",
+    )
+    batch = ExtractionBatch(
+        id="b",
+        product=ProductType.MORTGAGE,
+        group="identity",
+        fields=(ExtractionField.PRODUCT_NAME,),
+        evidence=(heading, faq, pdf),
+        content_fingerprint="f" * 64,
+        canonical_url=URL,
+    )
+
+    def answer(cited: EvidenceItem):
+        result = ModelFieldResult(
+            field=ExtractionField.PRODUCT_NAME,
+            status=ExtractionStatus.FOUND,
+            value_json=json.dumps(cited.content),
+            evidence=(
+                ModelCitation(evidence_id=cited.evidence_id, quote=cited.content),
+            ),
+        )
+        validated = ValidatedFieldResult(
+            field=ExtractionField.PRODUCT_NAME,
+            status=ExtractionStatus.FOUND,
+            value=cited.content,
+            batch_id="b",
+        )
+        return result, validated
+
+    _validate_semantic_completeness(batch, *answer(heading))
+    with pytest.raises(ValueError, match="anchored to the canonical product page"):
+        _validate_semantic_completeness(batch, *answer(pdf))

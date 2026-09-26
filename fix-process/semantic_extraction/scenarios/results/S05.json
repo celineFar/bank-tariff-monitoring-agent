@@ -1,0 +1,8 @@
+{
+ "scenario": "S05",
+ "passed": true,
+ "table_evidence_ids": 54,
+ "unchanged_after_insertion": true,
+ "first_run_calls": 3,
+ "second_run_calls": 0
+}

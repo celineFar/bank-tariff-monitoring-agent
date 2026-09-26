@@ -97,6 +97,22 @@ def _database_password() -> str:
     ).stdout.strip()
 
 
+# Transcriptions made for the Phase 9 validation of PDFs that had none stored
+# (gitignored; rebuilt by survey/transcribe_missing_pdfs.py).
+LOCAL_TRANSCRIPTIONS = (
+    Path(__file__).resolve().parents[1] / ".cache" / "pdf-transcriptions.json"
+)
+
+
+def _local_transcriptions() -> dict[tuple[str, str], PdfExtractionResponse]:
+    if not LOCAL_TRANSCRIPTIONS.exists():
+        return {}
+    return {
+        tuple(key.split("|", 1)): PdfExtractionResponse.model_validate(value)
+        for key, value in json.loads(LOCAL_TRANSCRIPTIONS.read_text()).items()
+    }
+
+
 async def stored_transcriptions() -> dict[tuple[str, str], PdfExtractionResponse]:
     import asyncpg
 
@@ -119,6 +135,8 @@ async def stored_transcriptions() -> dict[tuple[str, str], PdfExtractionResponse
                 (row["document_sha256"], row["model_name"]),
                 PdfExtractionResponse.model_validate_json(row["response"]),
             )
+    for key, value in _local_transcriptions().items():
+        stored.setdefault(key, value)
     return stored
 
 

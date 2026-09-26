@@ -35,6 +35,7 @@ import asyncio
 import inspect
 import json
 import os
+import re
 import sys
 from collections import Counter
 from datetime import UTC, datetime
@@ -141,33 +142,72 @@ class GuardedExtractor:
         return getattr(self.inner, name)
 
 
+_NUMBER = re.compile(r"\d+(?:[.,]\d{3})*(?:[.,]\d+)?")
+
+
 def _numbers(value: Any) -> set[Decimal]:
-    """Every number in a value, ignoring condition and free-text strings."""
+    """Every number in a value, including those in its text (a rate's formula,
+    a fee's description, a percentage given as a string); never its conditions."""
     found: set[Decimal] = set()
 
-    def walk(node: Any, key: str | None = None) -> None:
+    def text_numbers(text: str) -> None:
+        for match in _NUMBER.finditer(text):
+            raw = match.group(0)
+            for candidate in {raw.replace(",", ""), raw.replace(",", ".")}:
+                try:
+                    found.add(Decimal(candidate).normalize())
+                except InvalidOperation:
+                    continue
+
+    def walk(node: Any) -> None:
         if isinstance(node, bool) or node is None:
             return
         if isinstance(node, (int, float, Decimal)):
             found.add(Decimal(str(node)).normalize())
         elif isinstance(node, str):
-            if key in {"conditions", "value", "formula", "description", "name"}:
-                return
-            try:
-                found.add(Decimal(node).normalize())
-            except InvalidOperation:
-                return
+            text_numbers(node)
         elif isinstance(node, dict):
             for child_key, child in node.items():
-                if child_key == "conditions":
-                    continue
-                walk(child, child_key)
+                if child_key != "conditions":
+                    walk(child)
         elif isinstance(node, (list, tuple)):
             for child in node:
-                walk(child, key)
+                walk(child)
 
     walk(value)
     return found
+
+
+class FileExtractionCache:
+    """The extraction cache kept on disk, so a re-run or a re-score after a
+    validation change costs no model call (the key is the prompt fingerprint)."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._values: dict[str, Any] = (
+            json.loads(path.read_text()) if path.exists() else {}
+        )
+        self.validation_statuses: dict[str, str] = {}
+
+    async def get_exact(self, *, model_name: str, fingerprints: Any, **_: Any):
+        return {
+            fingerprint: ExtractionBatchResponse.model_validate(
+                self._values[f"{model_name}|{fingerprint}"]
+            )
+            for fingerprint in fingerprints
+            if f"{model_name}|{fingerprint}" in self._values
+        }
+
+    async def save(
+        self, *, model_name: str, values: Any, validation_statuses=None, **_: Any
+    ):
+        self.validation_statuses.update(validation_statuses or {})
+        for fingerprint, response in values:
+            self._values[f"{model_name}|{fingerprint}"] = response.model_dump(
+                mode="json"
+            )
+        self._path.parent.mkdir(exist_ok=True)
+        self._path.write_text(json.dumps(self._values))
 
 
 def _jsonable(value: Any) -> Any:
@@ -257,16 +297,41 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
         replay.forbid_gemini()
         extractor = FakeExtractor(categories)
     stored = await replay.stored_transcriptions() if args.pdfs else None
-    report: dict[str, Any] = {"seeds": {}, "extractor": args.extractor, "model": model}
+    limits = settings.semantic_extraction.model_copy(
+        update={
+            key: value
+            for key, value in (
+                ("evidence_mode", args.mode),
+                ("max_repairs_per_run", args.max_repairs),
+            )
+            if value is not None
+        }
+    )
+    report: dict[str, Any] = {
+        "seeds": {},
+        "extractor": args.extractor,
+        "model": model,
+        "evidence_mode": limits.evidence_mode,
+        "max_repairs_per_run": limits.max_repairs_per_run,
+        "pdfs": args.pdfs,
+    }
     totals: Counter[str] = Counter()
+    # One cache for the run, on disk for a live extractor (keys are prompt
+    # fingerprints, so seeds never collide), kept across passes and runs.
+    shared_cache: Any = (
+        FileExtractionCache(BASE / ".cache" / "extraction-cache.json")
+        if args.extractor == "gemini"
+        else InMemorySemanticExtractionRepository()
+    )
+    repositories: dict[str, Any] = {}
     for seed in seeds:
         replayed = await replay.load_seed(seed, parser, catalog, stored_pdfs=stored)
         if isinstance(extractor, FakeExtractor):
             extractor.seed = seed
         service = SemanticExtractionService(
             extractor,
-            InMemorySemanticExtractionRepository(),
-            settings.semantic_extraction,
+            repositories.setdefault(seed, shared_cache),
+            limits,
             model_name=model,
         )
         try:
@@ -286,6 +351,22 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             "pdfs_added": replayed.pdfs_added,
             "pdfs_missing": replayed.pdfs_missing,
             "review_items": sorted(reviewed),
+            "review_issues": {
+                item.field.value: [
+                    issue.message[:200] for issue in item.validation_issues
+                ]
+                for item in result.review_items
+            },
+            "reused_batches": result.reused_batch_count,
+            "call_errors": [
+                {
+                    "call": output.batch_id,
+                    "model": output.model_name,
+                    "error": output.error[:600],
+                }
+                for output in result.raw_batch_outputs
+                if output.error
+            ],
             "fields": fields,
         }
         print(
@@ -298,6 +379,25 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         )
     report["totals"] = dict(totals)
+    if args.repeat > 1:
+        # The same seeds again with the same caches: nothing should reach a model.
+        calls_before = getattr(extractor, "calls", 0)
+        spent_before = guard.spent_usd() if guard is not None else 0.0
+        for seed in seeds:
+            replayed = await replay.load_seed(seed, parser, catalog, stored_pdfs=stored)
+            if isinstance(extractor, FakeExtractor):
+                extractor.seed = seed
+            service = SemanticExtractionService(
+                extractor, repositories[seed], limits, model_name=model
+            )
+            await _extract(service, replayed)
+        report["rerun"] = {
+            "calls": getattr(extractor, "calls", 0) - calls_before,
+            "spent_usd": round(
+                (guard.spent_usd() if guard is not None else 0.0) - spent_before, 4
+            ),
+        }
+        print("re-run:", report["rerun"])
     if guard is not None:
         usage = guard.inner.usage
         report["usage"] = {
@@ -306,11 +406,40 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "thinking_tokens": usage.thinking_tokens,
+            "cached_input_tokens": getattr(usage, "cached_input_tokens", 0),
             "spent_usd": round(guard.spent_usd(), 4),
         }
     else:
         report["usage"] = {"calls": extractor.calls, "spent_usd": 0}
     print("totals:", dict(totals), "usage:", report["usage"])
+    return report
+
+
+def rescore(path: Path) -> dict[str, Any]:
+    """Score a stored report's values again (after a checker or label change)."""
+    report = json.loads(path.read_text())
+    totals: Counter[str] = Counter()
+    for seed, entry in report["seeds"].items():
+        for name, outcome in entry.get("fields", {}).items():
+            label = LABELS["seeds"][seed]["fields"][name]
+            if outcome["outcome"] in {"match", "wrong_value"}:
+                status = "found"
+                rescored = score_field(
+                    label,
+                    type(
+                        "Stored",
+                        (),
+                        {
+                            "status": type("S", (), {"value": status})(),
+                            "value": outcome.get("value"),
+                        },
+                    )(),
+                    False,
+                )
+                entry["fields"][name] = rescored
+            totals[entry["fields"][name]["outcome"]] += 1
+    report["totals"] = dict(totals)
+    report["rescored_from"] = path.name
     return report
 
 
@@ -322,8 +451,14 @@ def main() -> None:
     parser.add_argument("--pdfs", action="store_true")
     parser.add_argument("--max-usd", type=float, default=0.25)
     parser.add_argument("--label", default=None)
+    parser.add_argument("--mode", choices=("full", "budgeted"), default=None)
+    parser.add_argument("--max-repairs", type=int, default=None)
+    parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--rescore", default=None, help="re-score a stored report")
     args = parser.parse_args()
-    report = asyncio.run(run(args))
+    report = rescore(Path(args.rescore)) if args.rescore else asyncio.run(run(args))
+    if args.rescore:
+        print("totals:", report["totals"])
     if args.label:
         path = BASE / "data" / f"extraction-check-{args.label}.json"
         path.write_text(json.dumps(report, indent=1, ensure_ascii=False, default=str))

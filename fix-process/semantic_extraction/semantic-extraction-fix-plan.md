@@ -1,9 +1,10 @@
 # Semantic extraction: problem report and fix plan
 
-Date: 2026-09-26 · Branch: `fix/semantic-extraction` (to be created from
-`integration/process-fixes` at `89f888e`) · Status: **proposed**. Decisions Q1–Q7 are
-settled with the user; Q8 (extraction fallback model) is open.
-Gemini budget for validation: **$2** (Q5).
+Date: 2026-09-26 · Branch: `fix/semantic-extraction` (from `integration/process-fixes` at
+`89f888e`) · Status: **done** (Phases 0–9). All ten scenarios pass
+([scenario-results.md](scenario-results.md)). Q8 was decided without asking the user, as
+instructed (see [../note.md](../note.md)). Gemini spend for validation: **≈ $1.96** of the
+$2 budget (Q5).
 
 ## Scope
 
@@ -102,32 +103,32 @@ Your questions:
 
 | ID | Problem | Severity | Evidence | Status |
 |---|---|---|---|---|
-| SE1 | Table header hierarchy and merged columns are flattened; cells are tied to headers by position | **critical** | confirmed | proposed |
-| SE2 | Headline values are separate blocks from their labels | **high** | confirmed | proposed |
-| SE3 | PDF structure survives only as text the transcription model repeats; transcription runs unpinned | **high** | code | proposed |
-| SE4 | Footnotes are separate evidence items; 46% miss the batch of the row that cites them | **high** | confirmed | proposed |
-| SE5 | Qualifier rows are not sent with the rows they qualify | **high** | confirmed | proposed |
-| SE6 | Row-level keyword ranking drops 22% of current-product facts | **critical** | confirmed | proposed (Q1, Q2) |
-| SE7 | Long items are cut silently | medium | code | proposed |
-| SE8 | Evidence is sent in score order, not document order | medium | confirmed | proposed |
-| SE9 | Most of the prompt is envelope, not evidence | medium | confirmed | proposed |
-| SE10 | Evidence IDs change with unrelated page content and with position | **high** | code | proposed |
-| SE11 | The cache key hashes filler, and misses the prompt and what the model sees | **high** | confirmed | proposed |
-| SE12 | Batches needing review are never cached; review decisions are forgotten | **high** | code | proposed (Q6) |
-| SE13 | A failed batch is reported with another offering's model output | **high** | confirmed | proposed |
-| SE14 | Substring keywords make `not_stated` fail validation | **high** | confirmed | proposed |
-| SE15 | Output normalizers change what values mean | **high** | confirmed | proposed |
-| SE16 | A malformed value crashes the whole offering | medium | confirmed | proposed |
-| SE17 | Rate, amount and fee alternatives may be unconditional | **high** | confirmed | proposed |
-| SE18 | Citations need not contain the value | **high** | code | proposed (Q7) |
-| SE19 | Runtime validators encode single-seed wording | medium | code | proposed |
-| SE20 | Seed-specific rules are hard-coded in shared code | **high** | code | proposed (Q4) |
-| SE21 | Every product family's fields are extracted, then discarded | medium | confirmed | proposed (Q4) |
-| SE22 | Condition names are free text | medium | code (noted in `snapshot_lifecycle.py`) | proposed |
-| SE23 | Extraction runs without temperature 0 or an output cap | medium | code | proposed |
-| SE24 | Retries stack; parse failures are not retried | low | code | proposed |
-| SE25 | One failed batch fails the offering; the fallback rarely triggers and is empty | medium | code | proposed (Q8 open) |
-| SE26 | Batches run one after another; repairs are spent in batch order | low | code | proposed |
+| SE1 | Table header hierarchy and merged columns are flattened; cells are tied to headers by position | **critical** | confirmed | **done** (Phase 2) |
+| SE2 | Headline values are separate blocks from their labels | **high** | confirmed | **done** (Phase 2) |
+| SE3 | PDF structure survives only as text the transcription model repeats; transcription runs unpinned | **high** | code | **done** (Phase 2) |
+| SE4 | Footnotes are separate evidence items; 46% miss the batch of the row that cites them | **high** | confirmed | **done** (Phase 3) |
+| SE5 | Qualifier rows are not sent with the rows they qualify | **high** | confirmed | **done** (Phase 2, 3) |
+| SE6 | Row-level keyword ranking drops 22% of current-product facts | **critical** | confirmed | **done** (Phase 4) |
+| SE7 | Long items are cut silently | medium | code | **done** (Phase 4) |
+| SE8 | Evidence is sent in score order, not document order | medium | confirmed | **done** (Phase 3) |
+| SE9 | Most of the prompt is envelope, not evidence | medium | confirmed | **done** (Phase 3, 4) |
+| SE10 | Evidence IDs change with unrelated page content and with position | **high** | code | **done** (Phase 3) |
+| SE11 | The cache key hashes filler, and misses the prompt and what the model sees | **high** | confirmed | **done** (Phase 7) |
+| SE12 | Batches needing review are never cached; review decisions are forgotten | **high** | code | **done** (Phase 7) |
+| SE13 | A failed batch is reported with another offering's model output | **high** | confirmed | **done** (Phase 1) |
+| SE14 | Substring keywords make `not_stated` fail validation | **high** | confirmed | **done** (Phase 1) |
+| SE15 | Output normalizers change what values mean | **high** | confirmed | **done** (Phase 1) |
+| SE16 | A malformed value crashes the whole offering | medium | confirmed | **done** (Phase 1) |
+| SE17 | Rate, amount and fee alternatives may be unconditional | **high** | confirmed | **done** (Phase 6) |
+| SE18 | Citations need not contain the value | **high** | code | **done** (Phase 6) |
+| SE19 | Runtime validators encode single-seed wording | medium | code | **done** (Phase 6, 9) |
+| SE20 | Seed-specific rules are hard-coded in shared code | **high** | code | **done** (Phase 4, 5) |
+| SE21 | Every product family's fields are extracted, then discarded | medium | confirmed | **done** (Phase 5) |
+| SE22 | Condition names are free text | medium | code (noted in `snapshot_lifecycle.py`) | **done** (Phase 5) |
+| SE23 | Extraction runs without temperature 0 or an output cap | medium | code | **done** (Phase 1) |
+| SE24 | Retries stack; parse failures are not retried | low | code | **done** (Phase 1) |
+| SE25 | One failed batch fails the offering; the fallback rarely triggers and is empty | medium | code | **done** (Phase 8) |
+| SE26 | Batches run one after another; repairs are spent in batch order | low | code | **done** (Phase 8) |
 
 ---
 
@@ -762,9 +763,9 @@ setting (default 16,384), and treat a truncated response as a retryable parse fa
 | Q5 | Gemini budget for validation | **Up to $2.** No live baseline: "before" is the offline replay (the probe). One live pass after the fix, a cache re-run, and a small budgeted-mode pass. | decided (user) | Phases 0, 9 |
 | Q6 | Remember review decisions? | **Yes, per evidence**: reused while the call or the field's result is unchanged; any change re-opens. Every reuse audited. | decided (user) | SE12 |
 | Q7 | Citation grounding | **Enforce numbers**: every number in an accepted value must appear in its cited text, after scalar normalization. | decided (user) | SE18 |
-| Q8 | Which fallback model for extraction? | Proposal: a non-lite model this key can call. `gemini-2.5-flash-lite` answers 404 to this key (source-discovery Q2), and a lite model is a weak fallback for extraction. Phase 8 probes candidates with one small call each and asks the user. | **open** | SE25 |
-| Q9 | Field-level ground truth | Claude drafts `data/seed-extraction-labels.json` from the pages and PDFs; the user confirms it before it is used as a pass criterion (as for source discovery). | proposed | Phases 0, 9 |
-| Q10 | Call layout in full mode | Proposal: 3 calls per offering (SE6); S10 compares it with the 6 groups on cost and label accuracy. | proposed | SE6, SE9 |
+| Q8 | Which fallback model for extraction? | **`gemini-3.8-flash`**: probed on 2026-09-26 (3.8-flash, 3.6-flash and 3.5-flash-lite answer this key; 2.5-flash returns 404); non-lite, same price tier as the primary. Decided without asking the user, as instructed. | decided (Claude) | SE25 |
+| Q9 | Field-level ground truth | Claude drafted `data/seed-extraction-labels.json` from the pages; used for S06 **without** the user's confirmation, as instructed (recorded in `../note.md`). | used, unconfirmed | Phases 0, 9 |
+| Q10 | Call layout in full mode | **3 calls**: 6 calls would send 1.90× the input (S10). | decided (measured) | SE6, SE9 |
 
 **One-time effects on the first production run after deploy.**
 - Evidence IDs change (SE10) and the cache key changes (SE11), so every offering is
@@ -1629,17 +1630,54 @@ Scenarios:
 | S09 | Grounding | a value whose number is not in its citation goes to repair, then review | $0 (fake) |
 | S10 | Cost and layout | prompt tokens per offering, 3-call vs 6-call layout, `cached_content_token_count` recorded; budgeted mode ≤ 50% of full-mode input tokens | in S06 |
 
-- [ ] Run S01–S05 and S07–S09 offline; record results under `scenarios/results/`.
-- [ ] Run S06 (live, full mode) with the spend guard; save
+- [x] Run S01–S05 and S07–S09 offline; record results under `scenarios/results/`.
+- [x] Run S06 (live, full mode) with the spend guard; save
       `data/extraction-check-after.json`.
-- [ ] Run S05's cache re-run live: 0 extraction calls.
+- [x] Run S05's cache re-run live: 0 extraction calls.
 - [ ] Run the budgeted-mode pass on 4 seeds (two mortgage, two consumer); save
-      `data/extraction-check-budgeted.json`.
-- [ ] S10 from the recorded usage; choose the full-mode layout (Q10) and record it.
-- [ ] Write `scenario-results.md` with the results, the spend, and anything that failed.
-- [ ] Update [docs/semantic-extraction.md](../../docs/semantic-extraction.md) and
+      `data/extraction-check-budgeted.json`. *Not run: the $2 budget was spent (S06 plus
+      the confirmation of two fixes). Budgeted mode is measured offline (S03, S10).*
+- [x] S10 from the recorded usage; choose the full-mode layout (Q10) and record it.
+- [x] Write `scenario-results.md` with the results, the spend, and anything that failed.
+- [x] Update [docs/semantic-extraction.md](../../docs/semantic-extraction.md) and
       [docs/semantic-extraction-maintenance-guide.md](../../docs/semantic-extraction-maintenance-guide.md).
-- [ ] Update this plan's Summary statuses and Decisions.
+- [x] Update this plan's Summary statuses and Decisions.
+
+#### Phase 9 notes (2026-09-26)
+
+**State: done, except the live budgeted-mode pass** (budget). Commit: *Semantic extraction
+Phase 9: validation*. All ten scenarios pass; see [scenario-results.md](scenario-results.md).
+Full suite after the last fixes: **1,041 passed**, 5 skipped; only the 4 Gemini-key tests fail.
+
+**Tools added.**
+- [scenarios/run_scenarios.py](scenarios/run_scenarios.py) runs the offline scenarios
+  (S01–S05, S07–S09) and writes `scenarios/results/`.
+- [survey/transcribe_missing_pdfs.py](survey/transcribe_missing_pdfs.py) transcribed the 16
+  labelled PDFs with no stored transcription ($0.093) into
+  `.cache/pdf-transcriptions.json` (gitignored), which `replay.py` reads next to the
+  database.
+- `check_extraction_labels.py` gained:
+  - `--mode`, `--max-repairs`, `--repeat` (the live cache re-run);
+  - `--rescore`: scores a stored report again, at no cost;
+  - a file-backed extraction cache (`.cache/extraction-cache.json`), so a re-run after a
+    validation-only change costs nothing;
+  - `call_errors` in the report;
+  - numbers read from value text: formulas, descriptions, numeric strings.
+
+**Found by the live run and fixed** (with tests):
+- **Product-name anchor** (SE19): rejected the page's own heading on 7 mortgage offerings,
+  because it required a product-name term in the cited item. Now any current-product
+  item of the canonical page anchors the name.
+- **Citation limit**: `ModelFieldResult.evidence` went from 20 to **50**. Full mode lets a
+  list field cite many rows; the whole answer failed validation twice on Primary and
+  Secondary Market. At **100** Gemini refuses the response schema with HTTP 400
+  INVALID_ARGUMENT (isolated with one tiny call per variant); 50 is accepted.
+  `explanation` went from 2,000 to 8,000 characters.
+- The provider's prefix-cache hits (`cached_content_token_count`) are recorded in usage.
+
+**Validation choices recorded in [../note.md](../note.md):** labels unconfirmed; S06 pass
+bar adopted as proposed; repairs capped at 1 per offering in the live run to fit the budget.
+
 
 ## Deployment
 

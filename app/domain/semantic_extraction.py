@@ -361,7 +361,7 @@ class ExtractedValue(ExtractionModel, Generic[T]):
     value: T | None = None
     evidence: tuple[EvidenceCitation, ...] = Field(default=(), max_length=100)
     status: ExtractionStatus
-    explanation: str | None = Field(default=None, max_length=2000)
+    explanation: str | None = Field(default=None, max_length=8000)
 
     @model_validator(mode="after")
     def validate_state(self) -> ExtractedValue[T]:
@@ -499,8 +499,11 @@ class ModelFieldResult(ExtractionModel):
     field: ExtractionField
     status: ExtractionStatus
     value_json: str | None = Field(default=None, max_length=50_000)
-    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=20)
-    explanation: str | None = Field(default=None, max_length=2000)
+    # Full evidence mode lets a list field (required documents, fees) cite every
+    # row it drew on; 20 citations rejected whole answers in the S06 run. Gemini
+    # refuses the response schema (HTTP 400) at 100 here; 50 is accepted.
+    evidence: tuple[ModelCitation, ...] = Field(default=(), max_length=50)
+    explanation: str | None = Field(default=None, max_length=8000)
 
     @model_validator(mode="after")
     def validate_state(self) -> ModelFieldResult:
