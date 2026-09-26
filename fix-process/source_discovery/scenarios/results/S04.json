@@ -6,38 +6,27 @@
   "wall_seconds": 0.0,
   "links": 55,
   "transcribed": 44,
-  "transcribed_before": 55,
-  "own_or_shared_not_selected": [],
-  "sibling_or_irrelevant_selected": [
-    [
-      "consumer_standard",
-      "web-info-eng.pdf",
-      "irrelevant",
-      true
-    ],
-    [
-      "credit_line",
-      "web-info-eng.pdf",
-      "irrelevant",
-      true
-    ],
+  "kept_as_offering_terms": 40,
+  "own_or_shared_lost": [],
+  "sibling_irrelevant_or_expired_kept": [
     [
       "mortgage_primary",
       "terms_flexible_mortgage_eng.pdf",
       "related_product",
-      true
-    ],
-    [
-      "online_consumer_finance",
-      "web-info.pdf",
-      "irrelevant",
+      true,
       true
     ]
   ],
-  "selector_usage": {
+  "link_selector_usage": {
     "calls": 12,
     "input_tokens": 17358,
     "output_tokens": 3568,
     "spent_usd": 0.0097
+  },
+  "content_check_usage": {
+    "calls": 12,
+    "input_tokens": 57535,
+    "output_tokens": 7344,
+    "spent_usd": 0.0254
   }
 }

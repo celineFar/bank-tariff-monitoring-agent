@@ -3,7 +3,7 @@
   "passed": true,
   "gemini_attempts": 0,
   "gemini_cost_usd": 0.0,
-  "wall_seconds": 40.0,
+  "wall_seconds": 39.4,
   "files": 13,
-  "summary": "195 passed, 13 warnings in 38.25s"
+  "summary": "198 passed, 13 warnings in 37.73s"
 }

@@ -3,11 +3,11 @@
   "passed": true,
   "gemini_attempts": 0,
   "gemini_cost_usd": 0.0,
-  "wall_seconds": 1.0,
+  "wall_seconds": 0.9,
   "batches": 3,
   "bad_item": "page:e950ec1929ec2339::section::be999ba2d611ac27::part::2",
   "calls_to_first_model": 11,
-  "items_the_first_model_answered_and_saved": 13,
+  "items_the_first_model_answered_and_saved": 11,
   "answered_by": "second-model",
-  "second_model_items": 20
+  "second_model_items": 18
 }

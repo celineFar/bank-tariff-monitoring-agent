@@ -845,8 +845,11 @@ def test_sd13_sd14_the_sdk_makes_one_attempt_and_temperature_is_per_model() -> N
     for classifier in (primary, fallback):
         model = classifier._runner.agent.model
         assert model.retry_options.attempts == 1
-    assert primary.temperature == 0
-    assert fallback.temperature is None
+    # Both run at temperature 0; each switches thinking off the way it accepts.
+    assert primary.temperature == 0 and fallback.temperature == 0
+    assert primary.thinking.thinking_budget == 0
+    assert fallback.thinking.thinking_level == "MINIMAL"
+    assert fallback.thinking.thinking_budget is None
 
 
 def test_sd6_a_link_selector_that_cannot_answer_hands_over() -> None:
@@ -1086,3 +1089,141 @@ async def test_sd18_a_quoted_date_that_contradicts_the_status_is_ignored() -> No
 
     assert await status(past, "effective from 14.07.2026") is TemporalStatus.UNKNOWN
     assert await status(later, "effective from 14.12.2026") is TemporalStatus.FUTURE
+
+
+# --- Phase 8: follow-ups after review ------------------------------------------------
+
+
+def _with_links(
+    document: NormalizedDocument, links: dict[str, str]
+) -> NormalizedDocument:
+    from app.domain.normalization import NormalizedLink
+
+    return document.model_copy(
+        update={
+            "links": tuple(
+                NormalizedLink(
+                    id=link_id, url=url, text="Learn more", source_refs=(_ref(link_id),)
+                )
+                for link_id, url in links.items()
+            )
+        }
+    )
+
+
+def _catalog_offering():
+    from app.domain.source_discovery import OtherOffering
+
+    return _offering().model_copy(
+        update={
+            "other_offerings": (
+                OtherOffering(
+                    offering_id="mortgage_construction",
+                    display_name="Construction Mortgage",
+                    seed_url="https://ameriabank.am/en/personal/loans/mortgage/construction-mortgage",
+                ),
+            )
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_cross_sell_cards_linking_to_another_offering_are_decided_by_rule() -> (
+    None
+):
+    construction = (
+        "https://ameriabank.am/en/personal/loans/mortgage/construction-mortgage/"
+    )
+    page = _with_links(
+        _page(
+            _block(
+                "b0", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING
+            ),
+            _block("b1", "Nominal rate 12.9%", heading_path=("Primary", "Rates")),
+            _block(
+                "b2",
+                "Our construction loan offers are designed to help you build.",
+                heading_path=("Primary", "Construction loan"),
+                link_ids=("l1",),
+            ),
+            _block(
+                "b3",
+                "Apply for this mortgage online.",
+                heading_path=("Primary", "Apply"),
+                link_ids=("l2",),
+            ),
+            _block(
+                "b4",
+                "Long terms text. " * 60,
+                heading_path=("Primary", "Terms"),
+                link_ids=("l1",),
+            ),
+        ),
+        {"l1": construction, "l2": URL},
+    )
+    classifier = _Classifier()
+
+    result = await _service(classifier).discover(_bundle(page), _catalog_offering())
+
+    by_block = {
+        a.source_refs[0].source_item_id: a
+        for a in result.assessments
+        if a.scope is DiscoveryScope.BLOCK
+    }
+    card = by_block["b2"]
+    assert card.product_association is ProductAssociation.RELATED_PRODUCT
+    assert card.decision_source is DecisionSource.INHERITED
+    assert "Construction Mortgage" in card.reason
+    sent = {
+        text
+        for batch in classifier.batches
+        for item in batch.items
+        for text in [_item_text(item)]
+    }
+    assert not any("Our construction loan offers" in text for text in sent)
+    # A card linking to the offering's own page, and a long section, go to Gemini.
+    assert any("Apply for this mortgage online." in text for text in sent)
+    assert any("Long terms text." in text for text in sent)
+
+
+@pytest.mark.asyncio
+async def test_without_the_catalog_there_is_no_cross_sell_rule() -> None:
+    page = _with_links(
+        _page(
+            _block(
+                "b0", "Primary Market Mortgage", block_type=NormalizedBlockType.HEADING
+            ),
+            _block(
+                "b2",
+                "Our construction loan offers.",
+                heading_path=("Primary", "Construction loan"),
+                link_ids=("l1",),
+            ),
+        ),
+        {
+            "l1": "https://ameriabank.am/en/personal/loans/mortgage/construction-mortgage"
+        },
+    )
+    classifier = _Classifier()
+
+    await _service(classifier).discover(_bundle(page), _offering())
+
+    assert any(
+        "Our construction loan offers." in _item_text(item)
+        for batch in classifier.batches
+        for item in batch.items
+    )
+
+
+@pytest.mark.asyncio
+async def test_every_batch_tells_the_model_what_day_it_is() -> None:
+    classifier = _Classifier()
+
+    await _service(classifier).discover(
+        _bundle(_rates_page()), _offering(), as_of=date(2026, 9, 26)
+    )
+
+    assert {batch.as_of for batch in classifier.batches} == {date(2026, 9, 26)}
+    from app.services.discovery_classifier import build_classifier_prompt
+
+    assert '"as_of": "2026-09-26"' in build_classifier_prompt(classifier.batches[0])

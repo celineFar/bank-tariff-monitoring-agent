@@ -1,12 +1,12 @@
 == 1. Candidates per seed (page only) ==
     shared_structural_groups=0
-consumer_standard                candidates= 34 rule= 3 gemini= 31 batches=4 cut>3000=0 prompt_chars=22751 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+consumer_standard                candidates= 34 rule= 5 gemini= 29 batches=4 cut>3000=0 prompt_chars=22270 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-credit_line                      candidates= 35 rule= 3 gemini= 32 batches=4 cut>3000=0 prompt_chars=22871 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+credit_line                      candidates= 35 rule= 5 gemini= 30 batches=4 cut>3000=0 prompt_chars=22404 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-mortgage_commercial              candidates= 19 rule= 3 gemini= 16 batches=2 cut>3000=0 prompt_chars=20159 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+mortgage_commercial              candidates= 19 rule= 5 gemini= 14 batches=2 cut>3000=0 prompt_chars=19575 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-mortgage_construction            candidates= 22 rule= 3 gemini= 19 batches=3 cut>3000=0 prompt_chars=28701 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+mortgage_construction            candidates= 22 rule= 5 gemini= 17 batches=3 cut>3000=0 prompt_chars=28177 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
 mortgage_diaspora                candidates= 20 rule= 3 gemini= 17 batches=3 cut>3000=0 prompt_chars=3481 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
@@ -14,13 +14,13 @@ mortgage_express                 candidates= 21 rule= 3 gemini= 18 batches=3 cut
     shared_structural_groups=0
 mortgage_no_income_verification  candidates= 23 rule= 3 gemini= 20 batches=3 cut>3000=0 prompt_chars=5915 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-mortgage_online                  candidates= 33 rule= 3 gemini= 30 batches=4 cut>3000=0 prompt_chars=27561 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+mortgage_online                  candidates= 33 rule= 5 gemini= 28 batches=4 cut>3000=0 prompt_chars=26888 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-mortgage_primary                 candidates= 23 rule= 3 gemini= 20 batches=3 cut>3000=0 prompt_chars=26047 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+mortgage_primary                 candidates= 23 rule= 5 gemini= 18 batches=3 cut>3000=0 prompt_chars=25369 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-mortgage_renovation              candidates= 19 rule= 3 gemini= 16 batches=2 cut>3000=0 prompt_chars=25999 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+mortgage_renovation              candidates= 19 rule= 5 gemini= 14 batches=2 cut>3000=0 prompt_chars=25534 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
-mortgage_secondary_market        candidates= 23 rule= 3 gemini= 20 batches=3 cut>3000=0 prompt_chars=25336 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
+mortgage_secondary_market        candidates= 23 rule= 5 gemini= 18 batches=3 cut>3000=0 prompt_chars=24752 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0
 online_consumer_finance          candidates= 16 rule= 3 gemini= 13 batches=2 cut>3000=0 prompt_chars=11881 nav_group=[] nav_rule=[] gemini_items_with_chrome=0
     shared_structural_groups=0

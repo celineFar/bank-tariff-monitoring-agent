@@ -22,7 +22,7 @@ from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     adk_usage_callbacks,
 )
-from app.services.model_pricing import uses_zero_temperature
+from app.services.model_pricing import uses_minimal_thinking_level
 
 SOURCE_DISCOVERY_INSTRUCTION = """
 You classify official-bank source material for a tariff-monitoring pipeline.
@@ -62,13 +62,24 @@ product_association historical_version with relevance irrelevant; it does not
 make the rest of the section stale. Name only members of that item, each at
 most once; leave member_exceptions empty when all agree.
 
+Items with scope document and source_type pdf are PDFs linked from the
+offering's page, shown from their first pages. Their links were already judged
+to belong to the offering or to be unclear; check that against the content:
+this offering's own terms, leaflet or tariff (current_product, authority
+official_terms); terms that apply to it among other loans, such as the loan fee
+schedule (current_product); another product's terms (related_product); or
+bank-wide material that is not lending terms, such as website terms of use or
+a list of partners (generic_bank_information, relevance irrelevant).
+
 For each item also classify information role, relevance, authority, and
 temporal status using only the offering, the supplied title, structural
 context, and content. Extract explicit effective periods and important scope
 conditions such as customer type, residency, channel, currency, property
 market, or campaign applicability.
 
-temporal_status: content on the offering's live page with no date is unknown,
+Judge temporal status as of the batch's `as_of` date: a date before it is past,
+even if it is recent. temporal_status: content on the offering's live page with
+no date is unknown,
 not possibly_stale. Use possibly_stale or future only when the item as a whole
 is out of date or not yet in force and says so (a past end date, "previous
 terms", "archive", "effective from" a later date), and then quote those words,
@@ -125,8 +136,16 @@ class StructuredAdkClassifier(Generic[RequestT, ResponseT]):
         usage_repository: PostgresModelCallUsageRepository | None = None,
     ) -> None:
         client = genai.Client(api_key=api_key) if api_key else None
-        temperature = 0 if uses_zero_temperature(model_name) else None
+        # Deterministic answers from every model: the cache and the change
+        # history rely on the same content getting the same label.
+        temperature = 0
         self.temperature = temperature
+        thinking = (
+            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
+            if uses_minimal_thinking_level(model_name)
+            else types.ThinkingConfig(thinking_budget=0)
+        )
+        self.thinking = thinking
         agent = Agent(
             name=agent_name,
             **adk_usage_callbacks(
@@ -152,14 +171,17 @@ class StructuredAdkClassifier(Generic[RequestT, ResponseT]):
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(
                     disable=True
                 ),
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                thinking_config=thinking,
             ),
         )
         logger.info(
-            "%s uses %s at temperature %s",
+            "%s uses %s at temperature %s with %s",
             agent_name,
             model_name,
-            "provider default" if temperature is None else temperature,
+            temperature,
+            "thinking level minimal"
+            if thinking.thinking_level is not None
+            else "thinking budget 0",
         )
         self._runner = InMemoryRunner(agent=agent, app_name=agent_name)
         self._output_schema = output_schema

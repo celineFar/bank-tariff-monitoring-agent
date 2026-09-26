@@ -35,11 +35,21 @@ The pipeline records the stage as `pdf_selection`, the audit as
 `2_pdf_link_selection.md`, and caches decisions in `pdf_link_selections` by offering,
 policy and prompt version, model, and a fingerprint of the link metadata, so an
 unchanged link is never asked about again. It uses the discovery models and fallback
-chain. In discovery, a selected PDF gets one `link_selection` document decision that
-its blocks and tables inherit (shared terms carry the condition "Applies to other
-loans as well as this offering."); an `unclear` PDF is classified on its content;
-historical or future status from explicit dates still excludes a PDF from current
-terms.
+chain. In discovery, every transcribed PDF is then checked once on its content,
+whatever its link label: the website's profile terms are linked as "Terms and
+Conditions" under a loan's own terms, and an undated "special offer" link led to a
+campaign that ended on 31.12.2025. Its blocks and tables inherit that document
+decision. A PDF the link step dropped has no content and keeps the link decision
+(`link_selection`). Historical or future status from explicit dates still excludes a
+PDF from current terms.
+
+## Cross-sell cards
+
+A small content section (at most 600 characters) that links to another catalog
+offering's seed page, and not to this offering's own, is that offering's cross-sell
+card and is decided `related_product` by rule, with no model call. The pipeline gives
+the `OfferingContext` the catalog's other offerings for this (they are not sent in the
+prompt). On the 13 seed pages the rule finds exactly the 16 cross-sell cards.
 
 ## Cost-aware execution
 
@@ -83,6 +93,11 @@ association is judged against. The offering covers every variant its page headin
 and text name (primary and secondary market; purchase, construction and renovation;
 residential and commercial property); `related_product` is for products the page
 presents as separate offers. The PDF link selection receives the same context.
+Every batch also carries `as_of`, the page's retrieval date: without it the model
+called "effective from 14.07.2026" future on 26.09.2026. Every model runs at
+temperature 0 with thinking off; how thinking is switched off depends on the model
+(`thinking_budget=0`, or `thinking_level=MINIMAL` for `gemini-3.5-flash-lite`, which
+rejects a zero budget), recorded in `app/services/model_pricing.py`.
 Each call is capped at `SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS` (default
 8192): a runaway answer is cut, fails validation, and is retried or split. The
 nested member-exception model deliberately carries no pattern or length limits:

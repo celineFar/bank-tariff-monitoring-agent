@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from google.genai.errors import APIError
 
@@ -20,7 +21,6 @@ from app.domain.normalization import NormalizedSourceBundle, SourceReference
 from app.domain.pdf_extraction import (
     PdfAdmissionRelevance,
     PdfAdmissionRole,
-    PdfLinkChoice,
     PdfLinkLabel,
     PdfTemporalStatus,
 )
@@ -33,10 +33,10 @@ from app.domain.source_discovery import (
     DiscoveryCandidate,
     DiscoveryPromptItem,
     DiscoveryScope,
-    EffectivePeriod,
     InformationRole,
     ModelSourceAssessment,
     OfferingContext,
+    OtherOffering,
     PriorAssessment,
     ProductAssociation,
     PromptMember,
@@ -82,10 +82,11 @@ def offering_context_for(
         bundle.documents[0],
     )
     wanted = str(bundle.canonical_url).rstrip("/")
-    for entry in load_seed_catalog().offerings:
+    catalog = load_seed_catalog()
+    for entry in catalog.offerings:
         if entry.product is product and str(entry.seed_url).rstrip("/") == wanted:
             return OfferingContext.from_catalog_entry(
-                entry, page_title=page.name, page_blocks=page.blocks
+                entry, page_title=page.name, page_blocks=page.blocks, catalog=catalog
             )
     heading, summary = page_scope(page.blocks)
     return OfferingContext(
@@ -211,13 +212,20 @@ class SourceDiscoveryService:
         return self._model_name
 
     async def plan(
-        self, bundle: NormalizedSourceBundle, offering: OfferingContext
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        *,
+        as_of: date | None = None,
     ) -> SourceDiscoveryPlan:
-        plan, _ = await self._plan(bundle, offering)
+        plan, _ = await self._plan(bundle, offering, as_of)
         return plan
 
     async def _plan(
-        self, bundle: NormalizedSourceBundle, offering: OfferingContext
+        self,
+        bundle: NormalizedSourceBundle,
+        offering: OfferingContext,
+        as_of: date | None = None,
     ) -> tuple[SourceDiscoveryPlan, tuple[DiscoveryCandidate, ...]]:
         product = offering.product
         candidates = build_discovery_candidates(
@@ -226,7 +234,7 @@ class SourceDiscoveryService:
         rule_assessments: list[SourceAssessment] = []
         unresolved: list[DiscoveryCandidate] = []
         for candidate in candidates:
-            if assessment := _rule_assessment(candidate):
+            if assessment := _rule_assessment(candidate, offering):
                 rule_assessments.append(assessment)
             else:
                 unresolved.append(candidate)
@@ -281,6 +289,7 @@ class SourceDiscoveryService:
             llm_candidates,
             priors,
             self._settings,
+            as_of,
         )
         plan = SourceDiscoveryPlan(
             product=product,
@@ -308,7 +317,7 @@ class SourceDiscoveryService:
         as_of: date | None = None,
     ) -> SourceDiscoveryResult:
         product = offering.product
-        plan, all_candidates = await self._plan(bundle, offering)
+        plan, all_candidates = await self._plan(bundle, offering, as_of)
         await record_model_cache_hit(
             self._usage_repository,
             stage="discovery.classification",
@@ -447,7 +456,49 @@ class FallbackSourceDiscoveryService:
         raise AssertionError("source-discovery model sequence exhausted")
 
 
-def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
+# A cross-sell card is a few lines and a "Learn more" link; a section this long
+# that links to another offering is content, and Gemini decides it.
+_CROSS_SELL_MAX_CHARS = 600
+
+
+def _cross_sell_target(
+    candidate: DiscoveryCandidate, offering: OfferingContext | None
+) -> OtherOffering | None:
+    """The other catalog offering a small section advertises, if any.
+
+    Deterministic: the section links to that offering's seed page and not to
+    this offering's own. On the 13 seed pages this finds exactly the 16
+    cross-sell cards ("Construction loan … Learn more") and nothing else.
+    """
+    if (
+        offering is None
+        or not offering.other_offerings
+        or candidate.scope is not DiscoveryScope.SECTION
+        or candidate.layout is not CandidateLayout.CONTENT
+        or not candidate.link_urls
+        or sum(len(member.text) for member in candidate.members) > _CROSS_SELL_MAX_CHARS
+    ):
+        return None
+    paths = {_url_path(url) for url in candidate.link_urls}
+    if _url_path(str(offering.seed_url)) in paths:
+        return None
+    return next(
+        (
+            other
+            for other in offering.other_offerings
+            if _url_path(str(other.seed_url)) in paths
+        ),
+        None,
+    )
+
+
+def _url_path(url: str) -> str:
+    return urlsplit(url).path.rstrip("/").casefold()
+
+
+def _rule_assessment(
+    candidate: DiscoveryCandidate, offering: OfferingContext | None = None
+) -> SourceAssessment | None:
     values: (
         tuple[
             ProductAssociation,
@@ -491,14 +542,6 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
         )
     elif (
         candidate.scope is DiscoveryScope.DOCUMENT
-        and candidate.pdf_selection is not None
-        and candidate.pdf_selection.label is not PdfLinkLabel.UNCLEAR
-    ):
-        # Source discovery already decided this PDF from its link, before
-        # transcription; an unclear link falls through to content review.
-        return _link_selection_assessment(candidate, candidate.pdf_selection)
-    elif (
-        candidate.scope is DiscoveryScope.DOCUMENT
         and candidate.source_type is SourceType.PAGE
     ):
         values = (
@@ -527,6 +570,15 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
             TemporalStatus.UNKNOWN,
             "Blocks sit in the site's navigation, banner or footer.",
         )
+    elif (target := _cross_sell_target(candidate, offering)) is not None:
+        values = (
+            ProductAssociation.RELATED_PRODUCT,
+            InformationRole.RELATED_PRODUCT,
+            Relevance.POSSIBLY_RELEVANT,
+            Authority.OFFICIAL_PRODUCT_CONTENT,
+            TemporalStatus.UNKNOWN,
+            f"Cross-sell card: links to the {target.display_name} offering's page.",
+        )
     elif candidate.layout is CandidateLayout.PAGE_HEADER:
         values = (
             ProductAssociation.GLOBAL_NAVIGATION,
@@ -539,6 +591,11 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
     if values is None:
         return None
     association, role, relevance, authority, temporal, reason = values
+    unselected = (
+        candidate.pdf_selection is not None
+        and not candidate.pdf_selection.transcribe
+        and not candidate.member_source_ids
+    )
     return SourceAssessment(
         source_id=candidate.source_id,
         document_id=candidate.document_id,
@@ -549,7 +606,10 @@ def _rule_assessment(candidate: DiscoveryCandidate) -> SourceAssessment | None:
         authority=authority,
         temporal_status=temporal,
         reason=reason,
-        decision_source=DecisionSource.RULE,
+        # A PDF the link selection did not keep was decided by that step.
+        decision_source=(
+            DecisionSource.LINK_SELECTION if unselected else DecisionSource.RULE
+        ),
         input_fingerprint=candidate.content_fingerprint,
         structural_fingerprint=candidate.structural_fingerprint,
         source_refs=candidate.source_refs,
@@ -569,50 +629,6 @@ _LINK_ASSOCIATIONS = {
     PdfLinkLabel.GENERIC_BANK_INFORMATION: ProductAssociation.GENERIC_BANK_INFORMATION,
     PdfLinkLabel.UNCLEAR: ProductAssociation.UNKNOWN,
 }
-
-
-def _link_selection_assessment(
-    candidate: DiscoveryCandidate, choice: PdfLinkChoice
-) -> SourceAssessment:
-    """A transcribed PDF, as the link selection judged it.
-
-    Its blocks and tables inherit this decision (Q6). The temporal status is
-    the deterministic admission's; shared terms say so in their conditions.
-    """
-    admission = candidate.pdf_admission
-    temporal = (
-        {
-            PdfTemporalStatus.CURRENT: TemporalStatus.CURRENT,
-            PdfTemporalStatus.TIME_BOUNDED: TemporalStatus.TIME_BOUNDED,
-        }.get(admission.temporal_status, TemporalStatus.UNKNOWN)
-        if admission is not None
-        else TemporalStatus.UNKNOWN
-    )
-    own = choice.label in {PdfLinkLabel.CURRENT_PRODUCT, PdfLinkLabel.SHARED_TERMS}
-    return SourceAssessment(
-        source_id=candidate.source_id,
-        document_id=candidate.document_id,
-        scope=candidate.scope,
-        product_association=_LINK_ASSOCIATIONS[choice.label],
-        role=_PDF_ROLES[choice.role],
-        relevance=Relevance.RELEVANT if own else Relevance.IRRELEVANT,
-        authority=Authority.OFFICIAL_TERMS if own else Authority.UNKNOWN,
-        temporal_status=temporal,
-        effective_periods=tuple(
-            EffectivePeriod(raw=item.raw, start=item.start, end=item.end)
-            for item in (admission.effective_periods if admission else ())
-        ),
-        conditions=(
-            ("Applies to other loans as well as this offering.",)
-            if choice.label is PdfLinkLabel.SHARED_TERMS
-            else ()
-        ),
-        reason=choice.reason,
-        decision_source=DecisionSource.LINK_SELECTION,
-        input_fingerprint=candidate.content_fingerprint,
-        structural_fingerprint=candidate.structural_fingerprint,
-        source_refs=candidate.source_refs,
-    )
 
 
 def _no_content_values(
@@ -672,6 +688,7 @@ def _build_batches(
     candidates: list[DiscoveryCandidate],
     priors: dict[str, SourceAssessment],
     settings: SourceDiscoverySettings,
+    as_of: date | None = None,
 ) -> tuple[DiscoveryBatch, ...]:
     batches: list[DiscoveryBatch] = []
     current: list[DiscoveryPromptItem] = []
@@ -711,6 +728,7 @@ def _build_batches(
                     id=f"batch_{len(batches):03d}",
                     product=offering.product,
                     offering=offering,
+                    as_of=as_of,
                     items=tuple(current),
                 )
             )
@@ -724,6 +742,7 @@ def _build_batches(
                 id=f"batch_{len(batches):03d}",
                 product=offering.product,
                 offering=offering,
+                as_of=as_of,
                 items=tuple(current),
             )
         )

@@ -463,11 +463,14 @@ its own cache namespace and stores its own `model_name`, so one accepted result
 never mixes decisions from two models. `FallbackSemanticExtractionService` does
 the same for extraction; its chain is empty unless configured.
 
-A transcribed PDF that the link selection judged the offering's own or shared terms
-receives that decision as its document assessment (`link_selection`), inherited by its
-blocks and tables, so its content is not classified again; an `unclear` one is
-classified on its content (reading order, each page's tables compacted). A PDF with no
-content (skipped, not selected, or failed) is decided by rule. Relevance does not imply
+Every transcribed PDF, whatever its link was judged, is then classified once on its
+content (reading order, each page's tables compacted), and its blocks and tables
+inherit that decision: a link that looks like the loan's terms ("Terms and
+Conditions") can be the website's terms, and an undated link can lead to an expired
+campaign. A PDF with no content (skipped, not selected, or failed) is decided by rule;
+one the link selection dropped is recorded as `link_selection`. A small page section
+that links to another catalog offering's seed page (a cross-sell card) is
+`related_product` by rule. Relevance does not imply
 currentness: archive/previous-term context and explicit effective dates independently
 classify a PDF as current, historical, future, time-bounded, or unknown. Historical and
 future documents remain auditable but are excluded from current-tariff extraction

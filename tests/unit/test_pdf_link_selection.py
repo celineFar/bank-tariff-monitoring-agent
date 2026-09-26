@@ -91,6 +91,7 @@ OLD = _document(
     "Terms of the loan (effective from 04.06.25 to 01.09.25)",
 )
 PRIVACY = _document("privacy-policy.pdf", "Privacy policy")
+WEB_INFO = _document("web-info-eng.pdf", "Terms and Conditions")
 
 
 def _page(*documents: DocumentArtifact) -> PageArtifact:
@@ -266,7 +267,9 @@ async def test_normalization_does_not_read_a_pdf_that_was_not_selected() -> None
 
 
 @pytest.mark.asyncio
-async def test_discovery_decides_selected_and_unselected_pdfs_by_rule() -> None:
+async def test_selected_pdfs_are_checked_on_content_and_unselected_decided_by_rule() -> (
+    None
+):
     from app.config import SourceDiscoverySettings
     from app.domain.acquisition import SourceLocator, SourceType
     from app.domain.normalization import (
@@ -330,10 +333,52 @@ async def test_discovery_decides_selected_and_unselected_pdfs_by_rule() -> None:
             pdf(OWN, PdfLinkLabel.CURRENT_PRODUCT, content=True),
             pdf(FEES, PdfLinkLabel.SHARED_TERMS, content=True),
             pdf(EXPRESS, PdfLinkLabel.RELATED_PRODUCT, content=False),
+            pdf(WEB_INFO, PdfLinkLabel.CURRENT_PRODUCT, content=True),
         ),
     )
+
+    class _ContentCheck:
+        """Reads the website-profile PDF as bank-wide, everything else as own."""
+
+        def __init__(self) -> None:
+            self.seen: list[str] = []
+
+        async def classify(self, batch):
+            from app.domain.source_discovery import (
+                Authority,
+                DiscoveryBatchResponse,
+                InformationRole,
+                ModelSourceAssessment,
+                TemporalStatus,
+            )
+
+            self.seen.extend(item.title for item in batch.items)
+            return DiscoveryBatchResponse(
+                items=tuple(
+                    ModelSourceAssessment(
+                        source_id=item.source_id,
+                        product_association=(
+                            ProductAssociation.GENERIC_BANK_INFORMATION
+                            if "Terms and Conditions" == item.title
+                            else ProductAssociation.CURRENT_PRODUCT
+                        ),
+                        role=InformationRole.PRODUCT_TERMS,
+                        relevance=(
+                            Relevance.IRRELEVANT
+                            if "Terms and Conditions" == item.title
+                            else Relevance.RELEVANT
+                        ),
+                        authority=Authority.OFFICIAL_TERMS,
+                        temporal_status=TemporalStatus.CURRENT,
+                        reason="content check",
+                    )
+                    for item in batch.items
+                )
+            )
+
+    checker = _ContentCheck()
     service = SourceDiscoveryService(
-        None,
+        checker,
         InMemorySourceDiscoveryRepository(),
         SourceDiscoverySettings(),
         model_name="m",
@@ -347,11 +392,17 @@ async def test_discovery_decides_selected_and_unselected_pdfs_by_rule() -> None:
         if a.source_id.startswith("document::")
     }
     own = documents[f"document:{OWN.sha256[:12]}"]
-    fees = documents[f"document:{FEES.sha256[:12]}"]
     express = documents[f"document:{EXPRESS.sha256[:12]}"]
-    assert own.decision_source is DecisionSource.LINK_SELECTION
+    web_info = documents[f"document:{WEB_INFO.sha256[:12]}"]
+    # Every transcribed PDF is checked on its content, whatever its link said.
+    assert sorted(checker.seen) == sorted(
+        [OWN.document_name, FEES.document_name, WEB_INFO.document_name]
+    )
+    assert own.decision_source is DecisionSource.LLM
     assert own.product_association is ProductAssociation.CURRENT_PRODUCT
-    assert fees.conditions == ("Applies to other loans as well as this offering.",)
-    assert express.relevance is Relevance.IRRELEVANT
+    # "Terms and Conditions" looked like the loan's terms from its link; its
+    # content shows the website's profile terms.
+    assert web_info.relevance is Relevance.IRRELEVANT
+    # A PDF the link step dropped has no content: decided by that step.
+    assert express.decision_source is DecisionSource.LINK_SELECTION
     assert express.product_association is ProductAssociation.RELATED_PRODUCT
-    assert result.llm_batch_count == 0

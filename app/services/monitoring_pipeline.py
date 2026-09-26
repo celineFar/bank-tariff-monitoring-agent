@@ -162,9 +162,12 @@ class IndexingPipeline:
         audit_archive: PipelineAuditArchive | None = None,
         large_rate_change_percentage_points: float = 3.0,
         pdf_selection: PdfLinkSelectionPort | None = None,
+        catalog: SeedCatalog | None = None,
     ) -> None:
         self._acquisition = acquisition
         self._pdf_selection = pdf_selection
+        # The other offerings, for source discovery's cross-sell rule.
+        self._catalog = catalog
         self._normalization = normalization
         self._discovery = discovery
         self._extraction = extraction
@@ -243,7 +246,10 @@ class IndexingPipeline:
                     exc_info=True,
                 )
         offering_context = OfferingContext.from_catalog_entry(
-            offering, page_title=artifact.title, page_blocks=artifact.blocks
+            offering,
+            page_title=artifact.title,
+            page_blocks=artifact.blocks,
+            catalog=self._catalog,
         )
         pdf_selection = None
         if self._pdf_selection is not None and artifact.downloadable_documents:

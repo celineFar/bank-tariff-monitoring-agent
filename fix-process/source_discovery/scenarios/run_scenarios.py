@@ -82,7 +82,8 @@ from app.services.source_selection import (  # noqa: E402
     select_sources,
 )
 
-CATALOG = {entry.offering_id.value: entry for entry in load_seed_catalog().offerings}
+SEED_CATALOG = load_seed_catalog()
+CATALOG = {entry.offering_id.value: entry for entry in SEED_CATALOG.offerings}
 PARSER = HtmlArtifactParser(load_settings().http.allowed_source_hosts)
 AS_OF = date(2026, 9, 26)
 
@@ -129,7 +130,10 @@ async def _bundle(seed: str):
 
 def _offering(seed: str, artifact: PageArtifact) -> OfferingContext:
     return OfferingContext.from_catalog_entry(
-        CATALOG[seed], page_title=artifact.title, page_blocks=artifact.blocks
+        CATALOG[seed],
+        page_title=artifact.title,
+        page_blocks=artifact.blocks,
+        catalog=SEED_CATALOG,
     )
 
 
@@ -274,7 +278,11 @@ FOUR_MORTGAGE_PAGES = (
 async def s03() -> None:
     started = time.monotonic()
     run = json.loads(
-        (BASE / "data/discovery-check-after-final-labels.json").read_text()
+        # Round 2's recorded answers with the Phase 8 cross-sell rule applied
+        # to the sections it now decides (no Gemini call), on the final labels.
+        (
+            BASE / "data/discovery-check-after-crosssell-rule-final-labels.json"
+        ).read_text()
     )
     before = json.loads(
         (BASE / "data/discovery-check-before-final-labels.json").read_text()
@@ -319,29 +327,39 @@ async def s03() -> None:
 
 
 async def s04() -> None:
+    """Link selection, then the Phase 8 content check of every kept PDF."""
     started = time.monotonic()
     run = json.loads((BASE / "data/discovery-check-after.json").read_text())
-    rows = [
-        (seed, pdf["file"], pdf["label"], pdf["selected"])
-        for seed, value in run["seeds"].items()
-        for pdf in value["pdfs"]
-    ]
-    lost = [
-        row
-        for row in rows
-        if row[2] in {"current_product", "shared_terms"} and not row[3]
-    ]
+    content = json.loads((BASE / "data/pdf-content-check-phase8.json").read_text())
+    checked = {(row["seed"], row["file"]): row for row in content["rows"]}
+    labels = json.loads((BASE / "data/seed-discovery-labels.json").read_text())["seeds"]
+    rows = []
+    for seed, value in run["seeds"].items():
+        for pdf in value["pdfs"]:
+            label = labels[seed]["pdfs"].get(pdf["file"], pdf["label"])
+            row = checked.get((seed, pdf["file"]))
+            own = bool(
+                pdf["selected"]
+                and row is not None
+                and row["relevance"] != "irrelevant"
+                and row["association"] in {"current_product", "unknown"}
+                and row["temporal"] not in {"possibly_stale", "future"}
+            )
+            rows.append((seed, pdf["file"], label, pdf["selected"], own))
+    lost = [r for r in rows if r[2] in {"current_product", "shared_terms"} and not r[4]]
     leaked = [
-        row for row in rows if row[2] in {"related_product", "irrelevant"} and row[3]
+        r
+        for r in rows
+        if r[2] in {"related_product", "irrelevant", "historical"} and r[4]
     ]
-    kept = sum(1 for row in rows if row[3])
     details = {
         "links": len(rows),
-        "transcribed": kept,
-        "transcribed_before": sum(1 for row in rows if row[2] != "not linked"),
-        "own_or_shared_not_selected": lost,
-        "sibling_or_irrelevant_selected": leaked,
-        "selector_usage": run.get("pdf_selector_usage"),
+        "transcribed": sum(1 for r in rows if r[3]),
+        "kept_as_offering_terms": sum(1 for r in rows if r[4]),
+        "own_or_shared_lost": lost,
+        "sibling_irrelevant_or_expired_kept": leaked,
+        "link_selector_usage": run.get("pdf_selector_usage"),
+        "content_check_usage": content["usage"],
     }
     _write("S04", not lost and not leaked, details, started)
 
@@ -563,7 +581,7 @@ async def s08() -> None:
                 value
                 for d in documents
                 for chunk in d.chunks
-                for value in chunk.metadata.get("product_associations", [])
+                for value in _as_list(chunk.metadata.get("product_associations"))
             }
         )
         findings[seed] = {
@@ -579,6 +597,10 @@ async def s08() -> None:
             and "related_product" not in associations
         )
     _write("S08", passed, findings, started)
+
+
+def _as_list(value: object) -> list:
+    return value if isinstance(value, list) else []
 
 
 SCENARIOS = {

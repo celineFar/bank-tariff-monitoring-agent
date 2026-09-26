@@ -123,6 +123,12 @@ class _GuardedClassifier:
         return getattr(self.inner, name)
 
 
+def _catalog_model():
+    from app.config.seed_catalog import load_seed_catalog
+
+    return load_seed_catalog()
+
+
 def _catalog() -> dict[str, SeedCatalogEntry]:
     from app.config.seed_catalog import load_seed_catalog
 
@@ -205,6 +211,7 @@ async def _discover(service: SourceDiscoveryService, bundle, entry: SeedCatalogE
             entry,
             page_title=bundle.documents[0].name,
             page_blocks=bundle.documents[0].blocks,
+            catalog=_catalog_model(),
         )
         kwargs = {"as_of": AS_OF} if "as_of" in parameters else {}
         return await service.discover(bundle, offering, **kwargs)
@@ -402,6 +409,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                     catalog[seed],
                     page_title=bundle.documents[0].name,
                     page_blocks=bundle.documents[0].blocks,
+                    catalog=_catalog_model(),
                 ),
             )
         else:
@@ -542,7 +550,10 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                 artifact,
                 documents,
                 OfferingContext.from_catalog_entry(
-                    entry, page_title=artifact.title, page_blocks=artifact.blocks
+                    entry,
+                    page_title=artifact.title,
+                    page_blocks=artifact.blocks,
+                    catalog=_catalog_model(),
                 ),
                 _LabelSelector(seed) if args.pdf_selector == "labels" else pdf_guard,
                 model,
@@ -611,7 +622,10 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
                     artifact,
                     _rebuilt_documents(artifact, parser),
                     OfferingContext.from_catalog_entry(
-                        entry, page_title=artifact.title, page_blocks=artifact.blocks
+                        entry,
+                        page_title=artifact.title,
+                        page_blocks=artifact.blocks,
+                        catalog=_catalog_model(),
                     ),
                     pdf_guard,
                     model,

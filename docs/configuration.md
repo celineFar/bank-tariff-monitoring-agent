@@ -136,8 +136,8 @@ downloader receives `settings.http` and the PDF extraction service receives
   output rates before any live model call.
   Model-specific paid-tier
   rates and effective periods live in `app/services/model_pricing.py`, with the
-  models the structured classifiers run at the provider's default temperature
-  instead of 0. Policy, prompt, model, product, offering, and
+  models that switch thinking off with `thinking_level=MINIMAL` instead of a zero
+  budget (a model that rejects the other form answers 400 to every call). Policy, prompt, model, product, offering, and
   content fingerprints jointly define exact cache reuse. Changing either version
   deliberately invalidates the corresponding cached assessments.
 - **Semantic extraction:** `SEMANTIC_EXTRACTION_SCHEMA_VERSION`,

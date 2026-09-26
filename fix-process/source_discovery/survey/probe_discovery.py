@@ -115,14 +115,20 @@ async def candidates_report(parser: HtmlArtifactParser) -> None:
             )
         else:
             candidates = build_discovery_candidates(bundle)
-        rules = [c for c in candidates if _rule_assessment(c)]
-        llm = [c for c in candidates if not _rule_assessment(c)]
         first = inspect.signature(_build_batches).parameters
         target = (
             offering_context_for(bundle, CATALOG[seed])
             if "offering" in first and offering_context_for is not None
             else ProductType.MORTGAGE
         )
+        # From Phase 8 the rules take the offering (the cross-sell rule).
+        rule_args = (
+            (target,)
+            if "offering" in inspect.signature(_rule_assessment).parameters
+            else ()
+        )
+        rules = [c for c in candidates if _rule_assessment(c, *rule_args)]
+        llm = [c for c in candidates if not _rule_assessment(c, *rule_args)]
         batches = _build_batches(target, llm, {}, settings)
         # What the classifier does not see of an item: text past the item budget.
         # Items that list members show them whole (sections are split instead).

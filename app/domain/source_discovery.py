@@ -8,7 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from app.domain.acquisition import SourceType
-from app.domain.catalog import SeedCatalogEntry
+from app.domain.catalog import SeedCatalog, SeedCatalogEntry
 from app.domain.models import ProductType
 from app.domain.normalization import SourceReference
 from app.domain.pdf_extraction import (
@@ -162,6 +162,8 @@ class DiscoveryCandidate(DiscoveryModel):
     pdf_admission: PdfAdmission | None = None
     pdf_selection: PdfLinkChoice | None = None
     layout: CandidateLayout = CandidateLayout.CONTENT
+    # The URLs a page section links to (for the cross-sell rule).
+    link_urls: tuple[str, ...] = ()
     # Sections list every member, so the classifier sees each member's text
     # and can name the ones that differ. `member_context` is what the prompt
     # shows beside them (the section's links).
@@ -212,6 +214,12 @@ class PriorAssessment(DiscoveryModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class OtherOffering(DiscoveryModel):
+    offering_id: str
+    display_name: str
+    seed_url: HttpUrl
+
+
 class OfferingContext(DiscoveryModel):
     """Which offering a discovery run is about.
 
@@ -232,6 +240,10 @@ class OfferingContext(DiscoveryModel):
     # home"). The name alone does not tell which variants the offering covers.
     page_heading: str | None = Field(default=None, max_length=500)
     page_summary: str | None = Field(default=None, max_length=1000)
+    # The catalog's other offerings. Used by the cross-sell rule (a card that
+    # links to another offering's page is that offering's); left out of the
+    # prompt JSON.
+    other_offerings: tuple[OtherOffering, ...] = Field(default=(), exclude=True)
 
     @classmethod
     def from_catalog_entry(
@@ -240,6 +252,7 @@ class OfferingContext(DiscoveryModel):
         *,
         page_title: str | None = None,
         page_blocks: Sequence[object] = (),
+        catalog: SeedCatalog | None = None,
     ) -> OfferingContext:
         names: list[str] = []
         for terms in entry.localized_names.values():
@@ -254,6 +267,15 @@ class OfferingContext(DiscoveryModel):
             names=tuple(dict.fromkeys(name for name in names if name))[:20],
             page_heading=heading,
             page_summary=summary,
+            other_offerings=tuple(
+                OtherOffering(
+                    offering_id=other.offering_id.value,
+                    display_name=other.display_name,
+                    seed_url=other.seed_url,
+                )
+                for other in (catalog.offerings if catalog is not None else ())
+                if other.offering_id != entry.offering_id
+            ),
         )
 
 
@@ -309,6 +331,10 @@ class DiscoveryBatch(DiscoveryModel):
     id: str
     product: ProductType
     offering: OfferingContext
+    # The day temporal status is judged on (the page's retrieval date). The
+    # model does not know today's date otherwise: it called "effective from
+    # 14.07.2026" future on 26.09.2026.
+    as_of: date | None = None
     items: tuple[DiscoveryPromptItem, ...] = Field(min_length=1)
 
 

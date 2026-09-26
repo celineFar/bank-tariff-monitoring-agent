@@ -1,10 +1,10 @@
 # Source discovery: problem report and fix plan
 
 Date: 2026-09-26 · Branch: `fix/source-discovery` (from `integration/process-fixes` at `f5c4e44`) ·
-Status: **done** (Phases 0–7; commits on `fix/source-discovery`). Two scenario checks fail on
-Gemini judgements that remain (S03: 7 cross-sell leaks and one own table; S04: 4 wrong PDF
-keeps); see the Phase 7 notes for the options. The hand labels still wait for the user's
-confirmation. Gemini spend for validation: **$0.71** of the ~$1 budget.
+Status: **done** (Phases 0–8; commits on `fix/source-discovery`, not pushed). The hand labels
+are confirmed. After Phase 8, S03 fails on one own table and S04 on one disputed PDF, both
+naming questions for the user. Gemini spend for validation: **$0.78** of the ~$1 budget.
+Deployment steps: [Deployment](#deployment).
 
 ## Scope
 
@@ -519,6 +519,9 @@ instruction or the code prevents it.
 | Q4 | How to validate? | **Small Gemini budget**: offline tests with a fake classifier, plus up to three real discovery passes over the 13 seeds (before, after, cache re-run), about $1 in total, checked against hand labels. | decided | Phase 0, Phase 7 |
 | Q5 | How do section members go through classification? | **One call per section with exceptions**; long sections are split, never cut. | decided | SD3 |
 | Q6 | Do a PDF's blocks inherit the PDF-level decision? | **Yes.** Multi-variant PDFs are left to extraction's variant-scope check. | decided | SD3 |
+| Q7 | Cross-sell cards: a deterministic rule? (after Phase 7) | **Yes**: a small section linking to another catalog offering's seed page is `related_product` by rule. | decided, **done** | S03, Phase 8 |
+| Q8 | The website-profile PDF: content check or skip list? | **Content check** of every transcribed PDF, no skip list (the user: the name says "terms and conditions", so a file-name list is the wrong tool). | decided, **done** | SD2, S04, Phase 8 |
+| Q9 | Fallback temperature | **Temperature 0 for every model.** The old exception was a misdiagnosis: `gemini-3.5-flash-lite` rejects `thinking_budget=0`, not temperature 0. | decided, **done** | SD14, Phase 8 |
 
 **One-time effects on the first production run after deploy.**
 - `policy_version`/`prompt_version` go to `2` and the cache gains `offering_id`: every page is
@@ -551,7 +554,8 @@ phase ends green on `uv run pytest tests/unit tests/integration`.
         `generic_bank_information` or `navigation`, with a reason;
   - [x] every admitted PDF link: `current_product`, `shared_terms`, `related_product`,
         `generic_bank_information` or `irrelevant`, extending `seed-pdf-labels.json`.
-- [ ] **Confirm the labels with the user.** They are the pass criteria for Phases 2–4 and 7.
+- [x] **Confirm the labels with the user.** They are the pass criteria for Phases 2–4 and 7.
+      *Confirmed by the user on 2026-09-26 (after Phase 7).*
 - [x] Write `survey/check_discovery_labels.py`: runs discovery with a given classifier and
       compares every assessment with the labels (per seed: agree, wrong association, wrong
       relevance; PDFs selected vs labelled).
@@ -1196,4 +1200,181 @@ single-call probes (model availability for Q2, schema bisection).
    (policy and prompt version 2, new cache key), the link selection runs once per offering,
    11 fewer PDFs are transcribed per full run, and every offering's source chunks are
    re-embedded. Migrations `019` and `020` must be applied first.
+
+### Phase 8: Follow-ups after review (Q7, Q8, Q9)
+
+- [x] Confirm the hand labels (user, 2026-09-26).
+- [x] Q9: temperature 0 for every structured classifier; thinking switched off per model
+      (`MINIMAL_THINKING_LEVEL_MODELS` in `model_pricing.py`), probed on five models.
+- [x] Q9: check the real fallback classifier end to end with one call.
+- [x] Q7: cross-sell rule (`_cross_sell_target`), with the catalog's other offerings on
+      `OfferingContext` (not sent to the model) and section `link_urls`; the pipeline,
+      runtime, demos, checker and scenarios pass the catalog.
+- [x] Q8: every transcribed PDF classified on content; the link decision stays only for PDFs
+      the link step dropped (`link_selection`).
+- [x] `as_of` in every discovery batch, and in the instruction (found by the content check).
+- [x] Tests: cross-sell rule (fires on another offering's card; not on the own page's link,
+      a long section, or without the catalog); PDF content check (the website-profile PDF
+      excluded on content; dropped PDFs keep the link decision); per-model thinking;
+      `as_of` in the prompt.
+- [x] Measure: cross-sell rule applied to round 2 (no Gemini); PDF content check on the
+      44 kept PDFs ($0.025 ×2); construction page re-check ($0.009).
+- [x] Update scenarios S03, S04, docs, and this plan; write the deployment steps.
+
+#### Phase 8 notes (2026-09-26)
+
+**State: done.** Commit: *Source discovery Phase 8: follow-ups after review*.
+
+**Q9, temperature.** One call per model and setting showed the old "run at the provider's
+default temperature" list was a misdiagnosis: every model accepts temperature 0, but
+`gemini-3.5-flash-lite` answers **400 to `thinking_budget=0`**, which every classifier call
+sent, and accepts `thinking_level=MINIMAL`; `gemini-3.7-flash` and `gemini-3.8-flash` answer
+400 to `MINIMAL`; `gemini-3.6-flash` takes both. **So the Phase 5 fallback would have failed
+on every call.** Now all structured classifiers run at temperature 0, and
+`uses_minimal_thinking_level()` picks the accepted form per model. The real
+`AdkSourceDiscoveryClassifier("gemini-3.5-flash-lite")` answered a test batch (1,198
+tokens). PDF extraction and semantic extraction build their own configs and were not
+changed; their fallback lists are empty by default.
+
+**Q7, cross-sell rule.** `_cross_sell_target` decides a content section by rule when its
+members total at most 600 characters and it links to another catalog offering's seed page
+(path compared, trailing slash and case ignored) but not to this offering's. On the 13
+seeds it finds exactly the 16 cross-sell cards and nothing else (every other section that
+links to a sibling is longer). Applied to round 2's stored answers
+([data/discovery-check-after-crosssell-rule-final-labels.json](data/discovery-check-after-crosssell-rule-final-labels.json)):
+**leaks 7 → 0**, noise 3 → 1, `lost` unchanged (24). Two cards are not covered: "Consumer
+finance" links to a page outside the catalog, and the secondary-market page's "Want to buy a
+home from primary market?" links elsewhere; Gemini still decides them. A card's own heading
+block sits in the section above it and is decided with that section. Gemini items across the 13 seeds: 279 → 263
+([data/probe-output-after.txt](data/probe-output-after.txt)).
+
+**Q8, PDF content check.** Every transcribed PDF is now one Gemini document item (its first
+pages, tables compacted), whatever the link step said; its blocks inherit the result (Q6).
+Checked on the 44 PDFs round 2 kept, built from their text layer (pypdf; close to, but not
+the same as, Gemini transcription): [data/pdf-content-check-phase8.json](data/pdf-content-check-phase8.json).
+- First run: the website-profile PDF (3 links) excluded, as intended; but **4 of the
+  offering's own PDFs were called `future`** ("effective from July 14, 2026" on 26.09.2026):
+  the model was never told today's date. Every batch now carries `as_of` and the instruction
+  says to judge time on it.
+- Second run: 0 own PDFs lost; the content check found that
+  `renovation_loan_special_offer_eng.pdf` is **an expired campaign** ("From April 8, 2025
+  until and including December 31, 2025"), still linked by the bank as the renovation page's
+  special offer. Its label was corrected to `historical` (recorded in the labels file).
+- One disputed keep: `terms_flexible_mortgage_eng.pdf` on the primary page, labelled
+  `related_product`, which both steps read as a variant of the primary-market mortgage.
+
+**Tests and lint.** Full suite: 954 passed, 45 skipped, plus the 4 known key-dependent
+failures. `agents-cli lint`: ruff and codespell clean; `ty` 46 diagnostics, the same as the
+parent branch.
+
+**Scenarios.** S01, S02, S05–S08 pass. S03: 0 leaks (was 7), fails only on the construction
+page's "Loan for construction of commercial real estate" table, still `related` with the
+current prompt: Gemini reads it as "distinct from the 'Construction Mortgage' offering".
+S04: fails only on the disputed flexible-mortgage PDF.
+
+**Spend.** $0.78 in all: Phase 7's $0.71, two content checks ($0.050), the construction
+re-check ($0.009), and single-call probes (under $0.01).
+
+**Remaining, for the user.**
+1. **The construction page's commercial table (S03).** The catalog names the offering
+   "Construction Mortgage"; the page covers residential and commercial construction. Adding
+   the commercial name to the offering's catalog aliases (or renaming it "Construction Loan")
+   would give the classifier the page's own scope.
+2. **The flexible-mortgage PDF (S04).** Is it the primary-market mortgage's own terms (a
+   variant with developer partners) or a separate programme? The label decides S04.
+
+## Deployment
+
+Written for whoever deploys this branch to the stack that runs from
+`/home/ubuntu/bank-tariff-monitoring-agent` (Compose project `bank-tariff-monitoring-agent`,
+database `tariff_monitor`). Checked on 2026-09-26: that database has migrations up to 015,
+so **016–020 are all missing** (016–018 come from the acquisition and normalization fixes on
+`integration/process-fixes`). All five are written to be safe to run again.
+
+1. **Get the code into the stack's checkout.** Merge `fix/source-discovery` into
+   `integration/process-fixes` (and on to `main` when you release), push, then in
+   `/home/ubuntu/bank-tariff-monitoring-agent`:
+   ```bash
+   git fetch origin
+   git checkout integration/process-fixes && git pull --ff-only
+   ```
+2. **Stop the app, keep the database.**
+   ```bash
+   docker compose stop api worker
+   ```
+3. **Back up the database.**
+   ```bash
+   docker compose exec -T db pg_dump -U tariff -Fc tariff_monitor \
+     > ~/tariff_monitor-before-source-discovery-$(date +%F).dump
+   ```
+4. **Apply migrations 016–020, in order, stopping at the first error.**
+   ```bash
+   for m in migrations/01[6-9]_*.sql migrations/020_*.sql; do
+     echo "== $m"
+     docker compose exec -T db psql -U tariff -d tariff_monitor -v ON_ERROR_STOP=1 -f - < "$m" || break
+   done
+   ```
+5. **Check they took.** Every line should end in `t`:
+   ```bash
+   docker compose exec -T db psql -U tariff -d tariff_monitor -At -c "
+   select '016', not exists(select 1 from information_schema.columns where table_name='human_reviews' and column_name='workflow_app_name')
+   union all select '017', to_regclass('public.acquisition_baselines') is not null
+   union all select '018', exists(select 1 from information_schema.columns where table_name='offering_executions' and column_name='source_retrieved_at')
+   union all select '019', exists(select 1 from information_schema.columns where table_name='source_discovery_assessments' and column_name='offering_id')
+   union all select '020', to_regclass('public.pdf_link_selections') is not null;"
+   ```
+6. **Update `.env`.** It pins the old discovery settings, which override the new defaults.
+   Set:
+   ```
+   SOURCE_DISCOVERY_POLICY_VERSION=2
+   SOURCE_DISCOVERY_PROMPT_VERSION=2
+   SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES=gemini-3.5-flash-lite
+   SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD=2.50
+   SOURCE_DISCOVERY_MAX_CONCURRENT_BATCHES=3
+   SOURCE_DISCOVERY_CLASSIFIER_MAX_OUTPUT_TOKENS=8192
+   ```
+   Then list any other keys `.env.example` has that `.env` lacks (from the earlier fixes) and
+   decide on each:
+   ```bash
+   comm -23 <(grep -o '^[A-Z_]*=' .env.example | sort -u) <(grep -o '^[A-Z_]*=' .env | sort -u)
+   ```
+7. **Rebuild and start.**
+   ```bash
+   docker compose up --build -d api worker
+   docker compose exec api uv run python scripts/check_adk_session_schema.py
+   curl -s localhost:8080/api/v1/healthz
+   ```
+   The startup price check fails loudly if the fallback's price is over the cap (step 6).
+8. **Smoke-test one offering.**
+   ```bash
+   curl -s -X POST localhost:8080/api/v1/runs -H 'Content-Type: application/json' \
+     -d '{"product": "mortgage", "offering_id": "mortgage_primary"}'
+   curl -s localhost:8080/api/v1/runs/<run_id>      # until it finishes
+   ```
+   Then check, in `artifacts/pipeline-audit/run_<run_id>/mortgage_primary/`:
+   `2_pdf_link_selection.md` (Express terms, website-profile PDF not transcribed);
+   `3_source_selection_decisions.md` (the Express table `related_product`, the cross-sell
+   cards decided by rule); and in the database:
+   ```bash
+   docker compose exec -T db psql -U tariff -d tariff_monitor -c \
+     "select offering_id, count(*) from source_discovery_assessments group by 1;
+      select offering_id, count(*) from pdf_link_selections group by 1;"
+   ```
+9. **Run everything once, and review.** Trigger a full run (the worker's daily 06:00 run, or
+   one `POST /api/v1/runs` per product). Expect, once:
+   - every page classified again, the link selection once per offering, and every offering's
+     RAG chunks re-embedded (about $0.25 of discovery for the 13 seeds, plus extraction and
+     embeddings);
+   - 11 fewer PDFs transcribed than before (sibling and website-profile PDFs);
+   - **tariff changes and reviews where a value used to come from a sibling product** (the
+     Express table on the primary, construction, renovation and secondary-market pages).
+     The bank changed nothing; approve the corrected values in the reviews.
+10. **If something goes wrong, roll back.** Stop `api` and `worker`, restore the dump, and
+    check out the previous commit:
+    ```bash
+    docker compose stop api worker
+    docker compose exec -T db pg_restore -U tariff -d tariff_monitor --clean --if-exists \
+      < ~/tariff_monitor-before-source-discovery-<date>.dump
+    git checkout <previous commit> && docker compose up --build -d api worker
+    ```
 

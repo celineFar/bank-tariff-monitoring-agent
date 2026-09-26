@@ -261,6 +261,7 @@ def _section_candidate(
             for member_id, block in zip(member_ids, blocks, strict=True)
         ),
         member_context=link_context[:_MAX_CONTEXT_CHARS],
+        link_urls=tuple(dict.fromkeys(str(link.url) for link in linked)),
     )
 
 
@@ -438,6 +439,7 @@ def _candidate(
     layout: CandidateLayout | None = None,
     members: tuple[DiscoveryMember, ...] = (),
     member_context: str = "",
+    link_urls: tuple[str, ...] = (),
 ) -> DiscoveryCandidate:
     structural = {
         "document_url": str(document.source_url),
@@ -473,6 +475,7 @@ def _candidate(
         layout=layout or CandidateLayout.CONTENT,
         members=members,
         member_context=member_context,
+        link_urls=link_urls,
     )
 
 

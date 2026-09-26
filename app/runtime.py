@@ -294,6 +294,7 @@ def build_application_container(
         ),
         normalization=normalization,
         pdf_selection=pdf_selection,
+        catalog=catalog,
         discovery=discovery,
         extraction=extraction,
         projection=KnowledgeProjectionService(

@@ -18,43 +18,7 @@
       "related"
     ]
   ],
-  "leaks_after": 7,
+  "leaks_after": 0,
   "leaks_before": 29,
-  "section_leaks_after": [
-    [
-      "mortgage_construction",
-      "Construction loan > Terms and conditions > Online mortgage",
-      "Apply online, and, if your application is approved, provide "
-    ],
-    [
-      "mortgage_construction",
-      "Construction loan > Terms and conditions > Online mortgage",
-      "Learn more"
-    ],
-    [
-      "mortgage_online",
-      "and secondary market > Real estate loan for secondary market",
-      "If you have already found your ideal home on the secondary m"
-    ],
-    [
-      "mortgage_online",
-      "ne loan for primary and secondary market > Construction loan",
-      "Our construction loan offers are designed to help you build "
-    ],
-    [
-      "mortgage_renovation",
-      "Renovation loan > Mortgage from secondary market",
-      "If you have already found your ideal home on the secondary m"
-    ],
-    [
-      "mortgage_renovation",
-      "Renovation loan > Mortgage from secondary market",
-      "Learn more"
-    ],
-    [
-      "mortgage_secondary_market",
-      "Real estate loan for secondary market > Construction loan",
-      "Our construction loan offers are designed to help you build "
-    ]
-  ]
+  "section_leaks_after": []
 }
