@@ -223,8 +223,9 @@ class AcquisitionSettings(SettingsGroup):
 
 
 class PdfExtractionSettings(SettingsGroup):
-    schema_version: str = Field(default="2", min_length=1, max_length=50)
-    prompt_version: str = Field(default="2", min_length=1, max_length=50)
+    # 3: table header rows and row groups as fields, temperature 0 (SE3).
+    schema_version: str = Field(default="3", min_length=1, max_length=50)
+    prompt_version: str = Field(default="3", min_length=1, max_length=50)
     model_name: str = "gemini-3.1-flash-lite"
     fallback_model_names: tuple[str, ...] = ()
     max_price_per_million_tokens_usd: float = Field(default=1.5, gt=0, le=100)

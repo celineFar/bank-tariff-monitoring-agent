@@ -57,8 +57,8 @@ class EnvironmentSettings(BaseSettings):
     acquisition_freshness_hours: float = 1.0
     acquisition_baseline_max_pdf_link_drop: float = 0.5
     acquisition_baseline_max_main_content_drop: float = 0.6
-    pdf_extraction_schema_version: str = "2"
-    pdf_extraction_prompt_version: str = "2"
+    pdf_extraction_schema_version: str = "3"
+    pdf_extraction_prompt_version: str = "3"
     pdf_extraction_model_name: str = "gemini-3.1-flash-lite"
     pdf_extraction_fallback_model_names: Annotated[tuple[str, ...], NoDecode] = ()
     pdf_extraction_max_price_per_million_tokens_usd: float = 1.5

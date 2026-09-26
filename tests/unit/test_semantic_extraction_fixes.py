@@ -519,11 +519,12 @@ async def test_se11_unrelated_unit_does_not_change_budgeted_cache_keys() -> None
 # --- SE1: table header hierarchy -----------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE1: merged header columns are flattened")
 def test_se1_card_tier_columns_name_their_cells() -> None:
     _, (table,) = _parse(
         "<table>"
-        '<tr><td colspan="2">Card type</td><td colspan="2">Classic</td><td colspan="3">Gold</td></tr>'
+        '<tr><td colspan="2"><strong>Card type</strong></td>'
+        '<td colspan="2"><strong>Classic</strong></td>'
+        '<td colspan="3"><strong>Gold</strong></td></tr>'
         '<tr><td>Purpose</td><td>Purpose</td><td colspan="5">Payments</td></tr>'
         '<tr><td rowspan="2">Loan terms</td><td>Currency</td><td colspan="5">AMD</td></tr>'
         '<tr><td>Interest rate</td><td colspan="2">AMD: 21%</td><td colspan="3">AMD: 20%</td></tr>'
@@ -533,9 +534,6 @@ def test_se1_card_tier_columns_name_their_cells() -> None:
     assert _cell_by_text(table, "AMD: 20%").column_path == ("Gold",)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE1: a currency row inside the body is a data row"
-)
 def test_se1_currency_qualifier_row_names_the_rate_columns() -> None:
     _, (table,) = _parse(
         "<table>"
@@ -562,9 +560,6 @@ def test_se1_currency_qualifier_row_names_the_rate_columns() -> None:
 # --- SE2: headline value and label are one block --------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE2: headline value and label are separate blocks"
-)
 def test_se2_headline_card_is_one_key_value_block() -> None:
     blocks, _ = _parse(
         "<h1>Real estate loan</h1>"

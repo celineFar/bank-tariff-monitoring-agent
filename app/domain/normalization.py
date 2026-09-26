@@ -127,6 +127,10 @@ class NormalizedTableCell(NormalizationModel):
     list_items: tuple[str, ...] = ()
     scalar_candidates: tuple[NormalizedScalar, ...] = ()
     source_refs: tuple[SourceReference, ...] = Field(min_length=1)
+    # The headers above a value cell, top to bottom, plus any qualifier row in
+    # force ("Currency: AMD"). Empty for label cells and for a cell that spans
+    # columns with different headers (it applies to all of them).
+    column_path: tuple[str, ...] = ()
 
 
 class NormalizedTableRow(NormalizationModel):
@@ -135,6 +139,13 @@ class NormalizedTableRow(NormalizationModel):
     # The in-table section label(s) the row sits under ("USD loans",
     # "Loan terms > Term and interest rate"), when the table has any.
     section: str | None = None
+    # The row's label cells (the stub columns), carried rowspans included.
+    label_path: tuple[str, ...] = ()
+    # A value row that completes the row above it under the same labels: the
+    # rate types ("Fixed") on one row, the rates (13.5%) on the next.
+    continues: str | None = None
+    # The row names the value columns below it ("Currency | AMD | USD | EUR").
+    qualifies: bool = False
 
 
 class NormalizedNote(NormalizationModel):
@@ -149,6 +160,10 @@ class NormalizedTable(NormalizationModel):
     title: str | None = None
     headers: tuple[str, ...] = ()
     headers_inferred: bool = False
+    # How many leading columns hold row labels rather than values.
+    stub_columns: int = 0
+    # Per column, the real header texts above it, merged duplicates collapsed.
+    column_paths: tuple[tuple[str, ...], ...] = ()
     rows: tuple[NormalizedTableRow, ...] = ()
     notes: tuple[NormalizedNote, ...] = ()
     source_refs: tuple[SourceReference, ...] = Field(min_length=1)

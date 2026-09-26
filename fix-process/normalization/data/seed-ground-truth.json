@@ -1,5 +1,5 @@
 {
- "_about": "What HTML normalization should produce for each seed page, recorded 2026-09-26 from the pages captured by survey/capture_seeds.py and read with survey/dom_inventory.py (a plain BeautifulSoup walk, not the parser under test). Checked by survey/check_ground_truth.py. Table facts: 'find' picks the table (a substring of its title, cells or notes); 'title' must appear in the table title; 'header_row' lists the real column headers (null = the table has no header row, so headers may be invented but must be flagged); each 'facts' entry lists substrings that must all appear in ONE normalized row, and 'section' (when given) must appear in that row's section label; 'notes' are footnotes that must be notes with that marker and text start. Block facts: 'text' must appear in some block; 'heading' (when given) must appear in that block's heading path. Whitespace is collapsed before comparing.",
+ "_about": "What HTML normalization should produce for each seed page, recorded 2026-09-26 from the pages captured by survey/capture_seeds.py and read with survey/dom_inventory.py (a plain BeautifulSoup walk, not the parser under test). Checked by survey/check_ground_truth.py. Table facts: 'find' picks the table (a substring of its title, cells or notes); 'title' must appear in the table title; 'header_row' lists the real column headers (null = the table has no header row, so headers may be invented but must be flagged); each 'facts' entry lists substrings that must all appear in ONE normalized row, and 'section' (when given) must appear in that row's section label; 'notes' are footnotes that must be notes with that marker and text start. Block facts: 'text' must appear in some block; 'heading' (when given) must appear in that block's heading path. Whitespace is collapsed before comparing. Added by the semantic-extraction fix (SE1, SE2): 'cells' lists table cells whose text contains 'text' and whose column path (headers and qualifier rows above it) contains every 'column_path' part; a block 'type' must match the block's type.",
  "templates": {
   "service_fees": {
    "find": "Term extension for mortgage/investment loans",
@@ -350,6 +350,26 @@
        "marker": "6",
        "starts": "This service is available"
       }
+     ],
+     "cells": [
+      {
+       "text": "AMD: 21%",
+       "column_path": [
+        "VISA Classic"
+       ]
+      },
+      {
+       "text": "AMD: 20%",
+       "column_path": [
+        "Master Card Gold"
+       ]
+      },
+      {
+       "text": "AMD: 19%",
+       "column_path": [
+        "VISA Infinite"
+       ]
+      }
      ]
     },
     {
@@ -439,6 +459,32 @@
        "marker": "5",
        "starts": "This service is available"
       }
+     ],
+     "cells": [
+      {
+       "text": "AMD: 21%",
+       "column_path": [
+        "Arca Classic"
+       ]
+      },
+      {
+       "text": "AMD: 20%",
+       "column_path": [
+        "Mastercard Gold"
+       ]
+      },
+      {
+       "text": "AMD: 23.13 %",
+       "column_path": [
+        "Arca Classic"
+       ]
+      },
+      {
+       "text": "AMD: 21.92 %",
+       "column_path": [
+        "Mastercard Gold"
+       ]
+      }
      ]
     },
     {
@@ -454,6 +500,10 @@
     },
     {
      "text": "Indefinite term (until requested back)"
+    },
+    {
+     "text": "Loan Amount: AMD 100,000 -15 mln",
+     "type": "key_value"
     }
    ]
   },
@@ -554,6 +604,10 @@
     },
     {
      "text": "6 - 24 months"
+    },
+    {
+     "text": "Term of finance: 6 - 24 months",
+     "type": "key_value"
     }
    ]
   },
@@ -735,7 +789,33 @@
        ]
       }
      ],
-     "notes": "mortgage_notes_primary"
+     "notes": "mortgage_notes_primary",
+     "cells": [
+      {
+       "text": "13.5%",
+       "column_path": [
+        "Currency: AMD"
+       ]
+      },
+      {
+       "text": "11.0%",
+       "column_path": [
+        "Currency: USD"
+       ]
+      },
+      {
+       "text": "8.5%",
+       "column_path": [
+        "Currency: EUR"
+       ]
+      },
+      {
+       "text": "14.39-15.76%",
+       "column_path": [
+        "Currency: AMD"
+       ]
+      }
+     ]
     },
     {
      "template": "express_home"
@@ -750,6 +830,14 @@
     },
     {
      "text": "Insurance Companies Cooperating with Ameriabank and Related Fees"
+    },
+    {
+     "text": "Loan amount: AMD 3-150 million",
+     "type": "key_value"
+    },
+    {
+     "text": "Nominal interest rate: 12.9%",
+     "type": "key_value"
     }
    ]
   },
@@ -813,6 +901,20 @@
       {
        "marker": "4",
        "starts": "Attention! The adjustable nominal interest rate"
+      }
+     ],
+     "cells": [
+      {
+       "text": "14.0%",
+       "column_path": [
+        "Currency: AMD"
+       ]
+      },
+      {
+       "text": "9.0%",
+       "column_path": [
+        "Currency: EUR"
+       ]
       }
      ]
     },
@@ -923,6 +1025,10 @@
     },
     {
      "text": "The client will pay for the following services:"
+    },
+    {
+     "text": "Actual interest rate: 13.84% - 16.03%",
+     "type": "key_value"
     }
    ]
   },
@@ -1250,6 +1356,20 @@
        "row": [
         "Incentive and its payment",
         "1% of the lo"
+       ]
+      }
+     ],
+     "cells": [
+      {
+       "text": "12.05-12.45%",
+       "column_path": [
+        "Refinancing"
+       ]
+      },
+      {
+       "text": "13.67-13.68%",
+       "column_path": [
+        "New loans"
        ]
       }
      ]

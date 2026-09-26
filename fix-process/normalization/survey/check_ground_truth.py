@@ -94,6 +94,29 @@ def check_table(
             failures.append(
                 f"{label} row {fact['row'][:2]} section {got} lacks {section!r}"
             )
+    for fact in spec.get("cells", []):
+        # SE1: a value names its column (card tier, currency) structurally.
+        wanted_text = _n(fact["text"])
+        found = [
+            cell
+            for row in table.rows
+            for cell in row.cells
+            if wanted_text in _n(cell.text)
+        ]
+        if not found:
+            failures.append(f"{label} no cell with {fact['text']!r}")
+        elif not any(
+            all(
+                _n(part) in _n(" > ".join(getattr(cell, "column_path", ())))
+                for part in fact["column_path"]
+            )
+            for cell in found
+        ):
+            got = sorted({tuple(getattr(c, "column_path", ())) for c in found})
+            failures.append(
+                f"{label} cell {fact['text']!r} column path {got} lacks "
+                f"{fact['column_path']}"
+            )
     notes = spec.get("notes") or []
     if isinstance(notes, str):
         notes = templates[notes]
@@ -127,6 +150,11 @@ def check_blocks(
         found = [b for b in blocks if text in _n(b.text)]
         if not found:
             failures.append(f"no block with {spec['text']!r}")
+        elif spec.get("type") and not any(b.type.value == spec["type"] for b in found):
+            failures.append(
+                f"block {spec['text'][:30]!r} is {[b.type.value for b in found]}, "
+                f"not {spec['type']}"
+            )
         elif spec.get("heading") and not any(
             _n(spec["heading"]) in _n(" > ".join(b.heading_path)) for b in found
         ):
@@ -156,6 +184,7 @@ def run() -> dict[str, Any]:
             if "template" in table_spec:
                 table_spec = templates[table_spec["template"]]
             checks += 3 + len(table_spec.get("facts", []))
+            checks += len(table_spec.get("cells", []))
             notes = table_spec.get("notes") or []
             checks += len(templates[notes] if isinstance(notes, str) else notes)
             failures += check_table(table_spec, tables, templates)

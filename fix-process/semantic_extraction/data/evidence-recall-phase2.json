@@ -1,0 +1,2923 @@
+{
+ "seeds": {
+  "consumer_standard": {
+   "product": "consumer_loan",
+   "catalog_items": 161,
+   "catalog_chars": 19342,
+   "own_chars": 17120,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 80,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 3343,
+     "prompt_chars": 26089
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 4273,
+     "prompt_chars": 44851
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 3642,
+     "prompt_chars": 31573
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 4202,
+     "prompt_chars": 32262
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 4669,
+     "prompt_chars": 29245
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 4127,
+     "prompt_chars": 37076
+    }
+   }
+  },
+  "credit_line": {
+   "product": "consumer_loan",
+   "catalog_items": 150,
+   "catalog_chars": 36266,
+   "own_chars": 35796,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 74,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 10520,
+     "prompt_chars": 33533
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 12520,
+     "prompt_chars": 51937
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 5135,
+     "prompt_chars": 32556
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 6900,
+     "prompt_chars": 33072
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 6347,
+     "prompt_chars": 30000
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 7342,
+     "prompt_chars": 41325
+    }
+   }
+  },
+  "overdraft": {
+   "product": "consumer_loan",
+   "catalog_items": 97,
+   "catalog_chars": 26901,
+   "own_chars": 26901,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 63,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 11972,
+     "prompt_chars": 36267
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 13758,
+     "prompt_chars": 53937
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 4852,
+     "prompt_chars": 32738
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 6493,
+     "prompt_chars": 33598
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 5163,
+     "prompt_chars": 28912
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 5325,
+     "prompt_chars": 39186
+    }
+   }
+  },
+  "online_consumer_finance": {
+   "product": "consumer_loan",
+   "catalog_items": 78,
+   "catalog_chars": 8251,
+   "own_chars": 8251,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 47,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 1908,
+     "prompt_chars": 25081
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 1900,
+     "prompt_chars": 40050
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 2300,
+     "prompt_chars": 29188
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 1847,
+     "prompt_chars": 29171
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 2367,
+     "prompt_chars": 25403
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 2112,
+     "prompt_chars": 35085
+    }
+   }
+  },
+  "mortgage_online": {
+   "product": "mortgage",
+   "catalog_items": 220,
+   "catalog_chars": 35478,
+   "own_chars": 34893,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 93,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 3432,
+     "prompt_chars": 29199
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 5876,
+     "prompt_chars": 50885
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 4293,
+     "prompt_chars": 34237
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 4711,
+     "prompt_chars": 34789
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 4414,
+     "prompt_chars": 34144
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 5997,
+     "prompt_chars": 42778
+    }
+   }
+  },
+  "mortgage_primary": {
+   "product": "mortgage",
+   "catalog_items": 272,
+   "catalog_chars": 53359,
+   "own_chars": 33991,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 85,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 3370,
+     "prompt_chars": 26424
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 6173,
+     "prompt_chars": 45765
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 3838,
+     "prompt_chars": 31068
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 7307,
+     "prompt_chars": 34093
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 4008,
+     "prompt_chars": 26934
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 9789,
+     "prompt_chars": 42541
+    }
+   }
+  },
+  "mortgage_secondary_market": {
+   "product": "mortgage",
+   "catalog_items": 272,
+   "catalog_chars": 52450,
+   "own_chars": 33105,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 82,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 4630,
+     "prompt_chars": 28132
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 6212,
+     "prompt_chars": 46643
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 4559,
+     "prompt_chars": 32763
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 7073,
+     "prompt_chars": 34739
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 4073,
+     "prompt_chars": 27565
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 8695,
+     "prompt_chars": 41867
+    }
+   }
+  },
+  "mortgage_commercial": {
+   "product": "mortgage",
+   "catalog_items": 163,
+   "catalog_chars": 28879,
+   "own_chars": 28311,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 90,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 2207,
+     "prompt_chars": 23529
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 5365,
+     "prompt_chars": 44799
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 3311,
+     "prompt_chars": 30476
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 5955,
+     "prompt_chars": 32889
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 3992,
+     "prompt_chars": 26847
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 8797,
+     "prompt_chars": 41699
+    }
+   }
+  },
+  "mortgage_construction": {
+   "product": "mortgage",
+   "catalog_items": 291,
+   "catalog_chars": 63706,
+   "own_chars": 44691,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 93,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 3802,
+     "prompt_chars": 26460
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 5862,
+     "prompt_chars": 45488
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 4960,
+     "prompt_chars": 32511
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 7520,
+     "prompt_chars": 34830
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 4881,
+     "prompt_chars": 28511
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 6956,
+     "prompt_chars": 39837
+    }
+   }
+  },
+  "mortgage_renovation": {
+   "product": "mortgage",
+   "catalog_items": 284,
+   "catalog_chars": 61099,
+   "own_chars": 42035,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 98,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 2766,
+     "prompt_chars": 25086
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 5860,
+     "prompt_chars": 45762
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 5412,
+     "prompt_chars": 32566
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 7184,
+     "prompt_chars": 34520
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 5062,
+     "prompt_chars": 28991
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 6182,
+     "prompt_chars": 39215
+    }
+   }
+  },
+  "mortgage_express": {
+   "product": "mortgage",
+   "catalog_items": 88,
+   "catalog_chars": 10016,
+   "own_chars": 10016,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 53,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 3224,
+     "prompt_chars": 27638
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 2012,
+     "prompt_chars": 42090
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 3142,
+     "prompt_chars": 31190
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 3201,
+     "prompt_chars": 30074
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 2635,
+     "prompt_chars": 26721
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 4378,
+     "prompt_chars": 37905
+    }
+   }
+  },
+  "mortgage_no_income_verification": {
+   "product": "mortgage",
+   "catalog_items": 60,
+   "catalog_chars": 5310,
+   "own_chars": 5246,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 27,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 4279,
+     "prompt_chars": 30110
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 4173,
+     "prompt_chars": 45460
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 4165,
+     "prompt_chars": 33549
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 4243,
+     "prompt_chars": 33321
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 4165,
+     "prompt_chars": 30424
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 3984,
+     "prompt_chars": 38644
+    }
+   }
+  },
+  "mortgage_diaspora": {
+   "product": "mortgage",
+   "catalog_items": 52,
+   "catalog_chars": 3187,
+   "own_chars": 3168,
+   "pdfs_added": [],
+   "pdfs_missing": [],
+   "items_in_any_batch": 42,
+   "batches": {
+    "identity": {
+     "items": 20,
+     "evidence_chars": 1074,
+     "prompt_chars": 27303
+    },
+    "core_financial": {
+     "items": 20,
+     "evidence_chars": 838,
+     "prompt_chars": 42509
+    },
+    "fees_and_repayment": {
+     "items": 20,
+     "evidence_chars": 838,
+     "prompt_chars": 30606
+    },
+    "eligibility_and_documents": {
+     "items": 20,
+     "evidence_chars": 2041,
+     "prompt_chars": 31770
+    },
+    "required_documents": {
+     "items": 20,
+     "evidence_chars": 1237,
+     "prompt_chars": 27899
+    },
+    "product_details": {
+     "items": 20,
+     "evidence_chars": 1644,
+     "prompt_chars": 36976
+    }
+   }
+  }
+ },
+ "ties": {
+  "over_quota_fields": 152,
+  "cut_inside_tie": 126
+ },
+ "footnotes": {
+  "references": 155,
+  "note_absent": 71
+ },
+ "facts": [
+  {
+   "seed": "consumer_standard",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "Annual interest rate",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 12,
+   "association": "current_product",
+   "source_item_id": "t1:row:7",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "term",
+   "group": "core_financial",
+   "label": "Term (months)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 15,
+   "association": "current_product",
+   "source_item_id": "t1:row:6",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Loan disbursement fee",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:12",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Cashing of the loan amount by the borrower",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:13",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "Other terms related to the interest rate",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 12,
+   "association": "current_product",
+   "source_item_id": "t1:row:10",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Late payment fines and penalties",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:24",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "collateral",
+   "group": "product_details",
+   "label": "Security",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t1:row:17",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "required_documents",
+   "group": "required_documents",
+   "label": "Required documents",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 20,
+   "association": "current_product",
+   "source_item_id": "t1:row:19",
+   "section": "Consumer loan > Terms and conditions > Consumer Loan Not Secured by Property — Consumer loan not secured by property ¹"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "required_documents",
+   "group": "required_documents",
+   "label": "Required documents filed together with loan application",
+   "status": "selected",
+   "rank": 12,
+   "candidates": 20,
+   "association": "current_product",
+   "source_item_id": "t2:row:0",
+   "section": "Consumer loan > Terms and conditions > Required documents"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:1",
+   "section": "Consumer loan > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:5",
+   "section": "Consumer loan > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:9",
+   "section": "Consumer loan > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:10",
+   "section": "Consumer loan > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:12",
+   "section": "Consumer loan > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 100,000 - AMD 20 million",
+   "status": "ranked_out",
+   "rank": 7,
+   "candidates": 9,
+   "association": "current_product",
+   "source_item_id": "b20",
+   "section": "Consumer loan"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "term",
+   "group": "core_financial",
+   "label": "Up to 60 months",
+   "status": "ranked_out",
+   "rank": 14,
+   "candidates": 15,
+   "association": "current_product",
+   "source_item_id": "b22",
+   "section": "Consumer loan"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "No fee for cash withdrawal",
+   "status": "selected",
+   "rank": 7,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "b28",
+   "section": "Consumer loan > Consumer loan > ADVANTAGES"
+  },
+  {
+   "seed": "consumer_standard",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "There are no other mandatory fees for the loans not secured by collateral and gu",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "b71",
+   "section": "Consumer loan > Terms and conditions > Are there any other fees?"
+  },
+  {
+   "seed": "credit_line",
+   "field": "credit_limit",
+   "group": "product_details",
+   "label": "Minimum and maximum credit limits",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t1:row:5",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Increase of credit limit of card",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "Interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 13,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "t1:row:17",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "grace_period_days",
+   "group": "product_details",
+   "label": "Grace period",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 4,
+   "association": "current_product",
+   "source_item_id": "t1:row:20",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "Minimum payment required",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "t1:row:21",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Lump-sum fee for failure to make required minimum monthly payment when due",
+   "status": "selected",
+   "rank": 18,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t1:row:28",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Late payment fines and penalties",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t1:row:27",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "credit_line",
+   "field": "required_documents",
+   "group": "required_documents",
+   "label": "Required documents filed together with loan application",
+   "status": "selected",
+   "rank": 12,
+   "candidates": 19,
+   "association": "current_product",
+   "source_item_id": "t2:row:0",
+   "section": "Credit line > Terms and conditions > Required documents"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:1",
+   "section": "Credit line > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 10,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:5",
+   "section": "Credit line > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "selected",
+   "rank": 14,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:9",
+   "section": "Credit line > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:10",
+   "section": "Credit line > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "credit_line",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:12",
+   "section": "Credit line > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "credit_line",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 100,000 -15 mln",
+   "status": "ranked_out",
+   "rank": 7,
+   "candidates": 7,
+   "association": "current_product",
+   "source_item_id": "b20",
+   "section": "Credit line"
+  },
+  {
+   "seed": "credit_line",
+   "field": "term",
+   "group": "core_financial",
+   "label": "Indefinite term (until requested back)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 13,
+   "association": "current_product",
+   "source_item_id": "t1:row:10",
+   "section": "Credit line > Terms and conditions > Credit line unsecured"
+  },
+  {
+   "seed": "overdraft",
+   "field": "credit_limit",
+   "group": "product_details",
+   "label": "Minimum and total maximum credit limits",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t1:row:5",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "Interest rate",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 12,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "t1:row:13",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "Minimum payment required",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "t1:row:14",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Increase of credit limit of card",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t1:row:7",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Early repayment fee",
+   "status": "selected",
+   "rank": 14,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t1:row:17",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "required_documents",
+   "group": "required_documents",
+   "label": "Required documents filed together with loan application",
+   "status": "selected",
+   "rank": 8,
+   "candidates": 15,
+   "association": "current_product",
+   "source_item_id": "t2:row:0",
+   "section": "Overdraft > Terms and conditions > Required documents"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:1",
+   "section": "Overdraft > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 8,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:5",
+   "section": "Overdraft > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "selected",
+   "rank": 12,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:9",
+   "section": "Overdraft > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:10",
+   "section": "Overdraft > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "overdraft",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 21,
+   "association": "current_product",
+   "source_item_id": "t3:row:12",
+   "section": "Overdraft > Terms and conditions > Loans service fee"
+  },
+  {
+   "seed": "overdraft",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 100,000 -15 mln",
+   "status": "ranked_out",
+   "rank": 7,
+   "candidates": 8,
+   "association": "current_product",
+   "source_item_id": "b20",
+   "section": "Overdraft"
+  },
+  {
+   "seed": "overdraft",
+   "field": "term",
+   "group": "core_financial",
+   "label": "Indefinite term (until requested back)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 12,
+   "association": "current_product",
+   "source_item_id": "t1:row:8",
+   "section": "Overdraft > Terms and conditions > Overdrafts via Cards not secured with property (unsecured)"
+  },
+  {
+   "seed": "overdraft",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "Loan Amount: AMD 100,000 -15 mln",
+   "status": "ranked_out",
+   "rank": 7,
+   "candidates": 8,
+   "association": "current_product",
+   "source_item_id": "b20",
+   "section": "Overdraft"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "age_requirements",
+   "group": "eligibility_and_documents",
+   "label": "Customer Age",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 7,
+   "association": "current_product",
+   "source_item_id": "t1:row:0",
+   "section": "Online consumer finance > Terms and conditions > Terms of installment financing for the purchase of goods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "Financing Limit",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t1:row:3",
+   "section": "Online consumer finance > Terms and conditions > Terms of installment financing for the purchase of goods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "term",
+   "group": "core_financial",
+   "label": "Term (months)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t1:row:4",
+   "section": "Online consumer finance > Terms and conditions > Terms of installment financing for the purchase of goods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "Prepayment",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t1:row:5",
+   "section": "Online consumer finance > Terms and conditions > Terms of installment financing for the purchase of goods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "required_documents",
+   "group": "required_documents",
+   "label": "Documents",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Online consumer finance > Terms and conditions > Terms of installment financing for the purchase of goods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "Cash payment at the bank",
+   "status": "selected",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t2:row:3",
+   "section": "Online consumer finance > Terms and conditions > Payment methods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "With the MyAmeria app",
+   "status": "selected",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t2:row:4",
+   "section": "Online consumer finance > Terms and conditions > Payment methods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "By cash payment at the Bank",
+   "status": "selected",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t3:row:3",
+   "section": "Online consumer finance > Terms and conditions > Credit history and score"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "repayment",
+   "group": "fees_and_repayment",
+   "label": "Online via the Bank",
+   "status": "selected",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t3:row:4",
+   "section": "Online consumer finance > Terms and conditions > Credit history and score"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 50.000 - 1.500.000",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "b19",
+   "section": "Online consumer finance"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "term",
+   "group": "core_financial",
+   "label": "6 - 24 months",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "t1:row:4",
+   "section": "Online consumer finance > Terms and conditions > Terms of installment financing for the purchase of goods"
+  },
+  {
+   "seed": "online_consumer_finance",
+   "field": "term",
+   "group": "core_financial",
+   "label": "Term of finance: 6 - 24 months",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "b23",
+   "section": "Online consumer finance"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "term",
+   "group": "core_financial",
+   "label": "3.3. Term (months)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 22,
+   "association": "current_product",
+   "source_item_id": "t1:row:7",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the primary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 16,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the primary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 4,
+   "association": "current_product",
+   "source_item_id": "t1:row:10",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the primary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "3.7. Minimum down payment",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t1:row:12",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the primary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "3.6. Lump sum disbursement fee",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 23,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the primary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 16,
+   "association": "current_product",
+   "source_item_id": "t2:row:9",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the secondary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 4,
+   "association": "current_product",
+   "source_item_id": "t2:row:10",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the secondary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "3.7. Minimum down payment",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t2:row:12",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the secondary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "collateral",
+   "group": "product_details",
+   "label": "5.3. Location of the real estate to be pledged",
+   "status": "ranked_out",
+   "rank": 13,
+   "candidates": 36,
+   "association": "current_product",
+   "source_item_id": "t2:row:17",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Tariffs in the case of the secondary market"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 23,
+   "association": "current_product",
+   "source_item_id": "t3:row:1",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 11,
+   "candidates": 23,
+   "association": "current_product",
+   "source_item_id": "t3:row:5",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "selected",
+   "rank": 15,
+   "candidates": 23,
+   "association": "current_product",
+   "source_item_id": "t3:row:9",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 23,
+   "association": "current_product",
+   "source_item_id": "t3:row:10",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 7,
+   "candidates": 23,
+   "association": "current_product",
+   "source_item_id": "t3:row:12",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "collateral",
+   "group": "product_details",
+   "label": "Pledged property is subject to mandatory valuation",
+   "status": "ranked_out",
+   "rank": 19,
+   "candidates": 36,
+   "association": "current_product",
+   "source_item_id": "b94",
+   "section": "Real estate online loan for primary and secondary market > Terms and conditions"
+  },
+  {
+   "seed": "mortgage_online",
+   "field": "application_channel",
+   "group": "eligibility_and_documents",
+   "label": "Submit your online application",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 4,
+   "association": "current_product",
+   "source_item_id": "b29",
+   "section": "Real estate online loan for primary and secondary market"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "3.2. Minimum and maximum loan limits",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "t1:row:7",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 32,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:13",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.7. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 32,
+   "association": "current_product",
+   "source_item_id": "t1:row:16",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.9. Nominal annual interest rate",
+   "status": "ranked_out",
+   "rank": 7,
+   "candidates": 32,
+   "association": "current_product",
+   "source_item_id": "t1:row:20",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.10. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:22",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "3.12. Lump sum disbursement fee",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t1:row:28",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "8. Early repayment fee",
+   "status": "ranked_out",
+   "rank": 16,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t1:row:64",
+   "section": "Terms and conditions > Tariffs — Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "2.2. Minimum and maximum loan limit",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 11,
+   "association": "related_product",
+   "source_item_id": "t2:row:5",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:37",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:38",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:50",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:51",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:50",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:64",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:50",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:64",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "term",
+   "group": "core_financial",
+   "label": "1.2. Term (months)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 29,
+   "association": "related_product",
+   "source_item_id": "t2:row:74",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t3:row:1",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 11,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t3:row:5",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "selected",
+   "rank": 15,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t3:row:9",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t3:row:10",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 7,
+   "candidates": 26,
+   "association": "current_product",
+   "source_item_id": "t3:row:12",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 3-150 million",
+   "status": "ranked_out",
+   "rank": 11,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "b19",
+   "section": null
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "Loan amount: AMD 3-150 million",
+   "status": "ranked_out",
+   "rank": 11,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "b19",
+   "section": null
+  },
+  {
+   "seed": "mortgage_primary",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "Nominal interest rate: 12.9%",
+   "status": "ranked_out",
+   "rank": 31,
+   "candidates": 32,
+   "association": "current_product",
+   "source_item_id": "b23",
+   "section": null
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 32,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Real estate loan for secondary market > Terms and conditions > Tarifs — Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:13",
+   "section": "Real estate loan for secondary market > Terms and conditions > Tarifs — Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.9. Nominal annual interest rate",
+   "status": "ranked_out",
+   "rank": 7,
+   "candidates": 32,
+   "association": "current_product",
+   "source_item_id": "t1:row:20",
+   "section": "Real estate loan for secondary market > Terms and conditions > Tarifs — Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.10. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:22",
+   "section": "Real estate loan for secondary market > Terms and conditions > Tarifs — Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "3.12. Minimum down payment",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "t1:row:29",
+   "section": "Real estate loan for secondary market > Terms and conditions > Tarifs — Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "2.2. Minimum and maximum loan limit",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 11,
+   "association": "related_product",
+   "source_item_id": "t2:row:5",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:37",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:38",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:50",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:51",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:50",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:64",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 32,
+   "association": "related_product",
+   "source_item_id": "t2:row:50",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 5,
+   "association": "related_product",
+   "source_item_id": "t2:row:64",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "term",
+   "group": "core_financial",
+   "label": "1.2. Term (months)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 28,
+   "association": "related_product",
+   "source_item_id": "t2:row:74",
+   "section": "Real estate loan for secondary market > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t3:row:1",
+   "section": "Real estate loan for secondary market > Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 10,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t3:row:5",
+   "section": "Real estate loan for secondary market > Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "selected",
+   "rank": 14,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t3:row:9",
+   "section": "Real estate loan for secondary market > Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t3:row:10",
+   "section": "Real estate loan for secondary market > Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t3:row:12",
+   "section": "Real estate loan for secondary market > Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 3-150 million",
+   "status": "ranked_out",
+   "rank": 11,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "b19",
+   "section": "Real estate loan for secondary market"
+  },
+  {
+   "seed": "mortgage_secondary_market",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "from 5%",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "b25",
+   "section": "Real estate loan for secondary market"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "3.2. Minimum and maximum loan limits",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:5",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 16,
+   "association": "current_product",
+   "source_item_id": "t1:row:8",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:10",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.7. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 16,
+   "association": "current_product",
+   "source_item_id": "t1:row:13",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.8. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:15",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "3.11. Minimum down payment",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "t1:row:22",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "9. Early repayment fee",
+   "status": "ranked_out",
+   "rank": 23,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t1:row:58",
+   "section": "Terms and conditions > Tariffs — Loan for Purchase of Commercial Real Estate"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t2:row:1",
+   "section": "Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 10,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t2:row:5",
+   "section": "Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "selected",
+   "rank": 14,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t2:row:9",
+   "section": "Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t2:row:10",
+   "section": "Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 27,
+   "association": "current_product",
+   "source_item_id": "t2:row:12",
+   "section": "Terms and conditions > Loan service fee"
+  },
+  {
+   "seed": "mortgage_commercial",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 3-150 million",
+   "status": "ranked_out",
+   "rank": 10,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "b19",
+   "section": null
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 41,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Terms and conditions > Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Terms and conditions > Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.9. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 41,
+   "association": "current_product",
+   "source_item_id": "t1:row:18",
+   "section": "Terms and conditions > Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.10. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:20",
+   "section": "Terms and conditions > Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 41,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Terms and conditions > Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.7. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 41,
+   "association": "current_product",
+   "source_item_id": "t1:row:14",
+   "section": "Terms and conditions > Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "2.2. Minimum and maximum loan limit",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 15,
+   "association": "related_product",
+   "source_item_id": "t3:row:5",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 41,
+   "association": "related_product",
+   "source_item_id": "t3:row:37",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:38",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 41,
+   "association": "related_product",
+   "source_item_id": "t3:row:50",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:51",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 41,
+   "association": "related_product",
+   "source_item_id": "t3:row:50",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:64",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 41,
+   "association": "related_product",
+   "source_item_id": "t3:row:50",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:64",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "term",
+   "group": "core_financial",
+   "label": "1.2. Term (months)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 43,
+   "association": "related_product",
+   "source_item_id": "t3:row:74",
+   "section": "Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Term extension for mortgage/investment loans",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 31,
+   "association": "current_product",
+   "source_item_id": "t4:row:1",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the borrower/co-borrower/guarantor",
+   "status": "selected",
+   "rank": 11,
+   "candidates": 31,
+   "association": "current_product",
+   "source_item_id": "t4:row:5",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Change of the loan repayment date",
+   "status": "ranked_out",
+   "rank": 15,
+   "candidates": 31,
+   "association": "current_product",
+   "source_item_id": "t4:row:9",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Provision of loan before submitting to the Bank the document certifying state re",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 31,
+   "association": "current_product",
+   "source_item_id": "t4:row:10",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Revision/modification of another loan term not specified in this document",
+   "status": "selected",
+   "rank": 7,
+   "candidates": 31,
+   "association": "current_product",
+   "source_item_id": "t4:row:12",
+   "section": "Terms and conditions > Loan service fees"
+  },
+  {
+   "seed": "mortgage_construction",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 3 - 150 million",
+   "status": "ranked_out",
+   "rank": 15,
+   "candidates": 15,
+   "association": "current_product",
+   "source_item_id": "b19",
+   "section": null
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 38,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Renovation loan > Terms and conditions > Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Renovation loan > Terms and conditions > Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.9. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 38,
+   "association": "current_product",
+   "source_item_id": "t1:row:18",
+   "section": "Renovation loan > Terms and conditions > Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.10. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:20",
+   "section": "Renovation loan > Terms and conditions > Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "3.4. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 6,
+   "candidates": 38,
+   "association": "current_product",
+   "source_item_id": "t1:row:9",
+   "section": "Renovation loan > Terms and conditions > Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "3.5. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 10,
+   "association": "current_product",
+   "source_item_id": "t1:row:11",
+   "section": "Renovation loan > Terms and conditions > Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "2.2. Minimum and maximum loan limit",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 11,
+   "association": "related_product",
+   "source_item_id": "t3:row:5",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 38,
+   "association": "related_product",
+   "source_item_id": "t3:row:37",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:38",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 38,
+   "association": "related_product",
+   "source_item_id": "t3:row:50",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:51",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 38,
+   "association": "related_product",
+   "source_item_id": "t3:row:50",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:64",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 38,
+   "association": "related_product",
+   "source_item_id": "t3:row:50",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 10,
+   "association": "related_product",
+   "source_item_id": "t3:row:64",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "term",
+   "group": "core_financial",
+   "label": "1.2. Term (months)",
+   "status": "sibling_excluded",
+   "rank": null,
+   "candidates": 44,
+   "association": "related_product",
+   "source_item_id": "t3:row:74",
+   "section": "Renovation loan > Terms and conditions > Express Home Mortgage Loan (Purchase, Construction and Renovation)"
+  },
+  {
+   "seed": "mortgage_renovation",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 3 - 150 million",
+   "status": "ranked_out",
+   "rank": 11,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "b20",
+   "section": "Renovation loan"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "term",
+   "group": "core_financial",
+   "label": "1.2. Term (months)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t1:row:4",
+   "section": "Quick mortgage loan > Terms and conditions > 1. Express Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "t1:row:6",
+   "section": "Quick mortgage loan > Terms and conditions > 1. Express Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t1:row:7",
+   "section": "Quick mortgage loan > Terms and conditions > 1. Express Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "1.5. Minimum down payment",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "t1:row:8",
+   "section": "Quick mortgage loan > Terms and conditions > 1. Express Home Purchase Loan (primary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "t2:row:6",
+   "section": "Quick mortgage loan > Terms and conditions > 2. Express Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t2:row:7",
+   "section": "Quick mortgage loan > Terms and conditions > 2. Express Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "1.5. Minimum down payment",
+   "status": "selected",
+   "rank": 2,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "t2:row:8",
+   "section": "Quick mortgage loan > Terms and conditions > 2. Express Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "t2:row:6",
+   "section": "Quick mortgage loan > Terms and conditions > 2. Express Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t3:row:7",
+   "section": "Quick mortgage loan > Terms and conditions > 3. Express Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "term",
+   "group": "core_financial",
+   "label": "1.2. Term (months)",
+   "status": "selected",
+   "rank": 5,
+   "candidates": 6,
+   "association": "current_product",
+   "source_item_id": "t4:row:4",
+   "section": "Quick mortgage loan > Terms and conditions > 4. Express Home Renovation Loan"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "1.3. Nominal annual interest rate",
+   "status": "selected",
+   "rank": 4,
+   "candidates": 11,
+   "association": "current_product",
+   "source_item_id": "t2:row:6",
+   "section": "Quick mortgage loan > Terms and conditions > 2. Express Home Purchase Loan (secondary market)"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "1.4. Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 5,
+   "association": "current_product",
+   "source_item_id": "t3:row:7",
+   "section": "Quick mortgage loan > Terms and conditions > 3. Express Home Construction Loan"
+  },
+  {
+   "seed": "mortgage_express",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "AMD 3 - 100 million",
+   "status": "selected",
+   "rank": 3,
+   "candidates": 3,
+   "association": "current_product",
+   "source_item_id": "b20",
+   "section": "Quick mortgage loan"
+  },
+  {
+   "seed": "mortgage_no_income_verification",
+   "field": "effective_rate",
+   "group": "core_financial",
+   "label": "Annual percentage rate (APR)",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "t1:row:7",
+   "section": "Terms and conditions > Terms"
+  },
+  {
+   "seed": "mortgage_no_income_verification",
+   "field": "fees",
+   "group": "fees_and_repayment",
+   "label": "Collateral-related costs",
+   "status": "selected",
+   "rank": null,
+   "candidates": 0,
+   "association": "current_product",
+   "source_item_id": "t1:row:8",
+   "section": "Terms and conditions > Terms"
+  },
+  {
+   "seed": "mortgage_no_income_verification",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "Up to AMD 100 million",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "b23",
+   "section": null
+  },
+  {
+   "seed": "mortgage_diaspora",
+   "field": "loan_amount",
+   "group": "core_financial",
+   "label": "Loan amount up to 150 mln",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "b25",
+   "section": "Your home in Armenia > Flexible financing for the Diaspora"
+  },
+  {
+   "seed": "mortgage_diaspora",
+   "field": "down_payment_pct",
+   "group": "product_details",
+   "label": "Down payment from 10%",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 2,
+   "association": "current_product",
+   "source_item_id": "b26",
+   "section": "Your home in Armenia > Flexible financing for the Diaspora"
+  },
+  {
+   "seed": "mortgage_diaspora",
+   "field": "interest_rate",
+   "group": "core_financial",
+   "label": "Nominal interest rate from 13.5%",
+   "status": "selected",
+   "rank": 1,
+   "candidates": 1,
+   "association": "current_product",
+   "source_item_id": "b28",
+   "section": "Your home in Armenia > Flexible financing for the Diaspora"
+  },
+  {
+   "seed": "mortgage_diaspora",
+   "field": "application_channel",
+   "group": "eligibility_and_documents",
+   "label": "How to apply for the loan?",
+   "status": "no_marker",
+   "rank": null,
+   "candidates": 0,
+   "association": "current_product",
+   "source_item_id": "b33",
+   "section": "Your home in Armenia > Calculate the monthly payment"
+  }
+ ]
+}

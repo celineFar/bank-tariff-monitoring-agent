@@ -1047,31 +1047,118 @@ the cache key anyway.
 
 ### Phase 2: Upstream structure (SE1, SE2, SE3)
 
-- [ ] SE1: add `header_rows` (with spans) and `column_paths` to `NormalizedTable`, and
+- [x] SE1: add `header_rows` (with spans) and `column_paths` to `NormalizedTable`, and
       `label_path`, `continues` and cell `column_path` to rows and cells. Keep `headers`, and
       make sure stored artifacts still load.
-- [ ] SE1: build multi-level header rows from `thead` rows and `rowspan`/`colspan`; collapse
+- [x] SE1: build multi-level header rows from `thead` rows and `rowspan`/`colspan`; collapse
       merged duplicates.
-- [ ] SE1: detect qualifier rows (label cells, then column-naming cells, no unit numbers, over
+- [x] SE1: detect qualifier rows (label cells, then column-naming cells, no unit numbers, over
       same-width value rows); apply them as a header level until the next qualifier or
       section row.
-- [ ] SE1: link continuation rows (rate type row → value row).
-- [ ] SE1: extend `seed-ground-truth.json` with column-path facts (Overdraft card tiers,
+- [x] SE1: link continuation rows (rate type row → value row).
+- [x] SE1: extend `seed-ground-truth.json` with column-path facts (Overdraft card tiers,
       Primary and Secondary currencies, one more multi-column seed), and run
       `fix-process/normalization/survey/check_ground_truth.py`: no regression, new facts
       pass.
-- [ ] SE2: pair value and label blocks inside one card container into a key/value block;
+- [x] SE2: pair value and label blocks inside one card container into a key/value block;
       add the headline facts to the ground truth; re-run the check.
-- [ ] SE2: confirm the acquisition page identity is unchanged on the 13 captures (the
+- [x] SE2: confirm the acquisition page identity is unchanged on the 13 captures (the
       pairing changes blocks, not the visible text).
-- [ ] SE3: extend the PDF transcription schema (`section_path`; `header_rows` with spans;
+- [x] SE3: extend the PDF transcription schema (`section_path`; `header_rows` with spans;
       `row_group`) and the instruction; build `column_paths` and `label_path` from them.
-- [ ] SE3: `temperature=0` for transcription; bump the PDF extraction schema and prompt
+- [x] SE3: `temperature=0` for transcription; bump the PDF extraction schema and prompt
       versions.
-- [ ] SE3: replay the stored transcriptions for the old schema (still load, flat), and
+- [x] SE3: replay the stored transcriptions for the old schema (still load, flat), and
       transcribe the selected PDFs of 2 seeds with the new schema. *Spends Gemini budget:
       ≤ $0.05.*
-- [ ] Update [docs/normalization.md](../../docs/normalization.md).
+- [x] Update [docs/normalization.md](../../docs/normalization.md).
+
+#### Phase 2 notes (2026-09-26)
+
+**State: done**, with two deliberate departures from the plan (SE2 identity, SE3
+prompt), both recorded in [../note.md](../note.md). Commit: *Semantic extraction Phase
+2: upstream structure*. Full suite **1,013 passed** (same 4 Gemini-key failures).
+Normalization ground truth: **0 of 372 checks failed**. The 20 new SE1/SE2 facts all
+fail on the Phase 1 code, and nothing regressed.
+
+**SE1 (tables, `table_normalizer.py`, `domain/normalization.py`).**
+- New fields:
+  - `NormalizedTable.stub_columns` and `column_paths`;
+  - `NormalizedTableRow.label_path`, `continues` and `qualifies`;
+  - `NormalizedTableCell.column_path`.
+
+  All default empty, so stored artifacts load. The plan's `header_rows` with spans was
+  not added to `NormalizedTable`: `column_paths` already carries the collapsed
+  hierarchy, and nothing downstream needs the raw spans.
+- **Stub columns**: a header cell spanning from column 0 sets them (Overdraft's "Card
+  type" spans 2); with invented `Section | Item` headers they are 2; otherwise 1.
+- **Column paths**: the header texts per column, merged duplicates collapsed. A cell
+  spanning columns with different paths gets their common prefix (Overdraft's
+  "Payments" spans both card tiers, so it has none).
+- **Qualifier rows**: stay in force until the next qualifier row, *not* until a
+  section row (the plan's wording). On Primary, the rates under the section row "Term
+  and interest rate" are still per currency.
+- **Real tables** (`.cache-live-2`):
+  - currency qualifiers on all 8 mortgage tables that have one;
+  - card tiers on Overdraft and Credit line;
+  - `Term | Refinancing | New loans` on the no-income-verification campaign table,
+    which ties APR 12.05–12.45% to refinancing and 13.67–13.68% to new loans.
+- **Continuations**: first found list items under one label (repayment methods,
+  insurance clauses). Tightened: the row above must hold only short digit-free type
+  words, and every value of the continuing row a number. Now only Primary's `Fixed` →
+  rate and `Fixed` → APR pairs link.
+
+**SE2 (headline cards, `html_parser.py`).**
+- A container whose only texted children are a short heading (≤ 60 characters, one
+  line) followed by a short label (first line ≤ 60 characters, no digits) becomes one
+  `key_value` block: `Loan amount: AMD 3-150 million`. For Online consumer finance,
+  `Nominal interest rate: 17% *` keeps its second line (the APR) in the block.
+- The value is not pushed as a heading. The label's block id is reserved, so ids
+  after the card do not shift (stored assessments and survey data still line up).
+- A lone `h5`/`h6` in a small card that does *not* pair (Overdraft's "Indefinite
+  term" with a long description) is scoped to its card, so it no longer heads later
+  blocks either.
+- **Departure:** the page identity is a hash of parsed blocks, so it changes once on
+  all 13 pages (old against new parser, same captures). The plan expected no change.
+  The acquisition drop guard is unaffected: it measures characters, tables and PDF
+  links, and pairing only adds `": "`.
+
+**SE3 (PDF transcription).**
+- Schema: `PdfModelItem` and `PdfExtractedTable` gain optional `header_rows` and
+  `row_groups`. Stored transcriptions load unchanged.
+- Temperature 0; thinking form from the model registry
+  (`thinking_level=MINIMAL` for `gemini-3.5-flash-lite`).
+- `PDF_EXTRACTION_SCHEMA_VERSION` and `PDF_EXTRACTION_PROMPT_VERSION` go to 3, so every
+  selected PDF is transcribed once more after deploy.
+- PDF tables get stub, column paths, qualifiers and continuations from
+  `structure_text_table`, the text-row twin of the HTML rules. A header row counts
+  only if it reads as a header (cells ≤ 60 characters, no amounts). The model's own
+  `headers` row serves when it gives no `header_rows`. Placeholder names it invents
+  (`Details`, `Item`, `Description`, …) name nothing. On the replayed PDFs this gives
+  `AMD/USD/EUR` on Primary's refinancing table and `New loans/Refinancing` on the
+  campaign terms.
+- **Departure: the transcription instruction is unchanged.** Live trial, 13
+  transcriptions, `gemini-3.1-flash-lite`:
+  - asking for the fields in detail made the Overdraft PDF come back with 4 empty
+    pages;
+  - a lighter wording kept all pages but lost rows on the Primary terms PDF (35
+    against 40);
+  - neither wording got the model to fill `row_groups` or a real header row on any of
+    3 PDFs.
+
+  So the fields stay optional and the production instruction stays. Page coverage
+  also varied between runs at temperature 0: handed off to normalization in
+  [../note.md](../note.md).
+- **Spend**: 13 transcriptions, not metered (no usage repository in the trial).
+  Estimated ≤ $0.10 from the stored `pdf.transcription` usage per call.
+
+**Docs.** [docs/normalization.md](../../docs/normalization.md): headline cards, the
+table structure, PDF temperature and optional structure fields.
+
+**Probe.** Current-product facts reaching their batch: **80% (122/153)**, up from 78%.
+The paired headline blocks now carry label and value together. The selection itself is
+still Phase 4's.
+
 
 ### Phase 3: Evidence identity and rendering (SE10, SE4, SE8, SE9)
 
