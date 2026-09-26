@@ -1,0 +1,372 @@
+# Review process: fix plan
+
+Date: 2026-09-26 · Branch: `fix/reviews` (from `integration/process-fixes` after the
+semantic-extraction merge) · Status: **in progress**. Source report:
+[../review-process-report.md](../review-process-report.md). Decisions the report left open
+were taken without asking the user, as instructed; each is recorded in
+[Decisions](#decisions) and in [../note.md](../note.md).
+
+## Scope
+
+The path from a snapshot's review signals to a human decision:
+
+- signal detection ([snapshot_lifecycle.py](../../app/services/snapshot_lifecycle.py)
+  `detect_review_signals`, `detect_large_rate_changes`);
+- review creation ([monitoring_pipeline.py](../../app/services/monitoring_pipeline.py)
+  `_review_tasks`) and storage ([repositories/reviews.py](../../app/repositories/reviews.py));
+- the review view ([review_resolution.py](../../app/services/review_resolution.py)
+  `build_review_view`, `review_policy`) and the CLI
+  ([cli.py](../../app/cli.py) `_ordered_evidence`, `_relevant_evidence`, `_show_review`);
+- decisions ([review_decisions.py](../../app/services/review_decisions.py));
+- the model-facing read tool `get_current_tariffs` ([tools/reads.py](../../app/tools/reads.py));
+- chat model-call attribution ([model_call_usage.py](../../app/services/model_call_usage.py)).
+
+**Out of scope:** B3/D7 (override support check; the report decided to leave it as an
+accepted risk), and embedding similarity for ranking (open question 4; declined here,
+see Q4).
+
+## How this was checked
+
+- **Code.** Read on `integration/process-fixes` at `f47240d` (the semantic-extraction merge).
+- **Scale re-measured** (the report's first "when resuming" step), on the 13 captured seeds
+  with pages and all labelled PDFs, with the new evidence catalog and the planner's units:
+  [unit-measurements.txt](unit-measurements.txt). Passages per offering: 52–443; units:
+  17–53; the largest table has 70 rows and the largest section 88 passages (9.4k characters).
+  The report's bounds (R4, R5, R7) are therefore still needed.
+- **Stored reviews.** The dev database holds the report's 4 Overdraft reviews (old format,
+  full evidence copies). They are the compatibility check for rows written before this fix.
+- **Real extraction results** for the 13 seeds are regenerated offline, at no model cost,
+  from the extraction cache the semantic-extraction validation left
+  (`fix-process/semantic_extraction/.cache/extraction-cache.json`); they feed the review
+  scenarios.
+
+## What changed since the report
+
+The report was paused before the pipeline change. The semantic-extraction fix
+([../semantic_extraction/](../semantic_extraction/)) since merged:
+
+- **Table rows are records** (SE1/SE4): each value names its column path, a
+  continuation row carries its rate type, and cited notes come with the row. This is
+  what D6 asked of a "display rendering", and it is also the stored form, so the
+  evidence IDs are content- and structure-based (SE10) rather than positional.
+  P5 is resolved by that change; no second rendering is needed (Q6 below).
+- **Evidence IDs no longer change with unrelated page content** (SE10), so a review's
+  stored references stay meaningful across runs.
+- **Keyword ranking is gone from extraction** (SE6). `FIELD_KEYWORDS`/`_field_score`,
+  which the report proposed reusing (P1, R3, R4), no longer exist. The whole-word
+  field terms in `app/domain/extraction_terms.py` and the planner's label-based unit
+  scoring (`build_units`, `_labels`) replace them.
+- **Full evidence mode** (default) sends every selected passage to each extraction call,
+  so "the passages Gemini was given for this field" (R3, P2) is the whole selected
+  catalog in full mode, and the budgeted selection in budgeted mode.
+- **Review decisions are remembered** (SE12) and validation errors are more specific
+  (SE17/SE18), so `extraction_invalid` reviews (B1/D2) carry clearer causes.
+- `main`'s five commits (D1) are merged (`91c5189`); **B2 is fixed**.
+
+## Summary
+
+| ID | Problem (report ref) | Severity | Status |
+|---|---|---|---|
+| RV1 | The review's relevant evidence is re-guessed at every step (P1, R1, Part 3.1) | **high** | proposed |
+| RV2 | A `not_stated` field's review points at the first 20 catalog entries (P2, R3) | **high** | proposed |
+| RV3 | Unvalidated Gemini evidence IDs reach references (P3) | medium | proposed |
+| RV4 | Signal-level references are dropped when the review is created (P4, B6) | **high** | proposed |
+| RV5 | Validation failures are reported as `missing_required_field` (B1, D2) | **high** | proposed |
+| RV6 | Resolving one review removes another review's signal (B4) | medium | proposed |
+| RV7 | Every review row stores a full copy of the snapshot's evidence (B5, D4) | medium | proposed |
+| RV8 | `get_current_tariffs` hands the model the whole evidence catalog (P6, D5) | **high** (cost) | proposed |
+| RV9 | Whole tables/sections as display units, bounded (R2, R4, R5, R7) | medium | proposed |
+| RV10 | `?` has no path to the captured content (R5, P6) | medium | proposed |
+| RV11 | The reviewer sees less of a passage than the check uses (B8) | low | proposed |
+| RV12 | Chat model calls cannot be attributed to a run (B7) | low | proposed |
+| RV13 | Ranking misses are invisible (R4 "log when the citation is outside the units") | low | proposed |
+| — | Overrides fail with several reviews (B2) | — | **already fixed** (`4bf3d3f`, merged in `91c5189`) |
+| — | Table rows hard to read (P5, D6) | — | **resolved by SE1/SE4** (records) |
+| — | Override not checked against its passage (B3, D7) | — | **accepted risk** (report decision) |
+
+
+---
+
+## RV1. The review's relevant evidence is decided once, as references
+
+**Where.** `detect_review_signals` ([snapshot_lifecycle.py:223](../../app/services/snapshot_lifecycle.py#L223)),
+`build_review_view` ([review_resolution.py:465](../../app/services/review_resolution.py#L465)),
+the CLI's `_ordered_evidence` / `_relevant_evidence` ([cli.py:583](../../app/cli.py#L583),
+[:604](../../app/cli.py#L604)).
+
+**What happens.** Three rankers guess, from the field name as a substring, which passages
+matter, each time the review is shown (P1). The knowledge available when the signal was
+raised (the field's citations, the failed check, the passages extraction read) is thrown
+away (Part 3.1).
+
+**Fix (R1).** A new module `app/services/review_evidence.py` builds a `ReviewEvidenceSet`
+when the signal is raised, from what the pipeline already knows:
+
+```
+ReviewEvidenceSet
+  units: [ReviewEvidenceUnit]      # display units, in the order shown
+    kind: table | section | passage
+    key: "<document_id>|<table id>" or "<document_id>|<section path>"
+    evidence_ids: [...]            # the passages shown, in source order (bounded, RV9)
+    seed_ids: [...]                # the passages that put this unit in the set
+    why: cited | batch | candidate | ocr | rate_new
+    omitted: n                     # passages of the unit left out by the bounds
+  unknown_ids: [...]               # IDs Gemini cited that are not in the catalog (RV3)
+```
+
+Seeds per reason (R3, adapted to the new pipeline):
+
+| Reason | Seeds | Units |
+|---|---|---|
+| `missing_required_field` (not stated / absent) | the passages the field's extraction call read (RV2), scored with the planner's label scoring for this field | best unit, a second within `HITL_DOCUMENT_RANK_GAP` (R4) |
+| `extraction_invalid` (RV5) | Gemini's citations, filtered against the catalog | units holding them, ≤ 2, by cited count then precedence |
+| `source_applicability` | the field's citations | the same |
+| `official_source_conflict` | each candidate's passage | one unit per candidate |
+| `ocr_evidence` | the OCR citations | the OCR page passage(s) |
+| `large_rate_change` | the new value's citations (RV4/B6) | their units; before/after numbers stay in the guidance |
+
+Near-duplicate units (a page table and its PDF copy) are merged before picking, keeping
+the higher-precedence one (R4). The three rankers and both `term` special cases are
+deleted; the view and the CLI read the set.
+
+## RV2. A `not_stated` field's review points at the first 20 catalog entries
+
+**Where.** [snapshot_lifecycle.py:309](../../app/services/snapshot_lifecycle.py#L309).
+
+**Fix.** `SemanticExtractionResult.call_evidence`: per extraction call (batch id), the
+evidence IDs it read, for fresh calls and cache hits alike. RV1 seeds a
+`missing_required_field` review from the call that held the field. For old results
+without it, the fallback is the whole catalog scored for the field (R3's fallback), never
+"the first 20".
+
+## RV3. Unvalidated Gemini evidence IDs reach references
+
+**Where.** [semantic_extraction.py `_review_item`](../../app/services/semantic_extraction.py)
+(`evidence_ids` copied from the raw citations), [snapshot_lifecycle.py:316-330](../../app/services/snapshot_lifecycle.py#L316-L330).
+
+**Fix.** The builder keeps only IDs present in the catalog; the others go to
+`unknown_ids` and are shown as "Gemini cited a passage that does not exist". References
+passed to a `ReviewCandidate` are capped at its 20-reference limit.
+
+## RV4. Signal-level references are dropped when the review is created
+
+**Where.** [monitoring_pipeline.py:845 `_review_tasks`](../../app/services/monitoring_pipeline.py#L845)
+reads references only from `candidates`; a `large_rate_change` signal has none (B6).
+
+**Fix.** Every signal carries its `evidence_set` (RV1), and `_review_tasks` stores it on the
+review. `large_rate_change` signals get the new value's citations from the validated field.
+Old signals without a set fall back to their `evidence_references`, then the builder.
+
+## RV5. Validation failures are reported as `missing_required_field`
+
+**Where.** [snapshot_lifecycle.py:316-330](../../app/services/snapshot_lifecycle.py#L316-L330),
+[cli.py `_show_review`](../../app/cli.py) ("No valid X was extracted").
+
+**Fix (D2, decided).** `ReviewReason.EXTRACTION_INVALID`:
+- raised for a review item whose model result exists (a value failed a check), for any
+  field, required or not (Q2 below);
+- its candidate is Gemini's proposed value, with the valid cited passages as references;
+- its guidance names the value and the failed checks ("Gemini proposed X; check failed: Y");
+- allowed decisions: `select_candidate` (accept Gemini's value after checking it), `override`,
+  `reject_all` (Q1 below).
+
+`missing_required_field` stays for a *required* field that is `not_stated`, or absent from
+the answer. A non-required field absent from the answer is `extraction_invalid` without a
+candidate (Q2).
+
+## RV6. Resolving one review removes another review's signal
+
+**Where.** [review_decisions.py:319 `_without_review_signal`](../../app/services/review_decisions.py#L319).
+
+**Fix.** Remove only the signal with the review's own reason *and* scope. Approving the
+OCR review of `interest_rate` leaves its `large_rate_change` signal in place, and
+`validation.accepted` stays false while it is pending.
+
+## RV7. Every review row stores a full copy of the snapshot's evidence
+
+**Where.** [monitoring_pipeline.py:878](../../app/services/monitoring_pipeline.py#L878)
+(`{"items": list(snapshot.evidence)}`), [review_decisions.py `_evidence_items`](../../app/services/review_decisions.py).
+
+**Fix (D4, R1).** New review rows store `{"set": <ReviewEvidenceSet>, "rate_change": …}`.
+Passage content is read from the snapshot's `evidence`, which never changes after the
+snapshot is created. `build_review_view` and `ReviewDecisionService` take the snapshot's
+evidence; rows written before keep working through their `items`.
+
+## RV8. `get_current_tariffs` hands the model the whole evidence catalog
+
+**Where.** [tools/reads.py:89](../../app/tools/reads.py#L89) returns
+`result.model_dump()`, with `normalized_tariff` and `evidence` per offering (≈272 kB for
+Overdraft; 56% of chat spend in the report's ledger).
+
+**Fix (D5, option i).** The tool returns, per offering, `offering_id`, `freshness`,
+`accepted_at`, `age_seconds`, `snapshot_id`, `pending_newer_review`, and the list of field
+names with their status (not values), the "what to watch" item of D5. The REST route is
+unchanged (it calls the service directly).
+
+## RV9. Whole tables and sections, bounded (R2, R4, R5, R7)
+
+**Fix.** Units come from the IDs the pipeline has: a table is every passage of one
+`{table id}:row|note` family in one document; a section is a window around the seed block
+in source order (R7): up to 2 blocks either side, stopping at a heading change or 3,000
+characters. Bounds (R5), as code constants (Q3):
+
+| Bound | Value |
+|---|---|
+| Units per review | 1, a second within the rank gap |
+| Table shown whole up to | 30 rows |
+| Larger table | seed rows ± 3 rows, "*n* more rows" |
+| Section | seed ± 2 blocks, ≤ 3,000 characters |
+
+The CLI prints each unit with its rows numbered and the seed rows marked; a reviewer cites
+one row. **The model gets only the seed passages, trimmed** (R6): the review pause
+payload carries the guidance, candidate, input format and up to 5 seed excerpts. The CLI
+renders the units from the review row and the snapshot through its own repositories.
+
+## RV10. `?` has no path to the captured content
+
+**Fix (R5).** At snapshot creation, the rendered Markdown of the *selected* sources
+(`render_normalized_markdown` of the selected bundle) is saved with the snapshot
+(migration: `tariff_snapshots.selected_sources_markdown text`). The CLI's `?` opens it in
+the pager (search with `/`). It is never sent to the model.
+
+## RV11. The reviewer sees less of a passage than the check uses
+
+**Where.** CLI 400 characters ([cli.py:673](../../app/cli.py#L673)), view 1,500.
+
+**Fix.** The CLI shows a unit's passages whole (records are short since SE1; a single
+passage is bounded at 4,000 characters, the same limit the stored citation uses). The
+saved override citation quotes the passage up to that same limit.
+
+## RV12. Chat model calls cannot be attributed to a run
+
+**Where.** [model_call_usage.py:367](../../app/services/model_call_usage.py#L367) records
+`run_id=None` for every ADK call.
+
+**Fix.** The ADK usage callback reads the active run from the invocation's session state
+(the monitoring node's run key) and records it; calls outside a run stay `NULL`.
+
+## RV13. Ranking misses are invisible
+
+**Fix (R4).** When a reviewer's decision cites a passage outside the units shown, the
+decision service writes a `review_citation_outside_shown_units` audit event with the review,
+the field and the cited ID: a direct measure of ranking misses.
+
+---
+
+## Decisions
+
+The report left these open or awaiting approval. The user asked not to be consulted during
+the work, so each takes the report's recommendation where it had one, and otherwise the
+safer option. All are mirrored in [../note.md](../note.md).
+
+| # | Question (report ref) | Decision | Affects |
+|---|---|---|---|
+| Q1 | Allowed decisions for the new reason (D2) | `select_candidate` (accept Gemini's value once a human has checked it), `override`, `reject_all`. Not `approve`: there is no accepted value to approve. | RV5 |
+| Q2 | A validation failure on a *non-required* field (D2) | Still a review, as `extraction_invalid`. Publishing requires every extracted field to be valid; dropping the field silently would lose data without anyone seeing it. | RV5 |
+| Q3 | Bounds as code constants or settings (R5, open question 1) | **Code constants** (report's recommendation), with the rank gap from `HITL_DOCUMENT_RANK_GAP`. | RV9 |
+| Q4 | Keyword misses in `not_stated` ranking (open question 4) | **Accept, with `?` and logging** (report's recommendation). No embeddings in review routing: it is a new model use where AGENTS.md prefers determinism. | RV1, RV13 |
+| Q5 | The generic "Information Guide" tagged `current_product` (open question 5) | **Track separately**: a source-discovery hand-off, in `../note.md`. | — |
+| Q6 | Table display rendering (D6) | **No second rendering.** SE1/SE4 made the stored row *the* readable record (column paths, notes); its quotes stay exact substrings, so D6's quote-mapping question disappears. | P5 |
+| Q7 | What `get_current_tariffs` returns (D5) | **Option (i): freshness only**, plus field names with their status (D5's "what to watch"). | RV8 |
+| Q8 | Section units (R7, open question 2) | **A window around the seed block** (report's recommendation). | RV9 |
+| Q9 | What `?` shows (R5, open question 3) | **The selected sources' Markdown, saved with the snapshot** (report's recommendation); never sent to the model. | RV10 |
+| Q10 | Final name of the new reason (D2) | **`extraction_invalid`.** | RV5 |
+| Q11 | What the model receives with a review (R6) | Guidance, candidate, input format, and **at most 5 seed passages, 600 characters each**. The CLI renders the units itself. | RV9 |
+
+**One-time effects after deploy.**
+- New reviews store references (`evidence.set`), not evidence copies. Existing review rows
+  keep `evidence.items` and are shown as before.
+- Migration adds `tariff_snapshots.selected_sources_markdown`; snapshots written before it
+  have none, and `?` says so.
+- `get_current_tariffs` stops returning `normalized_tariff` and `evidence` to the model; the
+  REST route is unchanged.
+
+---
+
+## Implementation phases
+
+Order:
+1. failing tests;
+2. what the signal knows (evidence set, reasons, references);
+3. how reviews store and show it;
+4. `?` and ranking-miss logging;
+5. model payloads and attribution;
+6. validation.
+
+Each phase ends green on `uv run pytest tests/unit tests/integration`.
+
+### Phase 0: Preparation
+
+- [x] Create branch `fix/reviews` from `integration/process-fixes` (`f47240d`).
+- [x] Re-measure the scale on the new pipeline: [unit-measurements.txt](unit-measurements.txt).
+- [ ] Run `uv run pytest tests/unit tests/integration` and record the baseline.
+- [ ] Add regression tests, `xfail(strict=True)`, one per item, asserting the target behaviour:
+  - [ ] RV1/RV2: a `not_stated` required field's signal carries an evidence set seeded from
+        its extraction call, not the first 20 catalog entries;
+  - [ ] RV3: an unknown cited ID lands in `unknown_ids`, not in references;
+  - [ ] RV4: a signal's evidence set survives into the review; a `large_rate_change` review
+        links the new value's citations;
+  - [ ] RV5: a value that failed a check raises `extraction_invalid` with Gemini's value as
+        candidate and the failed check in the guidance;
+  - [ ] RV6: resolving the OCR review keeps the `large_rate_change` signal of the same field;
+  - [ ] RV7: a new review row stores references, not the evidence catalog;
+  - [ ] RV8: `get_current_tariffs` returns no `evidence` and no `normalized_tariff`;
+  - [ ] RV9: a unit shows a whole table up to 30 rows, a window around a seed block, at most
+        2 units, and the model payload carries ≤ 5 seed passages;
+  - [ ] RV10: a snapshot carries the selected sources' Markdown;
+  - [ ] RV12: an ADK model call during a run records the run id;
+  - [ ] RV13: a decision citing a passage outside the shown units writes an audit event.
+- [ ] Check each `xfail` with `--runxfail` to fail today.
+- [ ] Write the scenario files `scenarios/R01…R06` (Phase 5).
+
+### Phase 1: What the signal knows (RV2, RV3, RV1, RV5, RV4, RV6)
+
+- [ ] RV2: `SemanticExtractionResult.call_evidence` (call id → evidence IDs), for fresh
+      calls and cache hits; the field → call mapping from the batches.
+- [ ] RV1/RV3: `app/services/review_evidence.py`: units (table, section window, passage),
+      near-duplicate merge, seeds per reason, label scoring with `extraction_terms`, bounds,
+      `unknown_ids`.
+- [ ] RV5: `ReviewReason.EXTRACTION_INVALID`; `detect_review_signals` splits review items
+      into `extraction_invalid` (with candidate) and `missing_required_field` (required and
+      not stated or absent); policy and guidance.
+- [ ] RV4: every signal carries `evidence_set`; `large_rate_change` gets the new value's
+      citations.
+- [ ] RV6: `_without_review_signal` matches reason and scope.
+
+### Phase 2: How reviews store and show it (RV7, RV9, RV11)
+
+- [ ] RV7: `_review_tasks` stores `{"set": …, "rate_change": …}`; `build_review_view` and
+      `ReviewDecisionService` read passage content from the snapshot's evidence; old rows
+      with `items` still work.
+- [ ] RV9: the review pause payload carries ≤ 5 seed passages (600 characters); the CLI
+      renders the units (rows numbered, seeds marked) from its own repositories.
+- [ ] RV11: the CLI shows whole passages (up to 4,000 characters); the saved override quote
+      uses the same limit.
+- [ ] Delete the three rankers and both `term` special cases.
+
+### Phase 3: `?` and ranking misses (RV10, RV13)
+
+- [ ] RV10: migration `022` adds `tariff_snapshots.selected_sources_markdown`; the pipeline
+      renders the selected bundle; the repository reads and writes it; the CLI's `?` opens
+      it in the pager.
+- [ ] RV13: the decision service writes `review_citation_outside_shown_units`.
+
+### Phase 4: Model payloads and attribution (RV8, RV12)
+
+- [ ] RV8: `get_current_tariffs` returns freshness and field statuses only.
+- [ ] RV12: ADK usage callbacks record the active run id from session state.
+
+### Phase 5: Validation
+
+- [ ] Run the offline scenarios:
+  - R01: the test suite;
+  - R02: the report's confirmed problems fixed;
+  - R03: review sets on the 13 seeds' real extraction results (regenerated from the cache,
+    $0), with sizes within the bounds;
+  - R04: the 4 stored old-format reviews still build views;
+  - R05: the tool payload size;
+  - R06: the ranking-miss event.
+- [ ] Update [docs/native-hitl-review.md](../../docs/native-hitl-review.md),
+      [docs/review-quarantine.md](../../docs/review-quarantine.md),
+      [docs/architecture.md](../../docs/architecture.md) and the report's status line.
+- [ ] Update this plan's Summary statuses; write `scenario-results.md`.
