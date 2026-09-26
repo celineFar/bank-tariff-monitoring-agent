@@ -1,0 +1,144 @@
+{
+ "scenario": "S06",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 13,
+  "browser_renders": 0,
+  "megabytes_kept": 0.0,
+  "wall_seconds": 24.4
+ },
+ "seeds": {
+  "consumer_standard": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 455 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 455 < 1500; no tables, PDF links or payloads"
+  },
+  "overdraft": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 433 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 433 < 1500; no tables, PDF links or payloads"
+  },
+  "credit_line": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 1238 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 1238 < 1500; no tables, PDF links or payloads"
+  },
+  "online_consumer_finance": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 178 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 178 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_online": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 236 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 236 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_primary": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 178 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 178 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_diaspora": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 178 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 178 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_secondary_market": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 774 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 774 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_commercial": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 818 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 818 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_express": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 178 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 178 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_no_income_verification": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 178 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 178 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_renovation": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 685 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 685 < 1500; no tables, PDF links or payloads"
+  },
+  "mortgage_construction": {
+   "accepted": false,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 645 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 645 < 1500; no tables, PDF links or payloads"
+  }
+ }
+}

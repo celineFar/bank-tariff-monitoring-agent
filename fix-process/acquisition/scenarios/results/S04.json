@@ -1,0 +1,64 @@
+{
+ "scenario": "S04",
+ "passed": false,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 41,
+  "browser_renders": 3,
+  "megabytes_kept": 13.93,
+  "wall_seconds": 59.6
+ },
+ "mortgage_online": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 27869,
+   "tables": 3,
+   "pdf_links": 17,
+   "payloads": 19
+  },
+  "page_content_hash": "ba74517c724e0725",
+  "content_hash": "b41aa5bc91ccf0e5",
+  "documents_downloaded": 15,
+  "interactions": 10,
+  "reused": false,
+  "warnings": [
+   "acquisition.linked_document_failed: l55: source.not_found",
+   "acquisition.linked_document_failed: l60: source.not_found"
+  ]
+ },
+ "mortgage_construction": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 47725,
+   "tables": 4,
+   "pdf_links": 16,
+   "payloads": 13
+  },
+  "page_content_hash": "f4401758400c03d5",
+  "content_hash": "2f452d1398a16996",
+  "documents_downloaded": 15,
+  "interactions": 11,
+  "reused": false,
+  "warnings": [
+   "acquisition.linked_document_failed: l55: source.not_found"
+  ]
+ },
+ "overdraft_cap_5": {
+  "mode": "browser",
+  "inventory": {
+   "main_chars": 13218,
+   "tables": 3,
+   "pdf_links": 10,
+   "payloads": 17
+  },
+  "page_content_hash": "76e1bb6e1ed54d8a",
+  "content_hash": "c4cfeb98a78b5ff4",
+  "documents_downloaded": 5,
+  "interactions": 6,
+  "reused": false,
+  "warnings": [
+   "acquisition.linked_document_cap_reached: 5 of 10 linked documents not downloaded (cap 5)"
+  ]
+ }
+}

@@ -1,0 +1,53 @@
+{
+ "scenario": "S09",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 2,
+  "browser_renders": 1,
+  "megabytes_kept": 0.0,
+  "wall_seconds": 14.6
+ },
+ "runs": {
+  "run_1_fresh": {
+   "run_status": "failed",
+   "execution": {
+    "status": "failed",
+    "current_stage": "normalization",
+    "failure_code": "source.parsing_failed",
+    "source_retrieved_at": "2026-09-26 07:14:52.248109+00:00",
+    "acquisition_reused": "False"
+   },
+   "audit_reasons": []
+  },
+  "run_2_within_window": {
+   "run_status": "failed",
+   "execution": {
+    "status": "failed",
+    "current_stage": "normalization",
+    "failure_code": "source.parsing_failed",
+    "source_retrieved_at": "2026-09-26 07:14:52.248109+00:00",
+    "acquisition_reused": "True"
+   },
+   "audit_reasons": []
+  },
+  "run_3_browser_disabled": {
+   "run_status": "failed",
+   "execution": {
+    "status": "failed",
+    "current_stage": "acquisition",
+    "failure_code": "source.incomplete_content",
+    "source_retrieved_at": "None",
+    "acquisition_reused": "None"
+   },
+   "audit_reasons": [
+    [
+     "main_chars 433 < 1500",
+     "no tables, PDF links or payloads"
+    ]
+   ]
+  }
+ },
+ "model_call_usage_rows": 0
+}

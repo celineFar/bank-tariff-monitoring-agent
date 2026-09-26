@@ -1,0 +1,79 @@
+{
+ "scenario": "S07",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 3,
+  "browser_renders": 3,
+  "megabytes_kept": 4.72,
+  "wall_seconds": 41.6
+ },
+ "steps": {
+  "1_first_acquire": {
+   "inventory": {
+    "main_chars": 13218,
+    "tables": 3,
+    "pdf_links": 10,
+    "payloads": 17
+   },
+   "baseline_recorded": {
+    "main_chars": 13218,
+    "tables": 3,
+    "pdf_links": 10,
+    "payloads": 17
+   }
+  },
+  "2_baseline_raised": {
+   "main_chars": 13218,
+   "tables": 3,
+   "pdf_links": 25,
+   "payloads": 17
+  },
+  "3_after_drop": {
+   "failed": true,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "pdf_links 25 -> 10 (-60%)"
+   ],
+   "message": "Acquired page lost content since the last good acquisition (pdf_links 25 -> 10 (-60%)); if the bank redesigned the page, accept it with `python -m scripts.reset_acquisition_baseline <offering_id>`"
+  },
+  "3_baseline_after_failure": {
+   "main_chars": 13218,
+   "tables": 3,
+   "pdf_links": 25,
+   "payloads": 17
+  },
+  "4_reset": {
+   "exit_code": 0,
+   "stdout": [
+    "Reset the acquisition baseline of overdraft (https://ameriabank.am/en/personal/loans/consumer-loans/overdraft).",
+    "Cleared: {\"main_chars\": 13218, \"tables\": 3, \"pdf_links\": 25, \"payloads\": 17}. The next passing run records a new baseline."
+   ],
+   "baseline_after_reset": null,
+   "audit_events": [
+    {
+     "event_type": "acquisition.baseline_reset",
+     "by": "scenario-S07",
+     "pdf": "25"
+    }
+   ]
+  },
+  "5_after_reset": {
+   "inventory": {
+    "main_chars": 13218,
+    "tables": 3,
+    "pdf_links": 10,
+    "payloads": 17
+   },
+   "baseline": {
+    "tables": 3,
+    "payloads": 17,
+    "pdf_links": 10,
+    "main_chars": 13218
+   },
+   "reset_by_kept": "scenario-S07"
+  }
+ }
+}

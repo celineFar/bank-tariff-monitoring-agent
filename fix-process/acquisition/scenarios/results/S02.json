@@ -1,0 +1,224 @@
+{
+ "scenario": "S02",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 13,
+  "browser_renders": 13,
+  "megabytes_kept": 29.67,
+  "wall_seconds": 180.9
+ },
+ "seeds": {
+  "consumer_standard": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 18502,
+    "tables": 3,
+    "pdf_links": 12,
+    "payloads": 22
+   },
+   "page_content_hash": "fa7787eedd41013c",
+   "content_hash": "c1f542cfb35b661a",
+   "documents_downloaded": 0,
+   "interactions": 7,
+   "reused": false,
+   "warnings": []
+  },
+  "overdraft": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 13218,
+    "tables": 3,
+    "pdf_links": 10,
+    "payloads": 17
+   },
+   "page_content_hash": "76e1bb6e1ed54d8a",
+   "content_hash": "fcfdfa9b1da12d3d",
+   "documents_downloaded": 0,
+   "interactions": 6,
+   "reused": false,
+   "warnings": []
+  },
+  "credit_line": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 19665,
+    "tables": 3,
+    "pdf_links": 11,
+    "payloads": 13
+   },
+   "page_content_hash": "e5c7cf178e5d4895",
+   "content_hash": "14d259beddc4b085",
+   "documents_downloaded": 0,
+   "interactions": 7,
+   "reused": false,
+   "warnings": []
+  },
+  "online_consumer_finance": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 7711,
+    "tables": 3,
+    "pdf_links": 5,
+    "payloads": 22
+   },
+   "page_content_hash": "e04e4c2ee61683bd",
+   "content_hash": "5d231037b8411b67",
+   "documents_downloaded": 0,
+   "interactions": 4,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_online": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 27869,
+    "tables": 3,
+    "pdf_links": 17,
+    "payloads": 19
+   },
+   "page_content_hash": "ba74517c724e0725",
+   "content_hash": "dc64e7fe77f5e5ff",
+   "documents_downloaded": 0,
+   "interactions": 10,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_primary": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 40870,
+    "tables": 3,
+    "pdf_links": 14,
+    "payloads": 19
+   },
+   "page_content_hash": "3bcfe4cfad6d2e24",
+   "content_hash": "128b4d2d04e4963d",
+   "documents_downloaded": 0,
+   "interactions": 10,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_diaspora": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 3294,
+    "tables": 0,
+    "pdf_links": 0,
+    "payloads": 17
+   },
+   "page_content_hash": "9765bd1bf5a50a9f",
+   "content_hash": "6a35d95933b9474d",
+   "documents_downloaded": 0,
+   "interactions": 0,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_secondary_market": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 39992,
+    "tables": 3,
+    "pdf_links": 12,
+    "payloads": 15
+   },
+   "page_content_hash": "0785e3a37bf49fb2",
+   "content_hash": "71ae7f5fd99cba1e",
+   "documents_downloaded": 0,
+   "interactions": 10,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_commercial": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 24825,
+    "tables": 2,
+    "pdf_links": 9,
+    "payloads": 13
+   },
+   "page_content_hash": "2c40680072fa21a3",
+   "content_hash": "aac7bd55072b52d6",
+   "documents_downloaded": 0,
+   "interactions": 9,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_express": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 8360,
+    "tables": 4,
+    "pdf_links": 3,
+    "payloads": 20
+   },
+   "page_content_hash": "3e55a562dbe6f678",
+   "content_hash": "a891e172fef35ed3",
+   "documents_downloaded": 0,
+   "interactions": 5,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_no_income_verification": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 4774,
+    "tables": 1,
+    "pdf_links": 1,
+    "payloads": 22
+   },
+   "page_content_hash": "8d668f34df775644",
+   "content_hash": "ff6279792ca143e0",
+   "documents_downloaded": 0,
+   "interactions": 4,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_renovation": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 44878,
+    "tables": 3,
+    "pdf_links": 14,
+    "payloads": 14
+   },
+   "page_content_hash": "43bf764fe4a4ecfe",
+   "content_hash": "f5e005cc10d32721",
+   "documents_downloaded": 0,
+   "interactions": 10,
+   "reused": false,
+   "warnings": []
+  },
+  "mortgage_construction": {
+   "mode": "browser",
+   "inventory": {
+    "main_chars": 47725,
+    "tables": 4,
+    "pdf_links": 16,
+    "payloads": 13
+   },
+   "page_content_hash": "f4401758400c03d5",
+   "content_hash": "71fb794c7c9f2cc1",
+   "documents_downloaded": 0,
+   "interactions": 11,
+   "reused": false,
+   "warnings": []
+  }
+ },
+ "passing": [
+  "consumer_standard",
+  "overdraft",
+  "credit_line",
+  "online_consumer_finance",
+  "mortgage_online",
+  "mortgage_primary",
+  "mortgage_diaspora",
+  "mortgage_secondary_market",
+  "mortgage_commercial",
+  "mortgage_express",
+  "mortgage_no_income_verification",
+  "mortgage_renovation",
+  "mortgage_construction"
+ ]
+}

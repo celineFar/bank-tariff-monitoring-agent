@@ -1,0 +1,26 @@
+{
+ "scenario": "S05",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 2,
+  "browser_renders": 2,
+  "megabytes_kept": 0.0,
+  "wall_seconds": 5.6
+ },
+ "a_no_browser": {
+  "artifact_returned": false,
+  "failure_code": "source.browser_unavailable",
+  "reason": "BROWSER_FAILED",
+  "reasons": [],
+  "message": "Browser rendering failed: UNAVAILABLE"
+ },
+ "b_navigation_timeout": {
+  "artifact_returned": false,
+  "failure_code": "source.browser_failed",
+  "reason": "BROWSER_FAILED",
+  "reasons": [],
+  "message": "Browser rendering failed: NAVIGATION"
+ }
+}

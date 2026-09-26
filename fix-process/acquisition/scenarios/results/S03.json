@@ -1,0 +1,248 @@
+{
+ "scenario": "S03",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 13,
+  "browser_renders": 13,
+  "megabytes_kept": 29.67,
+  "wall_seconds": 183.8
+ },
+ "comparison": {
+  "consumer_standard": {
+   "page_id_first": "fa7787eedd41013c",
+   "page_id_second": "fa7787eedd41013c",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 18502,
+    "tables": 3,
+    "pdf_links": 12,
+    "payloads": 22
+   },
+   "inventory_second": {
+    "main_chars": 18502,
+    "tables": 3,
+    "pdf_links": 12,
+    "payloads": 22
+   }
+  },
+  "overdraft": {
+   "page_id_first": "76e1bb6e1ed54d8a",
+   "page_id_second": "76e1bb6e1ed54d8a",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 13218,
+    "tables": 3,
+    "pdf_links": 10,
+    "payloads": 17
+   },
+   "inventory_second": {
+    "main_chars": 13218,
+    "tables": 3,
+    "pdf_links": 10,
+    "payloads": 17
+   }
+  },
+  "credit_line": {
+   "page_id_first": "e5c7cf178e5d4895",
+   "page_id_second": "e5c7cf178e5d4895",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 19665,
+    "tables": 3,
+    "pdf_links": 11,
+    "payloads": 13
+   },
+   "inventory_second": {
+    "main_chars": 19665,
+    "tables": 3,
+    "pdf_links": 11,
+    "payloads": 13
+   }
+  },
+  "online_consumer_finance": {
+   "page_id_first": "e04e4c2ee61683bd",
+   "page_id_second": "e04e4c2ee61683bd",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 7711,
+    "tables": 3,
+    "pdf_links": 5,
+    "payloads": 22
+   },
+   "inventory_second": {
+    "main_chars": 7711,
+    "tables": 3,
+    "pdf_links": 5,
+    "payloads": 22
+   }
+  },
+  "mortgage_online": {
+   "page_id_first": "ba74517c724e0725",
+   "page_id_second": "ba74517c724e0725",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 27869,
+    "tables": 3,
+    "pdf_links": 17,
+    "payloads": 19
+   },
+   "inventory_second": {
+    "main_chars": 27869,
+    "tables": 3,
+    "pdf_links": 17,
+    "payloads": 19
+   }
+  },
+  "mortgage_primary": {
+   "page_id_first": "3bcfe4cfad6d2e24",
+   "page_id_second": "3bcfe4cfad6d2e24",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 40870,
+    "tables": 3,
+    "pdf_links": 14,
+    "payloads": 19
+   },
+   "inventory_second": {
+    "main_chars": 40870,
+    "tables": 3,
+    "pdf_links": 14,
+    "payloads": 19
+   }
+  },
+  "mortgage_diaspora": {
+   "page_id_first": "9765bd1bf5a50a9f",
+   "page_id_second": "9765bd1bf5a50a9f",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 3294,
+    "tables": 0,
+    "pdf_links": 0,
+    "payloads": 17
+   },
+   "inventory_second": {
+    "main_chars": 3294,
+    "tables": 0,
+    "pdf_links": 0,
+    "payloads": 17
+   }
+  },
+  "mortgage_secondary_market": {
+   "page_id_first": "0785e3a37bf49fb2",
+   "page_id_second": "0785e3a37bf49fb2",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 39992,
+    "tables": 3,
+    "pdf_links": 12,
+    "payloads": 15
+   },
+   "inventory_second": {
+    "main_chars": 39992,
+    "tables": 3,
+    "pdf_links": 12,
+    "payloads": 15
+   }
+  },
+  "mortgage_commercial": {
+   "page_id_first": "2c40680072fa21a3",
+   "page_id_second": "2c40680072fa21a3",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 24825,
+    "tables": 2,
+    "pdf_links": 9,
+    "payloads": 13
+   },
+   "inventory_second": {
+    "main_chars": 24825,
+    "tables": 2,
+    "pdf_links": 9,
+    "payloads": 13
+   }
+  },
+  "mortgage_express": {
+   "page_id_first": "3e55a562dbe6f678",
+   "page_id_second": "3e55a562dbe6f678",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 8360,
+    "tables": 4,
+    "pdf_links": 3,
+    "payloads": 20
+   },
+   "inventory_second": {
+    "main_chars": 8360,
+    "tables": 4,
+    "pdf_links": 3,
+    "payloads": 20
+   }
+  },
+  "mortgage_no_income_verification": {
+   "page_id_first": "8d668f34df775644",
+   "page_id_second": "8d668f34df775644",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 4774,
+    "tables": 1,
+    "pdf_links": 1,
+    "payloads": 22
+   },
+   "inventory_second": {
+    "main_chars": 4774,
+    "tables": 1,
+    "pdf_links": 1,
+    "payloads": 22
+   }
+  },
+  "mortgage_renovation": {
+   "page_id_first": "43bf764fe4a4ecfe",
+   "page_id_second": "43bf764fe4a4ecfe",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 44878,
+    "tables": 3,
+    "pdf_links": 14,
+    "payloads": 14
+   },
+   "inventory_second": {
+    "main_chars": 44878,
+    "tables": 3,
+    "pdf_links": 14,
+    "payloads": 14
+   }
+  },
+  "mortgage_construction": {
+   "page_id_first": "f4401758400c03d5",
+   "page_id_second": "f4401758400c03d5",
+   "page_id_same": true,
+   "content_hash_same": true,
+   "inventory_first": {
+    "main_chars": 47725,
+    "tables": 4,
+    "pdf_links": 16,
+    "payloads": 13
+   },
+   "inventory_second": {
+    "main_chars": 47725,
+    "tables": 4,
+    "pdf_links": 16,
+    "payloads": 13
+   }
+  }
+ }
+}

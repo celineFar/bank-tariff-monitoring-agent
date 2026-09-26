@@ -1,0 +1,33 @@
+{
+ "scenario": "S01",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 0,
+  "browser_renders": 0,
+  "megabytes_kept": 0.0,
+  "wall_seconds": 16.5
+ },
+ "files": [
+  "tests/unit/test_acquisition.py",
+  "tests/unit/test_acquisition_identity.py",
+  "tests/unit/test_acquisition_completeness.py",
+  "tests/unit/test_acquisition_freshness.py",
+  "tests/unit/test_browser_render_dom.py",
+  "tests/unit/test_browser_renderer_rules.py",
+  "tests/unit/test_failure_mapping.py",
+  "tests/unit/test_source_urls.py",
+  "tests/unit/test_html_parser.py",
+  "tests/unit/test_monitoring_pipeline.py",
+  "tests/unit/test_monitoring_node.py",
+  "tests/integration/test_acquisition_snapshots_postgres.py",
+  "tests/integration/test_acquisition_baselines_postgres.py"
+ ],
+ "pytest_tail": [
+  "    declaration = tool._get_declaration()",
+  "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+  "143 passed, 11 warnings in 14.91s"
+ ],
+ "skipped": []
+}

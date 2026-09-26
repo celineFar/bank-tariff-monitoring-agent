@@ -1,0 +1,49 @@
+{
+ "scenario": "S08",
+ "passed": true,
+ "cost": {
+  "gemini_calls": 0,
+  "gemini_usd": 0.0,
+  "bank_http_requests": 6,
+  "browser_renders": 3,
+  "megabytes_kept": 2.36,
+  "wall_seconds": 40.0
+ },
+ "steps": {
+  "a1_first": {
+   "reused": false,
+   "stored": 1,
+   "bank_requests": 1,
+   "renders": 1
+  },
+  "a2_second": {
+   "reused": true,
+   "same_retrieved_at": true,
+   "bank_requests": 0,
+   "renders": 0
+  },
+  "b1_partial": {
+   "warnings": [
+    "acquisition.linked_document_cap_reached: 8 of 10 linked documents not downloaded (cap 2)",
+    "acquisition.linked_document_failed: l28: source.size_rejected",
+    "acquisition.linked_document_failed: l29: source.size_rejected"
+   ],
+   "stored": 0
+  },
+  "b2_next_fetches_again": {
+   "bank_requests": 1,
+   "renders": 1
+  },
+  "c_gate_failure": {
+   "failed": true,
+   "failure_code": "source.incomplete_content",
+   "reason": "INCOMPLETE_CONTENT",
+   "reasons": [
+    "main_chars 433 < 1500",
+    "no tables, PDF links or payloads"
+   ],
+   "message": "Acquired page is too incomplete to monitor: main_chars 433 < 1500; no tables, PDF links or payloads",
+   "stored": 0
+  }
+ }
+}
