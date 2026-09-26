@@ -367,7 +367,6 @@ async def test_se14_mortgage_without_age_limit_accepts_not_stated() -> None:
 # --- SE17: alternatives must differ in their conditions ---------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE17: rate alternatives may be unconditional")
 @pytest.mark.asyncio
 async def test_se17_unconditional_rate_alternatives_are_rejected() -> None:
     bundle, discovery = _mortgage_bundle("Interest rate 18% for AMD, 14% for USD")
@@ -389,7 +388,6 @@ async def test_se17_unconditional_rate_alternatives_are_rejected() -> None:
 # --- SE18: citations contain the value --------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="SE18: a citation need not contain the value")
 @pytest.mark.asyncio
 async def test_se18_value_missing_from_its_citation_is_rejected() -> None:
     bundle, discovery = _mortgage_bundle("Interest rate: 21% per annum")
@@ -407,9 +405,6 @@ async def test_se18_value_missing_from_its_citation_is_rejected() -> None:
     assert ExtractionField.INTEREST_RATE in _reviewed_fields(result)
 
 
-@pytest.mark.xfail(
-    strict=True, reason="SE18: quotes are compared with exact whitespace"
-)
 @pytest.mark.asyncio
 async def test_se18_quote_differing_only_by_nbsp_is_accepted() -> None:
     bundle, discovery = _mortgage_bundle("Interest rate: 21\u00a0% per annum")
@@ -851,3 +846,73 @@ def test_se22_condition_dimensions_are_canonical() -> None:
     unknown = Condition(dimension="season", value="summer")
     assert unknown.dimension is ConditionDimension.OTHER
     assert unknown.value == "season: summer"
+
+
+# --- SE18 / SE19: how numbers are read from quotes; the narrowed threshold rule --------
+
+
+@pytest.mark.parametrize(
+    ("quote", "months", "numbers"),
+    (
+        ("AMD 3-150 million", False, {3_000_000, 150_000_000}),
+        ("AMD 3,000,000 - AMD 150,000,000", False, {3_000_000, 150_000_000}),
+        ("AMD 50.000 - 1.500.000", False, {50_000, 1_500_000}),
+        ("12,5%", False, {12.5}),
+        ("Up to 5 years", True, {60}),
+        ("6-60 months; above 48 months only for goods", True, {6, 48, 49, 60}),
+    ),
+)
+def test_se18_quote_numbers_cover_the_ways_a_page_writes_them(
+    quote: str, months: bool, numbers: set
+) -> None:
+    from decimal import Decimal
+
+    from app.services.semantic_extraction import _quote_numbers
+
+    found = _quote_numbers(quote, months=months)
+    assert {Decimal(str(number)).normalize() for number in numbers} <= found
+
+
+def test_se19_threshold_outside_every_range_is_not_a_term_rule() -> None:
+    from app.domain.semantic_extraction import (
+        ConditionalValue,
+        EvidenceItem,
+        ExtractionBatch,
+        TermRange,
+        ValidatedFieldResult,
+    )
+    from app.services.semantic_extraction import _validate_semantic_completeness
+
+    text = "Loan term 12-60 months. Borrower employed for more than 6 months."
+    item = EvidenceItem(
+        evidence_id="ev_" + "b" * 24,
+        document_id="page",
+        source_item_id="terms",
+        content=text,
+        role=InformationRole.PRODUCT_TERMS,
+        authority=Authority.OFFICIAL_TERMS,
+        temporal_status=TemporalStatus.CURRENT,
+        precedence=1,
+        locator=SourceLocator(source_url=URL, source_type=SourceType.PAGE),
+    )
+    batch = ExtractionBatch(
+        id="b",
+        product=ProductType.CONSUMER_LOAN,
+        group="core",
+        fields=(ExtractionField.TERM,),
+        evidence=(item,),
+        content_fingerprint="f" * 64,
+    )
+    result = ModelFieldResult(
+        field=ExtractionField.TERM,
+        status=ExtractionStatus.FOUND,
+        value_json='[{"value":{"min_months":12,"max_months":60},"conditions":[]}]',
+        evidence=(ModelCitation(evidence_id=item.evidence_id, quote=text),),
+    )
+    validated = ValidatedFieldResult(
+        field=ExtractionField.TERM,
+        status=ExtractionStatus.FOUND,
+        value=(ConditionalValue(value=TermRange(min_months=12, max_months=60)),),
+        batch_id="b",
+    )
+    _validate_semantic_completeness(batch, result, validated)  # 6 < 12: not a split

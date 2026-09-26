@@ -1418,14 +1418,65 @@ calls (3 per offering), no errors
 
 ### Phase 6: Validation rules (SE17, SE18, SE19)
 
-- [ ] SE17: reject alternatives with different values and identical conditions, for every
+- [x] SE17: reject alternatives with different values and identical conditions, for every
       list-valued field; delete `_CONDITION_CUES`.
-- [ ] SE18: number grounding through the scalar normalizer (value numbers ⊆ numbers in the
+- [x] SE18: number grounding through the scalar normalizer (value numbers ⊆ numbers in the
       cited text); whitespace-collapsed quote matching.
-- [ ] SE19: run each remaining heuristic validator (term threshold, income markers,
+- [x] SE19: run each remaining heuristic validator (term threshold, income markers,
       product-name anchor) against the Phase 0 labels; keep and rewrite structurally the ones
       that catch a labelled error; delete the rest, moving their cases into the eval set.
-- [ ] Record the kept and deleted checks in the phase notes.
+- [x] Record the kept and deleted checks in the phase notes.
+
+#### Phase 6 notes (2026-09-26)
+
+**State: done.** Commit: *Semantic extraction Phase 6: validation rules*. Unit suite
+**959 passed**, plus the new grounding and threshold tests. The SE17 and SE18 tests
+pass without `xfail`.
+
+**SE17 (alternatives).**
+- For the *alternative* fields (loan amount, interest rate, effective rate, term, down
+  payment, LTV, age), two values under identical conditions (two empty lists
+  included) are rejected, so they go to repair and then review. `_CONDITION_CUES` and
+  `_CONDITION_SENSITIVE_FIELDS` are deleted.
+- **Departure:** the plan said "every list-valued field". Documents, channels,
+  repayment methods, collateral items and fees are *unions*: two unconditional
+  documents are two required documents, not alternatives. So they are exempt.
+
+**SE18 (grounding).**
+- For the numeric fields (the alternative fields plus credit limit, grace period and
+  fees), every number in a found value must be among the numbers of its cited
+  *quotes* (Q7's wording; the SE18 text said "the text its citations point at"). So
+  a `21%` citing "Interest rate" is rejected even though the cited item contains 21.
+- The quote reader (`_quote_numbers`) is the codebase's own, because
+  `extract_scalar_candidates` misses multipliers ("1.5 mln", "-15 mln"). It reads:
+  - thousands separators (`3,000,000`, `50.000`, NBSP);
+  - decimal commas (`12,5`);
+  - a quote's multiplier word applied to its numbers ("AMD 3-150 million");
+  - for terms, years × 12, and threshold + 1 (the instruction's own split, "6–48 plus
+    49–60").
+- Zero is always accepted: "Free" becomes amount 0.
+- Condition values, formulas and names are text and are not checked.
+- Quotes are compared with case and whitespace collapsed (NBSP included), in both the
+  batch-boundary check and the catalog check.
+
+**SE19 (heuristic validators).** Live model output against the labels only comes in
+Phase 9 (S06), so each check was judged on the code and on the labelled pages:
+- **term threshold** (`exceeding|above|over|more than N months`): **kept, narrowed**.
+  It now applies only when a returned range actually spans N. "Employed for more than
+  6 months" no longer forces a split of a 12–60 term. New test.
+- **income-verification markers**: **kept, widened** (`income certificate`,
+  `salary statement`, …). The no-income-verification offering's own wording
+  ("without income verification") already contains a marker.
+- **product-name anchor**: **kept**. It is generic (cite the canonical page's
+  product-name item when one exists), now with whole-word terms.
+- Deleted: the cue-word condition check (replaced by SE17).
+- S06 will show whether any kept check misfires. The results go in the Phase 9 notes.
+
+**Tests changed.** The service fakes in `test_semantic_extraction.py` cited the first
+evidence item for every field. In reading order that is now the page title, whose
+quote holds no numbers. They now cite the title for identity fields and the terms
+item for values. The term-threshold test quotes the whole sentence.
+
 
 ### Phase 7: Cache and review memory (SE11, SE12)
 

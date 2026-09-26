@@ -140,9 +140,18 @@ class FakeExtractor:
     async def extract(self, batch):
         self.calls += 1
         self.batches.append(batch)
-        citation = ModelCitation(
-            evidence_id=batch.evidence[0].evidence_id,
-            quote=batch.evidence[0].content,
+        # Cite the item that states the values (quotes must contain them).
+        terms = next(
+            (item for item in batch.evidence if "60 months" in item.content),
+            batch.evidence[0],
+        )
+        citation = ModelCitation(evidence_id=terms.evidence_id, quote=terms.content)
+        title = next(
+            (item for item in batch.evidence if item.source_item_id == "title"),
+            batch.evidence[0],
+        )
+        title_citation = ModelCitation(
+            evidence_id=title.evidence_id, quote=title.content
         )
         results = []
         for field in batch.fields:
@@ -151,14 +160,14 @@ class FakeExtractor:
                     field=field,
                     status=ExtractionStatus.FOUND,
                     value_json='"consumer_loan"',
-                    evidence=(citation,),
+                    evidence=(title_citation,),
                 )
             elif field is ExtractionField.PRODUCT_NAME:
                 result = ModelFieldResult(
                     field=field,
                     status=ExtractionStatus.FOUND,
                     value_json='"Consumer loan"',
-                    evidence=(citation,),
+                    evidence=(title_citation,),
                 )
             elif field is ExtractionField.TERM:
                 result = ModelFieldResult(
@@ -414,7 +423,10 @@ def test_term_threshold_requires_a_conditional_subrange() -> None:
         evidence=(
             ModelCitation(
                 evidence_id=evidence.evidence_id,
-                quote="Terms exceeding 48 months",
+                quote=(
+                    "Loan term is 6-60 months. Terms exceeding 48 months are "
+                    "available only for furniture and home improvement."
+                ),
             ),
         ),
     )
@@ -480,10 +492,8 @@ class InvalidRateExtractor(FakeExtractor):
         response = await super().extract(batch)
         if ExtractionField.INTEREST_RATE not in batch.fields:
             return response
-        citation = ModelCitation(
-            evidence_id=batch.evidence[0].evidence_id,
-            quote=batch.evidence[0].content,
-        )
+        terms = next(item for item in batch.evidence if "20%" in item.content)
+        citation = ModelCitation(evidence_id=terms.evidence_id, quote=terms.content)
         return ExtractionBatchResponse(
             results=tuple(
                 ModelFieldResult(

@@ -1490,37 +1490,110 @@ def _normalize_requirement_policy(value: Any) -> Any:
     return policy
 
 
-_CONDITION_SENSITIVE_FIELDS = frozenset(
+# Fields whose list items are alternatives of one fact (a rate per currency),
+# not a union of separate items (documents, channels, fees): SE17.
+_ALTERNATIVE_FIELDS = frozenset(
     {
+        ExtractionField.LOAN_AMOUNT,
+        ExtractionField.INTEREST_RATE,
+        ExtractionField.EFFECTIVE_RATE,
+        ExtractionField.TERM,
         ExtractionField.DOWN_PAYMENT_PCT,
         ExtractionField.LTV_PCT,
-        ExtractionField.TERM,
-        ExtractionField.REPAYMENT,
         ExtractionField.AGE_REQUIREMENTS,
-        ExtractionField.APPLICATION_CHANNEL,
-        ExtractionField.REQUIRED_DOCUMENTS,
-        ExtractionField.COLLATERAL,
     }
 )
-_CONDITION_CUES = (
-    "in case",
-    "if ",
-    "where ",
-    "subject to",
-    "for amd",
-    "for usd",
-    "for eur",
-    "foreign currency",
-    "additional collateral",
-    "state-supported",
-    "yerevan",
-    "regions",
-    "only",
-    "upon request",
-    "solar",
-    "goods",
-    "services",
+# Fields whose numbers must appear in their citations: SE18.
+_GROUNDED_FIELDS = _ALTERNATIVE_FIELDS | {
+    ExtractionField.CREDIT_LIMIT,
+    ExtractionField.GRACE_PERIOD_DAYS,
+    ExtractionField.FEES,
+}
+# The keys of value objects that hold a number (conditions, formulas and names
+# are text and are not checked).
+_NUMBER_KEYS = frozenset(
+    {
+        "min",
+        "max",
+        "min_months",
+        "max_months",
+        "min_age",
+        "max_age",
+        "amount",
+        "rate_pct",
+        "min_multiple",
+        "max_multiple",
+        "min_pct",
+        "max_pct",
+    }
 )
+_QUOTE_NUMBER = re.compile(r"\d+(?:[.,\u00a0 ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?")
+_MULTIPLIERS = (
+    (re.compile(r"\b(?:billion|bln|bn)\b", re.IGNORECASE), Decimal(1_000_000_000)),
+    (re.compile(r"\b(?:million|mln|mn|mio)\b", re.IGNORECASE), Decimal(1_000_000)),
+    (re.compile(r"\b(?:thousand|thsd)\b", re.IGNORECASE), Decimal(1000)),
+)
+
+
+def _collapsed(text: str) -> str:
+    """Text compared for citations: case and whitespace (NBSP too) collapsed."""
+    return " ".join(text.split()).casefold()
+
+
+def _value_numbers(value: Any) -> set[Decimal]:
+    numbers: set[Decimal] = set()
+
+    def walk(node: Any, key: str | None) -> None:
+        if isinstance(node, bool) or node is None:
+            return
+        if isinstance(node, (int, float, Decimal)) or (
+            isinstance(node, str) and key in _NUMBER_KEYS
+        ):
+            try:
+                numbers.add(Decimal(str(node)).normalize())
+            except ArithmeticError:
+                return
+        elif isinstance(node, dict):
+            for child_key, child in node.items():
+                if child_key != "conditions":
+                    walk(child, child_key)
+        elif isinstance(node, (list, tuple)):
+            for child in node:
+                walk(child, key)
+
+    walk(TypeAdapter(Any).dump_python(value, mode="json"), None)
+    return numbers
+
+
+def _quote_numbers(text: str, *, months: bool = False) -> set[Decimal]:
+    """Every reading of every number in quoted text: `3,000,000` and `12,5`,
+    `50.000` as thousands or a decimal, and each number scaled by a multiplier
+    word in the quote ("AMD 3-150 million"); for a term, years in months too."""
+    readings: set[Decimal] = set()
+    for match in _QUOTE_NUMBER.finditer(text):
+        raw = match.group(0)
+        compact = re.sub(r"[\u00a0 ]", "", raw)
+        for candidate in {
+            compact.replace(",", ""),
+            compact.replace(",", "."),
+            compact.replace(".", "").replace(",", "."),
+            compact.replace(".", "").replace(",", ""),
+        }:
+            try:
+                readings.add(Decimal(candidate).normalize())
+            except ArithmeticError:
+                continue
+    scaled = set(readings)
+    for pattern, factor in _MULTIPLIERS:
+        if pattern.search(text):
+            scaled |= {(number * factor).normalize() for number in readings}
+    if months:
+        # Years in months, and the first month above a stated threshold: the
+        # instruction splits "6-60, above 48 months only for …" into 6-48 and
+        # 49-60.
+        scaled |= {(number * 12).normalize() for number in readings}
+        scaled |= {(number + 1).normalize() for number in readings}
+    return scaled
 
 
 def _repair_batch(
@@ -1662,23 +1735,47 @@ def _validate_semantic_completeness(
 
     if (
         result.status is ExtractionStatus.FOUND
-        and result.field in _CONDITION_SENSITIVE_FIELDS
+        and result.field in _ALTERNATIVE_FIELDS
         and isinstance(validated.value, tuple)
-        and len(validated.value) > 1
-        and all(
-            isinstance(value, ConditionalValue) and not value.conditions
-            for value in validated.value
-        )
     ):
-        cited_text = " ".join(
-            item.content.casefold()
-            for item in batch.evidence
-            if item.evidence_id
-            in {citation.evidence_id for citation in result.evidence}
+        # SE17: alternatives are told apart by their conditions. Two values
+        # under identical conditions (two empty lists included) are either one
+        # value or a condition the answer left out.
+        seen: dict[frozenset[tuple[str, str, str]], Any] = {}
+        for item in validated.value:
+            if not isinstance(item, ConditionalValue):
+                continue
+            key = frozenset(
+                (
+                    str(condition.dimension),
+                    condition.operator or "",
+                    " ".join(condition.value.split()).casefold(),
+                )
+                for condition in item.conditions
+            )
+            if key in seen and seen[key] != item.value:
+                raise ValueError(
+                    "alternative values share the same conditions; each must carry "
+                    "the condition that tells it apart"
+                )
+            seen.setdefault(key, item.value)
+
+    if result.status is ExtractionStatus.FOUND and result.field in _GROUNDED_FIELDS:
+        # SE18: every number in the value appears in the quotes it cites.
+        quoted = _quote_numbers(
+            " ".join(citation.quote for citation in result.evidence),
+            months=result.field is ExtractionField.TERM,
         )
-        if any(cue in cited_text for cue in _CONDITION_CUES):
+        missing = sorted(
+            number
+            for number in _value_numbers(validated.value)
+            if number != 0 and number not in quoted
+        )
+        if missing:
             raise ValueError(
-                "condition-specific alternatives were returned without conditions"
+                "cited quotes do not contain the value's numbers "
+                f"{', '.join(format(number, 'f') for number in missing[:5])}; quote "
+                "the text that states them"
             )
 
     if (
@@ -1700,6 +1797,18 @@ def _validate_semantic_completeness(
             )
         }
         for threshold in thresholds:
+            spans = any(
+                isinstance(item, ConditionalValue)
+                and isinstance(item.value, TermRange)
+                and (item.value.min_months or 1) <= threshold
+                and item.value.max_months is not None
+                and threshold < item.value.max_months
+                for item in validated.value
+            )
+            if not spans:
+                # A threshold no returned range crosses is about something
+                # else ("employed for more than 6 months"), not the term.
+                continue
             has_conditional_upper_range = any(
                 isinstance(item, ConditionalValue)
                 and isinstance(item.value, TermRange)
@@ -1729,6 +1838,10 @@ def _validate_semantic_completeness(
             "income document",
             "income statement",
             "documentary proof of income",
+            "income certificate",
+            "certificate of income",
+            "salary statement",
+            "salary certificate",
         )
         if not any(marker in cited_text for marker in explicit_income_markers):
             raise ValueError(
@@ -1756,8 +1869,8 @@ def _validate_result_evidence_boundary(
     if not referenced <= evidence_by_id.keys():
         raise ValueError("field cites evidence that was not supplied in its batch")
     for citation in result.evidence:
-        source = evidence_by_id[citation.evidence_id].content.casefold()
-        if citation.quote.casefold() not in source:
+        source = _collapsed(evidence_by_id[citation.evidence_id].content)
+        if _collapsed(citation.quote) not in source:
             raise ValueError(
                 "citation quote is not present in the supplied evidence excerpt"
             )
@@ -1895,7 +2008,7 @@ def _validate_field_result(
         source = evidence_by_id.get(citation.evidence_id)
         if source is None:
             raise ValueError(f"unknown evidence ID: {citation.evidence_id}")
-        if citation.quote.casefold() not in source.content.casefold():
+        if _collapsed(citation.quote) not in _collapsed(source.content):
             raise ValueError(
                 f"citation quote is not present in evidence {citation.evidence_id}"
             )
