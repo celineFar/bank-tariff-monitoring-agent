@@ -13,9 +13,9 @@ The system includes:
 * deterministic source acquisition and structural normalization;
 * cache-aware source discovery and secure PDF retrieval;
 * bounded Gemini-based PDF and semantic extraction;
-* dual source and summary knowledge projections;
+* versioned, evidence-bearing source documents;
 * transactional PostgreSQL/pgvector persistence;
-* hybrid retrieval;
+* typed accepted facts with per-value citations;
 * durable monitoring runs and snapshots;
 * tariff change detection; and
 * Human-in-the-Loop review workflows.

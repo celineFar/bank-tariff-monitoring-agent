@@ -97,15 +97,11 @@ left out and listed under `metadata.omitted`.
 
 ### Which read model answers
 
-`TARIFF_ANSWER_READ_MODEL` selects the read model for every ordinary question and
-is the reversible cutover switch:
-
-- `structured` (default): the ADK `answer_tariff_query` tool, the
-  post-monitoring answer, and `POST /api/v1/questions` all read accepted typed
-  facts. The HTTP route returns fact-evidence citations carrying the evidence ID,
-  exact quote, and locator.
-- `legacy`: the same three surfaces fall back to `RagAnswerService` over chunk
-  retrieval, within the same authorized scope, with no code change.
+Every ordinary question is answered from accepted typed facts: the ADK
+`answer_tariff_query` tool, the post-monitoring answer, and `POST /api/v1/questions`
+all go through `TariffAnswerRouter`. The HTTP route returns fact-evidence citations
+carrying the evidence ID, exact quote, and locator. (The RAG answer path that
+`TARIFF_ANSWER_READ_MODEL=legacy` once restored was removed.)
 
 `POST /api/v1/tariffs/query` always uses the structured service and returns the
 full typed result.

@@ -22,7 +22,7 @@ downloader receives `settings.http` and the PDF extraction service receives
   written by every pipeline run; see `docs/architecture.md`.
 - **Models:** `GEMINI_API_KEY`, `MODEL_NAME`, `EMBEDDING_MODEL_NAME`.
   `MODEL_NAME` is the default generation model for intent resolution, semantic
-  extraction, the root chat agent, and legacy RAG answering. Two schema-bound
+  extraction, and the root chat agent. Two schema-bound
   stages override it with a cheaper model of their own —
   `PDF_EXTRACTION_MODEL_NAME` and `SOURCE_DISCOVERY_MODEL_NAME` — and each has
   its own fallback list and price ceiling. Changing `MODEL_NAME` therefore does
@@ -89,27 +89,25 @@ downloader receives `settings.http` and the PDF extraction service receives
   empty. The container installs `tesseract-ocr`, `tesseract-ocr-hye`, and
   `tesseract-ocr-eng`; a local Windows install additionally needs
   `hye.traineddata` dropped into its `tessdata` directory.
-- **RAG:** `CHUNK_SIZE_CHARS` (500–2,000), `RETRIEVAL_TOP_K`, and
-  `RETRIEVAL_MIN_SCORE`.
-- **Embedding sweep:** the worker embeds active chunks stored without a vector
-  (approved review content, quota-deferred runs) every
-  `EMBEDDING_SWEEP_INTERVAL_SECONDS` (default 300), up to `EMBEDDING_SWEEP_BATCH`
-  chunks (default 200; `0` disables it).
+- **Evidence documents:** `CHUNK_SIZE_CHARS` (500–2,000) bounds the text chunks a
+  source document is stored in.
+- **Embedding sweep:** the worker embeds active retrieval units stored without a
+  vector every `EMBEDDING_SWEEP_INTERVAL_SECONDS` (default 300), up to
+  `EMBEDDING_SWEEP_BATCH` units (default 200; `0` disables it). Units are never
+  embedded on the request path.
 - **Embedding retries:** `EMBEDDING_MAX_ATTEMPTS` and
   `EMBEDDING_BACKOFF_BASE_SECONDS` bound retries for transient `5xx` refusals;
   `EMBEDDING_QUOTA_MAX_ATTEMPTS` and `EMBEDDING_QUOTA_BACKOFF_BASE_SECONDS` bound
   them for a `429` provider quota, which clears on a different timescale. The
-  quota budget deliberately stays within minutes; once it is spent the index is
-  deferred and the snapshot still publishes. See
-  [failure behavior](failure-behavior.md).
+  quota budget deliberately stays within minutes; once it is spent the sweep stops
+  and resumes at its next interval.
 - **Intent resolution:** `INTENT_CLASSIFIER_MAX_ATTEMPTS` bounds the attempts of the
   request interpreter's call (one call per chat turn). It does not change the
   configured Gemini model.
 - **Tariff queries:** `TARIFF_FRESHNESS_DAYS`, `TARIFF_RECENT_CHANGE_DAYS`,
   `TARIFF_DEFAULT_HISTORY_DAYS`, and `TARIFF_MAX_HISTORY_RESULTS` bound accepted-data
-  reads. `TARIFF_ANSWER_READ_MODEL` is the reversible cutover switch: `structured`
-  (default) answers from accepted typed facts, `legacy` restores the old RAG
-  answer path without a code change. `TARIFF_RUN_POLL_SECONDS` is the interval at
+  reads; every ordinary question is answered from accepted typed facts.
+  `TARIFF_RUN_POLL_SECONDS` is the interval at
   which a chat follows a run another process owns; HTTP submission remains
   asynchronous.
 - **Retrieval trace:** `RETRIEVAL_TRACE_LEVEL` controls the `tariff.retrieval`

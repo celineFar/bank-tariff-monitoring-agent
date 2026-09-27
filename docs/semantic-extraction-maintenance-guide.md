@@ -468,13 +468,13 @@ RAG and semantic extraction solve different problems:
 - semantic extraction maps supplied evidence into typed product facts;
 - verification decides whether those facts are safe to accept.
 
-The chunking, indexing, and retrieval path described here has since been built,
-and the read side has moved on: ordinary tariff questions are answered from the
-typed accepted facts of the structured read model, and chunk retrieval is the
-rollback path behind `TARIFF_ANSWER_READ_MODEL=legacy`. Every chunk still retains
-document version, source URL, page/section locator, product association, temporal
-status, and content checksum, because monitoring and the rollback path both
-depend on it. See [tariff-query-services.md](tariff-query-services.md) and
+The chunking and indexing path described here has since been built, and the read
+side has moved on: ordinary tariff questions are answered from the typed accepted
+facts of the structured read model, and the chunk retrieval that once answered them
+was removed. Every stored chunk still retains document version, source URL,
+page/section locator, product association, temporal status, and content checksum,
+because fact evidence is verified against it. See
+[tariff-query-services.md](tariff-query-services.md) and
 [rag-retrieval.md](rag-retrieval.md).
 
 RAG must not become an authority resolver. Retrieval rank means “useful for this
