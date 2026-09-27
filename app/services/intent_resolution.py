@@ -173,6 +173,12 @@ query: for answer_indexed_tariff_question and get_change_history; null otherwise
   term.*; repayment method -> repayment.method; down payment ->
   mortgage.down_payment.*; collateral -> collateral.*; documents -> document.required;
   age -> eligibility.age.*.
+- A broad word for an offering's conditions -- "terms", "conditions", "details", "what
+  does it offer" -- asks for its key terms. Alone ("X terms", "tell me about X") leave
+  fields empty. With another named field ("purpose and terms", "fees and conditions"),
+  list that field plus the key terms: amount.*, rate.nominal.*, rate.effective.*,
+  term.*, repayment.method, collateral.* and the fee.* paths. "Repayment term",
+  "loan term", "how long" and "duration" ask for term.* only.
 - family_rank: rank_field is the one field ranked, and rank_direction its order:
   "lowest / smallest / cheapest / shortest X" -> X's minimum path, "lowest";
   "highest / largest / longest / most X" -> X's maximum path, "highest". A rate

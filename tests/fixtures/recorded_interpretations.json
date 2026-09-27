@@ -1,6 +1,6 @@
 {
  "model": "gemini-3.7-flash",
- "recorded_at": "2026-09-27T12:21:03+00:00",
+ "recorded_at": "2026-09-27T17:59:08+00:00",
  "catalog_sha256": "9b7ec0d2745b57a2576cc547c38b12c13633ed09b8a901166f09d6005637f538",
  "cases": {
   "cmp_express_diaspora": {
@@ -881,7 +881,7 @@
       "mortgage_secondary_market"
      ],
      "family_wide": false,
-     "standalone_question": "What are the current terms for the Secondary Market Mortgage?",
+     "standalone_question": "What are the current terms and conditions for the Secondary Market Mortgage?",
      "query": {
       "operation": "single",
       "fields": [],
@@ -916,6 +916,157 @@
      "family_wide": false,
      "standalone_question": "Should I take a mortgage or invest in crypto instead?",
      "query": null,
+     "clarification": {
+      "needed": false,
+      "option_ids": []
+     }
+    }
+   }
+  },
+  "f3_purpose_and_conditions_overdraft": {
+   "c60b7e840b9a17304007588e5985af3f6fc1d68954849e33c5f5885d5311960f": {
+    "message": "What is the Overdraft for, and what are its conditions?",
+    "context": {
+     "conversation_language": null,
+     "last_scope": null,
+     "last_question": null,
+     "pending_clarification": null,
+     "pending_offer": null
+    },
+    "interpretation": {
+     "intent": "answer_indexed_tariff_question",
+     "replies_to": "none",
+     "accepts": null,
+     "language": "en",
+     "product": "consumer_loan",
+     "offering_ids": [
+      "overdraft"
+     ],
+     "family_wide": false,
+     "standalone_question": "What is the Overdraft for, and what are its conditions?",
+     "query": {
+      "operation": "single",
+      "fields": [
+       "identity.purpose",
+       "amount.minimum",
+       "amount.maximum",
+       "rate.nominal.minimum",
+       "rate.nominal.maximum",
+       "rate.effective.minimum",
+       "rate.effective.maximum",
+       "term.minimum_months",
+       "term.maximum_months",
+       "repayment.method",
+       "collateral.requirement",
+       "collateral.alternative",
+       "fee.application",
+       "fee.disbursement",
+       "fee.service",
+       "fee.origination",
+       "fee.early_repayment",
+       "fee.insurance",
+       "fee.other"
+      ],
+      "rank_field": null,
+      "rank_direction": null,
+      "currency": null
+     },
+     "clarification": {
+      "needed": false,
+      "option_ids": []
+     }
+    }
+   }
+  },
+  "f3_purpose_and_terms": {
+   "bf9bfdb1746c3d20ba24ec5455bf7d4804baf921f635209a9272fe8716c3872c": {
+    "message": "What purpose and terms does the Online Consumer Finance cover?",
+    "context": {
+     "conversation_language": null,
+     "last_scope": null,
+     "last_question": null,
+     "pending_clarification": null,
+     "pending_offer": null
+    },
+    "interpretation": {
+     "intent": "answer_indexed_tariff_question",
+     "replies_to": "none",
+     "accepts": null,
+     "language": "en",
+     "product": "consumer_loan",
+     "offering_ids": [
+      "online_consumer_finance"
+     ],
+     "family_wide": false,
+     "standalone_question": "What purpose and terms does the Online Consumer Finance cover?",
+     "query": {
+      "operation": "single",
+      "fields": [
+       "identity.purpose",
+       "amount.minimum",
+       "amount.maximum",
+       "amount.salary_multiple.minimum",
+       "amount.salary_multiple.maximum",
+       "amount.property_value_pct.minimum",
+       "amount.property_value_pct.maximum",
+       "amount.formula",
+       "rate.nominal.minimum",
+       "rate.nominal.maximum",
+       "rate.nominal.formula",
+       "rate.effective.minimum",
+       "rate.effective.maximum",
+       "rate.effective.formula",
+       "term.minimum_months",
+       "term.maximum_months",
+       "term.indefinite",
+       "term.end_condition",
+       "repayment.method",
+       "collateral.requirement"
+      ],
+      "rank_field": null,
+      "rank_direction": null,
+      "currency": null
+     },
+     "clarification": {
+      "needed": false,
+      "option_ids": []
+     }
+    }
+   }
+  },
+  "f3_repayment_term_stays_narrow": {
+   "85c60a23ad5303f066d87594e7b32bed7998d02a6a62f37e1e5a3eb77840ac4c": {
+    "message": "What repayment term does the Credit Line have?",
+    "context": {
+     "conversation_language": null,
+     "last_scope": null,
+     "last_question": null,
+     "pending_clarification": null,
+     "pending_offer": null
+    },
+    "interpretation": {
+     "intent": "answer_indexed_tariff_question",
+     "replies_to": "none",
+     "accepts": null,
+     "language": "en",
+     "product": "consumer_loan",
+     "offering_ids": [
+      "credit_line"
+     ],
+     "family_wide": false,
+     "standalone_question": "What is the repayment term for the Credit Line?",
+     "query": {
+      "operation": "single",
+      "fields": [
+       "term.minimum_months",
+       "term.maximum_months",
+       "term.indefinite",
+       "term.end_condition"
+      ],
+      "rank_field": null,
+      "rank_direction": null,
+      "currency": null
+     },
      "clarification": {
       "needed": false,
       "option_ids": []
@@ -3260,7 +3411,7 @@
       "credit_line"
      ],
      "family_wide": false,
-     "standalone_question": "Tell me about the Credit Line tariffs and terms.",
+     "standalone_question": "What are the terms and conditions of the Credit Line?",
      "query": {
       "operation": "single",
       "fields": [],
@@ -3293,7 +3444,7 @@
      "product": "mortgage",
      "offering_ids": [],
      "family_wide": true,
-     "standalone_question": "Tell me about mortgage loan tariffs.",
+     "standalone_question": "Tell me about mortgage loan tariffs and conditions.",
      "query": {
       "operation": "overview",
       "fields": [],
@@ -4947,15 +5098,30 @@
       "online_consumer_finance"
      ],
      "family_wide": false,
-     "standalone_question": "What purpose and terms does the Online Consumer Finance cover?",
+     "standalone_question": "What purpose and terms does Online Consumer Finance cover?",
      "query": {
       "operation": "single",
       "fields": [
        "identity.purpose",
+       "amount.minimum",
+       "amount.maximum",
+       "amount.salary_multiple.minimum",
+       "amount.salary_multiple.maximum",
+       "amount.property_value_pct.minimum",
+       "amount.property_value_pct.maximum",
+       "amount.formula",
+       "rate.nominal.minimum",
+       "rate.nominal.maximum",
+       "rate.nominal.formula",
+       "rate.effective.minimum",
+       "rate.effective.maximum",
+       "rate.effective.formula",
        "term.minimum_months",
        "term.maximum_months",
        "term.indefinite",
-       "term.end_condition"
+       "term.end_condition",
+       "repayment.method",
+       "collateral.requirement"
       ],
       "rank_field": null,
       "rank_direction": null,

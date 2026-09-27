@@ -164,6 +164,7 @@ async def resolve_request(tool_context: ToolContext) -> dict[str, object]:
             ),
         }
 
+    plan = None
     if resolved_intent in _READ_INTENTS and not resolution.needs_clarification:
         try:
             plan = issue_read_grant(
@@ -186,9 +187,15 @@ async def resolve_request(tool_context: ToolContext) -> dict[str, object]:
                 ),
             }
     pending = await _pending_review_counts()
+    if pending and plan is not None:
+        # A tariff answer mentions only reviews that concern its own scope (F6).
+        scope = {item.value for item in plan.offering_ids}
+        pending = {key: count for key, count in pending.items() if key in scope}
     if pending:
         result["pending_reviews"] = pending
-    if not state.introduction_shown:
+    # The catalog introduction answers a greeting or a question about what the
+    # assistant covers, not a tariff question (F6).
+    if not state.introduction_shown and resolved_intent in _INTRODUCTION_INTENTS:
         result["catalog_intro"] = services.request_resolver.catalog_payload(
             resolution.language,
             complete=False,
@@ -199,6 +206,11 @@ async def resolve_request(tool_context: ToolContext) -> dict[str, object]:
             complete=True,
         )
     return _remember(tool_context, invocation, result)
+
+
+_INTRODUCTION_INTENTS = frozenset(
+    {RequestIntent.LIST_SUPPORTED_PRODUCTS, RequestIntent.UNSUPPORTED_OR_GENERAL}
+)
 
 
 def _pending_offer(offer: object, previous_invocation: object) -> PendingOffer | None:

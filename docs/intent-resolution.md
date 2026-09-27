@@ -93,8 +93,19 @@ the user phrases it: a number, "option 3", a label, "the express one", or an off
 that was not among the options. The resulting `clarification_response` keeps the
 original `continuation_intent`, clears the pending state, and records the new scope. A
 new request replaces the pending clarification. Invalid serialized state is discarded
-rather than trusted. The first resolver result also returns a short catalog
-introduction; a list request returns all thirteen configured offerings.
+rather than trusted. A greeting or a question about what the assistant covers
+(`list_supported_products`, `unsupported_or_general`) also returns a short catalog
+introduction the first time; a tariff question never does, so its answer comes first.
+A list request returns all thirteen configured offerings. `pending_reviews` counts
+pending reviews per offering; for a tariff question it is limited to the offerings in
+the question's scope.
+
+A broad word for an offering's conditions ("terms", "conditions", "details") alone
+leaves the question's fields empty, and the query service answers its core fields.
+Combined with a named field ("purpose and terms"), the interpreter lists that field
+plus the key terms (amount, nominal and effective rate, term, repayment method,
+collateral, fees); "repayment term" or "loan term" stays `term.*`. A shape holds at
+most 20 fields (`MAX_SHAPE_FIELDS`), so such a question may lose the fee paths.
 
 ## Agent routing and wording
 

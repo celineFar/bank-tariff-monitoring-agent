@@ -888,6 +888,35 @@ def _test_cases() -> tuple[Case, ...]:
             offerings=(O.OVERDRAFT,),
             fields_any=(F.NOMINAL_RATE_MINIMUM,),
         ),
+        # F3 (first iteration): a broad word with a named field asks for the
+        # offering's key terms; "repayment term" stays a term question.
+        one(
+            "f3_purpose_and_terms",
+            "What purpose and terms does the Online Consumer Finance cover?",
+            source=t,
+            intents=(ANSWER,),
+            offerings=(O.ONLINE_CONSUMER_FINANCE,),
+            fields=(F.PURPOSE, F.AMOUNT_MAXIMUM, F.TERM_MAXIMUM_MONTHS),
+            fields_any=(F.NOMINAL_RATE_MINIMUM, F.NOMINAL_RATE_MAXIMUM),
+        ),
+        one(
+            "f3_purpose_and_conditions_overdraft",
+            "What is the Overdraft for, and what are its conditions?",
+            source=t,
+            intents=(ANSWER,),
+            offerings=(O.OVERDRAFT,),
+            fields=(F.PURPOSE,),
+            fields_any=(F.NOMINAL_RATE_MINIMUM, F.NOMINAL_RATE_MAXIMUM),
+        ),
+        one(
+            "f3_repayment_term_stays_narrow",
+            "What repayment term does the Credit Line have?",
+            source=t,
+            intents=(ANSWER,),
+            offerings=(O.CREDIT_LINE,),
+            fields_any=(F.TERM_MAXIMUM_MONTHS, F.TERM_INDEFINITE),
+            fields_none=(F.AMOUNT_MAXIMUM, F.NOMINAL_RATE_MINIMUM),
+        ),
         one(
             "test_current_mortgage_rate",
             "current mortgage rate",

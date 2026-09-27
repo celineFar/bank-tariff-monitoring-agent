@@ -200,7 +200,6 @@ def test_f2_a_two_currency_offering_is_left_alone() -> None:
 # --- F3: "terms" asks for the offering's key terms ---------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F3 (needs re-recorded interpretations)")
 def test_f3_purpose_and_terms_asks_for_amount_rate_and_term() -> None:
     from tests.fixtures.recorded_interpretations import load_recordings
 
@@ -214,7 +213,6 @@ def test_f3_purpose_and_terms_asks_for_amount_rate_and_term() -> None:
     assert any(field.startswith("term.") for field in fields)
 
 
-@pytest.mark.xfail(strict=True, reason="F3")
 def test_f3_the_interpreter_is_told_what_broad_words_mean() -> None:
     from app.services import intent_resolution
 
@@ -303,7 +301,6 @@ def recorded_chat():
     configure_services()
 
 
-@pytest.mark.xfail(strict=True, reason="F6")
 @pytest.mark.asyncio
 async def test_f6_a_tariff_question_gets_no_catalog_intro(recorded_chat) -> None:
     from app.tools import resolve_request

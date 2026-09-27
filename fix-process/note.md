@@ -340,3 +340,8 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
   tariffs without collateral, inferred rate currency, readable sections; the model sees
   compact citations only. Stored projections on the dev database predate this and
   refresh on the next run.
+- **Phase 6 (interpreter and agent).** Broad words with a named field ask for the key
+  terms; the catalog intro only answers greetings and catalog questions; the agent follows
+  `reason_code` and says "ranked N of M". Only 7 affected interpretation cases were
+  re-recorded (~$0.03); the other 129 keep recordings made with the previous prompt. Q6
+  reaches the 20-field shape cap and loses the fee paths.
