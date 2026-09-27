@@ -676,3 +676,82 @@ async def test_p5_a_conflict_while_applying_is_not_a_tool_error() -> None:
     )
 
     assert result.status is ReviewStatus.SUPERSEDED
+
+
+# --- P6: category-specific fields change, and are cited, one by one -------------
+
+
+def _mortgage_payload(down_payment: float) -> dict:
+    return {
+        "interest_rate": {"status": "found", "value": [{"value": {"min": 12}}]},
+        "details": {
+            "type": "mortgage",
+            "down_payment_pct": {
+                "status": "found",
+                "value": [{"value": {"value": down_payment}}],
+            },
+            "ltv_pct": {"status": "not_stated", "value": None},
+        },
+    }
+
+
+def test_p6_a_down_payment_change_is_its_own_change() -> None:
+    from uuid import uuid4
+
+    from app.domain.monitoring import SnapshotStatus
+    from app.services.snapshot_lifecycle import compare_accepted_snapshots
+    from tests.fixtures.structured_tariffs import accepted_snapshot
+
+    base = accepted_snapshot("consumer")
+    previous = base.model_copy(update={"normalized_tariff": _mortgage_payload(20)})
+    current = base.model_copy(
+        update={
+            "id": uuid4(),
+            "status": SnapshotStatus.ACCEPTED,
+            "normalized_tariff": _mortgage_payload(15),
+        }
+    )
+
+    changes = compare_accepted_snapshots(previous, current)
+
+    assert [item.field for item in changes.changes] == ["down_payment_pct"]
+    assert changes.changes[0].current["value"][0]["value"]["value"] == 15
+
+
+def test_p6_a_nested_field_is_cited_from_the_extraction() -> None:
+    from app.services.tariff_queries import field_citations
+    from tests.fixtures.structured_tariffs import accepted_snapshot
+
+    citation = {
+        "source_url": "https://ameriabank.am/mortgage",
+        "quote": "Down payment from 15%",
+        "section": "Terms",
+        "locator": {"source_url": "https://ameriabank.am/mortgage", "pdf_page": 2},
+    }
+    snapshot = accepted_snapshot("consumer").model_copy(
+        update={
+            "semantic_extraction": {
+                "loan_product": {
+                    "details": {
+                        "type": "mortgage",
+                        "down_payment_pct": {
+                            "status": "found",
+                            "value": [],
+                            "evidence": [citation],
+                        },
+                    }
+                }
+            }
+        }
+    )
+
+    cited = field_citations(snapshot, "down_payment_pct")
+
+    assert cited == (
+        {
+            "source_url": "https://ameriabank.am/mortgage",
+            "section": "Terms",
+            "page": 2,
+            "quote": "Down payment from 15%",
+        },
+    )

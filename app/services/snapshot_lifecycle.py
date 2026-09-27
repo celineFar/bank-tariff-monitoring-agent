@@ -652,6 +652,23 @@ def _rate_values(value: JsonValue) -> tuple[tuple[str, Decimal], ...]:
     return tuple(values)
 
 
+def tariff_fields(normalized_tariff: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """Each tariff field of a snapshot payload by its extraction-field name.
+
+    The category-specific fields (down payment, LTV, credit limit, grace period,
+    collateral, ...) sit inside `details`. Flattened, each is compared, cited and
+    answered on its own, as the top-level fields are, instead of all of them
+    changing together as one uncitable `details` value.
+    """
+    fields = {
+        key: value for key, value in normalized_tariff.items() if key != "details"
+    }
+    details = normalized_tariff.get("details")
+    if isinstance(details, dict):
+        fields.update((key, value) for key, value in details.items() if key != "type")
+    return fields
+
+
 def compare_accepted_snapshots(
     previous: SnapshotAttempt | None,
     current: SnapshotAttempt,
@@ -668,17 +685,18 @@ def compare_accepted_snapshots(
             changes=(),
             created_at=current.accepted_at or current.created_at,
         )
-    fields = sorted(set(previous.normalized_tariff) | set(current.normalized_tariff))
+    before = tariff_fields(previous.normalized_tariff)
+    after = tariff_fields(current.normalized_tariff)
     changes = tuple(
         SnapshotChange(
             field=field,
-            previous=previous.normalized_tariff.get(field),
-            current=current.normalized_tariff.get(field),
-            previous_display=_display(previous.normalized_tariff.get(field)),
-            current_display=_display(current.normalized_tariff.get(field)),
+            previous=before.get(field),
+            current=after.get(field),
+            previous_display=_display(before.get(field)),
+            current_display=_display(after.get(field)),
         )
-        for field in fields
-        if previous.normalized_tariff.get(field) != current.normalized_tariff.get(field)
+        for field in sorted(set(before) | set(after))
+        if before.get(field) != after.get(field)
     )
     return SnapshotChangeSet(
         id=uuid4(),
