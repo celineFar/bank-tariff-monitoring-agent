@@ -25,7 +25,6 @@ from app.repositories.monitoring import (
 )
 from app.repositories.pdf_extraction import PostgresPdfExtractionRepository
 from app.repositories.pdf_link_selection import PostgresPdfLinkSelectionRepository
-from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
 from app.repositories.review_memory import PostgresReviewDecisionMemory
 from app.repositories.reviews import PostgresReviewRepository
 from app.repositories.semantic_extraction import PostgresSemanticExtractionRepository
@@ -69,8 +68,6 @@ from app.services.pdf_link_selection import (
 )
 from app.services.pdf_rasterizer import PdfiumPageRasterizer
 from app.services.pipeline_audit_archive import FileSystemPipelineAuditArchive
-from app.services.rag_answer import GeminiAnswerGenerator, RagAnswerService
-from app.services.rag_retrieval import RagRetriever
 from app.services.review_decisions import ReviewDecisionService
 from app.services.review_evidence import ReviewDisplayService
 from app.services.review_resolution import ReviewResolutionService
@@ -108,7 +105,6 @@ class ApplicationContainer:
     # `claimed_by` value this process writes when it executes a chat run.
     monitoring_node: FunctionNode
     monitoring_owner: str
-    answer_service: RagAnswerService
     structured_query_service: StructuredTariffQueryService
     answer_router: TariffAnswerRouter
     request_resolver: RequestResolver
@@ -328,22 +324,6 @@ def build_application_container(
         ),
         review_rank_gap=settings.hitl.document_rank_gap,
     )
-    answer_service = RagAnswerService(
-        RagRetriever(
-            GeminiQueryEmbeddingProvider(
-                embedding_client,
-                settings.models.embedding_model,
-                usage_repository=model_usage,
-            ),
-            PostgresRagRetrievalRepository(sessions),
-            settings.rag,
-        ),
-        GeminiAnswerGenerator(
-            embedding_client,
-            settings.models.generation_model,
-            usage_repository=model_usage,
-        ),
-    )
     unit_embeddings = StructuredUnitEmbeddingService(
         PostgresStructuredUnitEmbeddingRepository(sessions),
         PostgresEmbeddingCache(sessions),
@@ -371,8 +351,6 @@ def build_application_container(
     )
     answer_router = TariffAnswerRouter(
         structured_query_service,
-        answer_service,
-        settings.tariff_queries.answer_read_model,
         shapes=request_resolver.shape_for,
     )
     reviews = PostgresReviewRepository(sessions)
@@ -413,7 +391,6 @@ def build_application_container(
         runs=runs,
         reviews=reviews,
         run_service=run_service,
-        answer_service=answer_service,
         structured_query_service=structured_query_service,
         answer_router=answer_router,
         request_resolver=request_resolver,

@@ -22,7 +22,6 @@ from app.domain.structured_tariffs import (
 )
 from app.services.intent_resolution import RequestResolver
 from app.services.structured_query_planning import issue_read_grant
-from app.services.structured_shadow_read import _change_evidence
 from app.services.structured_tariff_query import (
     StructuredTariffQueryService,
     _condition_match,
@@ -97,6 +96,23 @@ class StructuredEvalMetrics:
         data = {key: value for key, value in asdict(self).items() if key != "outcomes"}
         data["outcomes"] = [asdict(item) for item in self.outcomes]
         return data
+
+
+def _change_evidence(result: TariffQueryResult) -> tuple[dict, ...]:
+    """History answers carry their verified citations on the change set."""
+    changes = result.metadata.get("changes")
+    if not isinstance(changes, list):
+        return ()
+    return tuple(
+        evidence
+        for change in changes
+        if isinstance(change, dict)
+        for item in (change.get("changes") or [])
+        if isinstance(item, dict)
+        for key in ("previous_evidence", "current_evidence")
+        for evidence in (item.get(key) or [])
+        if isinstance(evidence, dict)
+    )
 
 
 def _rate(matched: int, total: int) -> float:

@@ -81,13 +81,13 @@ def _resolver(script):
 def _wire(script, **services):
     from app.tools import configure_services
 
-    configure_services(None, None, _resolver(script), **services)
+    configure_services(request_resolver=_resolver(script), **services)
 
 
 def _unwire():
     from app.tools import configure_services
 
-    configure_services(None, None)
+    configure_services()
 
 
 def _evidence(n: int) -> FactEvidence:

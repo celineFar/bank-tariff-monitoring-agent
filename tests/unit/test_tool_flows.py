@@ -87,9 +87,9 @@ def chat():
     def wire(case_id: str) -> SimpleNamespace:
         interpreter = RecordedInterpreter(case_id=case_id)
         configure_services(
-            None,
-            None,
-            RequestResolver(load_seed_catalog(), interpreter=interpreter),
+            request_resolver=RequestResolver(
+                load_seed_catalog(), interpreter=interpreter
+            ),
             current_tariff_service=_MissingCurrent(),
             answer_router=answers,
             monitoring_node=object(),
@@ -97,7 +97,7 @@ def chat():
         return SimpleNamespace(chat=_Chat(), answers=answers, interpreter=interpreter)
 
     yield wire
-    configure_services(None, None)
+    configure_services()
 
 
 async def _turn(chat: _Chat, text: str) -> dict:

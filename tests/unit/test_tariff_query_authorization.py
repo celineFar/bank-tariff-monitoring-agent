@@ -48,9 +48,9 @@ class FakeQueryService:
 def wired_services():
     service = FakeQueryService()
     resolver = scripted_resolver()
-    configure_services(None, None, resolver, structured_query_service=service)
+    configure_services(request_resolver=resolver, structured_query_service=service)
     yield service
-    configure_services(None, None)
+    configure_services()
 
 
 STANDALONE = "What is the nominal interest rate for the Overdraft?"

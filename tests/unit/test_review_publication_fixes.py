@@ -601,11 +601,11 @@ async def test_p4_the_chat_announces_only_reviews_it_can_reach() -> None:
     ):
         task = review_task(run, offering, "interest_rate")
         reviews.tasks[task.id] = task
-    configure_services(None, None, runs=runs, reviews=reviews)
+    configure_services(runs=runs, reviews=reviews)
     try:
         counts = await _pending_review_counts()
     finally:
-        configure_services(None, None)
+        configure_services()
 
     assert counts == {"credit_line": 1}
 

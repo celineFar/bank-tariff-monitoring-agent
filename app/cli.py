@@ -989,11 +989,9 @@ async def chat(
     container = build_application_container(settings, monitoring_owner=owner)
     session_service = await services.ensure_session_service_ready()
     configure_services(
-        container.run_service,
-        container.answer_service,
-        container.request_resolver,
-        container.current_tariff_service,
-        container.tariff_history_service,
+        request_resolver=container.request_resolver,
+        current_tariff_service=container.current_tariff_service,
+        tariff_history_service=container.tariff_history_service,
         structured_query_service=container.structured_query_service,
         answer_router=container.answer_router,
         monitoring_node=container.monitoring_node,
@@ -1058,7 +1056,7 @@ async def chat(
     finally:
         loop.remove_signal_handler(signal.SIGINT)
         session.renderer.stop()
-        configure_services(None, None)
+        configure_services()
         await container.close()
 
 

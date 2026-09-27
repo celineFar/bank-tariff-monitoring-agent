@@ -5,7 +5,6 @@ from uuid import UUID
 
 from app.domain.acquisition import AcquisitionInventory, PageArtifact
 from app.domain.models import (
-    KnowledgeDocumentKind,
     OfferingId,
     ProductType,
     TariffSnapshot,
@@ -25,7 +24,6 @@ from app.domain.monitoring import (
     SnapshotChangeSet,
 )
 from app.domain.pdf_extraction import PdfExtractionResponse
-from app.domain.retrieval import RetrievalCandidate
 from app.domain.review import (
     ReviewDecision,
     ReviewSnapshotUpdate,
@@ -260,20 +258,6 @@ class ChunkEmbeddingRepository(Protocol):
     async def fill(self, vectors: Mapping[str, Sequence[float]]) -> int:
         """Store vectors for chunks still without one; returns rows filled."""
         ...
-
-
-class HybridRetrievalRepository(Protocol):
-    async def search_candidates(
-        self,
-        *,
-        bank: str,
-        product: ProductType,
-        offering_id: OfferingId | None,
-        document_kinds: Sequence[KnowledgeDocumentKind],
-        lexical_query: str,
-        query_embedding: Sequence[float],
-        limit: int,
-    ) -> Sequence[RetrievalCandidate]: ...
 
 
 class SourceDiscoveryRepository(Protocol):

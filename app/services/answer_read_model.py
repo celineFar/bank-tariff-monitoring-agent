@@ -1,10 +1,9 @@
-"""Reversible application-level switch between the legacy and structured paths.
+"""The answer path every ordinary question takes: accepted, typed facts.
 
-The structured read model is the default after cutover. Setting
-``TARIFF_ANSWER_READ_MODEL=legacy`` restores the old RAG answer path for every
-ordinary question without a code change, so the cutover can be rolled back
-while production behaviour is still being observed. The model cannot change
-this setting; only configuration can.
+The ADK `answer_tariff_query` tool, the post-monitoring answer and
+`POST /api/v1/questions` all route through `TariffAnswerRouter`, so each answers
+inside the scope it was authorized for. The earlier RAG answer path, and the
+switch that could restore it, were removed.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import logging
 from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
-from app.config.models import AnswerReadModel
 from app.domain.models import OfferingId
 from app.domain.monitoring import (
     AnswerCitation,
@@ -28,7 +26,6 @@ from app.domain.structured_tariffs import (
     ResolutionPlan,
     TariffQueryResult,
 )
-from app.services.rag_answer import RagAnswerService
 from app.services.structured_query_planning import issue_typed_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 
@@ -36,11 +33,11 @@ logger = logging.getLogger(__name__)
 
 
 __all__ = [
-    "AnswerReadModel",
     "TariffAnswerRouter",
     "structured_to_answer_result",
 ]
 
+READ_MODEL = "structured"
 _MAX_EXCERPT_CHARS = 1500
 
 
@@ -59,7 +56,7 @@ def _page(evidence) -> int | None:
 def structured_to_answer_result(
     result: TariffQueryResult, command: QuestionCommand
 ) -> AnswerResult:
-    """Adapt a typed structured result for the legacy `AnswerResult` contract."""
+    """Adapt a typed structured result for the `AnswerResult` contract of `/questions`."""
     citations = tuple(
         AnswerCitation(
             chunk_id=f"fact:{fact.fact_id}",
@@ -95,7 +92,7 @@ def structured_to_answer_result(
             citations=citations,
             as_of=result.as_of,
             audit_metadata={
-                "read_model": AnswerReadModel.STRUCTURED.value,
+                "read_model": READ_MODEL,
                 "operation": result.operation.value,
                 "offering_ids": [item.value for item in result.offering_ids],
                 "facts": len(result.facts),
@@ -107,7 +104,7 @@ def structured_to_answer_result(
         offering_id=offering_id,
         failure_code=AnswerFailureCode.INSUFFICIENT_EVIDENCE,
         audit_metadata={
-            "read_model": AnswerReadModel.STRUCTURED.value,
+            "read_model": READ_MODEL,
             "operation": result.operation.value,
             "query_status": result.status.value,
             "reason": result.reason,
@@ -119,61 +116,36 @@ ShapeSource = Callable[..., Awaitable[QueryShape]]
 
 
 class TariffAnswerRouter:
-    """One place that decides which read model answers an ordinary question."""
+    """One place every ordinary question is answered from, inside its scope."""
 
     def __init__(
         self,
         structured: StructuredTariffQueryService,
-        legacy: RagAnswerService,
-        read_model: AnswerReadModel = AnswerReadModel.STRUCTURED,
         *,
         shapes: ShapeSource | None = None,
     ) -> None:
         self._structured = structured
-        self._legacy = legacy
-        self._read_model = read_model
         # D9: `RequestResolver.shape_for` - the interpreter proposes the shape
         # of a typed-scope question; the scope stays the caller's.
         self._shapes = shapes
 
     @property
-    def read_model(self) -> AnswerReadModel:
-        return self._read_model
-
-    @property
     def structured_service(self) -> StructuredTariffQueryService:
         return self._structured
-
-    @property
-    def legacy_service(self) -> RagAnswerService:
-        return self._legacy
 
     async def answer_plan(
         self, plan: ResolutionPlan, question: str
     ) -> TariffQueryResult:
-        """Answer a scope-authorized turn; the plan bounds both read models."""
-        if self._read_model is AnswerReadModel.STRUCTURED:
-            return await self._structured.answer(plan, question)
-        legacy = await self._legacy.answer(
-            QuestionCommand(
-                query=question,
-                product=plan.product,
-                offering_id=(
-                    plan.offering_ids[0] if len(plan.offering_ids) == 1 else None
-                ),
-            )
-        )
-        return _legacy_to_query_result(legacy, plan)
+        """Answer a scope-authorized turn from accepted facts."""
+        return await self._structured.answer(plan, question)
 
     async def answer_question(self, command: QuestionCommand) -> AnswerResult:
         """Answer a typed API request that carries its own validated scope."""
-        if self._read_model is AnswerReadModel.LEGACY:
-            return await self._legacy.answer(command)
         if command.product is None:
             return AnswerResult(
                 status=AnswerStatus.AMBIGUOUS_PRODUCT,
                 failure_code=AnswerFailureCode.AMBIGUOUS_PRODUCT,
-                audit_metadata={"read_model": AnswerReadModel.STRUCTURED.value},
+                audit_metadata={"read_model": READ_MODEL},
             )
         offering_ids: tuple[OfferingId, ...] = (
             (command.offering_id,) if command.offering_id is not None else ()
@@ -205,38 +177,10 @@ class TariffAnswerRouter:
                 offering_id=command.offering_id,
                 failure_code=AnswerFailureCode.INSUFFICIENT_EVIDENCE,
                 audit_metadata={
-                    "read_model": AnswerReadModel.STRUCTURED.value,
+                    "read_model": READ_MODEL,
                     "reason": str(exc),
                 },
             )
         return structured_to_answer_result(
             await self._structured.answer(plan, plan.question), command
         )
-
-
-def _legacy_to_query_result(
-    legacy: AnswerResult, plan: ResolutionPlan
-) -> TariffQueryResult:
-    """Wrap a legacy answer so rollback keeps one typed tool contract."""
-    answered = legacy.status is AnswerStatus.ANSWERED
-    return TariffQueryResult(
-        status=QueryStatus.ANSWERED if answered else QueryStatus.INSUFFICIENT_EVIDENCE,
-        operation=plan.operation,
-        product=plan.product,
-        offering_ids=plan.offering_ids,
-        answer=legacy.answer,
-        reason=(
-            None
-            if answered
-            else (
-                legacy.failure_code.value
-                if legacy.failure_code is not None
-                else "legacy path returned no answer"
-            )
-        ),
-        as_of=legacy.as_of,
-        metadata={
-            "read_model": AnswerReadModel.LEGACY.value,
-            "citations": [item.model_dump(mode="json") for item in legacy.citations],
-        },
-    )

@@ -32,13 +32,6 @@ class RetrievalTraceLevel(StrEnum):
     VERBOSE = "verbose"
 
 
-class AnswerReadModel(StrEnum):
-    """Which read model answers ordinary tariff questions."""
-
-    STRUCTURED = "structured"
-    LEGACY = "legacy"
-
-
 class Environment(StrEnum):
     DEVELOPMENT = "development"
     TEST = "test"
@@ -292,8 +285,6 @@ class RagSettings(SettingsGroup):
     # gemini-embedding-001's 2,048-token input even at one token per character,
     # so no chunk is truncated silently (IX14).
     chunk_size_chars: int = Field(default=1500, ge=500, le=2_000)
-    retrieval_top_k: int = Field(default=8, ge=1, le=50)
-    retrieval_min_score: float = Field(default=0.25, ge=0, le=1)
     # Embedding retries are split by what the refusal means. A 5xx is transient
     # and clears in seconds; a 429 is a provider quota and clears on its own
     # schedule, so giving up on it after 30 seconds discards a whole run for a
@@ -321,8 +312,6 @@ class TariffQuerySettings(SettingsGroup):
     default_history_days: int = Field(default=30, ge=1, le=3650)
     max_history_results: int = Field(default=100, ge=1, le=1000)
     run_poll_seconds: float = Field(default=0.5, gt=0, le=10)
-    # Reversible cutover switch; `legacy` restores the old RAG answer path.
-    answer_read_model: AnswerReadModel = AnswerReadModel.STRUCTURED
     # `verbose` writes text projected from source documents; keep it local.
     retrieval_trace_level: RetrievalTraceLevel = RetrievalTraceLevel.SUMMARY
     retrieval_log_file: Path | None = None

@@ -104,16 +104,14 @@ class _Answers:
 def wired():
     current, history, answers = _Current(), _History(), _Answers()
     configure_services(
-        None,
-        None,
-        scripted_resolver(),
+        request_resolver=scripted_resolver(),
         current_tariff_service=current,
         tariff_history_service=history,
         answer_router=answers,
         monitoring_node=object(),
     )
     yield SimpleNamespace(current=current, history=history, answers=answers)
-    configure_services(None, None)
+    configure_services()
 
 
 # --- read tools read only the grant ------------------------------------------
@@ -235,9 +233,7 @@ async def test_history_scope_is_the_grant_even_if_the_model_passes_more(wired) -
 @pytest.mark.asyncio
 async def test_the_monitoring_offer_is_the_grant_scope_bound_to_the_turn() -> None:
     configure_services(
-        None,
-        None,
-        scripted_resolver(),
+        request_resolver=scripted_resolver(),
         current_tariff_service=_Current(missing=True),
     )
     try:
@@ -245,7 +241,7 @@ async def test_the_monitoring_offer_is_the_grant_scope_bound_to_the_turn() -> No
         await _resolve(context, "What is the Express Mortgage rate?")
         await get_current_tariffs(context)
     finally:
-        configure_services(None, None)
+        configure_services()
 
     assert context.state["monitoring_confirmation_offer"] == {
         "kind": "monitoring",
@@ -258,9 +254,7 @@ async def test_the_monitoring_offer_is_the_grant_scope_bound_to_the_turn() -> No
 @pytest.mark.asyncio
 async def test_a_familyless_grant_never_writes_an_offer() -> None:
     configure_services(
-        None,
-        None,
-        scripted_resolver(),
+        request_resolver=scripted_resolver(),
         current_tariff_service=_Current(missing=True),
     )
     try:
@@ -269,7 +263,7 @@ async def test_a_familyless_grant_never_writes_an_offer() -> None:
         assert context.state["tariff_resolution_plan"]["product"] is None
         await get_current_tariffs(context)
     finally:
-        configure_services(None, None)
+        configure_services()
 
     assert context.state.get("monitoring_confirmation_offer") is None
 
@@ -415,8 +409,6 @@ async def test_status_reports_active_runs_pending_reviews_and_freshness() -> Non
     task = review_task(running, OfferingId.OVERDRAFT, "interest_rate")
     reviews.tasks[task.id] = task
     configure_services(
-        None,
-        None,
         current_tariff_service=_Current(missing=True),
         runs=runs,
         reviews=reviews,
@@ -424,7 +416,7 @@ async def test_status_reports_active_runs_pending_reviews_and_freshness() -> Non
     try:
         status = await get_monitoring_status(_Context())
     finally:
-        configure_services(None, None)
+        configure_services()
 
     assert status["active_runs"] == [
         {
