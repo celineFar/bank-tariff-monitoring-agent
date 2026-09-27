@@ -137,7 +137,7 @@ Decisions the review-process report left open, taken without asking (plan table 
 The user chose D1–D4 on 2026-09-26: text-only content before review, replacing the
 whole set on publication, supersede-plus-guard for stale reviews, and partial indexes
 with discarded rows deleted. Claude decided D5–D12 and recorded them in the plan.
-Implemented on `fix/indexing` (not merged yet).
+Implemented on `fix/indexing`, merged into `integration/process-fixes` (`8a91579`).
 
 - **`document_key` is not rekeyed by URL (D5).** Fact evidence stores and verifies
   `source_document_key` and `source_checksum`, so both stay the normalized id and raw
