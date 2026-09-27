@@ -46,8 +46,11 @@ a request requiring one tariff value. Collisions between two offerings or two fa
 are rejected because deterministic exact matching could not safely choose between them.
 
 Normalization applies Unicode NFKC, case folding, punctuation/separator collapse,
-trimming, and whitespace collapse. The deterministic exact/fuzzy resolver reuses this
+trimming, and whitespace collapse. The resolver's exact catalog matcher (the V5
+cross-check against the interpreter, see `docs/intent-resolution.md`) reuses this
 single function for user input, IDs, names, aliases, synonyms, and transliterations.
+The request interpreter receives every name, alias, synonym and transliteration of the
+catalog in each call.
 
 ## Name review
 

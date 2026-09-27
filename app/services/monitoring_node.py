@@ -38,7 +38,9 @@ from app.domain.monitoring import (
     RunStatus,
     RunTrigger,
 )
+from app.domain.query_shape import QueryShape
 from app.domain.review import ReviewDecisionInput, ReviewDecisionType, ReviewTask
+from app.domain.structured_tariffs import QueryOperation, ResolutionPlan
 from app.repositories.contracts import RunRepository
 from app.services.contracts import TariffPipeline
 from app.services.failure_mapping import explain_failure_code
@@ -60,6 +62,7 @@ from app.services.run_lease import (
     stop_run,
 )
 from app.services.run_service import RunServicePort, run_covers_command
+from app.services.structured_query_planning import issue_typed_plan
 
 _YEREVAN = ZoneInfo("Asia/Yerevan")
 
@@ -75,6 +78,8 @@ DEFAULT_LEASE_SECONDS = 120.0
 
 
 class AnswerPort(Protocol):
+    async def answer_plan(self, plan: ResolutionPlan, question: str) -> Any: ...
+
     async def answer_question(self, command: QuestionCommand) -> Any: ...
 
 
@@ -82,10 +87,22 @@ class NodeModel(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class MonitoringAnswerRequest(NodeModel):
+    """What the run answers when it finishes: the question of record, with the
+    scope and shape the resolver granted for it (RR27)."""
+
+    question: str = Field(min_length=1, max_length=1000)
+    product: ProductType
+    offering_ids: tuple[OfferingId, ...] = ()
+    shape: QueryShape | None = None
+
+
 class MonitoringNodeInput(NodeModel):
     product: ProductType | None = None
     offering_id: OfferingId | None = None
+    # A bare question (no granted shape) is answered at this request's scope.
     question: str | None = None
+    answer: MonitoringAnswerRequest | None = None
     review_only: bool = False
 
 
@@ -156,6 +173,7 @@ def build_monitoring_node(
         product: str | None = None,
         offering_id: str | None = None,
         question: str | None = None,
+        answer: dict[str, Any] | None = None,
         review_only: bool = False,
     ) -> AsyncIterator[Any]:
         """Runs or resumes one tariff monitoring run."""
@@ -163,6 +181,7 @@ def build_monitoring_node(
             product=product,
             offering_id=offering_id,
             question=question,
+            answer=answer,
             review_only=review_only,
         )
         resume = _resume_inputs(ctx)
@@ -352,7 +371,7 @@ def build_monitoring_node(
 
         # 5. Report, and answer the original question from accepted facts.
         result = await _outcome(runs, run, request, created=created, followed=followed)
-        if request.question and run.status in {
+        if (request.answer is not None or request.question) and run.status in {
             RunStatus.SUCCEEDED,
             RunStatus.PARTIAL_SUCCESS,
         }:
@@ -625,21 +644,53 @@ async def _with_answer(
     run: MonitoringRun,
     request: MonitoringNodeInput,
 ) -> MonitoringResult:
-    if answer_router is None or not request.question:
+    """Answer the question of record at the scope it was asked for (RR27).
+
+    Never the run's own scope: an offering request that joined a family run is
+    answered for that offering. `answer_status` is the answer's real status.
+    """
+    if answer_router is None:
         return result
     try:
-        answer = await answer_router.answer_question(
-            QuestionCommand(
-                query=request.question,
-                product=run.command.product,
-                offering_id=run.command.offering_id,
+        if request.answer is not None:
+            asked = request.answer
+            shape = asked.shape or QueryShape(
+                operation=(
+                    QueryOperation.SINGLE
+                    if len(asked.offering_ids) == 1
+                    else QueryOperation.OVERVIEW
+                )
             )
-        )
+            plan = issue_typed_plan(
+                asked.question,
+                product=asked.product,
+                offering_ids=asked.offering_ids,
+                shape=shape,
+                session_id=f"run-{run.id}",
+                turn_id=str(run.id),
+            )
+            answer = await answer_router.answer_plan(plan, plan.question)
+        elif request.question and request.product is not None:
+            answer = await answer_router.answer_question(
+                QuestionCommand(
+                    query=request.question,
+                    product=request.product,
+                    offering_id=request.offering_id,
+                )
+            )
+        else:
+            return result
     except Exception:
         logger.warning("post-monitoring answer failed run_id=%s", run.id, exc_info=True)
         return result.model_copy(update={"answer_status": "temporarily_unavailable"})
-    dumped = answer.model_dump(mode="json") if isinstance(answer, BaseModel) else answer
-    return result.model_copy(update={"answer": dumped, "answer_status": "answered"})
+    dumped = answer.model_dump(mode="json") if hasattr(answer, "model_dump") else answer
+    status = getattr(answer, "status", None)
+    return result.model_copy(
+        update={
+            "answer": dumped,
+            "answer_status": getattr(status, "value", status) or "answered",
+        }
+    )
 
 
 def _elapsed(run: MonitoringRun) -> int:

@@ -25,9 +25,10 @@ Daily scheduler ----------+-> RunService              |
  -> snapshot comparison -> HITL routing -> report
 ```
 
-Gemini is restricted to language-dependent intent resolution, bounded cache-aware
-source classification, PDF structure transcription, and evidence-bound structured
-extraction.
+Gemini is restricted to request interpretation (one tool-free call per chat turn that
+proposes the intent, catalog scope, and the question's query shape, all checked by
+code), bounded cache-aware source classification, PDF structure transcription, and
+evidence-bound structured extraction.
 All security, persistence, validation, comparison, scheduling, and review routing controls
 are deterministic application services. The ADK agent receives no raw network, filesystem,
 shell, or SQL tool.
@@ -86,23 +87,29 @@ shell, or SQL tool.
   `ReviewResolutionService`, the monitoring node (built with the entry point's
   owner: `cli:` from the CLI, `api:` from FastAPI), retrieval, and
   `RagAnswerService`.
-- `app/services/structured_query_planning.py`, `app/services/intent_resolution.py`,
-  and `app/tools/`: deterministic bilingual resolution selects a bounded
-  operation, canonical fields, conditions, and explicit offering IDs.
-  `resolve_request` stores a 30-minute `ResolutionPlan` (the read grant) tied to the
-  actual user text, session, and turn — the normal answer plan, or a scope-only
-  `current`/`history` grant when no answerable shape exists. `answer_tariff_query`,
-  `get_current_tariffs` and `get_tariff_history` take no scope argument and read only
-  that grant; the monitoring offer is derived from it; `run_tariff_monitoring`
-  needs a separate spend grant bound to the invocation. See
-  `docs/agent-and-tool-architecture.md` §3. The model-facing payloads are not the
-  stored records: `get_current_tariffs` returns freshness and each field's status
-  (no values, no evidence), and `get_tariff_history` returns snapshot values and
-  change sets without the evidence catalog or extraction record. The REST routes
-  return the full results.
-- `POST /api/v1/tariffs/query`: resolves a query server-side and uses the same
-  `StructuredTariffQueryService` as ADK. It rejects caller-supplied scope fields
-  and never triggers acquisition.
+- `app/services/intent_resolution.py`, `app/services/interpretation_validation.py`,
+  `app/services/structured_query_planning.py` and `app/tools/`: the request
+  interpreter proposes intent, scope, a standalone question and a query shape
+  (operation, canonical fields, rank field and direction, currency); the validator
+  decides scope and clarification; the planner only bounds the shape.
+  `resolve_request` (no arguments; it reads the user's message, once per turn) stores
+  a 30-minute `ResolutionPlan` (the read grant) holding the standalone question of
+  record, tied to the session and turn — the answer plan, or a scope-only
+  `current`/`history` grant. `answer_tariff_query` (no arguments), `get_current_tariffs`
+  and `get_tariff_history` take no scope argument and read only that grant; the
+  monitoring offer is derived from it; `run_tariff_monitoring` needs a separate spend
+  grant bound to the invocation, and a whole-family run an explicit yes. See
+  `docs/intent-resolution.md` and `docs/agent-and-tool-architecture.md` §3. The
+  model-facing payloads are not the stored records: `get_current_tariffs` returns
+  freshness and each field's status (no values, no evidence), and `get_tariff_history`
+  returns snapshot values and change sets with one compact citation per value (URL,
+  section, page, quote of at most 300 characters), never the evidence catalog or
+  extraction record; a change value without a citation is omitted and listed. The
+  REST routes return the full results.
+- `POST /api/v1/tariffs/query`: interprets a query server-side (one interpreter call)
+  and uses the same `StructuredTariffQueryService` as ADK. It rejects caller-supplied
+  scope fields, answers 503 when the interpreter is unavailable, and never triggers
+  acquisition.
 - `app/services/answer_read_model.py` and `TARIFF_ANSWER_READ_MODEL`: the
   reversible cutover switch. `structured` (default) answers every ordinary
   question from typed accepted facts; `legacy` restores the old RAG answer path
@@ -110,8 +117,11 @@ shell, or SQL tool.
   ADK `answer_tariff_query` tool, the post-monitoring answer, and
   `POST /api/v1/questions` all route through `TariffAnswerRouter`, so both read
   models stay inside the same authorized scope. After cutover `/questions`
-  builds an equivalent typed plan from its own product/offering scope and
-  returns fact-evidence citations; the model cannot change the switch.
+  builds an equivalent typed plan from its own product/offering scope, with the
+  question's shape proposed by the request interpreter
+  (`RequestResolver.shape_for`), and returns fact-evidence citations; the
+  post-monitoring answer plans from the answer request stored with the question
+  (its own scope and shape, not the run's). The model cannot change the switch.
 - `app/services/model_call_usage.py` and `model_call_usage`: redacted, dated paid-tier
   model call/cost ledger shared by direct Gemini adapters and ADK callbacks. A chat
   model call made in an invocation that executes or resumes a monitoring run records
@@ -161,9 +171,10 @@ shell, or SQL tool.
   `RUN_RECOVERY_INTERVAL_SECONDS`, it fails runs whose lease expired
   (`run.abandoned`); on start it also completes paused runs whose reviews are all
   decided.
-  A separate loop embeds active chunks stored without a vector (`embed_missing`, every
+  A separate loop embeds active chunks, then active structured retrieval units, stored
+  without a vector (`CombinedEmbeddingSweep.embed_missing`, every
   `EMBEDDING_SWEEP_INTERVAL_SECONDS`), so a provider quota wait never blocks claiming
-  runs.
+  runs and no chat question embeds units.
 - `app/services/monitoring_progress.py`: the pipeline's progress port
   (`PipelineProgress`, `ProgressSink`, log/queue sinks) and `stream_progress`,
   which runs the pipeline as a task and yields its progress; cancelling the
@@ -195,9 +206,10 @@ shell, or SQL tool.
 - `FIELD_LABELS` in `app/domain/structured_tariffs.py` and
   `lexical_search_terms` in `app/repositories/structured_tariff_query.py`:
   renderer version 2 writes a human field label beside each canonical path, and
-  the lexical query drops bilingual function words and Armenian intra-word marks
-  before building an OR query (`simple-or-v1`). Without both, `simple`
-  full-text search matched no natural-language question.
+  the lexical query (the field finder's) drops bilingual function words, Armenian
+  intra-word marks and the scoped offering's own names, stems each term and ORs
+  prefix terms (`simple-prefix-v2`). Without that, `simple` full-text search
+  matched no natural-language question.
 - `scripts/run_demonstration.py` and `scripts/demonstrations/`: the assignment
   deliverable demonstrations with machine-checked success criteria. Each
   scenario drives the real services against a disposable `_test` database and
@@ -209,10 +221,16 @@ shell, or SQL tool.
   directories both scripts write into — `end-to-end/run_NNN` for a capture and
   `artifacts/demonstrations/run_NNN` for the transcripts — so no invocation
   overwrites an earlier one's audit record.
+- `tests/fixtures/interpretation_cases.py`, `tests/fixtures/recorded_interpretations.json`
+  and `scripts/record_interpretations.py`: the request-interpretation case set (plan,
+  eval and target questions, multi-turn offers and clarifications, safety cases), the
+  interpretations recorded from the live interpreter, and the script that records and
+  scores them.
 - `tests/fixtures/target_questions.py`, `tests/eval/structured_metrics.py`,
   `scripts/structured_eval_metrics.py`, `scripts/seed_evaluation_corpus.py`, and
   `scripts/trace_structured_answer.py`: the 25 target questions with their
-  expected typed route and outcome, the model-free quality metrics over them,
+  expected typed route and outcome (replayed through interpretations recorded from
+  the live interpreter), the model-free quality metrics over them,
   a seeder for a disposable `_test` database, and a stage-by-stage trace of the
   structured answer path. `tests/eval/RESULTS.md` records the measured scores.
 - `app/services/structured_backfill.py` and
@@ -630,20 +648,23 @@ and prints retrieval, generation, and citation-validation stages for inspection.
 
 ## Intent and offering resolution boundary
 
-`RequestResolver` consumes only the versioned seed catalog and resolution settings. It
-classifies the approved nine intents, detects English/Armenian/mixed input, resolves both
-`ProductType` and `OfferingId`, and returns typed ambiguity rather than invoking business
-services. Unicode/canonical/name/alias/transliteration exact matching runs first, followed
-by conservative fuzzy ranking. Only insufficient deterministic results reach a tool-free
-Gemini classifier, and Python restricts its output to the supplied enum values and catalog
-candidate IDs.
+`RequestResolver` consumes only the versioned seed catalog and one tool-free Gemini
+request interpreter. Every chat turn makes one interpreter call with the message, a
+bounded conversation context and the whole catalog; the proposal (intent, language,
+family/offerings, standalone question, query shape) is validated against enums and the
+catalog, and code derives the scope, clarification options, route and grants. A failed
+or invalid interpretation makes the turn unavailable; nothing is guessed. The exact
+catalog matcher remains only as a cross-check.
 
-Pending clarification and latest scope live only in ADK session state. A monitoring
-intent (or an affirmative reply to the offer made in the previous turn) creates a spend
-grant for the exact resolved scope, bound to the invocation id; the monitoring tool
-rejects a missing, other-turn, or mismatched grant.
-Typed API and scheduler commands remain classifier-free. See
-`docs/intent-resolution.md`.
+Pending clarification, latest scope, the previous standalone question and the
+conversation language live only in ADK session state. A monitoring intent, or an
+explicit yes to the offer made in the previous turn, creates a spend grant for the exact
+resolved scope, bound to the invocation id; the monitoring tool rejects a missing,
+other-turn, or mismatched grant, and a whole-family run needs an explicit yes to the
+scope question in the next turn.
+Typed API and scheduler commands choose their scope without the interpreter; the typed
+`POST /api/v1/questions` asks it only for the question's shape, within the caller's
+fixed scope. See `docs/intent-resolution.md`.
 
 ## Current tariff and history boundary
 

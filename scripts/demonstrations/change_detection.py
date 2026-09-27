@@ -6,6 +6,7 @@ from dataclasses import replace
 from decimal import Decimal
 
 from app.domain.models import OfferingId
+from app.domain.query_shape import QueryShape
 from app.domain.structured_tariffs import QueryOperation, QueryStatus
 from app.repositories.monitoring import PostgresSnapshotRepository
 from app.repositories.structured_tariff_query import (
@@ -13,7 +14,7 @@ from app.repositories.structured_tariff_query import (
 )
 from app.services.snapshot_lifecycle import compare_accepted_snapshots
 from app.services.structured_backfill import StructuredProjectionBackfill
-from app.services.structured_query_planning import issue_typed_resolution_plan
+from app.services.structured_query_planning import issue_typed_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from scripts.demonstrations import ScenarioResult
 from scripts.demonstrations.support import accept_snapshot, demonstration_sessions
@@ -84,10 +85,11 @@ async def run() -> ScenarioResult:
         )
         result.step("Reprojected the offering so history can cite old and new values.")
 
-        plan = issue_typed_resolution_plan(
+        plan = issue_typed_plan(
             QUESTION,
             product=base.product,
             offering_ids=(base.offering_id,),
+            shape=QueryShape(operation=QueryOperation.HISTORY),
             session_id="demo-change",
             turn_id="turn-1",
         )

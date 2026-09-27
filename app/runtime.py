@@ -42,7 +42,7 @@ from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
-from app.services.intent_resolution import AdkIntentClassifier, RequestResolver
+from app.services.intent_resolution import AdkRequestInterpreter, RequestResolver
 from app.services.knowledge_index import (
     GeminiEmbeddingProvider,
     GeminiQueryEmbeddingProvider,
@@ -85,7 +85,10 @@ from app.services.source_discovery import (
     SourceDiscoveryService,
 )
 from app.services.structured_tariff_query import StructuredTariffQueryService
-from app.services.structured_unit_embeddings import StructuredUnitEmbeddingService
+from app.services.structured_unit_embeddings import (
+    CombinedEmbeddingSweep,
+    StructuredUnitEmbeddingService,
+)
 from app.services.tariff_queries import (
     CurrentTariffService,
     TariffHistoryService,
@@ -115,6 +118,8 @@ class ApplicationContainer:
     review_display: ReviewDisplayService | None = None
     # The worker's embedding sweep (IX7).
     knowledge_indexer: KnowledgeIndexer | None = None
+    # The worker's embedding sweep: knowledge chunks, then retrieval units.
+    embedding_sweep: CombinedEmbeddingSweep | None = None
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -150,7 +155,7 @@ def build_application_container(
     request_resolver = RequestResolver(
         catalog,
         settings.intent_resolution,
-        classifier=AdkIntentClassifier(
+        interpreter=AdkRequestInterpreter(
             settings.models.generation_model,
             api_key=api_key,
             max_attempts=settings.intent_resolution.classifier_max_attempts,
@@ -339,34 +344,36 @@ def build_application_container(
             usage_repository=model_usage,
         ),
     )
-    structured_query_service = StructuredTariffQueryService(
-        PostgresStructuredTariffQueryRepository(sessions),
-        StructuredUnitEmbeddingService(
-            PostgresStructuredUnitEmbeddingRepository(sessions),
-            PostgresEmbeddingCache(sessions),
-            GeminiEmbeddingProvider(
-                embedding_client,
-                settings.models.embedding_model,
-                usage_repository=model_usage,
-                max_attempts=settings.rag.embedding_max_attempts,
-                backoff_base_seconds=settings.rag.embedding_backoff_base_seconds,
-                quota_max_attempts=settings.rag.embedding_quota_max_attempts,
-                quota_backoff_base_seconds=(
-                    settings.rag.embedding_quota_backoff_base_seconds
-                ),
+    unit_embeddings = StructuredUnitEmbeddingService(
+        PostgresStructuredUnitEmbeddingRepository(sessions),
+        PostgresEmbeddingCache(sessions),
+        GeminiEmbeddingProvider(
+            embedding_client,
+            settings.models.embedding_model,
+            usage_repository=model_usage,
+            max_attempts=settings.rag.embedding_max_attempts,
+            backoff_base_seconds=settings.rag.embedding_backoff_base_seconds,
+            quota_max_attempts=settings.rag.embedding_quota_max_attempts,
+            quota_backoff_base_seconds=(
+                settings.rag.embedding_quota_backoff_base_seconds
             ),
-            GeminiQueryEmbeddingProvider(
-                embedding_client,
-                settings.models.embedding_model,
-                usage_repository=model_usage,
-            ),
+        ),
+        GeminiQueryEmbeddingProvider(
+            embedding_client,
+            settings.models.embedding_model,
             usage_repository=model_usage,
         ),
+        usage_repository=model_usage,
+    )
+    structured_query_service = StructuredTariffQueryService(
+        PostgresStructuredTariffQueryRepository(sessions),
+        unit_embeddings,
     )
     answer_router = TariffAnswerRouter(
         structured_query_service,
         answer_service,
         settings.tariff_queries.answer_read_model,
+        shapes=request_resolver.shape_for,
     )
     reviews = PostgresReviewRepository(sessions)
     tariff_pipeline = TariffPipeline(
@@ -425,4 +432,5 @@ def build_application_container(
         tariff_pipeline=tariff_pipeline,
         review_display=ReviewDisplayService(reviews, snapshots),
         knowledge_indexer=indexer,
+        embedding_sweep=CombinedEmbeddingSweep(indexer, unit_embeddings),
     )

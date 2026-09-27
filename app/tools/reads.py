@@ -7,7 +7,6 @@ choose *how* to read — the question text, a history window — but never *what
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -16,10 +15,10 @@ from google.adk.tools import ToolContext
 from app.domain.intent import FreshnessStatus, HistoryQuery, HistoryRequestKind
 from app.domain.structured_tariffs import ANSWERABLE_OPERATIONS, ResolutionPlan
 from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
+from app.services.tariff_queries import field_citations
 from app.tools._services import services
 from app.tools._state import (
     MONITOR_OFFER_KEY,
-    TARIFF_LAST_USED_TURN_KEY,
     TARIFF_PLAN_KEY,
     TARIFF_PLAN_USED_KEY,
     invocation_id,
@@ -27,13 +26,11 @@ from app.tools._state import (
 )
 
 
-def _read_plan(
-    tool_context: ToolContext, *, question: str | None = None
-) -> ResolutionPlan | dict[str, object]:
+def _read_plan(tool_context: ToolContext) -> ResolutionPlan | dict[str, object]:
     """The turn's read grant, or a rejection envelope.
 
-    Checks session, turn and expiry; with `question`, also that it is the exact
-    text the grant was issued for. Does not check or set the one-use flag.
+    Checks session, turn and expiry (the plan checks its own question against
+    its hash). Does not check or set the one-use flag.
     """
     raw = tool_context.state.get(TARIFF_PLAN_KEY)
     if not isinstance(raw, dict):
@@ -45,12 +42,6 @@ def _read_plan(
         invocation = invocation_id(tool_context)
         if invocation is not None and plan.turn_id != invocation:
             raise ValueError("turn mismatch")
-        if (
-            question is not None
-            and hashlib.sha256(question.encode("utf-8")).hexdigest()
-            != plan.question_sha256
-        ):
-            raise ValueError("question mismatch")
         if not plan.issued_at <= datetime.now(UTC) < plan.expires_at:
             raise ValueError("plan expired")
     except ValueError:
@@ -58,19 +49,23 @@ def _read_plan(
     return plan
 
 
-async def answer_tariff_query(
-    query: str, tool_context: ToolContext
-) -> dict[str, object]:
-    """Read only the server-held per-turn scope from resolve_request."""
+async def answer_tariff_query(tool_context: ToolContext) -> dict[str, object]:
+    """Answer this message's tariff question from accepted, cited facts.
+
+    Takes no arguments: the question, scope and fields are the ones
+    resolve_request granted for this turn.
+    """
     if services.answer_router is None and services.structured_query_service is None:
         return {"status": "unavailable", "reason_code": "query.service_unavailable"}
     if isinstance(tool_context.state.get(TARIFF_PLAN_KEY), dict) and (
         tool_context.state.get(TARIFF_PLAN_USED_KEY)
     ):
         return {"status": "rejected", "reason_code": "query.plan_replayed"}
-    plan = _read_plan(tool_context, question=query)
+    plan = _read_plan(tool_context)
     if isinstance(plan, dict):
         return plan
+    if plan.question is None:
+        return {"status": "rejected", "reason_code": "query.plan_invalid"}
     if plan.product is None or plan.operation not in ANSWERABLE_OPERATIONS:
         # A scope-only grant: there is no field shape to answer from.
         return {
@@ -82,11 +77,10 @@ async def answer_tariff_query(
             ),
         }
     tool_context.state[TARIFF_PLAN_USED_KEY] = True
-    tool_context.state[TARIFF_LAST_USED_TURN_KEY] = plan.turn_id
     if services.answer_router is not None:
-        result = await services.answer_router.answer_plan(plan, query)
+        result = await services.answer_router.answer_plan(plan, plan.question)
     else:
-        result = await services.structured_query_service.answer(plan, query)
+        result = await services.structured_query_service.answer(plan, plan.question)
     return result.model_dump(mode="json")
 
 
@@ -109,6 +103,7 @@ async def get_current_tariffs(tool_context: ToolContext) -> dict[str, object]:
         # The offer is computed from the grant, never from a tool argument, so
         # the scope of a later paid run cannot originate with the model.
         tool_context.state[MONITOR_OFFER_KEY] = {
+            "kind": "monitoring",
             "product": plan.product.value,
             "offering_id": (
                 plan.offering_ids[0].value if len(plan.offering_ids) == 1 else None
@@ -190,15 +185,52 @@ def current_tariffs_payload(result: CurrentTariffResult) -> dict[str, object]:
 
 
 def tariff_history_payload(result: TariffHistoryResult) -> dict[str, object]:
-    """History for the model: each snapshot's values and times, without the
-    evidence catalog and extraction internals a stored snapshot carries (a
-    snapshot's evidence alone is hundreds of kB)."""
+    """History for the model: values and times, each value with a compact
+    citation (RR28), without the evidence catalog and extraction internals a
+    stored snapshot carries (a snapshot's evidence alone is hundreds of kB).
+
+    A changed value whose non-missing side has no citation is left out and
+    listed under `omitted_changes`, never shown uncited (D14).
+    """
     payload = result.model_dump(
         mode="json",
         exclude={
             "snapshots": {"__all__": {"evidence", "semantic_extraction", "validation"}}
         },
     )
+    for dumped, snapshot in zip(
+        payload.get("snapshots", ()), getattr(result, "snapshots", ()), strict=False
+    ):
+        dumped["citations"] = {
+            field: list(citations)
+            for field in snapshot.normalized_tariff
+            if (citations := field_citations(snapshot, field))
+        }
+    omitted: list[dict[str, object]] = []
+    for change in payload.get("changes", ()):
+        kept = []
+        for item in change["changes"]:
+            missing_previous = (
+                item["previous"] is not None and not item["previous_evidence"]
+            )
+            missing_current = (
+                item["current"] is not None and not item["current_evidence"]
+            )
+            if missing_previous or missing_current:
+                omitted.append(
+                    {
+                        "offering_id": change["offering_id"],
+                        "field": item["field"],
+                        "reason": "no verified citation for the "
+                        + ("previous" if missing_previous else "current")
+                        + " value",
+                    }
+                )
+                continue
+            kept.append(item)
+        change["changes"] = kept
+    if omitted:
+        payload["omitted_changes"] = omitted
     return payload
 
 

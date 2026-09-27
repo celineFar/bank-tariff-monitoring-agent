@@ -116,9 +116,6 @@ def load_settings(
             embedding_sweep_interval_seconds=raw.embedding_sweep_interval_seconds,
         ),
         intent_resolution=IntentResolutionSettings(
-            fuzzy_min_score=raw.intent_fuzzy_min_score,
-            fuzzy_min_gap=raw.intent_fuzzy_min_gap,
-            max_candidates=raw.intent_max_candidates,
             classifier_max_attempts=raw.intent_classifier_max_attempts,
         ),
         tariff_queries=TariffQuerySettings(

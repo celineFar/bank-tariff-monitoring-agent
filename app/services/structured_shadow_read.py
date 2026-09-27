@@ -20,7 +20,7 @@ from uuid import uuid4
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import AnswerResult, AnswerStatus, QuestionCommand
 from app.domain.structured_tariffs import QueryStatus, ResolutionPlan, TariffQueryResult
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_read_grant
 
 logger = logging.getLogger(__name__)
 
@@ -191,13 +191,10 @@ class StructuredShadowReader:
         started = time.perf_counter()
         try:
             resolution = (await self._resolver.resolve_turn(case.question)).resolution
-            plan = issue_resolution_plan(
-                case.question,
-                resolution,
-                session_id=session_id,
-                turn_id=str(uuid4()),
+            plan = issue_read_grant(
+                resolution, session_id=session_id, turn_id=str(uuid4())
             )
-            structured = await self._structured.answer(plan, case.question)
+            structured = await self._structured.answer(plan, plan.question)
         except Exception as exc:  # diagnostics only; the reader never raises
             structured_error = type(exc).__name__
         structured_latency_ms = int((time.perf_counter() - started) * 1000)

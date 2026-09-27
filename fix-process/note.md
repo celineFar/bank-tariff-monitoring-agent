@@ -182,3 +182,73 @@ without asking:
   dead owner cannot block monitoring when no worker is running.
 - **Migration 024 must be applied** before deploying (the dev database is still at
   015, see the indexing notes).
+
+## Resolution and RAG (fix-process/resolution_and_rag/)
+
+- **Branch.** `fix/resolution_and_rag` did not exist; it is created from
+  `integration/process-fixes` at `180ea9f`.
+- **Design choices agreed with the user** (2026-09-27): D1–D5 in the
+  [plan](resolution_and_rag/resolution-and-rag-fix-plan.md#decisions). D6–D20 were taken
+  without asking and are listed there as open to change.
+- **Hand-off (monitoring/HITL): a run waiting for review blocks new runs.** `_find_active`
+  ([repositories/monitoring.py](../app/repositories/monitoring.py)) counts
+  `awaiting_review` as active:
+  - a chat refresh is pulled into an older run's reviews, possibly a scheduler run;
+  - a family refresh is refused as "already in progress" while an offering run waits,
+    possibly for days.
+
+  The rule is still open ("never block" or "block only this session's run"). Either
+  rule needs four safeguards:
+  1. Catch `ReviewConflictError` in the monitoring node's review loop and tell the
+     reviewer the review was superseded and nothing was applied. A resumed pause whose
+     review is no longer pending must say so, not drop the answer silently.
+  2. Close a run as soon as its last pending review is superseded. Today that happens
+     only at worker startup (`complete_runs_without_pending_reviews`).
+  3. Review the newest waiting run of an offering first (`_oldest_awaiting_review` is
+     oldest first). Approving a newer run should supersede the older one's reviews, so
+     an older approval never leaves a stale comparison baseline.
+  4. Expect daily scheduler runs to proceed while a review waits. The new review of the
+     same field supersedes the old one, so the queue does not grow.
+
+  "Block only this session's run" also needs a column recording the chat session that
+  started a run; runs do not record it today.
+- **Decisions taken without asking** (D6–D20 in the plan, all implemented):
+  - **D6.** No keyword fallback when the interpreter fails: the turn is "unavailable".
+  - **D7.** `resolve_request` and `answer_tariff_query` take no text argument.
+  - **D8.** `overview` is a new operation.
+  - **D9.** `/questions` asks the interpreter for the shape only.
+  - **D10.** Unit embeddings moved to the worker sweep.
+  - **D11.** Prefix `to_tsquery`, with stemmed terms.
+  - **D12.** The intent enum values are unchanged, plus `route`.
+  - **D13.** The standalone question is the question of record.
+  - **D14 and D15.** History items without evidence are left out and listed; history
+    citations are compact.
+  - **D16.** Migration 025, a partial unique index.
+  - **D17.** One family per turn.
+  - **D18.** The `clarification_response` contract is kept.
+  - **D19.** The V5 cross-check can only force a question, never add a scope.
+  - **D20.** The model is unchanged (`generation_model`).
+- **Decisions found while implementing:**
+  - **Gemini rejects `additionalProperties`** in a response schema. The interpreter's
+    output models use `extra="ignore"`, and pydantic still validates every value.
+  - **The model is not deterministic at temperature 0,** so interpretations are
+    recorded per case.
+  - **V3 is enforced in code for replies:** `PendingClarification.expects_single_value`.
+  - **One prompt rule was added,** after the live run: a singular value asked of a
+    family is `single`.
+  - **Lexical query terms are stemmed before the prefix,** because a prefix only
+    matches forward.
+  - **History citations come from the accepted snapshots,** not from the structured
+    projection. This covers family-less history and pre-read-model snapshots.
+- **Live runs.** The interpreter runs used `GEMINI_API_KEY` from
+  `../bank-tariff-monitoring-agent/.env` at run time, without printing or copying it.
+  They made intent-interpretation calls only, ~150 per full run, with ~3.8k input and
+  ~200 output tokens per call. The final run scored 133/133 with 0 safety mismatches.
+- **Not done (needs the user):**
+  - RRS07, the whole-agent `agents-cli eval`, which spends whole-agent tokens.
+  - Applying migration 025 to the dev database.
+  - Deployment.
+- **AGENTS.md updated** (2026-09-27, on the user's instruction). The Gemini boundary
+  now reads "request interpretation (intent, catalog scope and the question's query
+  shape, one tool-free call per chat turn, validated by code)" instead of "intent
+  resolution".

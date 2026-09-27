@@ -1,22 +1,31 @@
-"""Deterministic, bounded query shape derived from resolved catalog scope."""
+"""The read grant: a bounded query plan from a validated resolution (fix plan T3).
+
+The plan's shape - operation, fields, rank, currency - comes from the request
+interpreter, already checked by `InterpretationValidator`; its scope comes
+from the resolution. This module only bounds and re-checks both. It reads no
+words: the keyword planner (`_RULES`, `_has`) is gone (RR20, RR21, RR22).
+"""
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from app.domain.catalog import normalize_catalog_term
-from app.domain.intent import IntentResolution
+from app.domain.intent import IntentResolution, RequestIntent
 from app.domain.models import OfferingId, ProductType
+from app.domain.query_shape import QueryShape
 from app.domain.structured_tariffs import (
     FieldPath,
     QueryOperation,
-    RankDirection,
     ResolutionPlan,
 )
+from app.domain.tariff_comparison import RANKABLE_PATHS
 
-_CORE = (
+PLAN_LIFETIME = timedelta(minutes=30)
+
+# What a listing answers when the question names no field and the field finder
+# finds none: the headline terms of an offering.
+CORE_FIELDS = (
     FieldPath.AMOUNT_MINIMUM,
     FieldPath.AMOUNT_MAXIMUM,
     FieldPath.NOMINAL_RATE_MINIMUM,
@@ -30,294 +39,152 @@ _CORE = (
     FieldPath.FEE_ORIGINATION,
     FieldPath.FEE_OTHER,
 )
-_RULES: tuple[tuple[tuple[str, ...], tuple[FieldPath, ...]], ...] = (
-    (
-        ("amount", "borrow", "loan size", "գումար", "չափ"),
-        (
-            FieldPath.AMOUNT_MINIMUM,
-            FieldPath.AMOUNT_MAXIMUM,
-            FieldPath.CREDIT_LIMIT_MINIMUM,
-            FieldPath.CREDIT_LIMIT_MAXIMUM,
-        ),
-    ),
-    (
-        ("nominal", "անվանական"),
-        (FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM),
-    ),
-    (
-        ("effective", "փաստացի"),
-        (FieldPath.EFFECTIVE_RATE_MINIMUM, FieldPath.EFFECTIVE_RATE_MAXIMUM),
-    ),
-    (
-        ("interest", "rate", "տոկոս", "տոկոսադրույք"),
-        (
-            FieldPath.NOMINAL_RATE_MINIMUM,
-            FieldPath.NOMINAL_RATE_MAXIMUM,
-            FieldPath.EFFECTIVE_RATE_MINIMUM,
-            FieldPath.EFFECTIVE_RATE_MAXIMUM,
-        ),
-    ),
-    (
-        ("term", "repayment", "ժամկետ", "մարում"),
-        (
-            FieldPath.TERM_MINIMUM_MONTHS,
-            FieldPath.TERM_MAXIMUM_MONTHS,
-            FieldPath.REPAYMENT_METHOD,
-        ),
-    ),
-    (
-        # A tariff sheet is not one fee, so generic tariff words stay on the
-        # core field set instead of narrowing to fee paths.
-        ("fee", "charge", "վճար"),
-        (
-            FieldPath.FEE_APPLICATION,
-            FieldPath.FEE_DISBURSEMENT,
-            FieldPath.FEE_SERVICE,
-            FieldPath.FEE_ORIGINATION,
-            FieldPath.FEE_EARLY_REPAYMENT,
-            FieldPath.FEE_INSURANCE,
-            FieldPath.FEE_OTHER,
-        ),
-    ),
-    (("salary", "payroll", "աշխատավարձ"), (FieldPath.SALARY_PRIVILEGE,)),
-    (
-        ("collateral", "security", "գրավ", "ապահով"),
-        (FieldPath.COLLATERAL_REQUIREMENT, FieldPath.COLLATERAL_ALTERNATIVE),
-    ),
-    (
-        ("down payment", "initial contribution", "կանխավճար", "նախնական վճար"),
-        (
-            FieldPath.DOWN_PAYMENT_MINIMUM,
-            FieldPath.DOWN_PAYMENT_MAXIMUM,
-            FieldPath.COLLATERAL_ALTERNATIVE,
-        ),
-    ),
-    (
-        ("currency", "currencies", "արժույթ"),
-        (
-            FieldPath.AMOUNT_MINIMUM,
-            FieldPath.AMOUNT_MAXIMUM,
-            FieldPath.NOMINAL_RATE_MINIMUM,
-            FieldPath.EFFECTIVE_RATE_MINIMUM,
-        ),
-    ),
-    (
-        ("purpose", "use", "used for", "նպատակ"),
-        (FieldPath.PURPOSE, FieldPath.VARIANT_PURPOSE),
-    ),
+_READ_INTENTS = frozenset(
+    {
+        RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+        RequestIntent.GET_CURRENT_TARIFFS,
+        RequestIntent.GET_CHANGE_HISTORY,
+    }
 )
-_RANK_LOW = ("lowest", "smallest", "cheapest", "ամենացածր", "ամենափոքր")
-_RANK_HIGH = ("highest", "largest", "longest", "ամենաբարձր", "ամենամեծ", "ամենաերկար")
-_COMPARE = ("compare", "differ", "difference", "versus", " vs ", "համեմատ", "տարբեր")
-_HISTORY = (
-    "changed since",
-    "what changed",
-    "tariff changes",
-    "փոփոխվել",
-    "փոփոխություն",
-)
-
-
-def _has(query: str, words: tuple[str, ...]) -> bool:
-    return any(normalize_catalog_term(word) in query for word in words)
-
-
-@dataclass(frozen=True)
-class QuerySelection:
-    product: ProductType
-    offering_ids: tuple[OfferingId, ...]
-    operation: QueryOperation
-    fields: tuple[FieldPath, ...]
-    conditions: dict[str, str]
-    rank_direction: RankDirection | None = None
-
-
-def select_tariff_query(query: str, resolution: IntentResolution) -> QuerySelection:
-    """Use only the resolver's family/IDs; never infer a new product ID from text."""
-    if resolution.needs_clarification or resolution.product is None:
-        raise ValueError("tariff query requires resolved, unambiguous product scope")
-    return select_typed_query(
-        query,
-        product=resolution.product,
-        offering_ids=resolution.offering_ids
-        or ((resolution.offering_id,) if resolution.offering_id is not None else ()),
-    )
-
-
-def select_typed_query(
-    query: str,
-    *,
-    product: ProductType,
-    offering_ids: tuple[OfferingId, ...] = (),
-) -> QuerySelection:
-    """Derive the same bounded shape from an already-typed caller scope."""
-    normalized = normalize_catalog_term(query)
-    ids = offering_ids or tuple(item for item in OfferingId if item.product is product)
-    if any(item.product is not product for item in ids):
-        raise ValueError("query scope exceeds resolved product family")
-    if _has(normalized, _HISTORY):
-        operation = QueryOperation.HISTORY
-        direction = None
-    elif len(ids) > 1 and _has(normalized, _COMPARE):
-        operation = QueryOperation.COMPARE
-        direction = None
-    elif len(ids) > 1 and _has(normalized, _RANK_LOW + _RANK_HIGH):
-        operation = QueryOperation.FAMILY_RANK
-        direction = (
-            RankDirection.LOWEST
-            if _has(normalized, _RANK_LOW)
-            else RankDirection.HIGHEST
-        )
-    elif len(ids) > 1:
-        raise ValueError("multi-offering query requires comparison or rank intent")
-    else:
-        operation = QueryOperation.SINGLE
-        direction = None
-    selected = tuple(
-        dict.fromkeys(
-            field
-            for terms, fields in _RULES
-            if _has(normalized, terms)
-            for field in fields
-        )
-    )
-    if not selected and operation is not QueryOperation.HISTORY:
-        selected = _CORE
-    if operation is QueryOperation.FAMILY_RANK:
-        if _has(normalized, ("fee", "charge", "վճար")):
-            selected = (FieldPath.FEE_APPLICATION,)
-        elif _has(normalized, ("term", "repayment", "ժամկետ")):
-            selected = (FieldPath.TERM_MAXIMUM_MONTHS,)
-        elif _has(normalized, ("amount", "borrow", "գումար", "չափ")):
-            selected = (FieldPath.AMOUNT_MAXIMUM,)
-        elif _has(normalized, ("effective", "փաստացի")):
-            selected = (FieldPath.EFFECTIVE_RATE_MINIMUM,)
-        else:
-            selected = (FieldPath.NOMINAL_RATE_MINIMUM,)
-    currencies = [
-        currency
-        for currency in ("AMD", "USD", "EUR")
-        if currency.lower() in normalized.split()
-    ]
-    conditions = {"currency": currencies[0]} if len(currencies) == 1 else {}
-    return QuerySelection(
-        product=product,
-        offering_ids=ids,
-        operation=operation,
-        fields=selected[:20],
-        conditions=conditions,
-        rank_direction=direction,
-    )
-
-
-def issue_resolution_plan(
-    query: str,
-    resolution: IntentResolution,
-    *,
-    session_id: str,
-    turn_id: str,
-    issued_at: datetime | None = None,
-) -> ResolutionPlan:
-    return _plan(
-        query,
-        select_tariff_query(query, resolution),
-        session_id=session_id,
-        turn_id=turn_id,
-        issued_at=issued_at,
-    )
 
 
 def issue_read_grant(
-    query: str,
     resolution: IntentResolution,
     *,
-    history: bool,
     session_id: str,
     turn_id: str,
+    question: str | None = None,
     issued_at: datetime | None = None,
 ) -> ResolutionPlan:
     """The per-turn read grant every business-data read tool consumes (§6.6).
 
-    When the resolver's scope yields an answerable query shape, the grant is
-    exactly that plan, so `answer_tariff_query` behaves as before. Otherwise
-    (a broad family question, or no family named where the resolver allows
-    that) the grant is scope-only: CURRENT, or HISTORY for change questions,
-    with no fields. Scope always comes from the resolver, never from text the
-    model supplies.
+    An answer question gets its validated shape. `get_current_tariffs` gets a
+    scope-only CURRENT grant, and a history question a HISTORY grant, both of
+    which may cover both families when no family was named. Scope always comes
+    from the resolution, never from text the model supplies.
     """
     if resolution.needs_clarification:
         raise ValueError("a read grant requires a resolved scope")
-    if resolution.product is not None:
-        try:
-            return issue_resolution_plan(
-                query,
-                resolution,
-                session_id=session_id,
-                turn_id=turn_id,
-                issued_at=issued_at,
-            )
-        except ValueError:
-            pass
-        offering_ids = resolution.offering_ids or (
-            (resolution.offering_id,)
-            if resolution.offering_id is not None
-            else tuple(
-                item for item in OfferingId if item.product is resolution.product
-            )
-        )
-    else:
-        offering_ids = ()
-    current = issued_at or datetime.now(UTC)
-    return ResolutionPlan(
-        session_id=session_id,
-        turn_id=turn_id,
-        question_sha256=hashlib.sha256(query.encode("utf-8")).hexdigest(),
-        issued_at=current,
-        expires_at=current + timedelta(minutes=30),
-        product=resolution.product,
-        offering_ids=offering_ids,
-        operation=QueryOperation.HISTORY if history else QueryOperation.CURRENT,
+    intent = resolution.continuation_intent or resolution.intent
+    if intent not in _READ_INTENTS:
+        raise ValueError(f"{intent.value} reads no tariff data")
+    text = (question or resolution.standalone_question or "").strip()
+    if not text:
+        raise ValueError("a read grant requires the question of record")
+    product = resolution.product
+    offerings = resolution.offering_ids or (
+        (resolution.offering_id,) if resolution.offering_id is not None else ()
     )
-
-
-def issue_typed_resolution_plan(
-    query: str,
-    *,
-    product: ProductType,
-    offering_ids: tuple[OfferingId, ...] = (),
-    session_id: str,
-    turn_id: str,
-    issued_at: datetime | None = None,
-) -> ResolutionPlan:
-    """Build the same authorization plan for a typed API caller without a session."""
-    return _plan(
-        query,
-        select_typed_query(query, product=product, offering_ids=offering_ids),
+    if product is not None and not offerings:
+        offerings = family_offerings(product)
+    if intent is RequestIntent.GET_CHANGE_HISTORY:
+        fields = resolution.query.fields if resolution.query is not None else ()
+        return _plan(
+            text,
+            product=product,
+            offering_ids=offerings,
+            shape=QueryShape(operation=QueryOperation.HISTORY, fields=fields),
+            session_id=session_id,
+            turn_id=turn_id,
+            issued_at=issued_at,
+        )
+    if intent is RequestIntent.GET_CURRENT_TARIFFS or resolution.query is None:
+        return _plan(
+            text,
+            product=product,
+            offering_ids=offerings,
+            shape=None,
+            session_id=session_id,
+            turn_id=turn_id,
+            issued_at=issued_at,
+        )
+    if product is None:
+        raise ValueError("a tariff answer requires a resolved family")
+    return issue_typed_plan(
+        text,
+        product=product,
+        offering_ids=offerings,
+        shape=resolution.query,
         session_id=session_id,
         turn_id=turn_id,
         issued_at=issued_at,
     )
 
 
-def _plan(
-    query: str,
-    selection: QuerySelection,
+def issue_typed_plan(
+    question: str,
     *,
+    product: ProductType,
+    offering_ids: tuple[OfferingId, ...] = (),
+    shape: QueryShape,
     session_id: str,
     turn_id: str,
     issued_at: datetime | None = None,
 ) -> ResolutionPlan:
+    """A plan for a caller that already holds a typed scope and shape (the API,
+    the after-run answer, demonstrations)."""
+    ids = offering_ids or family_offerings(product)
+    if any(item.product is not product for item in ids):
+        raise ValueError("query scope exceeds resolved product family")
+    operation = shape.operation
+    if operation is QueryOperation.SINGLE and len(ids) > 1:
+        operation = QueryOperation.OVERVIEW
+    if operation in {QueryOperation.COMPARE, QueryOperation.OVERVIEW} and len(ids) == 1:
+        operation = QueryOperation.SINGLE
+    if operation is QueryOperation.FAMILY_RANK:
+        rank_field = shape.rank_field or (shape.fields[0] if shape.fields else None)
+        if (
+            rank_field not in RANKABLE_PATHS
+            or shape.rank_direction is None
+            or len(ids) < 2
+        ):
+            raise ValueError("family rank requires one rankable field and a direction")
+        shape = shape.model_copy(
+            update={"fields": (rank_field,), "rank_field": rank_field}
+        )
+    return _plan(
+        question,
+        product=product,
+        offering_ids=ids,
+        shape=shape.model_copy(update={"operation": operation}),
+        session_id=session_id,
+        turn_id=turn_id,
+        issued_at=issued_at,
+    )
+
+
+def family_offerings(product: ProductType) -> tuple[OfferingId, ...]:
+    return tuple(item for item in OfferingId if item.product is product)
+
+
+def _plan(
+    question: str,
+    *,
+    product: ProductType | None,
+    offering_ids: tuple[OfferingId, ...],
+    shape: QueryShape | None,
+    session_id: str,
+    turn_id: str,
+    issued_at: datetime | None,
+) -> ResolutionPlan:
     current = issued_at or datetime.now(UTC)
+    text = question.strip()[:1000]
     return ResolutionPlan(
         session_id=session_id,
         turn_id=turn_id,
-        question_sha256=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+        question_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        question=text,
         issued_at=current,
-        expires_at=current + timedelta(minutes=30),
-        product=selection.product,
-        offering_ids=selection.offering_ids,
-        operation=selection.operation,
-        rank_direction=selection.rank_direction,
-        fields=selection.fields,
-        conditions=selection.conditions,
+        expires_at=current + PLAN_LIFETIME,
+        product=product,
+        offering_ids=offering_ids,
+        # No shape: a scope-only grant, which offerings the read tools may show.
+        operation=shape.operation if shape is not None else QueryOperation.CURRENT,
+        rank_direction=shape.rank_direction if shape is not None else None,
+        fields=shape.fields if shape is not None else (),
+        conditions=(
+            {"currency": shape.currency.value}
+            if shape is not None and shape.currency is not None
+            else {}
+        ),
     )

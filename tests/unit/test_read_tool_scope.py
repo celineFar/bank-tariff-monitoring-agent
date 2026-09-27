@@ -14,14 +14,11 @@ from types import SimpleNamespace
 import pytest
 from google.genai import types
 
-from app.config import load_seed_catalog
-from app.config.models import IntentResolutionSettings
 from app.domain.intent import FreshnessStatus
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import OfferingRunStatus
 from app.domain.structured_tariffs import QueryOperation
 from app.domain.tariff_queries import CurrentTariffItem, CurrentTariffResult
-from app.services.intent_resolution import RequestResolver
 from app.tools import (
     answer_tariff_query,
     configure_services,
@@ -31,6 +28,7 @@ from app.tools import (
     review_pending_candidates,
     run_tariff_monitoring,
 )
+from tests.fixtures.interpretations import scripted_resolver
 
 NOW = datetime(2026, 9, 25, tzinfo=UTC)
 
@@ -58,7 +56,7 @@ async def _resolve(context: _Context, text: str) -> dict:
             content=types.Content(role="user", parts=[types.Part(text=text)]),
         )
     )
-    return await resolve_request(text, context)
+    return await resolve_request(context)
 
 
 class _Current:
@@ -108,7 +106,7 @@ def wired():
     configure_services(
         None,
         None,
-        RequestResolver(load_seed_catalog(), IntentResolutionSettings()),
+        scripted_resolver(),
         current_tariff_service=current,
         tariff_history_service=history,
         answer_router=answers,
@@ -173,8 +171,8 @@ async def test_read_tools_are_reusable_in_a_turn_but_answering_is_one_use(
 
     first = await get_current_tariffs(context)
     second = await get_current_tariffs(context)
-    answered = await answer_tariff_query(question, context)
-    replayed = await answer_tariff_query(question, context)
+    answered = await answer_tariff_query(context)
+    replayed = await answer_tariff_query(context)
 
     assert "reason_code" not in first and "reason_code" not in second
     assert answered == {"status": "answered"}
@@ -198,7 +196,7 @@ async def test_a_broad_current_question_gets_a_scope_only_family_grant(wired) ->
         item.value for item in OfferingId if item.product is ProductType.MORTGAGE
     }
     # A scope-only grant has no field shape, so the answer tool declines it.
-    declined = await answer_tariff_query("current mortgage tariffs", context)
+    declined = await answer_tariff_query(context)
     assert declined["reason_code"] == "query.scope_only_plan"
     assert wired.answers.plans == []
 
@@ -239,7 +237,7 @@ async def test_the_monitoring_offer_is_the_grant_scope_bound_to_the_turn() -> No
     configure_services(
         None,
         None,
-        RequestResolver(load_seed_catalog(), IntentResolutionSettings()),
+        scripted_resolver(),
         current_tariff_service=_Current(missing=True),
     )
     try:
@@ -250,6 +248,7 @@ async def test_the_monitoring_offer_is_the_grant_scope_bound_to_the_turn() -> No
         configure_services(None, None)
 
     assert context.state["monitoring_confirmation_offer"] == {
+        "kind": "monitoring",
         "product": "mortgage",
         "offering_id": "mortgage_express",
         "invocation_id": "turn-1",
@@ -261,7 +260,7 @@ async def test_a_familyless_grant_never_writes_an_offer() -> None:
     configure_services(
         None,
         None,
-        RequestResolver(load_seed_catalog(), IntentResolutionSettings()),
+        scripted_resolver(),
         current_tariff_service=_Current(missing=True),
     )
     try:
@@ -300,7 +299,7 @@ async def test_monitoring_runs_the_node_only_for_the_granted_scope(wired) -> Non
 
     assert result == {"status": "succeeded"}
     assert context.node_inputs == [
-        {"product": "mortgage", "offering_id": "mortgage_express", "question": None}
+        {"product": "mortgage", "offering_id": "mortgage_express", "answer": None}
     ]
 
 
@@ -368,6 +367,7 @@ async def test_family_scope_runs_after_yes_in_the_next_turn_and_on_replay(
     assert offer == {
         "product": "mortgage",
         "invocation_id": "turn-1",
+        "kind": "scope_confirmation",
         "offering_id": None,
     }
     assert confirmation["intent"] == "start_monitoring_run"

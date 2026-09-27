@@ -20,6 +20,7 @@ from app.services.structured_shadow_read import (
 )
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.fixtures.evaluation_corpus import EvaluationRepository
+from tests.fixtures.interpretations import recorded_resolver
 
 NOW = datetime(2026, 9, 22, tzinfo=UTC)
 CONSUMER_URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
@@ -27,10 +28,8 @@ OTHER_URL = "https://ameriabank.am/en/personal/loans/other"
 
 
 def _resolver() -> RequestResolver:
-    from app.config import load_seed_catalog
-    from app.config.models import IntentResolutionSettings
 
-    return RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    return recorded_resolver()
 
 
 class _Legacy:

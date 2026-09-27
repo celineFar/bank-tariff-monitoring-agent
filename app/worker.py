@@ -199,7 +199,7 @@ class MonitoringWorker:
             logger.warning("embedding sweep failed", exc_info=True)
             return 0
         if filled:
-            logger.info("embedding sweep filled %s chunk vector(s)", filled)
+            logger.info("embedding sweep filled %s vector(s)", filled)
         return filled
 
     async def _sweep_forever(self, stop: asyncio.Event) -> None:
@@ -280,7 +280,7 @@ async def main() -> None:
         pipeline=container.tariff_pipeline,
         resolution=container.review_resolution,
         worker_id=f"{socket.gethostname()}:{id(container)}",
-        embeddings=container.knowledge_indexer,
+        embeddings=container.embedding_sweep,
         embedding_sweep_batch=settings.rag.embedding_sweep_batch,
         embedding_sweep_interval_seconds=settings.rag.embedding_sweep_interval_seconds,
         abandoned_after=timedelta(seconds=settings.scheduler.run_lease_seconds),

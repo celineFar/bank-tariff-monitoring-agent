@@ -5,11 +5,9 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.routes import router
-from app.config.models import IntentResolutionSettings
-from app.config.seed_catalog import load_seed_catalog
 from app.domain.models import OfferingId
 from app.domain.structured_tariffs import QueryStatus, TariffQueryResult
-from app.services.intent_resolution import RequestResolver
+from tests.fixtures.interpretations import recorded_resolver
 
 
 class QueryService:
@@ -38,9 +36,7 @@ async def test_structured_route_uses_same_scoped_service_without_acquisition() -
     app.include_router(router)
     query_service = QueryService()
     app.state.structured_query_service = query_service
-    app.state.request_resolver = RequestResolver(
-        load_seed_catalog(), IntentResolutionSettings()
-    )
+    app.state.request_resolver = recorded_resolver()
     app.state.run_service = NoAcquisition()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -71,9 +67,7 @@ async def test_structured_route_returns_controlled_unresolved_scope() -> None:
     app = FastAPI()
     app.include_router(router)
     app.state.structured_query_service = QueryService()
-    app.state.request_resolver = RequestResolver(
-        load_seed_catalog(), IntentResolutionSettings()
-    )
+    app.state.request_resolver = recorded_resolver()
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:

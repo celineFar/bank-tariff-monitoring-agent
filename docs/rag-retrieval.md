@@ -85,31 +85,42 @@ path, which full-text search could not match against natural wording. Publishing
 re-renders any unit still at a lower renderer version and clears its stale
 embedding so the vector is recomputed for the new text.
 
-### Lexical baseline
+### The field finder
 
-The lexical branch is weighted PostgreSQL full-text search over the `simple`
-configuration: `setweight` puts identity text at `A`, aliases and the Armenian
-field label at `B`, and clean detail text at `C`, ranked with `ts_rank_cd` inside
-the authorized offering scope.
+Retrieval units no longer rank an answer: the answer is the accepted facts of the
+plan's fields. Retrieval runs only when a question named no field (the request
+interpreter left `fields` empty, e.g. "what documents do I need?", "tell me about
+the overdraft"). It then ranks the scoped offerings' units against the standalone
+question and loads the facts of the field paths of the best field-detail units, at
+most three (`metadata.fields_source = retrieval`).
 
-`simple` has no stopword list and `websearch_to_tsquery` joins bare terms with
-AND, so passing a question through verbatim required every filler word to appear
-in a unit and matched nothing. `lexical_search_terms` (version
-`simple-or-v1`) therefore builds the query deterministically: casefold, strip the
-Armenian intra-word question, exclamation, and emphasis marks so `որքա՞ն`
-normalizes to the stopword `որքան`, split on non-word characters, drop a
-checked-in bilingual function-word list and single characters, keep the first
-twelve distinct terms, and join them with `or`. `ts_rank_cd` then supplies
-precision, and the service still admits only units whose facts and evidence are
-within the answered scope.
+### Lexical branch
 
-### Vector supplement
+Weighted PostgreSQL full-text search over the `simple` configuration: `setweight`
+puts identity text at `A`, aliases and the Armenian field label at `B`, and clean
+detail text at `C`, ranked with `ts_rank_cd` inside the authorized offering scope.
 
-Vector search runs only when lexical recall is sparse (fewer than four hits),
-uses the same hard scope, active-state, and evidence predicates, and is fused
-with the lexical ranking as `rrf-v1-k60-lex1-vector0.7`. Over the 25 target
-questions it fired on 1 of 15 single-offering questions, so those fusion weights
-have not been tuned; see `tests/eval/RESULTS.md`.
+`simple` has no stopword list and no stemming. `lexical_search_terms` (version
+`simple-prefix-v2`) therefore builds a `to_tsquery` deterministically:
+
+1. casefold and strip the Armenian intra-word question, exclamation and emphasis
+   marks;
+2. split on non-word characters;
+3. drop a checked-in bilingual function-word list, single characters, and the
+   words of the scoped offering's own names and aliases (they match every one of
+   its units);
+4. keep the first twelve distinct terms;
+5. trim terms of four or more characters to a stem — English plural `-s`, Armenian
+   article and case endings — and match them as prefixes (`fee:*` finds "fee" and
+   "fees", `տոկոսադրույք:*` finds its inflected forms);
+6. join them with `|`.
+
+### Vector branch
+
+When a unit embedder is configured, the field finder also embeds the question (the
+only embedding call on the request path) and fuses the vector hits with the lexical
+ranking as `rrf-v1-k60-lex1-vector0.7`. Units themselves are embedded by the
+worker's sweep (`CombinedEmbeddingSweep`), never while answering a question.
 
 ### Tracing
 
@@ -117,28 +128,28 @@ Set `RETRIEVAL_TRACE_LEVEL=steps` to have every stage of every retrieval write
 one correlated line to the `tariff.retrieval` logger, in call order:
 
 ```text
-trace=1f9f step=2  stage=plan.authorized   offerings=['overdraft'] fields=[...] conditions={}
+trace=1f9f step=2  stage=plan.authorized   offerings=['overdraft'] fields=[] conditions={}
 trace=1f9f step=3  stage=profiles.loaded   requested=1 active=1 snapshots=['c68e2d4c']
-trace=1f9f step=4  stage=facts.loaded      loaded=5 after_conditions=5 evidence_backed=5 citations=5
-trace=1f9f step=5  stage=branch.selected   branch=single
-trace=1f9f step=6  stage=lexical.query     version=simple-or-v1 terms=4 limit=8
-trace=1f9f step=7  stage=lexical.result    hits=8 top=[('0941b09c', 1.6), ...]
-trace=1f9f step=8  stage=vector.skipped    reason=lexical recall sufficient
-trace=1f9f step=9  stage=fusion.ranked     version=rrf-v1-k60-lex1-vector0.7 candidates=8
-trace=1f9f step=10 stage=units.admitted    candidates=8 supported=5 rejected_unsupported=3 selected=5
-trace=1f9f steps=10 elapsed_ms=80.08 status=answered facts=5 units=5
+trace=1f9f step=4  stage=lexical.query     version=simple-prefix-v2 terms=2 limit=8
+trace=1f9f step=5  stage=lexical.result    hits=8 top=[('0941b09c', 1.6), ...]
+trace=1f9f step=6  stage=fusion.ranked     version=rrf-v1-k60-lex1-vector0.7 candidates=8 fields=[...]
+trace=1f9f step=7  stage=fields.selected   source=retrieval fields=['document.required']
+trace=1f9f step=8  stage=facts.loaded      loaded=6 after_conditions=6 evidence_backed=6 citations=6
+trace=1f9f step=9  stage=branch.selected   branch=single
+trace=1f9f steps=9 elapsed_ms=41.2 status=answered facts=6 units=0
 ```
 
+A question that names its fields skips steps 4–6.
+
 `summary` keeps only the closing line, `off` disables it, and `verbose` adds
-`lexical.terms` (the derived `tsquery`) and one `unit.content` line per admitted
-unit. A trace always closes, including on an exception, where the summary
+`lexical.terms` (the derived `tsquery`) and one `unit.content` line per unit the
+field finder used. A trace always closes, including on an exception, where the summary
 carries `outcome=error` and the error type. `RETRIEVAL_LOG_FILE` routes the
 logger to its own rotating file. At `steps` and below, neither the question text
 nor any unit text is written; the question stays correlatable through the
 `question_sha12` prefix.
 
 `uv run python -m scripts.trace_structured_answer "<question>" --no-vector`
-prints resolution, the issued authorization plan, the typed facts with their
-verified citations, the admitted explanatory units, and the ranking version,
-without any model call. `scripts/trace_rag_answer.py` still traces the legacy
+prints the resolution (one interpreter call), the issued authorization plan, and
+the typed facts with their verified citations. `scripts/trace_rag_answer.py` still traces the legacy
 chunk path for rollback comparison.

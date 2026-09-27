@@ -15,14 +15,19 @@ from google.adk.tools import ToolContext
 RESOLUTION_STATE_KEY = "intent_resolution"
 # {"invocation_id", "previous_invocation_id", "intent", "product", "offering_id"}
 RESOLUTION_KEY = "resolution"
+# {"invocation_id", "result"}: a repeat call in the same turn returns it (RR13).
+RESOLUTION_RESULT_KEY = "resolution_result"
 TARIFF_PLAN_KEY = "tariff_resolution_plan"  # the read grant
 TARIFF_PLAN_USED_KEY = "tariff_resolution_plan_used"
-TARIFF_LAST_USED_TURN_KEY = "tariff_resolution_last_used_turn"
 TARIFF_SESSION_KEY = "tariff_resolution_session_id"
 MONITOR_AUTHORIZATION_KEY = "monitoring_authorization"  # the spend grant
+# {"kind": "monitoring" | "scope_confirmation", "product", "offering_id",
+#  "invocation_id"}: answerable in the next turn only.
 MONITOR_OFFER_KEY = "monitoring_confirmation_offer"
 FULL_PRODUCT_ACK_KEY = "monitoring_full_product_ack"
-ORIGINAL_QUESTION_KEY = "monitoring_original_question"
+# {"question", "product", "offering_ids", "shape"}: what a monitoring run
+# answers when it finishes (the standalone question, its scope and shape).
+MONITORING_ANSWER_REQUEST_KEY = "monitoring_answer_request"
 
 
 def invocation_id(tool_context: ToolContext) -> str | None:
@@ -78,14 +83,4 @@ def issued_this_turn(grant: object, tool_context: ToolContext) -> bool:
         isinstance(grant, dict)
         and current is not None
         and grant.get("invocation_id") == current
-    )
-
-
-def issued_last_turn(grant: object, tool_context: ToolContext) -> bool:
-    """An offer or scope question from the previous turn, and only that one."""
-    previous = resolution_record(tool_context).get("previous_invocation_id")
-    return (
-        isinstance(grant, dict)
-        and isinstance(previous, str)
-        and grant.get("invocation_id") == previous
     )

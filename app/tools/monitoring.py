@@ -20,9 +20,8 @@ from app.tools._state import (
     FULL_PRODUCT_ACK_KEY,
     MONITOR_AUTHORIZATION_KEY,
     MONITOR_OFFER_KEY,
-    ORIGINAL_QUESTION_KEY,
+    MONITORING_ANSWER_REQUEST_KEY,
     invocation_id,
-    issued_last_turn,
     issued_this_turn,
     resolution_record,
 )
@@ -83,21 +82,18 @@ async def run_tariff_monitoring(
         }
     # An unscoped run fans out to every enabled offering in the product family,
     # so it costs a multiple of a single-offering run. Make that scope explicit
-    # once before spending it: the question is asked in one turn and can only
-    # be answered in the next, never by a second call in the same turn.
+    # once before spending it: the question is asked in one turn and only an
+    # explicit yes in the next turn confirms it (resolve_request records the
+    # yes, bound to that turn, so the replay after a review pause passes).
     if resolved_offering is None:
         acknowledged = tool_context.state.get(FULL_PRODUCT_ACK_KEY)
-        same_product = (
+        confirmed = (
             isinstance(acknowledged, dict)
             and acknowledged.get("product") == resolved_product.value
-        )
-        answered_now = same_product and issued_last_turn(acknowledged, tool_context)
-        confirmed_now = (
-            same_product
             and issued_this_turn(acknowledged, tool_context)
             and acknowledged.get("confirmed") is True
         )
-        if not (answered_now or confirmed_now):
+        if not confirmed:
             family = tuple(
                 item.value for item in OfferingId if item.product is resolved_product
             )
@@ -106,8 +102,12 @@ async def run_tariff_monitoring(
                 "invocation_id": invocation_id(tool_context),
             }
             tool_context.state[FULL_PRODUCT_ACK_KEY] = {**question, "confirmed": False}
-            # "yes" next turn re-issues the spend grant for this same scope.
-            tool_context.state[MONITOR_OFFER_KEY] = {**question, "offering_id": None}
+            # An explicit yes next turn re-issues the spend grant for this scope.
+            tool_context.state[MONITOR_OFFER_KEY] = {
+                **question,
+                "kind": "scope_confirmation",
+                "offering_id": None,
+            }
             return {
                 "status": "needs_scope_confirmation",
                 "product": product,
@@ -116,23 +116,34 @@ async def run_tariff_monitoring(
                 "offerings": list(family),
                 "reason_code": "run.full_product_scope",
             }
-        # Bind the confirmation to this invocation, so the replay after each
-        # review pause passes without asking again.
-        tool_context.state[FULL_PRODUCT_ACK_KEY] = {
-            "product": resolved_product.value,
-            "invocation_id": invocation_id(tool_context),
-            "confirmed": True,
-        }
     tool_context.state[MONITOR_OFFER_KEY] = None
-    question = tool_context.state.get(ORIGINAL_QUESTION_KEY)
     return await tool_context.run_node(
         services.monitoring_node,
         {
             "product": resolved_product.value,
             "offering_id": resolved_offering.value if resolved_offering else None,
-            "question": question if isinstance(question, str) else None,
+            "answer": _answer_request(tool_context, resolved_product),
         },
     )
+
+
+def _answer_request(
+    tool_context: ToolContext, product: ProductType
+) -> dict[str, object] | None:
+    """The question of record the run answers, if it is about this family."""
+    request = tool_context.state.get(MONITORING_ANSWER_REQUEST_KEY)
+    if (
+        not isinstance(request, dict)
+        or not request.get("question")
+        or request.get("product") != product.value
+    ):
+        return None
+    return {
+        "question": request["question"],
+        "product": request["product"],
+        "offering_ids": list(request.get("offering_ids") or ()),
+        "shape": request.get("shape"),
+    }
 
 
 async def review_pending_candidates(

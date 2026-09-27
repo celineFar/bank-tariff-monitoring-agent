@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -453,6 +454,9 @@ class QueryOperation(StrEnum):
     COMPARE = "compare"
     FAMILY_RANK = "family_rank"
     HISTORY = "history"
+    # Requested fields for 1-9 offerings of one family, side by side, with no
+    # comparability verdict (a listing question, not a comparison).
+    OVERVIEW = "overview"
     # Scope-only read grant: which offerings the read tools may show, with no
     # answerable field shape (plan §6.6). `answer_tariff_query` declines it.
     CURRENT = "current"
@@ -466,6 +470,7 @@ ANSWERABLE_OPERATIONS = frozenset(
         QueryOperation.COMPARE,
         QueryOperation.FAMILY_RANK,
         QueryOperation.HISTORY,
+        QueryOperation.OVERVIEW,
     }
 )
 
@@ -499,9 +504,18 @@ class ResolutionPlan(StructuredTariffModel):
     fields: tuple[FieldPath, ...] = ()
     conditions: dict[str, JsonValue] = Field(default_factory=dict)
     taxonomy_version: int = FIELD_PATH_VERSION
+    # The question of record (the standalone question), held server-side so
+    # the answer tool takes no text from the model.
+    question: str | None = Field(default=None, min_length=1, max_length=1000)
 
     @model_validator(mode="after")
     def validate_scope(self) -> ResolutionPlan:
+        if (
+            self.question is not None
+            and hashlib.sha256(self.question.encode("utf-8")).hexdigest()
+            != self.question_sha256
+        ):
+            raise ValueError("plan question differs from its hash")
         if any(
             item.tzinfo is None or item.utcoffset() is None
             for item in (self.issued_at, self.expires_at)
@@ -526,16 +540,12 @@ class ResolutionPlan(StructuredTariffModel):
             raise ValueError("comparison requires at least two offerings")
         if self.operation is QueryOperation.FAMILY_RANK and self.rank_direction is None:
             raise ValueError("family rank requires an explicit direction")
-        if (
-            self.operation
-            in {
-                QueryOperation.SINGLE,
-                QueryOperation.COMPARE,
-                QueryOperation.FAMILY_RANK,
-            }
-            and not self.fields
-        ):
-            raise ValueError("tariff query requires canonical fields")
+        if self.operation is QueryOperation.OVERVIEW and not self.offering_ids:
+            raise ValueError("an overview requires offerings")
+        # A single, compare or overview question may name no field: the answer
+        # path finds the fields (the field finder). A rank ranks exactly one.
+        if self.operation is QueryOperation.FAMILY_RANK and len(self.fields) != 1:
+            raise ValueError("family rank requires exactly one canonical field")
         return self
 
 

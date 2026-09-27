@@ -73,23 +73,25 @@ to override it.
 
 | Tool | Model supplies | Scope comes from | Refuses when |
 |---|---|---|---|
-| `resolve_request(query)` | the user's text, verbatim | — it *issues* the grants | the text is not the user's message, or the turn was already used |
-| `answer_tariff_query(query)` | the question text | the read grant (`ResolutionPlan`: family, offerings, operation, fields) | the grant is absent, replayed, expired, from another session or turn, or scope-only |
+| `resolve_request()` | nothing — it reads the user's message itself | — it *issues* the grants | no user message this turn; the interpreter is unavailable (then nothing is granted). A repeat call in the same turn returns the first result |
+| `answer_tariff_query()` | nothing — it answers the grant's own question | the read grant (`ResolutionPlan`: family, offerings, operation, fields, question of record) | the grant is absent, replayed, expired, from another session or turn, or scope-only |
 | `get_current_tariffs()` | nothing | the read grant | no valid grant this turn |
 | `get_tariff_history(kind, start_at, end_at, limit)` | the window and page size (clamped) | the read grant | no valid grant this turn |
 | `get_monitoring_status()` | nothing | — (status of both families; no tariff values) | no resolution this turn |
-| `run_tariff_monitoring(product, offering_id)` | the scope it claims | the spend grant; the arguments must equal it | the grant is missing, from another turn, or for another scope; a family run needs a confirmation from the next turn |
+| `run_tariff_monitoring(product, offering_id)` | the scope it claims | the spend grant; the arguments must equal it | the grant is missing, from another turn, or for another scope; a family run needs an explicit yes to the scope question in the next turn |
 | `review_pending_candidates(product, offering_id)` | an optional scope | must match the resolver's scope for the turn | no resolution this turn, or a wider scope |
 
 Two grants, two lifetimes. The **read grant** is issued for answer, current and
-history intents: when the resolver's scope yields an answerable query shape it is
-exactly that plan; otherwise (a broad family question, or no family named) it is
-scope-only. Read tools may use it repeatedly within the turn; `answer_tariff_query`,
-which spends model calls, is one-use. The **spend grant** is issued only for an
-explicit monitoring request or an affirmative reply to an offer — and the offer is
-itself written by `get_current_tariffs` from the read grant, never from a model
-argument. The chain resolver → read grant → offer → spend grant → run therefore never
-passes through a value the model authored.
+history intents. An answer question gets the plan built from the interpreter's validated
+shape (single, compare, overview, family rank or history) and its standalone question;
+`get_current_tariffs` gets a scope-only grant. Read tools may use it repeatedly within
+the turn; `answer_tariff_query` is one-use. The **spend grant** is issued only for an
+explicit monitoring request or an explicit yes (`accepts = true`) to an offer made in
+the previous turn — and the offer is itself written by `get_current_tariffs` from the
+read grant, never from a model argument. The chain interpreter → validation → read
+grant → offer → spend grant → run therefore never passes through a scope the chat model
+authored, and the interpreter's proposal is checked against the catalog before it
+grants anything. Each resolution names the next tool in `route`, decided by code.
 
 Three properties are worth naming.
 
@@ -140,15 +142,17 @@ gets published, what needs a human.
 The clearest expression of this is comparison. Detecting that 12.5% became 13.5% is
 a formatting-insensitive canonical diff in Python, not a question anyone asks a
 model. The same holds for ranking and comparison on the read side: the service
-computes them from typed facts and *abstains* when candidates differ in currency,
-unit, rate basis, or fee scope, rather than letting a model produce a plausible
-winner.
+computes them from typed facts, ranks only values that share a currency, unit, rate
+basis and fee scope (each group on its own), and *abstains* when no two offerings
+share one, rather than letting a model produce a plausible winner.
 
 ### Deterministic first, model only for the remainder
 
-Every model-facing stage is preceded by cheaper work. Intent resolution tries
-Unicode-normalized exact matching, then bounded fuzzy ranking, and only then
-classification. Source discovery applies rules and a content-addressed cache and
+Every model-facing stage is preceded by cheaper work, or bounded by code after it.
+Request interpretation is the exception that proves the rule: keyword rules misread
+too many ordinary requests (bare offering names, plurals, Armenian endings, "refresh"
+in a question), so one small tool-free call interprets each chat turn, and code
+validates the proposal against the catalog and issues every grant itself. Source discovery applies rules and a content-addressed cache and
 sends only genuinely unresolved units. PDF transcription is gated by link metadata,
 so an off-topic or superseded document is skipped before it is paid for. Extraction
 batches are cached on product, schema version, prompt version, model, and

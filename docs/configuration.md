@@ -102,10 +102,9 @@ downloader receives `settings.http` and the PDF extraction service receives
   quota budget deliberately stays within minutes; once it is spent the index is
   deferred and the snapshot still publishes. See
   [failure behavior](failure-behavior.md).
-- **Intent resolution:** `INTENT_FUZZY_MIN_SCORE`, `INTENT_FUZZY_MIN_GAP`,
-  `INTENT_MAX_CANDIDATES`, and `INTENT_CLASSIFIER_MAX_ATTEMPTS`. These bound the
-  deterministic fuzzy acceptance rule and the candidate/model fallback surface; they do
-  not change the configured Gemini model.
+- **Intent resolution:** `INTENT_CLASSIFIER_MAX_ATTEMPTS` bounds the attempts of the
+  request interpreter's call (one call per chat turn). It does not change the
+  configured Gemini model.
 - **Tariff queries:** `TARIFF_FRESHNESS_DAYS`, `TARIFF_RECENT_CHANGE_DAYS`,
   `TARIFF_DEFAULT_HISTORY_DAYS`, and `TARIFF_MAX_HISTORY_RESULTS` bound accepted-data
   reads. `TARIFF_ANSWER_READ_MODEL` is the reversible cutover switch: `structured`

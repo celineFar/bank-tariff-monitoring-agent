@@ -33,6 +33,13 @@ Explicit date bounds and result limits remain bounded by configuration.
 `GET /api/v1/tariffs/history` returns the full typed result. The `get_tariff_history`
 ADK tool returns the same result without each snapshot's evidence catalog, extraction
 record and validation (hundreds of kB per snapshot); values, times and change sets stay.
+Each value carries compact citations instead: up to three per field, each with source
+URL, section, page and a quote of at most 300 characters, read from the snapshot that
+accepted it (`field_citations`). A snapshot gets `citations: {field: [...]}`, and
+`TariffHistoryService` fills each change item's `previous_evidence` and
+`current_evidence` the same way. A changed value whose non-missing side has no citation
+is left out of the payload and listed under `omitted_changes`; no history value reaches
+the model uncited.
 
 ## Read scope in chat
 
@@ -52,24 +59,41 @@ executing elsewhere. `POST /api/v1/runs` remains asynchronous and does not wait.
 ## Structured tariff queries
 
 `StructuredTariffQueryService` answers ordinary tariff questions from accepted
-typed facts. It has four deterministic branches — `single`, `compare`,
+typed facts. It has five deterministic branches — `single`, `compare`, `overview`,
 `family_rank`, and `history` — and performs all filtering, alignment, ordering,
-and abstention itself; Gemini never does the arithmetic.
+and abstention itself; Gemini never does the arithmetic. The answer is the
+evidence-backed facts of the plan's fields. Only when the question named no field
+does retrieval run, to find the fields (the *field finder*, see
+[rag-retrieval.md](rag-retrieval.md)); with none found, the core fields answer.
+`metadata.fields_source` says which (`question`, `retrieval`, `core`).
 
 Scope comes from a per-turn `ResolutionPlan`, which is an authorization boundary,
 not routing metadata. The plan carries session and turn identity, the normalized
 question hash, the resolved family and offering set, the permitted operation and
 canonical fields, any currency condition, and a 30-minute validity window. A plan
 that is absent, replayed, stale, cross-session, cross-family, or widened is
-rejected before any repository call. ADK stores the plan in server-held session
-state; the typed HTTP route builds an equivalent plan from its own validated
-product and offering scope through `issue_typed_resolution_plan`.
+rejected before any repository call. The operation, fields, rank and currency are
+the request interpreter's proposal, validated and bounded by code
+(`issue_read_grant`); nothing is parsed from the question's words. The plan also
+holds the standalone question of record, and `answer_tariff_query` answers exactly
+that. ADK stores the plan in server-held session state; the typed HTTP route builds
+an equivalent plan from its own validated product and offering scope through
+`issue_typed_plan`, with the shape from `RequestResolver.shape_for`.
 
-A ranking abstains rather than naming a winner when the candidate values differ
-in currency, unit, rate basis, or fee scope — a percentage fee is never ranked
-against a fixed amount. A comparison reports each field's comparability with a
-reason. Accepted history returns old and new values only when both carry verified
-source evidence.
+A ranking ranks by group: values are grouped by unit, currency, rate basis and fee
+scope, each offering is represented in a group by its best variant whatever that
+variant's conditions, and the conditions travel with the value
+(`metadata.groups`). A percentage fee is never ranked against a fixed amount, and
+AMD and USD rank separately; `metadata.winner` is set only when exactly one group
+ranks. When no two offerings share a group the result is `incomparable`, with a
+reason naming what differs. An `overview` lists the requested fields for 1–9
+offerings side by side (at most six variants per offering and field, 240 facts in
+all) with no comparability verdict, and names the offerings without facts. A
+comparison reports each field's comparability with a reason. A currency condition
+drops only facts that name another currency; a term or repayment method stays.
+Accepted history returns each change item with verified evidence for every side
+that has a value (an added field has no previous value); an item without it is
+left out and listed under `metadata.omitted`.
 
 ### Which read model answers
 

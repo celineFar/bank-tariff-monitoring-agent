@@ -78,7 +78,8 @@ async def test_successful_run_answers_the_original_question_in_the_same_turn() -
     events = await harness.turn(text("monitor overdraft"))
 
     result = function_responses(events, "run_tariff_monitoring")[0]
-    assert result["answer_status"] == "answered"
+    # The answer's real status, not "an answer was attempted" (RR27).
+    assert result["answer_status"] == "insufficient_evidence"
     assert result["answer"]["status"] == "insufficient_evidence"
     assert harness.answers.questions == [QUESTION]
     assert harness.model.calls == 2  # choose the tool, then answer

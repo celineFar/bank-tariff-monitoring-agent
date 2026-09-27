@@ -10,9 +10,11 @@ this setting; only configuration can.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from uuid import uuid4
 
 from app.config.models import AnswerReadModel
+from app.domain.models import OfferingId
 from app.domain.monitoring import (
     AnswerCitation,
     AnswerFailureCode,
@@ -20,13 +22,14 @@ from app.domain.monitoring import (
     AnswerStatus,
     QuestionCommand,
 )
+from app.domain.query_shape import QueryShape
 from app.domain.structured_tariffs import (
     QueryStatus,
     ResolutionPlan,
     TariffQueryResult,
 )
 from app.services.rag_answer import RagAnswerService
-from app.services.structured_query_planning import issue_typed_resolution_plan
+from app.services.structured_query_planning import issue_typed_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 
 logger = logging.getLogger(__name__)
@@ -112,6 +115,9 @@ def structured_to_answer_result(
     )
 
 
+ShapeSource = Callable[..., Awaitable[QueryShape]]
+
+
 class TariffAnswerRouter:
     """One place that decides which read model answers an ordinary question."""
 
@@ -120,10 +126,15 @@ class TariffAnswerRouter:
         structured: StructuredTariffQueryService,
         legacy: RagAnswerService,
         read_model: AnswerReadModel = AnswerReadModel.STRUCTURED,
+        *,
+        shapes: ShapeSource | None = None,
     ) -> None:
         self._structured = structured
         self._legacy = legacy
         self._read_model = read_model
+        # D9: `RequestResolver.shape_for` - the interpreter proposes the shape
+        # of a typed-scope question; the scope stays the caller's.
+        self._shapes = shapes
 
     @property
     def read_model(self) -> AnswerReadModel:
@@ -164,13 +175,20 @@ class TariffAnswerRouter:
                 failure_code=AnswerFailureCode.AMBIGUOUS_PRODUCT,
                 audit_metadata={"read_model": AnswerReadModel.STRUCTURED.value},
             )
+        offering_ids: tuple[OfferingId, ...] = (
+            (command.offering_id,) if command.offering_id is not None else ()
+        )
         try:
-            plan = issue_typed_resolution_plan(
+            if self._shapes is None:
+                raise ValueError("no request interpreter for the question's shape")
+            shape = await self._shapes(
+                command.query, product=command.product, offering_ids=offering_ids
+            )
+            plan = issue_typed_plan(
                 command.query,
                 product=command.product,
-                offering_ids=(
-                    (command.offering_id,) if command.offering_id is not None else ()
-                ),
+                offering_ids=offering_ids,
+                shape=shape,
                 session_id=f"api-{uuid4()}",
                 turn_id=str(uuid4()),
             )
@@ -192,7 +210,7 @@ class TariffAnswerRouter:
                 },
             )
         return structured_to_answer_result(
-            await self._structured.answer(plan, command.query), command
+            await self._structured.answer(plan, plan.question), command
         )
 
 

@@ -1,112 +1,147 @@
 # Intent and catalog resolution
 
 `RequestResolver` is the only natural-language boundary that selects a tariff intent,
-product family, or offering. Typed API and scheduler commands already contain canonical
-IDs and do not invoke it.
+product family, offering, and the shape of a tariff question. Typed API and scheduler
+commands already contain canonical IDs and do not choose a scope through it.
 
 ## Resolution order
 
-1. Normalize Unicode with NFKC, case folding, punctuation/separator collapse, trimming,
-   and whitespace collapse. Reviewed Armenian grammatical suffixes are stripped only for
-   catalog token matching; the original request and detected language remain unchanged.
-2. Detect English, Armenian, or mixed-script input. Mixed input uses English labels by
-   default while retaining its `mixed` language classification.
-3. Classify the request into the approved eight-value intent taxonomy using deterministic
-   English and Armenian patterns.
-4. Match canonical IDs, localized primary names, aliases, synonyms, and checked-in
-   transliterations exactly.
-5. If exact matching is insufficient, rank catalog entries with bounded string similarity.
-   A fuzzy winner is accepted only when both the configured minimum score and minimum gap
-   are met.
-6. Only then, call the tool-free Gemini classifier with an explicit list of allowed intent
-   values and candidate IDs. Python rejects any output outside those lists.
-7. If model/API/structured-output validation fails or candidates remain tied, return a
-   typed clarification. Never guess a family or offering.
+Every chat turn makes one tool-free Gemini call, the *request interpreter*
+(`AdkRequestInterpreter`), and code checks what it proposes:
 
-The thresholds are configured by `INTENT_FUZZY_MIN_SCORE`, `INTENT_FUZZY_MIN_GAP`,
-`INTENT_MAX_CANDIDATES`, and `INTENT_CLASSIFIER_MAX_ATTEMPTS`.
+1. **Build the request.** It holds:
+   - the message, verbatim;
+   - a bounded conversation context (below);
+   - the whole checked-in catalog: 2 families and the enabled offerings, with
+     English and Armenian names, aliases, synonyms and transliterations;
+   - the allowed values: intents, reply kinds, operations, the field-path taxonomy
+     with labels, rank directions and currencies.
+2. **Interpret.** The call returns a `RequestInterpretation`
+   (`app/domain/interpretation.py`), in which every value is an enum or a bounded
+   string:
+   - `intent`, and `replies_to` / `accepts` for a reply to a pending question;
+   - `language`;
+   - `product`, `offering_ids`, `family_wide`;
+   - `standalone_question`: the request as one self-contained question;
+   - `query`: operation, fields, rank field and direction, currency;
+   - an optional clarification request.
+
+   The temperature is 0 and there is no thinking budget. The model is the configured
+   `generation_model`.
+3. **Validate** (`InterpretationValidator`, `app/services/interpretation_validation.py`).
+   Code derives everything with authority:
+   - **V1:** IDs exist and are enabled; offerings decide the family; offerings from
+     two families ask for the family.
+   - **V2:** the operation matches the scope. `single` means one offering; `compare`
+     and `overview` mean 2 or more offerings or the whole family; `family_rank`
+     needs one rankable field and a direction, otherwise it becomes an `overview` of
+     that field.
+   - **V3:** a family-wide read only when the user asked about the family, and never
+     for a single value. This also applies to a reply given to a clarification that
+     asked for one value.
+   - **V4:** a reply to a monitoring offer or scope question counts only when such a
+     question was asked in the previous turn, and its scope is the offer's.
+   - **V5:** an offering named verbatim in the message (the exact catalog matcher)
+     that the interpretation replaced with another, without context to explain it,
+     becomes a clarification between the two.
+   - **V6:** a message with no letters ("2", "👍") keeps the conversation's language.
+     Otherwise the script decides between English and Armenian, and the interpreter
+     only settles `mixed`.
+   - **V9:** the standalone question is the question of record, falling back to the
+     message.
+   - **V10:** clarification options are built from catalog labels, in catalog order:
+     all offerings of one family, or both families, never a mix.
+4. **Fail closed.** If the call fails, or its output is outside the schema or the
+   catalog, the turn is *unavailable* (`InterpretationUnavailable`). There is no
+   keyword fallback: the chat agent runs on the same model, and a guess would never
+   be authority for a scope.
+
+`INTENT_CLASSIFIER_MAX_ATTEMPTS` bounds the attempts of the interpreter call.
 
 ## Intent taxonomy
 
 - `list_supported_products`
-- `answer_indexed_tariff_question`
-- `get_current_tariffs`
-- `start_monitoring_run`
+- `answer_indexed_tariff_question`: any tariff value or condition, including "current"
+  values, comparisons, listings and rankings
+- `get_current_tariffs`: freshness and coverage (whether stored data is up to date,
+  which fields are stored), never values
+- `start_monitoring_run`: an explicit request to check the bank's site now; a question
+  that merely mentions refreshing is not one
 - `get_run_status`
 - `get_change_history`
+- `review_pending_candidates`
 - `unsupported_or_general`
-- `clarification_response`
+- `clarification_response`: produced by code for a reply to a clarification; the
+  resolved intent is its `continuation_intent`
 
-List, status, history, and unsupported/general requests do not require product scope.
-Broad current-tariff overviews may also remain family-wide or catalog-wide. A current or
-indexed question asking for one rate, fee, amount, term, or other scalar cannot stop at a
-family: it returns all configured offerings in that family as clarification choices.
-Family-wide monitoring remains valid and covers every enabled offering in that family.
+Each resolution carries `route`, the tool that serves its intent, decided by code.
 
 ## Session state
 
 Only conversational resolution state is stored in the ADK session:
 
 - whether the short introduction has been shown;
-- a pending clarification with bounded canonical options; and
-- the latest resolved family/offering.
+- a pending clarification: the standalone question, its intent, whether it asked for one
+  value, and its bounded canonical options;
+- the latest resolved family and offerings, and the previous standalone question (for
+  follow-ups such as "what about the term?" or "refresh it");
+- the conversation language.
 
-A clarification reply can select an option by number, canonical ID, complete label, or an
-unambiguous phrase such as “the express one.” The resulting
-`clarification_response` retains the original `continuation_intent`, clears pending state,
-and updates the latest scope. Invalid serialized state is discarded rather than trusted.
-An explicit new tariff intent or cancellation replaces and clears pending clarification;
-an ambiguous short reply keeps the same bounded choices. The first resolver result also
-returns a short catalog introduction generated from the checked-in catalog. It names both
-families and up to three offerings per family, offers the full list, and is suppressed on
-later turns. A list request returns all thirteen configured offerings.
-
-If the agent has just offered a refresh for stale or missing accepted data, an explicit
-affirmative reply resolves to `start_monitoring_run` for the last canonical scope and
-creates the same one-use authorization as a direct refresh request. An affirmative reply
-without a prior resolved scope cannot authorize monitoring.
-
-No personal preference or cross-session memory is created.
+The interpreter sees this as its context, together with a monitoring offer or scope
+question made in the previous turn. A clarification reply can select an option any way
+the user phrases it: a number, "option 3", a label, "the express one", or an offering
+that was not among the options. The resulting `clarification_response` keeps the
+original `continuation_intent`, clears the pending state, and records the new scope. A
+new request replaces the pending clarification. Invalid serialized state is discarded
+rather than trusted. The first resolver result also returns a short catalog
+introduction; a list request returns all thirteen configured offerings.
 
 ## Agent routing and wording
 
-The root instruction requires `resolve_request` before every business tool. Armenian
-input receives Armenian output, English receives English, and mixed input uses its
-dominant language. Broad family monitoring covers every enabled offering; broad overview
-reads cover all indexed offerings; single-value family questions clarify the offering.
-Current values come only from accepted snapshots. Stale values state their accepted time
-and seven-day threshold, missing values are not invented, and pending-review candidate
-values stay hidden. Unsupported requests produce a short capability-boundary response
-without financial advice or unrelated tools.
+`resolve_request` takes no arguments: it reads the user's message itself. It runs once
+per turn; a repeat call in the same turn returns the first result and changes nothing.
+The agent follows the result's `route`. Armenian input receives Armenian output, English
+receives English, and mixed input uses its dominant language. An unavailable
+interpretation is reported as such, and the user is asked to rephrase.
 
 ## Monitoring authorization
 
-`resolve_request` does not acquire sources or submit runs. When—and only when—it resolves
-`start_monitoring_run` without ambiguity, or the user answers "yes" to the monitoring
-offer made in the immediately preceding turn, it writes a spend grant for the exact
-family/offering scope, bound to the current ADK invocation. `run_tariff_monitoring`
-requires a grant from this invocation whose scope equals its arguments before it runs the
-monitoring node; the grant is useless in any later turn. The offer itself is written by
-`get_current_tariffs` from the turn's read grant, never from a tool argument.
+`resolve_request` never acquires sources or submits runs. It writes a spend grant, for
+the exact family/offering scope and bound to the current ADK invocation, only in two
+cases:
 
-`review_pending_candidates` (intent `review_pending_candidates`, e.g. "review them",
-"review the Express Mortgage candidates") needs a resolution in the same turn but no spend
-grant: reviewing starts no run.
+- it resolves `start_monitoring_run` without ambiguity; or
+- the user explicitly accepts (`accepts = true`) the monitoring offer made in the
+  immediately preceding turn.
 
-This tool-level check prevents an LLM tool-routing error from turning catalog, current,
-history, status, indexed-question, clarification, or unsupported intents into a monitoring
-run. Typed `POST /api/v1/runs` and scheduler entry points bypass natural-language
-classification because their canonical commands are already trusted application inputs.
+`run_tariff_monitoring` requires a grant from this invocation whose scope equals its
+arguments. A whole-family run also requires an explicit yes to the scope question, in
+the turn after it was asked; any other message, including another refresh request, is
+not a confirmation. The offer is written by `get_current_tariffs` from the turn's read
+grant, never from a tool argument, and any resolved turn clears it.
+
+`review_pending_candidates` needs a resolution in the same turn but no spend grant:
+reviewing starts no run.
 
 ## Gemini boundary
 
-The fallback classifier has no tools. Its prompt contains only the bounded request,
-detected language, allowed enum values, and supplied catalog candidates. The Pydantic
-response is validated again by Python. A nonexistent candidate, disallowed intent,
-missing final response, malformed JSON, or exhausted API call becomes clarification or a
-safe unresolved result; it never becomes a business action.
+The interpreter has no tools and holds no privilege. Its input is the bounded request
+above; its output is a proposal, and the interpreter never supplies a scope or a spend
+grant itself. Grants, clarification options, the plan's bounds, the method and the
+route are decided by code from the catalog and the session state. The chat model passes
+no scope and no text to any business tool.
 
-The versioned behavioral suite in `tests/eval/` covers all nine intents, all thirteen
-offerings, Armenian/English requests, fuzzy aliases, ambiguity, stale wording, and routing
-safety. Multi-turn clarification continuation remains a deterministic session test because
-ADK 2.9.2 does not permit state-bearing initialization events in an eval case.
+## Testing
+
+The interpretation case set, `tests/fixtures/interpretation_cases.py`, covers:
+
+- all intents and all thirteen offerings;
+- English, Armenian, mixed and transliterated input;
+- follow-ups, clarification replies and monitoring offers;
+- the whole-family confirmation;
+- safety cases (injected claims, a refresh question, a single value at family scope).
+
+It is recorded from the live interpreter by `scripts/record_interpretations.py`, which
+needs `GEMINI_API_KEY`. The unit tests (`tests/unit/test_interpretation_cases.py`,
+`tests/unit/test_tool_flows.py`) replay the recordings offline. Re-record after
+changing the interpreter instruction, the catalog, or the context shape.

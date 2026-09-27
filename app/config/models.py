@@ -312,9 +312,6 @@ class RagSettings(SettingsGroup):
 
 
 class IntentResolutionSettings(SettingsGroup):
-    fuzzy_min_score: float = Field(default=0.82, ge=0, le=1)
-    fuzzy_min_gap: float = Field(default=0.08, ge=0, le=1)
-    max_candidates: int = Field(default=5, ge=2, le=20)
     classifier_max_attempts: int = Field(default=2, ge=1, le=5)
 
 
