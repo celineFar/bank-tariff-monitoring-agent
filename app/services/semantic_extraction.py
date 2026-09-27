@@ -1783,6 +1783,39 @@ def _collapsed(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
+def source_span(quote: str, content: str) -> str:
+    """The exact text of `content` that `quote` matches under `_collapsed`.
+
+    A citation is checked with case and whitespace collapsed, but what is stored
+    must be the source's own text: publication verifies each fact citation as a
+    plain substring of its evidence, and a table row spans several lines that a
+    model quotes on one. Returns `quote` unchanged when it does not match.
+    """
+    if quote in content:
+        return quote
+    folded: list[str] = []
+    origin: list[int] = []
+    pending_space = False
+    for index, char in enumerate(content):
+        if char.isspace():
+            pending_space = bool(folded)
+            continue
+        if pending_space:
+            folded.append(" ")
+            origin.append(index)
+            pending_space = False
+        for piece in char.casefold():
+            folded.append(piece)
+            origin.append(index)
+    target = _collapsed(quote)
+    start = "".join(folded).find(target) if target else -1
+    if start < 0:
+        return quote
+    first = origin[start]
+    last = origin[start + len(target) - 1]
+    return content[first : last + 1]
+
+
 def _value_numbers(value: Any) -> set[Decimal]:
     numbers: set[Decimal] = set()
 
@@ -2695,7 +2728,7 @@ def _hydrate_citation(evidence_id: str, quote: str, catalog: dict) -> EvidenceCi
         source_item_id=item.source_item_id,
         source_url=item.locator.source_url,
         source_type=item.locator.source_type,
-        quote=quote,
+        quote=source_span(quote, item.content),
         section=item.section,
         locator=item.locator,
         authority=item.authority,
