@@ -90,12 +90,17 @@ class InterpretationContext(InterpretationModel):
     pending_offer: PendingOffer | None = None
 
 
-class InterpretationClarification(InterpretationModel):
+class _OutputModel(BaseModel):
+    # Part of the interpreter's response schema, which rejects additionalProperties.
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+
+class InterpretationClarification(_OutputModel):
     needed: bool = False
     option_ids: tuple[str, ...] = ()
 
 
-class RequestInterpretation(InterpretationModel):
+class RequestInterpretation(_OutputModel):
     intent: InterpretedIntent
     replies_to: ReplyKind = ReplyKind.NONE
     accepts: bool | None = None

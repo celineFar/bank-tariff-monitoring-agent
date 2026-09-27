@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from app.config import load_seed_catalog
-from app.config.models import IntentResolutionSettings
 from app.domain.structured_tariffs import QueryOperation, QueryStatus
 from app.repositories.structured_tariff_query import lexical_search_terms
 from app.services.intent_resolution import RequestResolver
@@ -13,11 +11,12 @@ from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.eval.structured_metrics import measure
 from tests.fixtures.evaluation_corpus import EvaluationRepository
+from tests.fixtures.interpretations import recorded_resolver
 from tests.fixtures.target_questions import TARGET_QUESTIONS, TargetQuestion
 
 
 def _resolver() -> RequestResolver:
-    return RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    return recorded_resolver()
 
 
 @pytest.mark.parametrize(

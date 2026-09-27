@@ -25,6 +25,7 @@ from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_shadow_read import _change_evidence
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.fixtures.evaluation_corpus import EvaluationRepository
+from tests.fixtures.recorded_interpretations import RecordedInterpreter
 from tests.fixtures.target_questions import TARGET_QUESTIONS, TargetQuestion
 
 ABSTENTIONS = frozenset(
@@ -124,7 +125,12 @@ async def measure(
     repository: EvaluationRepository | None = None,
 ) -> StructuredEvalMetrics:
     store = repository or EvaluationRepository()
-    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    # Interpretations recorded from the live interpreter (fix plan RRS01).
+    resolver = RequestResolver(
+        load_seed_catalog(),
+        IntentResolutionSettings(),
+        interpreter=RecordedInterpreter(),
+    )
     service = StructuredTariffQueryService(store)
     outcomes: list[QuestionOutcome] = []
     for question in TARGET_QUESTIONS:

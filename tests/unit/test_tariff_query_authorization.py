@@ -5,12 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.config.models import IntentResolutionSettings
-from app.config.seed_catalog import load_seed_catalog
 from app.domain.models import OfferingId
 from app.domain.structured_tariffs import QueryStatus, TariffQueryResult
-from app.services.intent_resolution import RequestResolver
 from app.tools import answer_tariff_query, configure_services, resolve_request
+from tests.fixtures.interpretations import scripted_resolver
 
 QUESTION = "What is the nominal interest rate for Overdraft?"
 
@@ -49,7 +47,7 @@ class FakeQueryService:
 @pytest.fixture
 def wired_services():
     service = FakeQueryService()
-    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    resolver = scripted_resolver()
     configure_services(None, None, resolver, structured_query_service=service)
     yield service
     configure_services(None, None)

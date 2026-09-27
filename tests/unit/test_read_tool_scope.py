@@ -14,14 +14,11 @@ from types import SimpleNamespace
 import pytest
 from google.genai import types
 
-from app.config import load_seed_catalog
-from app.config.models import IntentResolutionSettings
 from app.domain.intent import FreshnessStatus
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import OfferingRunStatus
 from app.domain.structured_tariffs import QueryOperation
 from app.domain.tariff_queries import CurrentTariffItem, CurrentTariffResult
-from app.services.intent_resolution import RequestResolver
 from app.tools import (
     answer_tariff_query,
     configure_services,
@@ -31,6 +28,7 @@ from app.tools import (
     review_pending_candidates,
     run_tariff_monitoring,
 )
+from tests.fixtures.interpretations import scripted_resolver
 
 NOW = datetime(2026, 9, 25, tzinfo=UTC)
 
@@ -108,7 +106,7 @@ def wired():
     configure_services(
         None,
         None,
-        RequestResolver(load_seed_catalog(), IntentResolutionSettings()),
+        scripted_resolver(),
         current_tariff_service=current,
         tariff_history_service=history,
         answer_router=answers,
@@ -239,7 +237,7 @@ async def test_the_monitoring_offer_is_the_grant_scope_bound_to_the_turn() -> No
     configure_services(
         None,
         None,
-        RequestResolver(load_seed_catalog(), IntentResolutionSettings()),
+        scripted_resolver(),
         current_tariff_service=_Current(missing=True),
     )
     try:
@@ -261,7 +259,7 @@ async def test_a_familyless_grant_never_writes_an_offer() -> None:
     configure_services(
         None,
         None,
-        RequestResolver(load_seed_catalog(), IntentResolutionSettings()),
+        scripted_resolver(),
         current_tariff_service=_Current(missing=True),
     )
     try:

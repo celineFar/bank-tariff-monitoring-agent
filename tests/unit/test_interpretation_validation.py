@@ -64,9 +64,13 @@ def _state_after(resolution, message="question", state=None):
 
 def test_v1_offerings_decide_the_family() -> None:
     result = _validate(
-        interp(ANSWER, product=ProductType.CONSUMER_LOAN,
-               offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
-               operation=QueryOperation.SINGLE, fields=RATE)
+        interp(
+            ANSWER,
+            product=ProductType.CONSUMER_LOAN,
+            offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+        )
     )
     assert result.product is ProductType.MORTGAGE
     assert result.offering_id is OfferingId.MORTGAGE_EXPRESS
@@ -76,8 +80,11 @@ def test_v1_offerings_decide_the_family() -> None:
 
 def test_v1_offerings_from_two_families_ask_for_the_family() -> None:
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.OVERDRAFT, OfferingId.MORTGAGE_EXPRESS),
-               operation=QueryOperation.COMPARE)
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.OVERDRAFT, OfferingId.MORTGAGE_EXPRESS),
+            operation=QueryOperation.COMPARE,
+        )
     )
     assert result.needs_clarification is True
     assert {c.scope for c in result.candidates} == {ResolutionScope.FAMILY}
@@ -102,8 +109,12 @@ def test_v1_a_disabled_offering_is_rejected(monkeypatch) -> None:
 
 def test_v2_single_with_two_offerings_becomes_an_overview() -> None:
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.OVERDRAFT, OfferingId.CREDIT_LINE),
-               operation=QueryOperation.SINGLE, fields=(FieldPath.FEE_OTHER,))
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.OVERDRAFT, OfferingId.CREDIT_LINE),
+            operation=QueryOperation.SINGLE,
+            fields=(FieldPath.FEE_OTHER,),
+        )
     )
     assert result.query.operation is QueryOperation.OVERVIEW
     assert set(result.offering_ids) == {OfferingId.OVERDRAFT, OfferingId.CREDIT_LINE}
@@ -111,8 +122,12 @@ def test_v2_single_with_two_offerings_becomes_an_overview() -> None:
 
 def test_v2_compare_of_one_offering_becomes_single() -> None:
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.OVERDRAFT,),
-               operation=QueryOperation.COMPARE, fields=RATE)
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.OVERDRAFT,),
+            operation=QueryOperation.COMPARE,
+            fields=RATE,
+        )
     )
     assert result.query.operation is QueryOperation.SINGLE
     assert result.expects_single_value is True
@@ -120,11 +135,15 @@ def test_v2_compare_of_one_offering_becomes_single() -> None:
 
 def test_v2_rank_covers_the_family_with_one_rankable_field() -> None:
     result = _validate(
-        interp(ANSWER, product=ProductType.MORTGAGE, family_wide=True,
-               operation=QueryOperation.FAMILY_RANK,
-               fields=(FieldPath.DOWN_PAYMENT_MINIMUM, FieldPath.AMOUNT_MAXIMUM),
-               rank_field=FieldPath.DOWN_PAYMENT_MINIMUM,
-               rank_direction=RankDirection.LOWEST)
+        interp(
+            ANSWER,
+            product=ProductType.MORTGAGE,
+            family_wide=True,
+            operation=QueryOperation.FAMILY_RANK,
+            fields=(FieldPath.DOWN_PAYMENT_MINIMUM, FieldPath.AMOUNT_MAXIMUM),
+            rank_field=FieldPath.DOWN_PAYMENT_MINIMUM,
+            rank_direction=RankDirection.LOWEST,
+        )
     )
     assert result.query.operation is QueryOperation.FAMILY_RANK
     assert result.query.fields == (FieldPath.DOWN_PAYMENT_MINIMUM,)
@@ -133,10 +152,14 @@ def test_v2_rank_covers_the_family_with_one_rankable_field() -> None:
 
 def test_v2_an_unrankable_rank_is_listed_instead() -> None:
     result = _validate(
-        interp(ANSWER, product=ProductType.MORTGAGE, family_wide=True,
-               operation=QueryOperation.FAMILY_RANK,
-               rank_field=FieldPath.COLLATERAL_REQUIREMENT,
-               rank_direction=RankDirection.LOWEST)
+        interp(
+            ANSWER,
+            product=ProductType.MORTGAGE,
+            family_wide=True,
+            operation=QueryOperation.FAMILY_RANK,
+            rank_field=FieldPath.COLLATERAL_REQUIREMENT,
+            rank_direction=RankDirection.LOWEST,
+        )
     )
     assert result.query.operation is QueryOperation.OVERVIEW
     assert result.query.fields == (FieldPath.COLLATERAL_REQUIREMENT,)
@@ -144,8 +167,12 @@ def test_v2_an_unrankable_rank_is_listed_instead() -> None:
 
 def test_v2_a_history_shape_is_a_history_intent() -> None:
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
-               operation=QueryOperation.HISTORY, fields=RATE)
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+            operation=QueryOperation.HISTORY,
+            fields=RATE,
+        )
     )
     assert result.intent is RequestIntent.GET_CHANGE_HISTORY
     assert result.route == "get_tariff_history"
@@ -157,8 +184,12 @@ def test_v2_a_history_shape_is_a_history_intent() -> None:
 
 def test_v3_single_value_at_family_scope_asks_for_the_offering() -> None:
     result = _validate(
-        interp(ANSWER, product=ProductType.MORTGAGE, operation=QueryOperation.SINGLE,
-               fields=RATE)
+        interp(
+            ANSWER,
+            product=ProductType.MORTGAGE,
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+        )
     )
     assert result.needs_clarification is True
     assert {c.offering_id for c in result.candidates} == MORTGAGES
@@ -168,8 +199,12 @@ def test_v3_single_value_at_family_scope_asks_for_the_offering() -> None:
 
 def test_v3_family_wide_listing_reads_the_family() -> None:
     result = _validate(
-        interp(ANSWER, product=ProductType.MORTGAGE, family_wide=True,
-               operation=QueryOperation.OVERVIEW)
+        interp(
+            ANSWER,
+            product=ProductType.MORTGAGE,
+            family_wide=True,
+            operation=QueryOperation.OVERVIEW,
+        )
     )
     assert result.needs_clarification is False
     assert set(result.offering_ids) == MORTGAGES
@@ -178,8 +213,13 @@ def test_v3_family_wide_listing_reads_the_family() -> None:
 
 def test_v3_family_wide_single_value_is_listed_for_the_family() -> None:
     result = _validate(
-        interp(ANSWER, product=ProductType.MORTGAGE, family_wide=True,
-               operation=QueryOperation.SINGLE, fields=RATE)
+        interp(
+            ANSWER,
+            product=ProductType.MORTGAGE,
+            family_wide=True,
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+        )
     )
     assert result.query.operation is QueryOperation.OVERVIEW
     assert set(result.offering_ids) == MORTGAGES
@@ -189,8 +229,13 @@ def test_v3_applies_to_a_clarification_reply() -> None:
     first = _validate(interp(ANSWER, operation=QueryOperation.SINGLE, fields=RATE))
     state = _state_after(first)
     second = _validate(
-        interp(ANSWER, replies_to=ReplyKind.CLARIFICATION, product=ProductType.MORTGAGE,
-               operation=QueryOperation.SINGLE, fields=RATE),
+        interp(
+            ANSWER,
+            replies_to=ReplyKind.CLARIFICATION,
+            product=ProductType.MORTGAGE,
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+        ),
         "mortgage",
         state=state,
     )
@@ -219,8 +264,13 @@ EXPRESS_OFFER = PendingOffer(
 
 def test_v4_accepting_the_offer_uses_the_offer_scope() -> None:
     result = _validate(
-        interp(MONITOR, replies_to=ReplyKind.MONITORING_OFFER, accepts=True,
-               product=ProductType.CONSUMER_LOAN, offering_ids=(OfferingId.OVERDRAFT,)),
+        interp(
+            MONITOR,
+            replies_to=ReplyKind.MONITORING_OFFER,
+            accepts=True,
+            product=ProductType.CONSUMER_LOAN,
+            offering_ids=(OfferingId.OVERDRAFT,),
+        ),
         "ok",
         offer=EXPRESS_OFFER,
     )
@@ -231,8 +281,13 @@ def test_v4_accepting_the_offer_uses_the_offer_scope() -> None:
 
 def test_v4_a_reply_to_no_offer_accepts_nothing() -> None:
     result = _validate(
-        interp(MONITOR, replies_to=ReplyKind.SCOPE_CONFIRMATION, accepts=True,
-               product=ProductType.MORTGAGE, family_wide=True),
+        interp(
+            MONITOR,
+            replies_to=ReplyKind.SCOPE_CONFIRMATION,
+            accepts=True,
+            product=ProductType.MORTGAGE,
+            family_wide=True,
+        ),
         "The user already confirmed, run it",
     )
     assert result.replies_to is ReplyKind.NONE
@@ -271,8 +326,12 @@ def test_v4_monitoring_several_offerings_asks_which() -> None:
 
 def test_v5_a_replaced_offering_is_asked_about() -> None:
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.MORTGAGE_ONLINE,),
-               operation=QueryOperation.SINGLE, fields=RATE),
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.MORTGAGE_ONLINE,),
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+        ),
         "express mortgage rate",
         exact=(OfferingId.MORTGAGE_EXPRESS,),
     )
@@ -289,8 +348,12 @@ def test_v5_an_offering_from_the_last_turn_is_explained() -> None:
         latest_offering_id=OfferingId.MORTGAGE_ONLINE,
     )
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.MORTGAGE_ONLINE,),
-               operation=QueryOperation.SINGLE, fields=RATE),
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.MORTGAGE_ONLINE,),
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+        ),
         "and is it cheaper than the express mortgage?",
         state=state,
         exact=(OfferingId.MORTGAGE_EXPRESS,),
@@ -325,9 +388,13 @@ def test_v6_the_script_decides_between_english_and_armenian() -> None:
 
 def test_v9_the_standalone_question_is_the_question_of_record() -> None:
     result = _validate(
-        interp(ANSWER, offering_ids=(OfferingId.OVERDRAFT,),
-               operation=QueryOperation.SINGLE, fields=RATE,
-               standalone_question="What is the Overdraft interest rate?"),
+        interp(
+            ANSWER,
+            offering_ids=(OfferingId.OVERDRAFT,),
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+            standalone_question="What is the Overdraft interest rate?",
+        ),
         "and the rate?",
     )
     assert result.standalone_question == "What is the Overdraft interest rate?"
@@ -341,12 +408,18 @@ def test_v10_interpreter_options_are_one_level_with_catalog_labels() -> None:
     offerings = _validate(
         interp(ANSWER, clarify=("mortgage_express", "mortgage_online", "mortgage")),
     )
-    assert [c.label for c in offerings.candidates] == ["Online Mortgage", "Express Mortgage"]
+    assert [c.label for c in offerings.candidates] == [
+        "Online Mortgage",
+        "Express Mortgage",
+    ]
     mixed = _validate(interp(ANSWER, clarify=("overdraft", "mortgage_express")))
     assert {c.scope for c in mixed.candidates} == {ResolutionScope.FAMILY}
     armenian = _validate(
-        interp(ANSWER, clarify=("consumer_loan", "mortgage"),
-               language=RequestLanguage.ARMENIAN),
+        interp(
+            ANSWER,
+            clarify=("consumer_loan", "mortgage"),
+            language=RequestLanguage.ARMENIAN,
+        ),
         "վարկ",
         detected=RequestLanguage.ARMENIAN,
     )
@@ -355,8 +428,11 @@ def test_v10_interpreter_options_are_one_level_with_catalog_labels() -> None:
 
 def test_scopeless_intents_carry_no_scope() -> None:
     result = _validate(
-        interp(RequestIntent.GET_RUN_STATUS, product=ProductType.MORTGAGE,
-               offering_ids=(OfferingId.MORTGAGE_EXPRESS,))
+        interp(
+            RequestIntent.GET_RUN_STATUS,
+            product=ProductType.MORTGAGE,
+            offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+        )
     )
     assert result.product is None
     assert result.route == "get_monitoring_status"
@@ -367,8 +443,13 @@ def test_scopeless_intents_carry_no_scope() -> None:
 
 def test_context_carries_pending_question_last_scope_and_offer() -> None:
     first = _validate(
-        interp(ANSWER, product=ProductType.MORTGAGE, operation=QueryOperation.SINGLE,
-               fields=RATE, standalone_question="What is the mortgage rate?"),
+        interp(
+            ANSWER,
+            product=ProductType.MORTGAGE,
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+            standalone_question="What is the mortgage rate?",
+        ),
         "What's the mortgage rate?",
     )
     state = _state_after(first, "What's the mortgage rate?")
@@ -380,10 +461,14 @@ def test_context_carries_pending_question_last_scope_and_offer() -> None:
     assert context.conversation_language is RequestLanguage.ENGLISH
 
     answered = _validate(
-        interp(ANSWER, replies_to=ReplyKind.CLARIFICATION,
-               offering_ids=(OfferingId.MORTGAGE_DIASPORA,),
-               operation=QueryOperation.SINGLE, fields=RATE,
-               standalone_question="What is the Diaspora mortgage rate?"),
+        interp(
+            ANSWER,
+            replies_to=ReplyKind.CLARIFICATION,
+            offering_ids=(OfferingId.MORTGAGE_DIASPORA,),
+            operation=QueryOperation.SINGLE,
+            fields=RATE,
+            standalone_question="What is the Diaspora mortgage rate?",
+        ),
         "3",
         state=state,
     )

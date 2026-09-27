@@ -154,7 +154,9 @@ class _Repository:
 
     async def facts(self, *, snapshots, fields, include_inactive=False):
         return tuple(
-            f for f in self.facts_ if f.snapshot_id in snapshots and f.field_path in fields
+            f
+            for f in self.facts_
+            if f.snapshot_id in snapshots and f.field_path in fields
         )
 
     async def lexical_units(self, **_):
@@ -181,7 +183,6 @@ def _plan(question: str, **values) -> ResolutionPlan:
 # --- RR7 ------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RR7: the rank shortcut crashes without a keyword intent")
 @pytest.mark.asyncio
 async def test_rr7_lowest_mortgage_resolves_without_crashing() -> None:
     from tests.fixtures.interpretations import interp
@@ -259,9 +260,10 @@ async def test_rr9_numeric_reply_plans_the_original_question() -> None:
     assert plan["question_sha256"] == hashlib.sha256(standalone.encode()).hexdigest()
 
 
-@pytest.mark.xfail(strict=True, reason="RR10: a family reply to a single-value question dead-ends")
 @pytest.mark.asyncio
-async def test_rr10_family_reply_to_a_single_value_question_asks_for_the_offering() -> None:
+async def test_rr10_family_reply_to_a_single_value_question_asks_for_the_offering() -> (
+    None
+):
     from app.domain.interpretation import ReplyKind
     from tests.fixtures.interpretations import interp
 
@@ -291,7 +293,6 @@ async def test_rr10_family_reply_to_a_single_value_question_asks_for_the_offerin
     }
 
 
-@pytest.mark.xfail(strict=True, reason="RR12: a numeric reply switches the language to English")
 @pytest.mark.asyncio
 async def test_rr12_numeric_reply_keeps_the_conversation_language() -> None:
     from app.domain.interpretation import ReplyKind
@@ -357,7 +358,9 @@ async def test_rr13_second_resolution_in_a_turn_keeps_the_grant() -> None:
     assert interpreter.calls == 1
 
 
-@pytest.mark.xfail(strict=True, reason="RR14: a thumbs-up to the monitoring offer raises")
+@pytest.mark.xfail(
+    strict=True, reason="RR14: a thumbs-up to the monitoring offer raises"
+)
 @pytest.mark.asyncio
 async def test_rr14_thumbs_up_takes_up_the_monitoring_offer() -> None:
     from app.domain.interpretation import ReplyKind
@@ -396,7 +399,9 @@ async def test_rr14_thumbs_up_takes_up_the_monitoring_offer() -> None:
     }
 
 
-@pytest.mark.xfail(strict=True, reason="RR15: any next-turn spend grant confirms the family")
+@pytest.mark.xfail(
+    strict=True, reason="RR15: any next-turn spend grant confirms the family"
+)
 @pytest.mark.asyncio
 async def test_rr15_an_unrelated_refresh_request_does_not_confirm_the_family() -> None:
     from app.tools import resolve_request, run_tariff_monitoring
@@ -433,7 +438,9 @@ async def test_rr15_an_unrelated_refresh_request_does_not_confirm_the_family() -
 # --- RR23 / RR24 / RR26 ------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RR23: conditional variants make every rank incomparable")
+@pytest.mark.xfail(
+    strict=True, reason="RR23: conditional variants make every rank incomparable"
+)
 @pytest.mark.asyncio
 async def test_rr23_identical_conditional_variants_rank_as_answered() -> None:
     question = "Which consumer loan has the lowest rate?"
@@ -467,16 +474,32 @@ async def test_rr23_identical_conditional_variants_rank_as_answered() -> None:
     assert result.status is QueryStatus.ANSWERED
 
 
-@pytest.mark.xfail(strict=True, reason="RR24: a currency word drops currency-less facts")
+@pytest.mark.xfail(
+    strict=True, reason="RR24: a currency word drops currency-less facts"
+)
 @pytest.mark.asyncio
 async def test_rr24_currency_keeps_facts_without_a_currency() -> None:
     question = "What is the overdraft repayment term in AMD?"
     snapshot = uuid4()
     facts = (
-        _fact(OfferingId.OVERDRAFT, snapshot, FieldPath.REPAYMENT_METHOD, None,
-              currency=None, unit=None, value="annuity"),
-        _fact(OfferingId.OVERDRAFT, snapshot, FieldPath.TERM_MAXIMUM_MONTHS, "36",
-              currency="USD", unit="months", n=2),
+        _fact(
+            OfferingId.OVERDRAFT,
+            snapshot,
+            FieldPath.REPAYMENT_METHOD,
+            None,
+            currency=None,
+            unit=None,
+            value="annuity",
+        ),
+        _fact(
+            OfferingId.OVERDRAFT,
+            snapshot,
+            FieldPath.TERM_MAXIMUM_MONTHS,
+            "36",
+            currency="USD",
+            unit="months",
+            n=2,
+        ),
     )
     service = StructuredTariffQueryService(
         _Repository((_profile(OfferingId.OVERDRAFT, snapshot),), facts)
@@ -495,7 +518,9 @@ async def test_rr24_currency_keeps_facts_without_a_currency() -> None:
     assert [f.field_path for f in result.facts] == [FieldPath.REPAYMENT_METHOD]
 
 
-@pytest.mark.xfail(strict=True, reason="RR26: one added field withholds the whole history")
+@pytest.mark.xfail(
+    strict=True, reason="RR26: one added field withholds the whole history"
+)
 @pytest.mark.asyncio
 async def test_rr26_a_change_that_adds_a_field_still_answers() -> None:
     from app.domain.monitoring import SnapshotChange, SnapshotChangeSet
@@ -505,10 +530,17 @@ async def test_rr26_a_change_that_adds_a_field_still_answers() -> None:
     facts = (
         _fact(OfferingId.OVERDRAFT, old, FieldPath.NOMINAL_RATE_MINIMUM, "21", n=1),
         _fact(OfferingId.OVERDRAFT, new, FieldPath.NOMINAL_RATE_MINIMUM, "20", n=2),
-        _fact(OfferingId.OVERDRAFT, old, FieldPath.FEE_SERVICE, None,
-              status=ExtractionStatus.NOT_STATED, n=3),
-        _fact(OfferingId.OVERDRAFT, new, FieldPath.FEE_SERVICE, "5000",
-              unit="money", n=4),
+        _fact(
+            OfferingId.OVERDRAFT,
+            old,
+            FieldPath.FEE_SERVICE,
+            None,
+            status=ExtractionStatus.NOT_STATED,
+            n=3,
+        ),
+        _fact(
+            OfferingId.OVERDRAFT, new, FieldPath.FEE_SERVICE, "5000", unit="money", n=4
+        ),
     )
     change = SnapshotChangeSet(
         id=uuid4(),
@@ -542,9 +574,13 @@ async def test_rr26_a_change_that_adds_a_field_still_answers() -> None:
 # --- RR27 / RR28 -------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="RR27: the after-run answer uses the run's scope")
+@pytest.mark.xfail(
+    strict=True, reason="RR27: the after-run answer uses the run's scope"
+)
 @pytest.mark.asyncio
-async def test_rr27_offering_request_joining_a_family_run_answers_the_offering() -> None:
+async def test_rr27_offering_request_joining_a_family_run_answers_the_offering() -> (
+    None
+):
     from app.domain.interpretation import QueryShape
     from app.domain.monitoring import MonitoringRun, RunCommand, RunStatus, RunTrigger
     from app.services.monitoring_node import (
@@ -555,7 +591,8 @@ async def test_rr27_offering_request_joining_a_family_run_answers_the_offering()
     )
 
     class _Router:
-        plans: list = []
+        def __init__(self) -> None:
+            self.plans: list = []
 
         async def answer_plan(self, plan, question):
             self.plans.append(plan)
@@ -582,18 +619,22 @@ async def test_rr27_offering_request_joining_a_family_run_answers_the_offering()
         ),
     )
     router = _Router()
-    result = await _with_answer(router, MonitoringResult(status="succeeded"), run, request)
+    result = await _with_answer(
+        router, MonitoringResult(status="succeeded"), run, request
+    )
 
     assert router.plans[0].offering_ids == (OfferingId.MORTGAGE_EXPRESS,)
     assert result.answer_status == "answered"
 
 
-@pytest.mark.xfail(strict=True, reason="RR28: history values reach the model without evidence")
+@pytest.mark.xfail(
+    strict=True, reason="RR28: history values reach the model without evidence"
+)
 def test_rr28_history_values_carry_a_compact_citation() -> None:
-    from app.tools.reads import tariff_history_payload
-    from tests.fixtures.structured_tariffs import accepted_snapshot
     from app.domain.intent import HistoryQuery, HistoryRequestKind
     from app.domain.tariff_queries import HistoryResultStatus, TariffHistoryResult
+    from app.tools.reads import tariff_history_payload
+    from tests.fixtures.structured_tariffs import accepted_snapshot
 
     snapshot = accepted_snapshot("consumer")
     result = TariffHistoryResult(

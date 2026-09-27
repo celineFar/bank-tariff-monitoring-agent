@@ -85,9 +85,6 @@ class EnvironmentSettings(BaseSettings):
     embedding_sweep_batch: int = 200
     embedding_sweep_interval_seconds: float = 300.0
     retrieval_min_score: float = 0.25
-    intent_fuzzy_min_score: float = 0.82
-    intent_fuzzy_min_gap: float = 0.08
-    intent_max_candidates: int = 5
     intent_classifier_max_attempts: int = 2
     tariff_freshness_days: int = 7
     tariff_recent_change_days: int = 60

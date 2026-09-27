@@ -24,8 +24,6 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from app.config import load_seed_catalog
-from app.config.models import IntentResolutionSettings
 from app.domain.knowledge import (
     EMBEDDING_DIMENSIONS,
     EmbeddedKnowledgeChunk,
@@ -68,7 +66,6 @@ from app.repositories.structured_tariff_query import (
     PostgresStructuredUnitEmbeddingRepository,
 )
 from app.services.evidence_retention_audit import EvidenceRetentionAuditor
-from app.services.intent_resolution import RequestResolver
 from app.services.monitoring_node import (
     build_monitoring_node,
     parse_review_interrupt_id,
@@ -82,6 +79,7 @@ from app.services.structured_projection_audit import StructuredProjectionAuditor
 from app.services.structured_query_planning import issue_resolution_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.fixtures.evaluation_corpus import CORPUS_SPECS, PREVIOUS_MORTGAGE_SPEC
+from tests.fixtures.interpretations import recorded_resolver
 from tests.fixtures.monitoring_node import (
     ScriptedModel,
     call,
@@ -1830,7 +1828,7 @@ async def test_structured_read_model_answers_all_25_questions_on_postgres(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     await _accept_corpus(monitoring_session_factory)
-    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    resolver = recorded_resolver()
     service = StructuredTariffQueryService(
         PostgresStructuredTariffQueryRepository(monitoring_session_factory)
     )
@@ -1881,7 +1879,7 @@ async def test_accepted_facts_never_leak_across_offering_or_family_scope(
     await _accept_corpus(monitoring_session_factory)
     repository = PostgresStructuredTariffQueryRepository(monitoring_session_factory)
     service = StructuredTariffQueryService(repository)
-    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    resolver = recorded_resolver()
 
     for question in TARGET_QUESTIONS:
         resolution = (await resolver.resolve_turn(question.question)).resolution

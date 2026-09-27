@@ -41,9 +41,6 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.source_discovery.max_price_per_million_tokens_usd == 2.5
     assert settings.semantic_extraction.thinking_budget == 0
     assert settings.semantic_extraction.max_repairs_per_run == 3
-    assert settings.intent_resolution.fuzzy_min_score == 0.82
-    assert settings.intent_resolution.fuzzy_min_gap == 0.08
-    assert settings.intent_resolution.max_candidates == 5
     assert settings.intent_resolution.classifier_max_attempts == 2
     assert settings.tariff_queries.freshness_days == 7
     assert settings.tariff_queries.recent_change_days == 60
@@ -181,9 +178,6 @@ def test_chunk_size_stays_inside_the_embedding_input() -> None:
         ("chunk_size_chars", 499),
         ("retrieval_top_k", 0),
         ("retrieval_min_score", 1.1),
-        ("intent_fuzzy_min_score", 1.1),
-        ("intent_fuzzy_min_gap", 1.1),
-        ("intent_max_candidates", 1),
         ("intent_classifier_max_attempts", 0),
         ("source_discovery_max_items_per_batch", 0),
         ("source_discovery_max_chars_per_item", 499),

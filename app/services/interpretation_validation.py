@@ -130,7 +130,8 @@ class InterpretationValidator:
         }
         self._offering_labels = {
             entry.offering_id: {
-                language: terms.name for language, terms in entry.localized_names.items()
+                language: terms.name
+                for language, terms in entry.localized_names.items()
             }
             for entry in catalog.offerings
             if entry.enabled
@@ -157,7 +158,10 @@ class InterpretationValidator:
         # A reply needs something to reply to (V4, V10).
         if replies_to is ReplyKind.CLARIFICATION and pending is None:
             replies_to = ReplyKind.NONE
-        if replies_to in (ReplyKind.MONITORING_OFFER, ReplyKind.SCOPE_CONFIRMATION) and (
+        if replies_to in (
+            ReplyKind.MONITORING_OFFER,
+            ReplyKind.SCOPE_CONFIRMATION,
+        ) and (
             pending_offer is None or replies_to is not _OFFER_REPLY[pending_offer.kind]
         ):
             replies_to = ReplyKind.NONE
@@ -169,6 +173,7 @@ class InterpretationValidator:
             else None
         )
         question = interpretation.standalone_question or message.strip()
+        shape = interpretation.query
         base = _Base(
             language=language,
             normalized_query=normalized_query,
@@ -176,6 +181,15 @@ class InterpretationValidator:
             replies_to=replies_to,
             accepts=accepts,
             replying=replies_to is ReplyKind.CLARIFICATION,
+            single_value=(
+                intent is RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION
+                and (shape is None or shape.operation is QueryOperation.SINGLE)
+            ),
+            pending_single_value=(
+                replies_to is ReplyKind.CLARIFICATION
+                and pending is not None
+                and pending.expects_single_value
+            ),
         )
 
         if replies_to in (ReplyKind.MONITORING_OFFER, ReplyKind.SCOPE_CONFIRMATION):
@@ -187,7 +201,9 @@ class InterpretationValidator:
                     RequestIntent.START_MONITORING_RUN,
                     _Scope(
                         pending_offer.product,
-                        (pending_offer.offering_id,) if pending_offer.offering_id else (),
+                        (pending_offer.offering_id,)
+                        if pending_offer.offering_id
+                        else (),
                     ),
                     query=None,
                 )
@@ -227,7 +243,6 @@ class InterpretationValidator:
         if intent is RequestIntent.GET_CURRENT_TARIFFS:
             return self._resolved(base, intent, scope, None)
 
-        shape = interpretation.query
         if intent is RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION and (
             shape is not None and shape.operation is QueryOperation.HISTORY
         ):
@@ -287,19 +302,23 @@ class InterpretationValidator:
 
         if operation is None:
             operation = (
-                QueryOperation.SINGLE if len(offerings) == 1 else QueryOperation.OVERVIEW
+                QueryOperation.SINGLE
+                if len(offerings) == 1
+                else QueryOperation.OVERVIEW
             )
         if operation is QueryOperation.SINGLE and len(offerings) > 1:
             operation = QueryOperation.OVERVIEW
         if operation in _MULTI and len(offerings) == 1:
             operation = QueryOperation.SINGLE
 
+        family_wide = interpretation.family_wide and not base.pending_single_value
         if not offerings:
             # V3: a family-wide read only when the user asked about the family,
-            # and never for a single value.
-            if interpretation.family_wide and operation in _MULTI:
+            # and never for a single value - also when the family comes in reply
+            # to a question that asked for one value.
+            if family_wide and operation in _MULTI:
                 offerings = family
-            elif interpretation.family_wide and operation is QueryOperation.SINGLE:
+            elif family_wide and operation is QueryOperation.SINGLE:
                 operation, offerings = QueryOperation.OVERVIEW, family
             else:
                 return self._clarify(
@@ -365,7 +384,8 @@ class InterpretationValidator:
         offerings = [
             offering
             for offering in OfferingId
-            if offering.value in request.option_ids and offering in self._offering_labels
+            if offering.value in request.option_ids
+            and offering in self._offering_labels
         ]
         if len(offerings) >= 2:
             if len({item.product for item in offerings}) > 1:
@@ -431,7 +451,7 @@ class InterpretationValidator:
             method=ResolutionMethod.CLARIFICATION,
             candidates=options,
             needs_clarification=True,
-            expects_single_value=True,
+            expects_single_value=base.single_value or base.pending_single_value,
             standalone_question=base.question,
             replies_to=base.replies_to,
             accepts=base.accepts,
@@ -504,6 +524,10 @@ class _Base:
     replies_to: ReplyKind
     accepts: bool | None
     replying: bool
+    # The question asks for one value (for a clarification: to remember it).
+    single_value: bool = False
+    # This is a reply to a clarification asked for one value.
+    pending_single_value: bool = False
 
 
 def _label_language(language: RequestLanguage) -> CatalogLanguage:
@@ -528,10 +552,9 @@ def next_state(
             original_query=(resolution.standalone_question or message)[:1000],
             intent=resolution.continuation_intent or resolution.intent,
             language=resolution.language,
-            options=tuple(
-                _option(candidate) for candidate in resolution.candidates
-            ),
+            options=tuple(_option(candidate) for candidate in resolution.candidates),
             created_at=now,
+            expects_single_value=resolution.expects_single_value,
         )
     scoped = resolution.product is not None and not resolution.needs_clarification
     offerings = resolution.offering_ids or (

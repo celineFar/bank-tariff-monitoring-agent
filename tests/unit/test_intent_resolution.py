@@ -1,251 +1,228 @@
+"""The resolver around the interpreter: request, validation, state, failure (V7).
+
+What the live interpreter answers for real messages is covered by the recorded
+interpretation case set (`test_interpretation_cases.py`); these tests check
+the mechanics with scripted interpretations.
+"""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
-
 import pytest
-from google.adk.sessions.state import State
 
 from app.config.models import IntentResolutionSettings
 from app.config.seed_catalog import load_seed_catalog
 from app.domain.intent import (
     ConversationResolutionState,
-    FreshnessStatus,
     RequestIntent,
     RequestLanguage,
-    ResolutionMethod,
 )
+from app.domain.interpretation import OfferKind, PendingOffer, ReplyKind
 from app.domain.models import OfferingId, ProductType
-from app.domain.tariff_queries import CurrentTariffItem, CurrentTariffResult
+from app.domain.structured_tariffs import FieldPath, QueryOperation
 from app.services.intent_resolution import (
-    GeminiResolutionDecision,
+    InterpretationUnavailable,
     RequestResolver,
     detect_request_language,
 )
-from app.tools import configure_services, get_current_tariffs, resolve_request
+from tests.fixtures.interpretations import ScriptedInterpreter, interp
+
+ANSWER = RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION
+RATE = (FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM)
 
 
-@dataclass
-class _FakeClassifier:
-    decision: GeminiResolutionDecision | None = None
-    error: Exception | None = None
-    calls: int = 0
-    candidate_ids: tuple[str, ...] = ()
-    allowed_intents: tuple[RequestIntent, ...] = ()
-
-    async def classify(self, **kwargs) -> GeminiResolutionDecision:
-        self.calls += 1
-        self.candidate_ids = tuple(
-            candidate.candidate_id for candidate in kwargs["candidates"]
-        )
-        self.allowed_intents = kwargs["allowed_intents"]
-        if self.error is not None:
-            raise self.error
-        assert self.decision is not None
-        return self.decision
-
-
-@dataclass
-class _ToolContext:
-    state: dict[str, object]
-    # Grants are bound to the ADK invocation id; tests advance it per turn.
-    invocation_id: str | None = None
-
-
-def _resolver(
-    classifier: _FakeClassifier | None = None,
-    **settings: object,
-) -> RequestResolver:
-    return RequestResolver(
-        load_seed_catalog(),
-        IntentResolutionSettings(**settings),
-        classifier=classifier,
+def _resolver(script) -> tuple[RequestResolver, ScriptedInterpreter]:
+    interpreter = ScriptedInterpreter(script)
+    return (
+        RequestResolver(
+            load_seed_catalog(), IntentResolutionSettings(), interpreter=interpreter
+        ),
+        interpreter,
     )
 
 
 @pytest.mark.asyncio
-async def test_exact_english_offering_resolution_does_not_call_gemini() -> None:
-    classifier = _FakeClassifier(error=AssertionError("must not be called"))
-
-    turn = await _resolver(classifier).resolve_turn(
-        "What is the current Express Mortgage rate?"
+async def test_the_interpreter_sees_the_whole_catalog_and_the_allowed_values() -> None:
+    resolver, interpreter = _resolver(
+        {"overdraft": interp(ANSWER, offering_ids=(OfferingId.OVERDRAFT,))}
     )
+    await resolver.resolve_turn("overdraft")
+    request = interpreter.requests[0]
 
-    assert turn.resolution.intent is RequestIntent.GET_CURRENT_TARIFFS
-    assert turn.resolution.offering_id is OfferingId.MORTGAGE_EXPRESS
-    assert turn.resolution.method is ResolutionMethod.EXACT
-    assert classifier.calls == 0
-
-
-@pytest.mark.asyncio
-async def test_armenian_and_transliterated_aliases_resolve_deterministically() -> None:
-    resolver = _resolver()
-
-    armenian = await resolver.resolve_turn("ներկայիս տոկոս Վարկային գիծ")
-    transliterated = await resolver.resolve_turn("varkayin gic rate")
-
-    assert armenian.resolution.language is RequestLanguage.ARMENIAN
-    assert armenian.resolution.offering_id is OfferingId.CREDIT_LINE
-    assert transliterated.resolution.offering_id is OfferingId.CREDIT_LINE
+    ids = {entry["id"] for entry in request.catalog}
+    assert ids == {"consumer_loan", "mortgage"} | {item.value for item in OfferingId}
+    overdraft = next(entry for entry in request.catalog if entry["id"] == "overdraft")
+    assert "card overdraft" in overdraft["also_called"]
+    assert overdraft["names"]["hy"] == "Օվերդրաֆտ"
+    assert "clarification_response" not in request.allowed["intents"]
+    assert "current" not in request.allowed["operations"]
+    assert request.allowed["fields"]["rate.nominal.minimum"]
 
 
 @pytest.mark.asyncio
-async def test_conservative_fuzzy_match_resolves_clear_typo() -> None:
-    turn = await _resolver(fuzzy_min_score=0.72).resolve_turn(
-        "current expres mortgag rate"
+async def test_state_and_offer_reach_the_interpreter_as_context() -> None:
+    resolver, interpreter = _resolver(
+        {
+            "What's the express mortgage rate?": interp(
+                ANSWER,
+                offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+                operation=QueryOperation.SINGLE,
+                fields=RATE,
+                standalone_question="What is the Express Mortgage interest rate?",
+            ),
+            "ok": interp(
+                RequestIntent.START_MONITORING_RUN,
+                replies_to=ReplyKind.MONITORING_OFFER,
+                accepts=True,
+            ),
+        }
     )
-
-    assert turn.resolution.offering_id is OfferingId.MORTGAGE_EXPRESS
-    assert turn.resolution.method is ResolutionMethod.FUZZY
-
-
-@pytest.mark.asyncio
-async def test_fuzzy_family_typo_does_not_collapse_to_an_offering() -> None:
-    turn = await _resolver(fuzzy_min_score=0.72).resolve_turn(
-        "current mortgag tariffs overview"
+    offer = PendingOffer(
+        kind=OfferKind.MONITORING,
+        product=ProductType.MORTGAGE,
+        offering_id=OfferingId.MORTGAGE_EXPRESS,
     )
+    first = await resolver.resolve_turn("What's the express mortgage rate?")
+    second = await resolver.resolve_turn("ok", first.state, pending_offer=offer)
 
-    assert turn.resolution.product is ProductType.MORTGAGE
-    assert turn.resolution.offering_id is None
-    assert turn.resolution.method is ResolutionMethod.FUZZY
-    assert turn.resolution.needs_clarification is False
+    context = interpreter.requests[1].context
+    assert context.last_question == "What is the Express Mortgage interest rate?"
+    assert context.last_scope.offering_ids == (OfferingId.MORTGAGE_EXPRESS,)
+    assert context.pending_offer == offer
+    assert second.resolution.intent is RequestIntent.START_MONITORING_RUN
+    assert second.resolution.offering_id is OfferingId.MORTGAGE_EXPRESS
 
 
 @pytest.mark.asyncio
-async def test_gemini_fallback_can_only_select_a_supplied_candidate() -> None:
-    classifier = _FakeClassifier(
-        decision=GeminiResolutionDecision(
-            intent=RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-            candidate_id="mortgage_secondary_market",
-        )
+async def test_a_failing_interpreter_makes_the_turn_unavailable() -> None:
+    def fail(_request):
+        raise RuntimeError("model down")
+
+    resolver, _ = _resolver({"overdraft rate": fail})
+    with pytest.raises(InterpretationUnavailable):
+        await resolver.resolve_turn("overdraft rate")
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_interpretation_makes_the_turn_unavailable(
+    monkeypatch,
+) -> None:
+    resolver, _ = _resolver(
+        {"overdraft rate": interp(ANSWER, offering_ids=(OfferingId.OVERDRAFT,))}
     )
-
-    turn = await _resolver(classifier).resolve_turn("market home interest")
-
-    assert classifier.calls == 1
-    assert "mortgage_secondary_market" in classifier.candidate_ids
-    assert classifier.allowed_intents == (RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,)
-    assert turn.resolution.offering_id is OfferingId.MORTGAGE_SECONDARY_MARKET
-    assert turn.resolution.method is ResolutionMethod.GEMINI
+    monkeypatch.delitem(resolver.validator._offering_labels, OfferingId.OVERDRAFT)
+    with pytest.raises(InterpretationUnavailable):
+        await resolver.resolve_turn("overdraft rate")
 
 
 @pytest.mark.asyncio
-async def test_invalid_or_failed_gemini_result_asks_instead_of_guessing() -> None:
-    invalid = _FakeClassifier(
-        decision=GeminiResolutionDecision(
-            intent=RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-            candidate_id="not_in_catalog",
-        )
+async def test_no_interpreter_means_unavailable_never_a_guess() -> None:
+    resolver = RequestResolver(load_seed_catalog())
+    with pytest.raises(InterpretationUnavailable):
+        await resolver.resolve_turn("What is the overdraft rate?")
+
+
+@pytest.mark.asyncio
+async def test_an_emoji_is_a_message_but_blank_text_is_not() -> None:
+    resolver, interpreter = _resolver(
+        {"👍": interp(RequestIntent.UNSUPPORTED_OR_GENERAL)}
     )
-    failed = _FakeClassifier(error=RuntimeError("model unavailable"))
-
-    invalid_turn = await _resolver(invalid).resolve_turn("market home interest")
-    failed_turn = await _resolver(failed).resolve_turn("market home interest")
-
-    assert invalid_turn.resolution.needs_clarification is True
-    assert failed_turn.resolution.needs_clarification is True
-    assert invalid_turn.resolution.product is None
-    assert failed_turn.resolution.offering_id is None
+    turn = await resolver.resolve_turn("👍")
+    assert turn.resolution.normalized_query == "👍"
+    assert interpreter.calls == 1
+    with pytest.raises(ValueError):
+        await resolver.resolve_turn("   ")
 
 
 @pytest.mark.asyncio
-async def test_family_behavior_distinguishes_monitoring_overview_and_single_value() -> (
-    None
-):
-    resolver = _resolver()
+async def test_clarification_state_resolves_a_reply_and_clears_pending() -> None:
+    resolver, _ = _resolver(
+        {
+            "current mortgage rate": interp(
+                ANSWER,
+                product=ProductType.MORTGAGE,
+                operation=QueryOperation.SINGLE,
+                fields=RATE,
+                standalone_question="What is the current mortgage rate?",
+            ),
+            "the express one": interp(
+                ANSWER,
+                replies_to=ReplyKind.CLARIFICATION,
+                offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+                operation=QueryOperation.SINGLE,
+                fields=RATE,
+                standalone_question="What is the current Express Mortgage rate?",
+            ),
+        }
+    )
+    first = await resolver.resolve_turn("current mortgage rate")
+    second = await resolver.resolve_turn("the express one", first.state)
 
-    monitoring = await resolver.resolve_turn("refresh all mortgage loans")
-    overview = await resolver.resolve_turn("current mortgage tariffs overview")
-    single = await resolver.resolve_turn("current mortgage rate")
-
-    assert monitoring.resolution.intent is RequestIntent.START_MONITORING_RUN
-    assert monitoring.resolution.product is ProductType.MORTGAGE
-    assert monitoring.resolution.needs_clarification is False
-    assert overview.resolution.intent is RequestIntent.GET_CURRENT_TARIFFS
-    assert overview.resolution.product is ProductType.MORTGAGE
-    assert overview.resolution.needs_clarification is False
-    assert single.resolution.needs_clarification is True
-    assert {candidate.offering_id for candidate in single.resolution.candidates} == set(
-        OfferingId
-    ) - {
-        OfferingId.CONSUMER_STANDARD,
-        OfferingId.OVERDRAFT,
-        OfferingId.CREDIT_LINE,
-        OfferingId.ONLINE_CONSUMER_FINANCE,
-    }
-
-
-@pytest.mark.asyncio
-async def test_broad_overview_without_scope_remains_catalog_wide() -> None:
-    turn = await _resolver().resolve_turn("current tariffs overview")
-
-    assert turn.resolution.intent is RequestIntent.GET_CURRENT_TARIFFS
-    assert turn.resolution.product is None
-    assert turn.resolution.needs_clarification is False
-
-
-@pytest.mark.asyncio
-async def test_clarification_state_resolves_natural_follow_up_and_clears_pending() -> (
-    None
-):
-    first = await _resolver().resolve_turn("current mortgage rate")
-
-    second = await _resolver().resolve_turn("the express one", first.state)
-
-    assert first.state.pending_clarification is not None
+    assert first.state.pending_clarification.original_query == (
+        "What is the current mortgage rate?"
+    )
+    assert first.state.pending_clarification.expects_single_value is True
     assert second.resolution.intent is RequestIntent.CLARIFICATION_RESPONSE
-    assert second.resolution.continuation_intent is RequestIntent.GET_CURRENT_TARIFFS
+    assert second.resolution.continuation_intent is ANSWER
     assert second.resolution.offering_id is OfferingId.MORTGAGE_EXPRESS
     assert second.state.pending_clarification is None
     assert second.state.latest_offering_id is OfferingId.MORTGAGE_EXPRESS
+    assert second.state.last_question == "What is the current Express Mortgage rate?"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("query", "expected"),
-    [
-        ("What products are supported?", RequestIntent.LIST_SUPPORTED_PRODUCTS),
-        (
-            "Which Ameria loan and mortgage products do you support?",
-            RequestIntent.LIST_SUPPORTED_PRODUCTS,
-        ),
-        (
-            "What is the Express Mortgage fee?",
-            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-        ),
-        (
-            "What fees apply to the card credit line?",
-            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
-        ),
-        ("Current tariffs overview", RequestIntent.GET_CURRENT_TARIFFS),
-        (
-            "Give me a current overview of all mortgage offerings",
-            RequestIntent.GET_CURRENT_TARIFFS,
-        ),
-        ("Refresh consumer loans", RequestIntent.START_MONITORING_RUN),
-        ("What is the run status?", RequestIntent.GET_RUN_STATUS),
-        ("What is the status of run 99999999?", RequestIntent.GET_RUN_STATUS),
-        ("What changed for mortgages?", RequestIntent.GET_CHANGE_HISTORY),
-        ("Write me a poem", RequestIntent.UNSUPPORTED_OR_GENERAL),
-    ],
-)
-async def test_deterministic_intent_taxonomy(
-    query: str, expected: RequestIntent
-) -> None:
-    turn = await _resolver().resolve_turn(query)
-    assert turn.resolution.intent is expected
+async def test_a_new_request_replaces_the_pending_clarification() -> None:
+    resolver, _ = _resolver(
+        {
+            "current mortgage rate": interp(
+                ANSWER,
+                product=ProductType.MORTGAGE,
+                operation=QueryOperation.SINGLE,
+                fields=RATE,
+            ),
+            "What changed for consumer loans?": interp(
+                RequestIntent.GET_CHANGE_HISTORY,
+                product=ProductType.CONSUMER_LOAN,
+                family_wide=True,
+                operation=QueryOperation.HISTORY,
+            ),
+        }
+    )
+    first = await resolver.resolve_turn("current mortgage rate")
+    second = await resolver.resolve_turn(
+        "What changed for consumer loans?", first.state
+    )
+
+    assert second.resolution.intent is RequestIntent.GET_CHANGE_HISTORY
+    assert second.resolution.product is ProductType.CONSUMER_LOAN
+    assert second.state.pending_clarification is None
 
 
 @pytest.mark.asyncio
-async def test_unsupported_request_never_invokes_classifier_or_business_scope() -> None:
-    classifier = _FakeClassifier(error=AssertionError("must not be called"))
+async def test_a_family_reply_to_a_single_value_question_is_not_family_wide() -> None:
+    resolver, _ = _resolver(
+        {
+            "What is the interest?": interp(
+                ANSWER,
+                operation=QueryOperation.SINGLE,
+                fields=RATE,
+                clarify=("consumer_loan", "mortgage"),
+            ),
+            # What the live model answered: a family-wide overview.
+            "mortgage": interp(
+                ANSWER,
+                replies_to=ReplyKind.CLARIFICATION,
+                product=ProductType.MORTGAGE,
+                family_wide=True,
+                operation=QueryOperation.OVERVIEW,
+                fields=RATE,
+            ),
+        }
+    )
+    first = await resolver.resolve_turn("What is the interest?")
+    second = await resolver.resolve_turn("mortgage", first.state)
 
-    turn = await _resolver(classifier).resolve_turn("Why is the sky blue?")
-
-    assert turn.resolution.intent is RequestIntent.UNSUPPORTED_OR_GENERAL
-    assert turn.resolution.product is None
-    assert turn.resolution.offering_id is None
-    assert classifier.calls == 0
+    assert second.resolution.needs_clarification is True
+    assert {c.product for c in second.resolution.candidates} == {ProductType.MORTGAGE}
 
 
 def test_language_detection_defaults_mixed_text_to_mixed_and_plain_to_english() -> None:
@@ -261,248 +238,12 @@ def test_session_state_rejects_cross_family_latest_scope() -> None:
         )
 
 
-@pytest.mark.asyncio
-async def test_resolve_request_tool_persists_only_session_clarification_state() -> None:
-    context = _ToolContext(state={})
-    configure_services(None, None, _resolver())
-    try:
-        first = await resolve_request("current mortgage rate", context)
-        second = await resolve_request("the express one", context)
-    finally:
-        configure_services(None, None, None)
+def test_the_catalog_payload_is_complete_or_a_short_introduction() -> None:
+    resolver, _ = _resolver({})
+    full = resolver.catalog_payload(RequestLanguage.ENGLISH, complete=True)
+    intro = resolver.catalog_payload(RequestLanguage.ARMENIAN, complete=False)
 
-    assert first["needs_clarification"] is True
-    assert first["catalog_intro"]["complete"] is False
-    assert second["intent"] == RequestIntent.CLARIFICATION_RESPONSE.value
-    assert second["offering_id"] == OfferingId.MORTGAGE_EXPRESS.value
-    assert "catalog_intro" not in second
-    assert context.state["intent_resolution"]
-    assert context.state["monitoring_authorization"] is None
-
-
-@pytest.mark.asyncio
-async def test_resolve_request_grants_and_revokes_scope_bound_monitoring_authorization() -> (
-    None
-):
-    context = _ToolContext(state={}, invocation_id="turn-1")
-    configure_services(None, None, _resolver())
-    try:
-        monitoring = await resolve_request("refresh Express Mortgage", context)
-        authorization = context.state["monitoring_authorization"]
-        context.invocation_id = "turn-2"
-        question = await resolve_request("What is the Express Mortgage fee?", context)
-    finally:
-        configure_services(None, None, None)
-
-    assert monitoring["intent"] == RequestIntent.START_MONITORING_RUN.value
-    # The spend grant is bound to the invocation that issued it (plan §6.4).
-    assert authorization == {
-        "product": ProductType.MORTGAGE.value,
-        "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
-        "invocation_id": "turn-1",
-    }
-    assert question["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
-    assert context.state["monitoring_authorization"] is None
-
-
-@pytest.mark.asyncio
-async def test_resolve_request_supports_native_adk_state_contract() -> None:
-    context = _ToolContext(state=State({}, {}))
-    configure_services(None, None, _resolver())
-    try:
-        resolution = await resolve_request("What is the Express Mortgage fee?", context)
-    finally:
-        configure_services(None, None, None)
-
-    assert resolution["intent"] == RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION.value
-    assert context.state.get("monitoring_authorization") is None
-
-
-@pytest.mark.asyncio
-async def test_catalog_list_is_complete_and_intro_is_not_repeated() -> None:
-    context = _ToolContext(state={})
-    configure_services(None, None, _resolver())
-    try:
-        first = await resolve_request("What products are supported?", context)
-        second = await resolve_request("What products are supported?", context)
-    finally:
-        configure_services(None, None, None)
-
-    assert first["catalog_intro"]["offer_full_list"] is True
-    catalog = first["supported_catalog"]
-    assert catalog["complete"] is True
-    assert sum(len(family["offerings"]) for family in catalog["families"]) == 13
-    assert "catalog_intro" not in second
-
-
-@pytest.mark.asyncio
-async def test_explicit_new_request_replaces_pending_clarification() -> None:
-    resolver = _resolver()
-    first = await resolver.resolve_turn("current mortgage rate")
-
-    second = await resolver.resolve_turn(
-        "What changed for consumer loans?", first.state
-    )
-
-    assert second.resolution.intent is RequestIntent.GET_CHANGE_HISTORY
-    assert second.resolution.product is ProductType.CONSUMER_LOAN
-    assert second.state.pending_clarification is None
-
-
-@pytest.mark.asyncio
-async def test_affirmative_refresh_uses_only_offered_missing_scope() -> None:
-    context = _ToolContext(state={}, invocation_id="turn-1")
-    configure_services(None, None, _resolver())
-    try:
-        await resolve_request("current Express Mortgage rate", context)
-        context.state["monitoring_confirmation_offer"] = {
-            "product": "mortgage",
-            "offering_id": "mortgage_express",
-            "invocation_id": "turn-1",
-        }
-        context.invocation_id = "turn-2"
-        confirmation = await resolve_request("yes", context)
-    finally:
-        configure_services(None, None, None)
-
-    assert confirmation["intent"] == RequestIntent.START_MONITORING_RUN.value
-    assert confirmation["refresh_confirmation"] is True
-    assert context.state["monitoring_authorization"] == {
-        "product": ProductType.MORTGAGE.value,
-        "offering_id": OfferingId.MORTGAGE_EXPRESS.value,
-        "invocation_id": "turn-2",
-    }
-
-
-@pytest.mark.asyncio
-async def test_a_stale_offer_authorizes_nothing() -> None:
-    """Only the offer made in the turn right before the reply may be taken up."""
-    context = _ToolContext(state={}, invocation_id="turn-1")
-    configure_services(None, None, _resolver())
-    try:
-        await resolve_request("current Express Mortgage rate", context)
-        offer = {
-            "product": "mortgage",
-            "offering_id": "mortgage_express",
-            "invocation_id": "turn-1",
-        }
-        context.invocation_id = "turn-2"
-        await resolve_request("What products are supported?", context)
-        context.state["monitoring_confirmation_offer"] = offer
-        context.invocation_id = "turn-3"
-        confirmation = await resolve_request("yes", context)
-    finally:
-        configure_services(None, None, None)
-
-    assert confirmation["intent"] != RequestIntent.START_MONITORING_RUN.value
-    assert context.state["monitoring_authorization"] is None
-    assert context.state["monitoring_confirmation_offer"] is None
-
-
-@pytest.mark.asyncio
-async def test_bare_yes_does_not_authorize_monitoring_without_missing_offer() -> None:
-    context = _ToolContext(state={})
-    configure_services(None, None, _resolver())
-    try:
-        await resolve_request("current Express Mortgage rate", context)
-        confirmation = await resolve_request("yes", context)
-    finally:
-        configure_services(None, None, None)
-    assert confirmation["intent"] != RequestIntent.START_MONITORING_RUN.value
-    assert context.state["monitoring_authorization"] is None
-
-
-@pytest.mark.asyncio
-async def test_missing_snapshot_offer_authorizes_confirmed_monitoring() -> None:
-    class _MissingCurrent:
-        async def get_current(self, **kwargs):
-            return CurrentTariffResult(
-                as_of=datetime(2026, 9, 21, tzinfo=UTC),
-                items=(
-                    CurrentTariffItem(
-                        product=ProductType.MORTGAGE,
-                        offering_id=OfferingId.MORTGAGE_EXPRESS,
-                        freshness=FreshnessStatus.MISSING,
-                    ),
-                ),
-            )
-
-    context = _ToolContext(state={}, invocation_id="turn-1")
-    configure_services(
-        None, None, _resolver(), current_tariff_service=_MissingCurrent()
-    )
-    try:
-        await resolve_request("What is the Express Mortgage rate?", context)
-        # No scope argument: the tool reads the grant resolve_request issued.
-        await get_current_tariffs(context)
-        context.invocation_id = "turn-2"
-        confirmation = await resolve_request("yes", context)
-    finally:
-        configure_services(None, None)
-    assert confirmation["intent"] == RequestIntent.START_MONITORING_RUN.value
-    assert confirmation["refresh_confirmation"] is True
-    assert context.state["monitoring_authorization"] == {
-        "product": "mortgage",
-        "offering_id": "mortgage_express",
-        "invocation_id": "turn-2",
-    }
-    assert context.state["monitoring_original_question"] == (
-        "What is the Express Mortgage rate?"
-    )
-
-
-@pytest.mark.asyncio
-async def test_bilingual_explicit_comparison_preserves_both_offerings() -> None:
-    resolver = _resolver()
-    english = await resolver.resolve_turn(
-        "How does Overdraft differ from the standard Consumer Loan in amount and fees?"
-    )
-    armenian = await resolver.resolve_turn(
-        "Համեմատիր Օվերդրաֆտ և Սպառողական վարկ տոկոսադրույքը"
-    )
-    expected = {OfferingId.OVERDRAFT, OfferingId.CONSUMER_STANDARD}
-    assert set(english.resolution.offering_ids) == expected
-    assert set(armenian.resolution.offering_ids) == expected
-    assert set(armenian.state.latest_offering_ids) == expected
-    assert not english.resolution.needs_clarification
-
-
-@pytest.mark.asyncio
-async def test_family_rank_resolves_enabled_family_scope() -> None:
-    turn = await _resolver().resolve_turn(
-        "Which consumer loan offering has the lowest nominal interest rate?"
-    )
-    assert turn.resolution.product is ProductType.CONSUMER_LOAN
-    assert set(turn.resolution.offering_ids) == {
-        OfferingId.CONSUMER_STANDARD,
-        OfferingId.OVERDRAFT,
-        OfferingId.CREDIT_LINE,
-        OfferingId.ONLINE_CONSUMER_FINANCE,
-    }
-    assert not turn.resolution.needs_clarification
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("query", "product", "offering"),
-    [
-        ("review them", None, None),
-        ("Are there pending reviews?", None, None),
-        (
-            "review the Express Mortgage candidates",
-            ProductType.MORTGAGE,
-            OfferingId.MORTGAGE_EXPRESS,
-        ),
-    ],
-)
-async def test_review_requests_resolve_deterministically(
-    query, product, offering
-) -> None:
-    classifier = _FakeClassifier(error=AssertionError("must not be called"))
-
-    turn = await _resolver(classifier).resolve_turn(query)
-
-    assert turn.resolution.intent is RequestIntent.REVIEW_PENDING_CANDIDATES
-    assert turn.resolution.product is product
-    assert turn.resolution.offering_id is offering
-    assert turn.resolution.needs_clarification is False
+    assert sum(len(family["offerings"]) for family in full["families"]) == 13
+    assert intro["offer_full_list"] is True
+    assert all(len(family["offerings"]) <= 3 for family in intro["families"])
+    assert intro["families"][1]["name"] == "Հիփոթեքային վարկեր"

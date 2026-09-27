@@ -2,17 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.config.models import IntentResolutionSettings
-from app.config.seed_catalog import load_seed_catalog
 from app.domain.models import OfferingId, ProductType
 from app.domain.structured_tariffs import FieldPath, QueryOperation, RankDirection
-from app.services.intent_resolution import RequestResolver
 from app.services.structured_query_planning import select_tariff_query
+from tests.fixtures.interpretations import recorded_resolver
 
 
 @pytest.mark.asyncio
 async def test_bilingual_comparison_selects_bounded_fields_and_same_family() -> None:
-    resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
+    resolver = recorded_resolver()
     for question in (
         "How does Overdraft differ from the standard Consumer Loan in amount and fees?",
         "Համեմատիր Օվերդրաֆտ և Սպառողական վարկ տոկոսադրույքը",
@@ -32,9 +30,7 @@ async def test_bilingual_comparison_selects_bounded_fields_and_same_family() -> 
 async def test_family_rank_has_explicit_direction_and_single_canonical_path() -> None:
     question = "Which consumer loan offering has the lowest nominal interest rate?"
     resolution = (
-        await RequestResolver(
-            load_seed_catalog(), IntentResolutionSettings()
-        ).resolve_turn(question)
+        await recorded_resolver().resolve_turn(question)
     ).resolution
     selection = select_tariff_query(question, resolution)
     assert selection.operation is QueryOperation.FAMILY_RANK
@@ -46,9 +42,7 @@ async def test_family_rank_has_explicit_direction_and_single_canonical_path() ->
 async def test_single_query_keeps_resolved_product_and_currency() -> None:
     question = "What is the AMD minimum amount for the Overdraft?"
     resolution = (
-        await RequestResolver(
-            load_seed_catalog(), IntentResolutionSettings()
-        ).resolve_turn(question)
+        await recorded_resolver().resolve_turn(question)
     ).resolution
     selection = select_tariff_query(question, resolution)
     assert selection.operation is QueryOperation.SINGLE

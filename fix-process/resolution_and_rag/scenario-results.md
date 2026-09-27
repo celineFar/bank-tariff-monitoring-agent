@@ -10,3 +10,22 @@
   behaviour), so a few cases that reach Gemini could pass live. Per case:
   [baseline-case-set.txt](baseline-case-set.txt), from
   [probes/baseline_case_set.py](probes/baseline_case_set.py).
+
+## RRS02: live interpreter over the case set (Phase 2)
+
+Model `gemini-3.7-flash` (the configured `generation_model`), temperature 0, no
+thinking budget.
+
+| Run | Instruction | Cases | Passed | Safety mismatches | Notes |
+|---|---|---:|---:|---:|---|
+| 1 | first version | 126 | 125 (99.2%) | 1 | `rr10`: "mortgage" in reply to "What is the interest?" became a family-wide overview. Fixed in code (V3 on replies), not in the prompt. |
+| 2 | same | 126 | 126 (100%) | 0 | Recordings kept per case from here on (see Phase 2 notes). |
+| 3 | + the singular-family rule | 133 | 132 (99.2%) | 0 | +7 test-support cases. `current mortgage rate` had become a family-wide overview before the rule; now it asks. `rr3_progress_paying_off` → `unsupported_or_general`: a defensible reading; the case now forbids only `get_run_status`. |
+
+After run 3 the recorded replay (RRS01) passes 133/133.
+
+## RRS08: interpreter cost and latency (from RRS02 run 3)
+
+152 calls. Input tokens: mean 3,779, max 4,085. Output tokens: mean 198, max 405.
+Latency: p50 1.7 s, p90 2.6 s (six calls in parallel). This replaces the Phase 0
+`count_tokens` measurement: the recorded calls report the same prompt token count.

@@ -44,7 +44,8 @@ SHAPE_OPERATIONS = frozenset(
 
 
 class QueryShape(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    # Not `extra="forbid"`: Gemini's response schema rejects additionalProperties.
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     operation: QueryOperation
     fields: tuple[FieldPath, ...] = Field(default=())

@@ -151,6 +151,9 @@ class PendingClarification(IntentModel):
     language: RequestLanguage
     options: tuple[ClarificationOption, ...] = Field(min_length=2, max_length=20)
     created_at: datetime
+    # The question asked for one value, so a reply naming only a family still
+    # needs an offering (V3 applied to replies).
+    expects_single_value: bool = False
 
     @model_validator(mode="after")
     def validate_state(self) -> PendingClarification:

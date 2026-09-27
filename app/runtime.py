@@ -42,7 +42,7 @@ from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
-from app.services.intent_resolution import AdkIntentClassifier, RequestResolver
+from app.services.intent_resolution import AdkRequestInterpreter, RequestResolver
 from app.services.knowledge_index import (
     GeminiEmbeddingProvider,
     GeminiQueryEmbeddingProvider,
@@ -150,7 +150,7 @@ def build_application_container(
     request_resolver = RequestResolver(
         catalog,
         settings.intent_resolution,
-        classifier=AdkIntentClassifier(
+        interpreter=AdkRequestInterpreter(
             settings.models.generation_model,
             api_key=api_key,
             max_attempts=settings.intent_resolution.classifier_max_attempts,
