@@ -433,10 +433,15 @@ class PostgresStructuredTariffQueryRepository:
         for row in evidence_rows:
             captured = catalogs.get(row["snapshot_id"], {}).get(row["evidence_id"])
             locator = _decoded(row["locator"])
+            # `section` is added at projection from the captured item (F16); the
+            # rest of the locator must be the captured one exactly.
+            section = locator.get("section")
             if (
                 captured is None
                 or row["quote"] not in captured.get("content", "")
-                or locator != _without_none(captured.get("locator"))
+                or {key: value for key, value in locator.items() if key != "section"}
+                != _without_none(captured.get("locator"))
+                or (section is not None and section != captured.get("section"))
                 or row["authority"] != captured.get("authority")
                 or row["source_item_id"] != captured.get("source_item_id")
                 or row["source_document_key"] != captured.get("document_id")

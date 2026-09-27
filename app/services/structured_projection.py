@@ -420,7 +420,7 @@ class StructuredTariffProjector:
                 raise ValueError("fact citation is not an official source")
             locator = citation.locator.model_dump(mode="json", exclude_none=True)
             # The page or document section a person can find (F16).
-            section = citation.section or item.section
+            section = item.section
             if section:
                 locator["section"] = section
             verified.append(
