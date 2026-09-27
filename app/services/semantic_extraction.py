@@ -884,8 +884,24 @@ class SemanticExtractionService:
         """
         if self._review_memory is None or not plan.offering_id:
             return validated_fields, review_items, ()
-        catalog = {item.evidence_id for item in plan.evidence_catalog}
+        evidence_by_id = {item.evidence_id: item for item in plan.evidence_catalog}
+        catalog = set(evidence_by_id)
         fields = {item.field: item for item in validated_fields}
+
+        def rebound(field_result: ValidatedFieldResult) -> ValidatedFieldResult:
+            # A stored citation carries the labels its passage had at review
+            # time. The evidence ID is unchanged, but source discovery may have
+            # labelled the passage differently since, and acceptance compares
+            # each citation with this run's catalog. Cite it as it is now.
+            return field_result.model_copy(
+                update={
+                    "evidence": tuple(
+                        _hydrate_citation(item.evidence_id, item.quote, evidence_by_id)
+                        for item in field_result.evidence
+                    )
+                }
+            )
+
         remaining: list[ExtractionReviewItem] = []
         reused: list[dict[str, str]] = []
 
@@ -910,7 +926,7 @@ class SemanticExtractionService:
             if decision is None:
                 remaining.append(item)
                 continue
-            fields[item.field] = decision.decision.model_copy(
+            fields[item.field] = rebound(decision.decision).model_copy(
                 update={
                     "prompt_fingerprint": item.prompt_fingerprint,
                     "result_fingerprint": item.result_fingerprint,
@@ -925,12 +941,22 @@ class SemanticExtractionService:
             decision = await lookup(
                 field, item.prompt_fingerprint, item.result_fingerprint
             )
-            if decision is None or (
-                decision.decision.value == item.value
-                and (decision.decision.status is item.status)
-            ):
+            if decision is None:
                 continue
-            fields[field] = decision.decision.model_copy(
+            if (
+                decision.decision.value == item.value
+                and decision.decision.status is item.status
+            ):
+                if decision.result_fingerprint == item.result_fingerprint:
+                    # A person confirmed exactly this result (value and cited
+                    # evidence) -- an approved OCR reading. Keep it as read, and
+                    # mark it confirmed so it is not put to review again.
+                    fields[field] = item.model_copy(
+                        update={"batch_id": decision.decision.batch_id}
+                    )
+                    reused.append(_reuse_record(decision, item.prompt_fingerprint))
+                continue
+            fields[field] = rebound(decision.decision).model_copy(
                 update={
                     "prompt_fingerprint": item.prompt_fingerprint,
                     "result_fingerprint": item.result_fingerprint,

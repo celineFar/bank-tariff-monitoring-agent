@@ -60,8 +60,19 @@ def _review_required(monkeypatch) -> None:
     original = monitoring_pipeline.build_snapshot_attempt
 
     def build(**kwargs):
-        return original(**kwargs).model_copy(
-            update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
+        snapshot = original(**kwargs)
+        # A candidate always carries the question a reviewer answers.
+        signal = {
+            "reason": "large_rate_change",
+            "issue_scope": "interest_rate",
+            "field": "interest_rate",
+        }
+        return snapshot.model_copy(
+            update={
+                "status": SnapshotStatus.REVIEW_REQUIRED,
+                "accepted_at": None,
+                "validation": {**snapshot.validation, "review_signals": [signal]},
+            }
         )
 
     monkeypatch.setattr(monitoring_pipeline, "build_snapshot_attempt", build)

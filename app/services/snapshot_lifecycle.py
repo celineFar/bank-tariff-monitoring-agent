@@ -254,7 +254,11 @@ def detect_review_signals(
 
     for field in result.validated_fields:
         cited_ids = [item.evidence_id for item in field.evidence]
-        if field.status is ExtractionStatus.FOUND:
+        # `memory:` marks a value a person already confirmed for this very
+        # result (an approved OCR reading); asking again every run would pause
+        # every run of an offering whose terms exist only as a scan.
+        confirmed = field.batch_id.startswith("memory:")
+        if field.status is ExtractionStatus.FOUND and not confirmed:
             ocr_citations = [
                 item
                 for item in field.evidence

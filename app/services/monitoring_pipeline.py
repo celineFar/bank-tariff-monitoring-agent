@@ -382,6 +382,17 @@ class IndexingPipeline:
             review_rank_gap=self._review_rank_gap,
             selected_sources_markdown=render_normalized_markdown(selected_bundle),
         )
+        if snapshot.status is SnapshotStatus.REVIEW_REQUIRED and not _review_tasks(
+            snapshot
+        ):
+            # Not acceptable, yet no question a person could answer: publishing
+            # it would park a candidate that no review can ever activate, and
+            # pause the run with nothing to ask.
+            raise OfferingPipelineError(
+                "validation",
+                OfferingFailureCode.VALIDATION_FAILED.value,
+                ValueError("candidate needs review but raised no review signal"),
+            )
         # The same selection extraction used: the RAG index holds only what
         # source discovery selected for this offering, with its labels.
         selection = select_sources(discovery)

@@ -128,6 +128,7 @@ class ReviewDecisionService:
         remembered = None
         if decision.decision_type is ReviewDecisionType.APPROVE:
             update = await self._approve_unchanged(task, snapshot)
+            remembered = _remembered_approval(task, snapshot)
         else:
             update, remembered = await self._resolve_field(
                 task,
@@ -370,6 +371,30 @@ def _remembered(
         decision=replacement.model_copy(update={"batch_id": f"memory:{task.id}"}),
         review_id=str(task.id),
     )
+
+
+def _remembered_approval(
+    task: ReviewTask, snapshot: SnapshotAttempt
+) -> RememberedReviewDecision | None:
+    """An approved OCR reading, remembered as read (the value is unchanged).
+
+    A large rate change is approved once: the new value becomes the baseline
+    the next run compares against. An OCR reading is raised again for as long
+    as the scan is there, so the confirmation is kept for the same result.
+    """
+    if task.reason is not ReviewReason.OCR_EVIDENCE:
+        return None
+    try:
+        field = ExtractionField(task.issue_scope)
+    except ValueError:
+        return None
+    extraction = SemanticExtractionResult.model_validate(snapshot.semantic_extraction)
+    confirmed = next(
+        (item for item in extraction.validated_fields if item.field is field), None
+    )
+    if confirmed is None or confirmed.status is not ExtractionStatus.FOUND:
+        return None
+    return _remembered(task, field, extraction, confirmed)
 
 
 def _evidence_items(

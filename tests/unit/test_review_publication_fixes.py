@@ -287,3 +287,259 @@ async def test_p2_the_worker_keeps_closing_reviewed_runs_and_survives_errors() -
     await loop
 
     assert resolution.calls >= 2
+
+
+# --- P2: pauses that could not end ------------------------------------------------
+
+
+def _ocr_result(batch_id: str):
+    """The accepted fixture's rate, cited from an OCR-read page."""
+    from app.domain.pdf_extraction import OCR_SOURCE_ITEM_MARKER
+    from app.domain.semantic_extraction import SemanticExtractionResult
+    from tests.fixtures.structured_tariffs import accepted_snapshot
+
+    result = SemanticExtractionResult.model_validate(
+        accepted_snapshot("consumer").semantic_extraction
+    )
+    field = result.validated_fields[0]
+    citation = field.evidence[0].model_copy(
+        update={"source_item_id": f"pdf{OCR_SOURCE_ITEM_MARKER}p1"}
+    )
+    return result.model_copy(
+        update={
+            "validated_fields": (
+                field.model_copy(
+                    update={"evidence": (citation,), "batch_id": batch_id}
+                ),
+            )
+        }
+    )
+
+
+def test_p2_a_confirmed_ocr_reading_is_not_asked_again() -> None:
+    from app.services.snapshot_lifecycle import detect_review_signals
+
+    fresh = detect_review_signals(_ocr_result("batch-1"))
+    confirmed = detect_review_signals(_ocr_result("memory:review-1"))
+
+    assert [signal["reason"] for signal in fresh] == ["ocr_evidence"]
+    assert confirmed == ()
+
+
+def test_p2_an_ocr_approval_is_remembered_as_read() -> None:
+    from uuid import uuid4
+
+    from app.domain.monitoring import SnapshotStatus
+    from app.domain.review import ReviewReason
+    from app.services.review_decisions import _remembered_approval
+    from tests.fixtures.structured_tariffs import accepted_snapshot
+
+    result = _ocr_result("batch-1")
+    field = result.validated_fields[0]
+    result = result.model_copy(
+        update={
+            "validated_fields": (
+                field.model_copy(update={"result_fingerprint": "f" * 64}),
+            )
+        }
+    )
+    snapshot = accepted_snapshot("consumer").model_copy(
+        update={
+            "status": SnapshotStatus.REVIEW_REQUIRED,
+            "semantic_extraction": result.model_dump(mode="json"),
+        }
+    )
+    task = _family_review(
+        uuid4(), snapshot.offering_id, "interest_rate", snapshot.id, 0
+    ).model_copy(update={"reason": ReviewReason.OCR_EVIDENCE})
+
+    remembered = _remembered_approval(task, snapshot)
+    large_change = _remembered_approval(
+        task.model_copy(update={"reason": ReviewReason.LARGE_RATE_CHANGE}), snapshot
+    )
+
+    assert remembered is not None
+    assert remembered.result_fingerprint == "f" * 64
+    assert remembered.decision.value == field.value
+    assert remembered.decision.batch_id == f"memory:{task.id}"
+    assert large_change is None
+
+
+@pytest.mark.asyncio
+async def test_p2_a_remembered_citation_takes_the_passages_current_labels() -> None:
+    from app.domain.semantic_extraction import (
+        RememberedReviewDecision,
+        ValidatedFieldResult,
+    )
+    from app.repositories.review_memory import InMemoryReviewDecisionMemory
+    from app.services.semantic_extraction import (
+        SemanticExtractionService,
+        _hydrate_citation,
+        validate_review_field_value,
+    )
+    from tests.unit.test_semantic_extraction_fixes import (
+        RETRIEVED_AT,
+        InMemorySemanticExtractionRepository,
+        ScriptedExtractor,
+        SemanticExtractionSettings,
+        _mortgage_bundle,
+    )
+
+    extractor = ScriptedExtractor(
+        {
+            ExtractionField.INTEREST_RATE: (
+                '[{"value":{"min":21,"max":21},"conditions":[]}]',
+                "Interest rate",
+            )
+        }
+    )
+    memory = InMemoryReviewDecisionMemory()
+    service = SemanticExtractionService(
+        extractor,
+        InMemorySemanticExtractionRepository(),
+        SemanticExtractionSettings(),
+        model_name="model-a",
+        review_memory=memory,
+    )
+    bundle, discovery = _mortgage_bundle("Interest rate: 21% per annum")
+    discovery = discovery.model_copy(update={"offering_id": "mortgage_primary"})
+    first = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+    review = next(
+        item
+        for item in first.review_items
+        if item.field is ExtractionField.INTEREST_RATE
+    )
+    terms = next(
+        item for item in first.evidence_catalog if item.source_item_id == "terms"
+    )
+    catalog = {item.evidence_id: item for item in first.evidence_catalog}
+    # Stored when discovery labelled the passage differently.
+    stale = _hydrate_citation(terms.evidence_id, "21%", catalog).model_copy(
+        update={
+            "authority": (
+                Authority.OFFICIAL_TERMS
+                if terms.authority is not Authority.OFFICIAL_TERMS
+                else Authority.OFFICIAL_PRODUCT_CONTENT
+            )
+        }
+    )
+    await memory.remember(
+        RememberedReviewDecision(
+            offering_id="mortgage_primary",
+            field=ExtractionField.INTEREST_RATE,
+            prompt_fingerprint=review.prompt_fingerprint,
+            result_fingerprint=review.result_fingerprint,
+            decision=ValidatedFieldResult(
+                field=ExtractionField.INTEREST_RATE,
+                status=ExtractionStatus.FOUND,
+                value=validate_review_field_value(
+                    ExtractionField.INTEREST_RATE, [{"value": {"min": 21, "max": 21}}]
+                ),
+                evidence=(stale,),
+                batch_id="memory:review-1",
+            ),
+        )
+    )
+
+    second = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+
+    reused = next(
+        item
+        for item in second.validated_fields
+        if item.field is ExtractionField.INTEREST_RATE
+    )
+    assert reused.batch_id == "memory:review-1"
+    assert reused.evidence[0].authority is terms.authority
+
+
+@pytest.mark.asyncio
+async def test_p2_a_candidate_with_nothing_to_review_fails_instead_of_pausing(
+    monkeypatch,
+) -> None:
+    from uuid import uuid4
+
+    from app.domain.monitoring import SnapshotStatus
+    from app.services import monitoring_pipeline
+    from app.services.monitoring_pipeline import OfferingPipelineError
+    from tests.unit.test_monitoring_pipeline import _indexing, _offering
+
+    build = monitoring_pipeline.build_snapshot_attempt
+
+    def unreviewable(**kwargs):
+        snapshot = build(**kwargs)
+        return snapshot.model_copy(
+            update={
+                "status": SnapshotStatus.REVIEW_REQUIRED,
+                "accepted_at": None,
+                "validation": {**snapshot.validation, "review_signals": []},
+            }
+        )
+
+    monkeypatch.setattr(monitoring_pipeline, "build_snapshot_attempt", unreviewable)
+    service, _, publications = _indexing()
+
+    with pytest.raises(OfferingPipelineError) as captured:
+        await service.refresh(_offering(), uuid4(), uuid4())
+
+    assert captured.value.failure_code == "offering.validation_failed"
+    assert publications.values == []
+
+
+@pytest.mark.asyncio
+async def test_p2_the_same_result_as_an_approved_one_is_marked_confirmed() -> None:
+    from app.domain.semantic_extraction import RememberedReviewDecision
+    from app.repositories.review_memory import InMemoryReviewDecisionMemory
+    from app.services.semantic_extraction import SemanticExtractionService
+    from tests.unit.test_semantic_extraction_fixes import (
+        RETRIEVED_AT,
+        InMemorySemanticExtractionRepository,
+        ScriptedExtractor,
+        SemanticExtractionSettings,
+        _mortgage_bundle,
+    )
+
+    extractor = ScriptedExtractor(
+        {
+            ExtractionField.INTEREST_RATE: (
+                '[{"value":{"min":21,"max":21},"conditions":[]}]',
+                "21%",
+            )
+        }
+    )
+    memory = InMemoryReviewDecisionMemory()
+    service = SemanticExtractionService(
+        extractor,
+        InMemorySemanticExtractionRepository(),
+        SemanticExtractionSettings(),
+        model_name="model-a",
+        review_memory=memory,
+    )
+    bundle, discovery = _mortgage_bundle("Interest rate: 21% per annum")
+    discovery = discovery.model_copy(update={"offering_id": "mortgage_primary"})
+    first = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+    read = next(
+        item
+        for item in first.validated_fields
+        if item.field is ExtractionField.INTEREST_RATE
+    )
+    assert not read.batch_id.startswith("memory:")
+    await memory.remember(
+        RememberedReviewDecision(
+            offering_id="mortgage_primary",
+            field=ExtractionField.INTEREST_RATE,
+            prompt_fingerprint=read.prompt_fingerprint,
+            result_fingerprint=read.result_fingerprint,
+            decision=read.model_copy(update={"batch_id": "memory:review-7"}),
+        )
+    )
+
+    second = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+
+    confirmed = next(
+        item
+        for item in second.validated_fields
+        if item.field is ExtractionField.INTEREST_RATE
+    )
+    assert confirmed.batch_id == "memory:review-7"
+    assert confirmed.value == read.value
+    assert confirmed.evidence == read.evidence
