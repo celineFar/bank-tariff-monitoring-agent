@@ -1,8 +1,8 @@
 # Resolution and RAG: fix plan
 
 Date: 2026-09-27 · Branch: `fix/resolution_and_rag` (from `integration/process-fixes` at
-`180ea9f`) · Status: **implemented and validated** (Phases 0–6). Open: RRS07 and the
-AGENTS.md wording need the user; deployment needs approval. The design choices were agreed with the user on
+`180ea9f`) · Status: **implemented and validated** (Phases 0–6). Open: RRS07 needs the
+user; deployment needs approval. The design choices were agreed with the user on
 2026-09-27; the smaller ones taken without asking are marked in [Decisions](#decisions).
 
 ## Scope
@@ -1197,7 +1197,7 @@ outside the steps marked **(live)**.
 - [x] Update `docs/agent-and-tool-architecture.md`, `docs/rag-answering.md`,
       `docs/rag-retrieval.md` and `docs/tariff-query-services.md`: `overview`, rank by
       group, the field finder, and history citations.
-- [ ] Propose the AGENTS.md Gemini-boundary wording to the user ("intent resolution,
+- [x] Propose the AGENTS.md Gemini-boundary wording to the user ("intent resolution,
       including the question's query shape"), and edit it only once they agree.
 - [x] Record the decisions taken without asking (D6–D20) and the Phase notes in
       `fix-process/note.md`.
@@ -1226,11 +1226,10 @@ outside the steps marked **(live)**.
      updating: they name the old tool call shapes (`resolve_request` with a query,
      `get_current_tariffs` for "current rate" questions, which now route to
      `answer_tariff_query`).
-  2. **The AGENTS.md wording.** Proposed: "Keep Gemini limited to request
+  2. **The AGENTS.md wording** (done 2026-09-27, as proposed, on the user's instruction): "Keep Gemini limited to request
      interpretation (intent, catalog scope and the question's query shape, one
      tool-free call per chat turn, validated by code), source discovery ..., bounded
-     PDF structure transcription, and evidence-bound structured extraction." Edit it
-     only once the user agrees.
+     PDF structure transcription, and evidence-bound structured extraction."
 - **Not in scope and still open:**
   - the waiting-review rule (hand-off in `note.md`);
   - applying migrations 024 and 025 to the dev database;

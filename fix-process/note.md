@@ -246,6 +246,9 @@ without asking:
   ~200 output tokens per call. The final run scored 133/133 with 0 safety mismatches.
 - **Not done (needs the user):**
   - RRS07, the whole-agent `agents-cli eval`, which spends whole-agent tokens.
-  - The AGENTS.md Gemini-boundary wording.
   - Applying migration 025 to the dev database.
   - Deployment.
+- **AGENTS.md updated** (2026-09-27, on the user's instruction). The Gemini boundary
+  now reads "request interpretation (intent, catalog scope and the question's query
+  shape, one tool-free call per chat turn, validated by code)" instead of "intent
+  resolution".

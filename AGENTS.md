@@ -3,10 +3,11 @@
 ## Project Architecture
 
 - This is a modular-monolith ADK application for Ameria Bank consumer loans and mortgages.
-- Keep Gemini limited to intent resolution, source discovery (classifying page sections,
-  and choosing from link metadata, before transcription, which admitted PDFs belong to
-  the offering), bounded PDF structure transcription, and evidence-bound structured
-  extraction.
+- Keep Gemini limited to request interpretation (intent, catalog scope and the
+  question's query shape, one tool-free call per chat turn, validated by code), source
+  discovery (classifying page sections, and choosing from link metadata, before
+  transcription, which admitted PDFs belong to the offering), bounded PDF structure
+  transcription, and evidence-bound structured extraction.
 - Keep discovery constraints, downloads, PDF admission/input probing, normalization, validation,
   persistence, change detection, HITL routing, scheduling, and reporting deterministic.
 - Never expose raw network, filesystem, shell, database, or SQL tools to the model.
