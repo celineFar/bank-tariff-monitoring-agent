@@ -95,6 +95,28 @@ Accepted history returns each change item with verified evidence for every side
 that has a value (an added field has no previous value); an item without it is
 left out and listed under `metadata.omitted`.
 
+**Coverage.** Every in-scope offering is accounted for. An offering with no active
+profile gets a state from `offering_states` (the Postgres repository): `awaiting_review`
+(with the pending count), `run_failed` (with the failure code), `never_monitored`, or
+`no_accepted_data`. A ranking lists each offering in `metadata.coverage` as `ranked`,
+`not_comparable` (a value in another unit or currency group), `no_value`, or its
+unpublished state; `metadata.not_ranked` names every non-ranked offering with that
+reason, and the answer text starts with "ranked N of M offerings". Other operations add
+`metadata.coverage` when an in-scope offering has no published data.
+
+**Reason codes.** A result without an answer carries `reason_code`: the unpublished
+state when no in-scope offering is published (`awaiting_review`, `run_failed`,
+`never_monitored`, `no_accepted_data`); `not_stated_in_source` when a requested fee is
+absent from the offering's published fee list (the listed fees are returned so the
+answer can cite the list it checked) or extraction recorded the field as not stated;
+otherwise `field_not_extracted`. The agent maps each code to its next step.
+
+**What the model sees.** `answer_tariff_query` and the post-monitoring answer pass the
+result through `model_facing_query_result`: each fact keeps its value, unit, currency
+and conditions, and its evidence becomes at most three citations of URL, section, PDF
+page and a quote of at most 300 characters. XPath, CSS selectors and block or row ids
+stay in the stored records and the HTTP routes.
+
 ### Which read model answers
 
 Every ordinary question is answered from accepted typed facts: the ADK

@@ -18,6 +18,7 @@ from app.domain.monitoring import SnapshotChangeSet
 from app.domain.structured_tariffs import (
     FactEvidence,
     FieldPath,
+    OfferingDataState,
     OfferingProfile,
     RetrievalUnit,
     TariffFact,
@@ -226,6 +227,71 @@ class RankedUnit:
 class PostgresStructuredTariffQueryRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
+
+    async def offering_states(
+        self,
+        *,
+        bank: str,
+        product: ProductType,
+        offering_ids: Sequence[OfferingId],
+    ) -> dict[OfferingId, OfferingDataState]:
+        """Why each offering has no published data: pending reviews, the latest
+        execution's failure, or no execution at all (F1, F4)."""
+        if not offering_ids:
+            return {}
+        ids = [item.value for item in offering_ids]
+        async with self._sessions() as session:
+            pending = {
+                row["offering_id"]: int(row["pending"])
+                for row in (
+                    await session.execute(
+                        text(
+                            """SELECT offering_id, count(*) AS pending
+                            FROM human_reviews
+                            WHERE product = :product AND status = 'pending'
+                              AND offering_id = ANY(:ids)
+                            GROUP BY offering_id"""
+                        ),
+                        {"product": product.value, "ids": ids},
+                    )
+                )
+                .mappings()
+                .all()
+            }
+            latest = {
+                row["offering_id"]: row
+                for row in (
+                    await session.execute(
+                        text(
+                            """SELECT DISTINCT ON (offering_id)
+                                   offering_id, status, failure_code
+                            FROM offering_executions
+                            WHERE product = :product AND offering_id = ANY(:ids)
+                            ORDER BY offering_id, created_at DESC"""
+                        ),
+                        {"product": product.value, "ids": ids},
+                    )
+                )
+                .mappings()
+                .all()
+            }
+        states: dict[OfferingId, OfferingDataState] = {}
+        for offering in offering_ids:
+            execution = latest.get(offering.value)
+            if pending.get(offering.value):
+                state = OfferingDataState(
+                    state="awaiting_review", pending_reviews=pending[offering.value]
+                )
+            elif execution is None:
+                state = OfferingDataState(state="never_monitored")
+            elif execution["status"] == "failed":
+                state = OfferingDataState(
+                    state="run_failed", failure_code=execution["failure_code"]
+                )
+            else:
+                state = OfferingDataState(state="no_accepted_data")
+            states[offering] = state
+        return states
 
     async def active_profiles(
         self,

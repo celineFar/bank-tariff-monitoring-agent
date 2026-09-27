@@ -17,6 +17,9 @@ from app.domain.structured_tariffs import ANSWERABLE_OPERATIONS, ResolutionPlan
 from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
 from app.services.snapshot_lifecycle import tariff_fields
 from app.services.tariff_queries import field_citations
+from app.services.tariff_queries import (
+    model_facing_query_result as model_facing_result,
+)
 from app.tools._services import services
 from app.tools._state import (
     MONITOR_OFFER_KEY,
@@ -82,7 +85,7 @@ async def answer_tariff_query(tool_context: ToolContext) -> dict[str, object]:
         result = await services.answer_router.answer_plan(plan, plan.question)
     else:
         result = await services.structured_query_service.answer(plan, plan.question)
-    return result.model_dump(mode="json")
+    return model_facing_result(result.model_dump(mode="json"))
 
 
 async def get_current_tariffs(tool_context: ToolContext) -> dict[str, object]:

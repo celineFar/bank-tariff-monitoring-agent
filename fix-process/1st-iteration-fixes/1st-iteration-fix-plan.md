@@ -625,18 +625,67 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 5: Projection and query service (F1, F2, F4, F5, F15, F16, F17)
 
-- [ ] F1: `coverage` block and reasoned `not_ranked` for rank, compare and overview.
-- [ ] F2: currency inheritance with the `inferred_from_amount` marker.
-- [ ] F4: `reason_code` on every non-answered result.
-- [ ] F5: `not_stated_in_source` for list fields without a matching item and for
+- [x] F1: `coverage` block and reasoned `not_ranked` for rank, compare and overview.
+- [x] F2: currency inheritance with the `inferred_from_amount` marker.
+- [x] F4: `reason_code` on every non-answered result.
+- [x] F5: `not_stated_in_source` for list fields without a matching item and for
       `not_stated` scalars, citing the list's evidence.
-- [ ] F15: per-fee citations by number/description match, fallback marked.
-- [ ] F16: `section`, `row_label`, `page` in `fact_evidence.locator` and the citation payload.
-- [ ] F17: collateral/vehicle service fees omitted for unsecured offerings; bank-wide label.
-- [ ] Run `scripts/audit_structured_projection.py` on the dev database (no model cost).
-- [ ] Update [docs/tariff-query-services.md](../../docs/tariff-query-services.md) and
+- [x] F15: per-fee citations by number/description match, fallback unmarked.
+- [x] F16: `section` and `page` in `fact_evidence.locator` and the citation payload
+      (`row_label` dropped, see notes).
+- [x] F17: collateral/vehicle service fees omitted when the extraction states no collateral.
+- [x] Run `scripts/audit_structured_projection.py` on the dev database (no model cost).
+- [x] Update [docs/tariff-query-services.md](../../docs/tariff-query-services.md) and
       [docs/indexing-projection.md](../../docs/indexing-projection.md).
-- [ ] Remove the `xfail` marks; run the suite.
+- [x] Remove the `xfail` marks; run the suite.
+
+**Phase 5 notes (done).**
+
+- **Query service** ([structured_tariff_query.py](../../app/services/structured_tariff_query.py)):
+  - `StructuredTariffQueryService(..., offering_states=)` takes an
+    `OfferingStateReader`; `_unpublished` asks it why each in-scope offering without an
+    active profile has none. It is best effort: no reader or a failing reader gives
+    `no_accepted_data`, and a trace step `coverage.unpublished` is recorded only when
+    something is unpublished (the retrieval-trace test pins the step list).
+  - `_rank` builds `metadata.coverage` (every in-scope offering: `ranked`,
+    `not_comparable`, `no_value`, or the unpublished state), `metadata.not_ranked` as
+    `[{offering_id, reason}]` (was a list of ids), and prefixes the answer with
+    "ranked N of M offerings; not ranked: ...". Other operations add `coverage` when
+    something in scope is unpublished.
+  - `_not_found` sets `reason_code` (`not_stated_in_source` / `field_not_extracted`)
+    and, for a fee path, returns the published fee facts it checked. A missing
+    projection sets the unpublished state as `reason_code`.
+  - [domain/structured_tariffs.py](../../app/domain/structured_tariffs.py):
+    `OfferingDataState`, `TariffQueryResult.reason_code`.
+  - [repositories/structured_tariff_query.py](../../app/repositories/structured_tariff_query.py):
+    `offering_states` (pending `human_reviews` per offering; latest
+    `offering_executions` row). Checked read-only on the dev database: it returns the
+    22 pending reviews by offering exactly. Wired in [runtime.py](../../app/runtime.py).
+- **Projection** ([structured_projection.py](../../app/services/structured_projection.py)):
+  `_fee_citations` (F15), `_COLLATERAL_SERVICE` / `_NOT_ABOUT_COLLATERAL` (F17),
+  `_with_inferred_rate_currency` (F2), `section` in the fact locator (F16).
+  `semantic_extraction.quote_numbers` is the public name of the number reader.
+  On the captures: Credit Line 14 → 9 fee facts (5 collateral/vehicle items dropped;
+  "Issuing other consent ... not related to the collateral" is kept), every Credit Line
+  and Express fee cites 1 item (was 14 and 17); Overdraft and Online Mortgage each keep
+  one fee on the whole-field fallback (15 and 17 citations). OCF and Express rates now
+  carry AMD with the inference condition. 98% of citations carry a section.
+- **Model payload** (F16): `model_facing_query_result` in
+  [tariff_queries.py](../../app/services/tariff_queries.py) (re-exported as
+  `tools.reads.model_facing_result`), used by `answer_tariff_query` and the
+  post-monitoring answer in [monitoring_node.py](../../app/services/monitoring_node.py).
+  **`row_label` was dropped:** the evidence item has no separate row label; the section
+  plus a quote that starts with the row's text is what a person needs.
+- **Audit on the dev database:** all 5 accepted snapshots report `mismatch` against the
+  new projector, with 0 missing facts and no projection error: every difference is a
+  Phase 5 change (sections, per-fee citations, inferred currency, and 4 collateral
+  service fees fewer for Credit Line and for Overdraft). The stored projections refresh
+  on the Phase 8 run; `scripts/backfill_structured_tariffs.py` could re-project them
+  without model calls if needed first.
+- **Behaviour change for consumers of `not_ranked`:** it is now a list of objects, not
+  of ids. The agent instruction (Phase 6) reads the new shape; no other code read it.
+- Full suite: 1,226 passed, 59 skipped, 6 xfailed; only the 4 baseline
+  live-environment tests fail.
 
 ### Phase 6: Interpreter and agent (F3, F4, F6)
 

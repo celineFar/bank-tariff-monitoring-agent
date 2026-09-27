@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.config.models import TariffQuerySettings
 from app.domain.catalog import SeedCatalog
@@ -355,6 +356,60 @@ def field_citations(snapshot, field: str) -> tuple[dict[str, object], ...]:
         if len(citations) >= CITATIONS_PER_FIELD:
             break
     return tuple(citations)
+
+
+_MODEL_FACT_KEYS = (
+    "offering_id",
+    "field_path",
+    "status",
+    "value",
+    "unit",
+    "currency",
+    "rate_basis",
+    "fee_scope",
+    "conditions",
+)
+
+
+def model_facing_query_result(result: dict[str, Any]) -> dict[str, Any]:
+    """A structured query result as the model sees it (F16).
+
+    Each fact keeps its value and conditions; its evidence becomes at most
+    three compact citations (URL, section, page, quote of at most 300
+    characters). Internal ids and locators (XPath, CSS, block and row ids) are
+    not shown, so an answer cites what a person can find.
+    """
+    if "facts" not in result:
+        return result
+    facts = []
+    for fact in result.get("facts") or ():
+        if not isinstance(fact, dict):
+            continue
+        compact = {
+            key: fact[key]
+            for key in _MODEL_FACT_KEYS
+            if fact.get(key) not in (None, [], ())
+        }
+        citations: list[dict[str, object]] = []
+        for evidence in fact.get("evidence") or ():
+            locator = evidence.get("locator") or {}
+            url = evidence.get("source_url") or locator.get("source_url")
+            quote = str(evidence.get("quote") or "").strip()
+            if not url or not quote:
+                continue
+            citation: dict[str, object] = {"source_url": str(url)}
+            if locator.get("section"):
+                citation["section"] = locator["section"]
+            if locator.get("pdf_page"):
+                citation["page"] = locator["pdf_page"]
+            citation["quote"] = quote[:QUOTE_CHARS]
+            if citation not in citations:
+                citations.append(citation)
+            if len(citations) >= CITATIONS_PER_FIELD:
+                break
+        compact["evidence"] = citations
+        facts.append(compact)
+    return {**result, "facts": facts}
 
 
 def _require_aware(value: datetime, label: str) -> None:

@@ -14,6 +14,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Protocol
 
+from pydantic import JsonValue
+
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import SnapshotChangeSet
 from app.domain.semantic_extraction import ExtractionStatus
@@ -21,6 +23,7 @@ from app.domain.structured_tariffs import (
     SOURCE_FIELD_PATHS,
     ComparisonRow,
     FieldPath,
+    OfferingDataState,
     OfferingProfile,
     QueryOperation,
     QueryStatus,
@@ -182,14 +185,69 @@ def _display(fact: TariffFact) -> str:
     )
 
 
+class OfferingStateReader(Protocol):
+    async def offering_states(
+        self,
+        *,
+        bank: str,
+        product: ProductType,
+        offering_ids: Sequence[OfferingId],
+    ) -> dict[OfferingId, OfferingDataState]: ...
+
+
+_FEE_PATHS = tuple(path for path in FieldPath if path.value.startswith("fee."))
+
+
+def _coverage_entry(
+    offering: OfferingId, state: str, data: OfferingDataState | None = None
+) -> dict[str, JsonValue]:
+    entry: dict[str, JsonValue] = {"offering_id": offering.value, "state": state}
+    if data is not None and data.pending_reviews:
+        entry["pending_reviews"] = data.pending_reviews
+    if data is not None and data.failure_code:
+        entry["failure_code"] = data.failure_code
+    return entry
+
+
 class StructuredTariffQueryService:
     def __init__(
         self,
         repository: StructuredQueryRepository,
         unit_embedder: StructuredUnitEmbedder | None = None,
+        *,
+        offering_states: OfferingStateReader | None = None,
     ) -> None:
         self._repository = repository
         self._unit_embedder = unit_embedder
+        self._offering_states = offering_states
+
+    async def _unpublished(
+        self,
+        plan: ResolutionPlan,
+        offering_ids: tuple[OfferingId, ...],
+        profiles: tuple[OfferingProfile, ...],
+    ) -> dict[OfferingId, OfferingDataState]:
+        """In-scope offerings with no active profile, and why (F1, F4).
+
+        The reason is best effort: without a reader, or when it fails, an
+        offering is `no_accepted_data`; the answer itself never fails on it.
+        """
+        published = {item.offering_id for item in profiles}
+        missing = tuple(item for item in offering_ids if item not in published)
+        if not missing:
+            return {}
+        states: dict[OfferingId, OfferingDataState] = {}
+        if self._offering_states is not None:
+            try:
+                states = await self._offering_states.offering_states(
+                    bank=plan.bank, product=plan.product, offering_ids=missing
+                )
+            except Exception:
+                logger.warning("offering state lookup failed", exc_info=True)
+        return {
+            item: states.get(item) or OfferingDataState(state="no_accepted_data")
+            for item in missing
+        }
 
     async def answer(
         self, plan: ResolutionPlan, question: str, *, now: datetime | None = None
@@ -245,9 +303,30 @@ class StructuredTariffQueryService:
             active=len(profiles),
             snapshots=[str(item.snapshot_id)[:8] for item in profiles],
         )
+        unpublished = await self._unpublished(plan, offering_ids, profiles)
+        if unpublished:
+            record(
+                "coverage.unpublished",
+                offerings={
+                    item.value: data.state for item, data in unpublished.items()
+                },
+            )
         if not profiles:
+            states = {data.state for data in unpublished.values()}
             return self._empty(
                 plan, QueryStatus.MISSING, "no accepted offering projection"
+            ).model_copy(
+                update={
+                    "reason_code": states.pop()
+                    if len(states) == 1
+                    else "no_accepted_data",
+                    "metadata": {
+                        "coverage": [
+                            _coverage_entry(item, data.state, data)
+                            for item, data in unpublished.items()
+                        ]
+                    },
+                }
             )
         fields, fields_source = plan.fields, "question"
         if not fields:
@@ -275,21 +354,36 @@ class StructuredTariffQueryService:
             citations=sum(len(fact.evidence) for fact in found),
         )
         if not found:
-            return self._empty(
-                plan,
-                QueryStatus.INSUFFICIENT_EVIDENCE,
-                "no accepted evidence-backed fact for requested fields",
-                fields_source=fields_source,
+            return await self._not_found(
+                plan, profiles, facts, fields, fields_source, unpublished
             )
         record("branch.selected", branch=plan.operation.value)
         if plan.operation is QueryOperation.FAMILY_RANK:
-            result = self._rank(plan, profiles, found)
+            result = self._rank(plan, profiles, found, offering_ids, unpublished)
         elif plan.operation is QueryOperation.COMPARE:
             result = self._compare(plan, profiles, found, fields)
         elif plan.operation is QueryOperation.OVERVIEW:
             result = self._overview(plan, profiles, found)
         else:
             result = self._single(plan, profiles[0], found)
+        if unpublished and "coverage" not in result.metadata:
+            result = result.model_copy(
+                update={
+                    "metadata": {
+                        **result.metadata,
+                        "coverage": [
+                            _coverage_entry(
+                                item,
+                                "published"
+                                if item not in unpublished
+                                else unpublished[item].state,
+                                unpublished.get(item),
+                            )
+                            for item in offering_ids
+                        ],
+                    }
+                }
+            )
         return result.model_copy(
             update={
                 "metadata": {
@@ -530,11 +624,85 @@ class StructuredTariffQueryService:
             metadata={"comparable_fields": sum(row.comparable for row in rows)},
         )
 
+    async def _not_found(
+        self,
+        plan: ResolutionPlan,
+        profiles: tuple[OfferingProfile, ...],
+        facts: tuple[TariffFact, ...],
+        fields: tuple[FieldPath, ...],
+        fields_source: str,
+        unpublished: dict[OfferingId, OfferingDataState],
+    ) -> TariffQueryResult:
+        """No evidence-backed fact: say whether the source omits it (F5).
+
+        A fee the offering's published fee list does not name is
+        `not_stated_in_source`, with the listed fees returned so the answer can
+        cite the list it checked. A field extraction recorded as `not_stated` is
+        the same. Anything else is `field_not_extracted`.
+        """
+        result = self._empty(
+            plan,
+            QueryStatus.INSUFFICIENT_EVIDENCE,
+            "no accepted evidence-backed fact for requested fields",
+            fields_source=fields_source,
+        )
+        coverage = (
+            {
+                "coverage": [
+                    _coverage_entry(item, data.state, data)
+                    for item, data in unpublished.items()
+                ]
+            }
+            if unpublished
+            else {}
+        )
+        if fields and all(item in _FEE_PATHS for item in fields):
+            listed = tuple(
+                fact
+                for fact in await self._repository.facts(
+                    snapshots=[item.snapshot_id for item in profiles],
+                    fields=_FEE_PATHS,
+                )
+                if fact.status is ExtractionStatus.FOUND and fact.evidence
+            )
+            if listed:
+                return result.model_copy(
+                    update={
+                        "reason_code": "not_stated_in_source",
+                        "reason": (
+                            "the offering's published fee list names no "
+                            + ", ".join(
+                                item.value.removeprefix("fee.") for item in fields
+                            )
+                            + " fee"
+                        ),
+                        "facts": listed,
+                        "metadata": {
+                            **result.metadata,
+                            **coverage,
+                            "fees_checked": len(listed),
+                        },
+                    }
+                )
+        stated_absent = any(
+            fact.status is ExtractionStatus.NOT_STATED for fact in facts
+        )
+        return result.model_copy(
+            update={
+                "reason_code": (
+                    "not_stated_in_source" if stated_absent else "field_not_extracted"
+                ),
+                "metadata": {**result.metadata, **coverage},
+            }
+        )
+
     def _rank(
         self,
         plan: ResolutionPlan,
         profiles: tuple[OfferingProfile, ...],
         facts: tuple[TariffFact, ...],
+        offering_ids: tuple[OfferingId, ...] = (),
+        unpublished: dict[OfferingId, OfferingDataState] | None = None,
     ) -> TariffQueryResult:
         """Rank by group (D3): offerings compete only on a shared numeric basis.
 
@@ -622,24 +790,49 @@ class StructuredTariffQueryService:
                 reason=_incomparable_reason(groups),
                 as_of=as_of,
             )
-        unranked = sorted(
-            {fact.offering_id.value for fact in candidates}
-            - {fact.offering_id.value for fact in ordered_facts}
-        )
+        # Every in-scope offering, ranked or not, with the reason (F1).
+        unpublished = unpublished or {}
+        scope = offering_ids or tuple(item.offering_id for item in profiles)
+        ranked_ids = {fact.offering_id for fact in ordered_facts}
+        with_value = {fact.offering_id for fact in candidates}
+        coverage: list[dict[str, JsonValue]] = []
+        for offering in scope:
+            if offering in ranked_ids:
+                coverage.append(_coverage_entry(offering, "ranked"))
+            elif offering in unpublished:
+                data = unpublished[offering]
+                coverage.append(_coverage_entry(offering, data.state, data))
+            elif offering in with_value:
+                coverage.append(_coverage_entry(offering, "not_comparable"))
+            else:
+                coverage.append(_coverage_entry(offering, "no_value"))
+        not_ranked = [
+            {"offering_id": entry["offering_id"], "reason": entry["state"]}
+            for entry in coverage
+            if entry["state"] != "ranked"
+        ]
         metadata: dict[str, object] = {
             "direction": "lowest" if lowest else "highest",
             "groups": ranked_groups,
-            "not_ranked": unranked,
+            "not_ranked": not_ranked,
+            "coverage": coverage,
         }
         if len(ranked_groups) == 1:
             metadata["winner"] = ranked_groups[0]["winner"]
+        headline = f"ranked {len(ranked_ids)} of {len(scope)} offerings"
+        if not_ranked:
+            headline += "; not ranked: " + ", ".join(
+                f"{item['offering_id']} ({item['reason']})" for item in not_ranked
+            )
         return TariffQueryResult(
             status=QueryStatus.ANSWERED,
             operation=plan.operation,
             product=plan.product,
             offering_ids=tuple(item.offering_id for item in profiles),
             facts=tuple(ordered_facts),
-            answer="\n".join(
+            answer=headline
+            + "\n"
+            + "\n".join(
                 f"[{group['unit']} {group['currency'] or ''}] winner "
                 f"{group['winner']}: "
                 + "; ".join(

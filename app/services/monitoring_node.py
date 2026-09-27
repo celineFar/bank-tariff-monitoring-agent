@@ -63,6 +63,7 @@ from app.services.run_lease import (
 )
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.structured_query_planning import issue_typed_plan
+from app.services.tariff_queries import model_facing_query_result
 
 _YEREVAN = ZoneInfo("Asia/Yerevan")
 
@@ -763,6 +764,8 @@ async def _with_answer(
         logger.warning("post-monitoring answer failed run_id=%s", run.id, exc_info=True)
         return result.model_copy(update={"answer_status": "temporarily_unavailable"})
     dumped = answer.model_dump(mode="json") if hasattr(answer, "model_dump") else answer
+    if isinstance(dumped, dict):
+        dumped = model_facing_query_result(dumped)
     status = getattr(answer, "status", None)
     return result.model_copy(
         update={

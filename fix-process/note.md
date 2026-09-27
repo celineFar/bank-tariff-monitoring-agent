@@ -333,3 +333,10 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
   `missing_required_field` only, stored as `not_stated` with `confirmed_not_stated=true`
   and remembered like an override. No migration (decisions are JSONB). CLI input:
   `not_stated`, then a required "what did you check" reason.
+- **Phase 5 (answers and projection).** Rankings and other answers now account for every
+  in-scope offering (`metadata.coverage`, reasoned `not_ranked`, "ranked N of M");
+  `reason_code` explains a missing answer; a fee absent from the published fee list is
+  `not_stated_in_source`. Projection: per-fee citations, no collateral service fees on
+  tariffs without collateral, inferred rate currency, readable sections; the model sees
+  compact citations only. Stored projections on the dev database predate this and
+  refresh on the next run.

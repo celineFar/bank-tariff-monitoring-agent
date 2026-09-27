@@ -652,6 +652,18 @@ class RetrievalUnit(StructuredTariffModel):
         return self
 
 
+class OfferingDataState(StructuredTariffModel):
+    """Why an in-scope offering has no published data (F1, F4).
+
+    `state` is one of `awaiting_review`, `run_failed`, `never_monitored` or
+    `no_accepted_data` (none of those, e.g. a rejected candidate).
+    """
+
+    state: str = Field(min_length=1, max_length=50)
+    pending_reviews: int = Field(default=0, ge=0)
+    failure_code: str | None = Field(default=None, max_length=100)
+
+
 class TariffQueryResult(StructuredTariffModel):
     status: QueryStatus
     operation: QueryOperation
@@ -662,6 +674,10 @@ class TariffQueryResult(StructuredTariffModel):
     retrieval_units: tuple[RetrievalUnit, ...] = ()
     answer: str | None = None
     reason: str | None = None
+    # Why there is no answer, as a code the agent maps to its next step (F4):
+    # awaiting_review, run_failed, never_monitored, no_accepted_data,
+    # not_stated_in_source, field_not_extracted.
+    reason_code: str | None = None
     as_of: datetime | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
 

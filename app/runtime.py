@@ -321,9 +321,12 @@ def build_application_container(
         ),
         usage_repository=model_usage,
     )
+    structured_query_repository = PostgresStructuredTariffQueryRepository(sessions)
     structured_query_service = StructuredTariffQueryService(
-        PostgresStructuredTariffQueryRepository(sessions),
+        structured_query_repository,
         unit_embeddings,
+        # Why an in-scope offering has no published data (F1, F4).
+        offering_states=structured_query_repository,
     )
     answer_router = TariffAnswerRouter(
         structured_query_service,

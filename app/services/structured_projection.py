@@ -20,6 +20,8 @@ from app.domain.semantic_extraction import (
     ExtractedValue,
     ExtractionField,
     ExtractionStatus,
+    FeeScope,
+    LoanFee,
     LoanProduct,
     MoneyRange,
     OtherAmountFormula,
@@ -43,6 +45,7 @@ from app.domain.structured_tariffs import (
     fee_field_path,
     field_label,
 )
+from app.services.semantic_extraction import quote_numbers
 from app.services.snapshot_lifecycle import canonical_tariff_payload
 
 _OFFICIAL = {
@@ -88,6 +91,77 @@ def _clean(value: str) -> str:
     return " ".join(plain.split())
 
 
+# General loan-service fees about collateral, pledges or vehicles (F17).
+_COLLATERAL_SERVICE = re.compile(
+    r"collateral|pledge|security interest|vehicle", re.IGNORECASE
+)
+# "... and not related to the collateral" names collateral only to exclude it.
+_NOT_ABOUT_COLLATERAL = re.compile(
+    r"not related to (?:the )?(?:collateral|pledge)", re.IGNORECASE
+)
+_INFERRED_CURRENCY = {
+    "dimension": "other",
+    "operator": None,
+    "value": "currency inferred from the offering's loan amounts",
+}
+
+
+def _fee_citations(
+    fee: LoanFee, citations: tuple[EvidenceCitation, ...]
+) -> tuple[EvidenceCitation, ...]:
+    """The fee field's citations that support this fee (F15).
+
+    By description (up to its first colon), else by the fee's number; the
+    whole field's citations only when neither matches.
+    """
+    label = " ".join(fee.description.split(":", 1)[0].split()).casefold()[:60]
+    by_label = tuple(
+        item
+        for item in citations
+        if label and label in " ".join(item.quote.split()).casefold()
+    )
+    if by_label:
+        return by_label
+    numbers = {
+        Decimal(str(value))
+        for value in (fee.amount, fee.rate_pct)
+        if value is not None and value != 0
+    }
+    by_number = tuple(item for item in citations if numbers & quote_numbers(item.quote))
+    return by_number or citations
+
+
+def _with_inferred_rate_currency(facts: list[TariffFact]) -> list[TariffFact]:
+    """A rate with no currency takes the offering's only loan currency (F2).
+
+    Online Consumer Finance states its 17% without "AMD" and lends only in
+    AMD; the inference is written into the fact's conditions.
+    """
+    amounts = {
+        fact.currency
+        for fact in facts
+        if fact.currency
+        and fact.status is ExtractionStatus.FOUND
+        and fact.field_path.value.startswith(("amount.", "revolving.credit_limit."))
+    }
+    if len(amounts) != 1:
+        return facts
+    (currency,) = amounts
+    return [
+        fact.model_copy(
+            update={
+                "currency": currency,
+                "conditions": (*fact.conditions, dict(_INFERRED_CURRENCY)),
+            }
+        )
+        if fact.field_path.value.startswith("rate.")
+        and fact.currency is None
+        and fact.status is ExtractionStatus.FOUND
+        else fact
+        for fact in facts
+    ]
+
+
 class StructuredTariffProjector:
     """Fail closed when accepted facts cannot be tied to captured official evidence."""
 
@@ -128,6 +202,7 @@ class StructuredTariffProjector:
             fee_scope: str | None = None,
             suffix: str = "",
             group: str | None = None,
+            citations: tuple[EvidenceCitation, ...] | None = None,
         ) -> None:
             condition_values = tuple(_json_value(item) for item in conditions)
             encoded = _json_value(value)
@@ -138,7 +213,10 @@ class StructuredTariffProjector:
                 suffix,
             )[:24]
             evidence = (
-                self._evidence(extracted.evidence, catalog)
+                self._evidence(
+                    citations if citations is not None else extracted.evidence,
+                    catalog,
+                )
                 if extracted.status is ExtractionStatus.FOUND
                 else ()
             )
@@ -162,6 +240,12 @@ class StructuredTariffProjector:
             )
 
         fields = self._extracted_fields(product)
+        # A tariff that states no collateral has none to service (F17).
+        states_collateral = any(
+            field is ExtractionField.COLLATERAL
+            and extracted.status is ExtractionStatus.FOUND
+            for field, extracted in fields
+        )
         for field, extracted in fields:
             paths = SOURCE_FIELD_PATHS[field]
             if field is ExtractionField.CATEGORY:
@@ -181,6 +265,14 @@ class StructuredTariffProjector:
                 self._terms(extracted, emit)
             elif field is ExtractionField.FEES:
                 for fee in extracted.value:
+                    if (
+                        not states_collateral
+                        and fee.scope is FeeScope.GENERAL_LOAN_SERVICE
+                        and _COLLATERAL_SERVICE.search(
+                            _NOT_ABOUT_COLLATERAL.sub("", fee.description)
+                        )
+                    ):
+                        continue
                     emit(
                         fee_field_path(fee.description),
                         fee,
@@ -194,6 +286,7 @@ class StructuredTariffProjector:
                         else None,
                         currency=fee.currency,
                         fee_scope=fee.scope.value,
+                        citations=_fee_citations(fee, extracted.evidence),
                     )
             elif field in {ExtractionField.DOWN_PAYMENT_PCT, ExtractionField.LTV_PCT}:
                 low, high = paths
@@ -293,6 +386,7 @@ class StructuredTariffProjector:
                     else:
                         emit(paths[0], item, extracted)
 
+        facts = _with_inferred_rate_currency(facts)
         profile = self._profile(snapshot, product, display_name, aliases)
         units = self._units(snapshot, profile, facts, language)
         return StructuredProjection(profile=profile, facts=tuple(facts), units=units)
@@ -324,6 +418,11 @@ class StructuredTariffProjector:
                 )
             if citation.authority not in _OFFICIAL or item.authority not in _OFFICIAL:
                 raise ValueError("fact citation is not an official source")
+            locator = citation.locator.model_dump(mode="json", exclude_none=True)
+            # The page or document section a person can find (F16).
+            section = citation.section or item.section
+            if section:
+                locator["section"] = section
             verified.append(
                 FactEvidence(
                     evidence_id=citation.evidence_id,
@@ -332,7 +431,7 @@ class StructuredTariffProjector:
                     source_item_id=citation.source_item_id,
                     source_document_key=item.document_id,
                     authority=citation.authority.value,
-                    locator=citation.locator.model_dump(mode="json", exclude_none=True),
+                    locator=locator,
                 )
             )
         if not verified:

@@ -113,7 +113,6 @@ class _States:
 RANK_QUESTION = "Which consumer loan has the lowest nominal interest rate in AMD?"
 
 
-@pytest.mark.xfail(strict=True, reason="F1")
 @pytest.mark.asyncio
 async def test_f1_a_ranking_names_every_offering_it_could_not_rank() -> None:
     repository = _ProjectionRepository(
@@ -165,7 +164,6 @@ async def test_f1_a_ranking_names_every_offering_it_could_not_rank() -> None:
 # --- F2: a single-currency offering's rate takes that currency ----------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F2")
 def test_f2_online_consumer_finance_rate_inherits_its_amount_currency() -> None:
     rates = [
         fact
@@ -227,7 +225,6 @@ def test_f3_the_interpreter_is_told_what_broad_words_mean() -> None:
 # --- F4: the reason an answer is missing --------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F4")
 @pytest.mark.asyncio
 async def test_f4_a_missing_answer_says_the_offering_awaits_review() -> None:
     question = "What repayment term does the Primary Market Mortgage offer?"
@@ -260,7 +257,6 @@ async def test_f4_a_missing_answer_says_the_offering_awaits_review() -> None:
 # --- F5: a fee the bank does not publish --------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F5")
 @pytest.mark.asyncio
 async def test_f5_a_fee_missing_from_the_published_fee_list_is_not_stated() -> None:
     question = "What application fee applies to the Express Mortgage?"
@@ -798,7 +794,6 @@ def test_f9_hero_tariff_lines_are_content_not_page_header() -> None:
 # --- F15, F16, F17: fee citations and readable locators ---------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F15")
 def test_f15_each_fee_cites_its_own_evidence() -> None:
     fees = [
         fact
@@ -809,7 +804,6 @@ def test_f15_each_fee_cites_its_own_evidence() -> None:
     assert max(len(fact.evidence) for fact in fees) <= 3
 
 
-@pytest.mark.xfail(strict=True, reason="F16")
 def test_f16_fact_citations_carry_a_readable_section() -> None:
     facts = _projection("credit_line").facts
     sections = [
@@ -818,7 +812,6 @@ def test_f16_fact_citations_carry_a_readable_section() -> None:
     assert any(sections)
 
 
-@pytest.mark.xfail(strict=True, reason="F16")
 def test_f16_the_model_sees_compact_citations_without_internal_ids() -> None:
     from app.tools.reads import model_facing_result
 
@@ -835,7 +828,6 @@ def test_f16_the_model_sees_compact_citations_without_internal_ids() -> None:
     assert "xpath" not in json.dumps(payload)
 
 
-@pytest.mark.xfail(strict=True, reason="F17")
 def test_f17_an_unsecured_offering_lists_no_collateral_service_fees() -> None:
     descriptions = [
         str((fact.value or {}).get("description", "")).casefold()
@@ -844,10 +836,12 @@ def test_f17_an_unsecured_offering_lists_no_collateral_service_fees() -> None:
     ]
     assert descriptions
     assert not any(
-        word in text
+        word in text.replace("not related to the collateral", "")
         for text in descriptions
         for word in ("collateral", "pledged", "vehicle", "security interest")
     )
+    # A consent fee that says it is not about collateral stays.
+    assert any("not related to the collateral" in text for text in descriptions)
 
 
 def test_f17_a_mortgage_keeps_its_collateral_fees() -> None:

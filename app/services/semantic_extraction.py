@@ -1937,6 +1937,10 @@ def _quote_numbers(text: str, *, months: bool = False) -> set[Decimal]:
     return scaled
 
 
+# Projection matches a fee to its own citations by these numbers (F15).
+quote_numbers = _quote_numbers
+
+
 def _repair_batch(
     original: ExtractionBatch,
     field: ExtractionField,
