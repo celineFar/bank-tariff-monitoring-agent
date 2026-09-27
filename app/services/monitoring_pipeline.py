@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
@@ -48,12 +48,14 @@ from app.repositories.contracts import (
     ReviewRepository,
     RunRepository,
 )
+from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
 from app.services.failure_mapping import (
     bounded_failure_detail,
     describe_failure,
     source_failure_code,
 )
 from app.services.knowledge_projection import KnowledgeProjectionService
+from app.services.model_call_usage import pipeline_usage_scope
 from app.services.monitoring_progress import (
     PipelineProgress,
     ProgressKind,
@@ -128,6 +130,44 @@ class SemanticExtractionPort(Protocol):
     ) -> SemanticExtractionResult: ...
 
 
+_TRANSIENT_ACQUISITION = frozenset(
+    {
+        AcquisitionFailure.BROWSER_FAILED,
+        AcquisitionFailure.BROWSER_UNAVAILABLE,
+        AcquisitionFailure.INCOMPLETE_CONTENT,
+    }
+)
+
+
+async def acquire_with_retry(
+    acquire: Callable[[str], Awaitable[T]],
+    url: str,
+    *,
+    retries: int = 1,
+    delay_seconds: float = 10.0,
+) -> T:
+    """Fetch a page, once more after a transient failure (F18).
+
+    A browser failure or a page that rendered incompletely is often a network
+    blip: on 2026-09-27 two pages failed this way during a DNS outage and loaded
+    on the next run. Anything else fails at once.
+    """
+    attempt = 0
+    while True:
+        try:
+            return await acquire(url)
+        except AcquisitionError as exc:
+            if attempt >= retries or exc.reason not in _TRANSIENT_ACQUISITION:
+                raise
+            attempt += 1
+            logger.warning(
+                "acquisition failed (%s); retrying in %.0f s",
+                exc.reason.value,
+                delay_seconds,
+            )
+            await asyncio.sleep(delay_seconds)
+
+
 class OfferingPipelineError(RuntimeError):
     def __init__(self, stage: str, failure_code: str, cause: Exception) -> None:
         super().__init__(f"{stage} failed: {type(cause).__name__}")
@@ -163,8 +203,10 @@ class IndexingPipeline:
         review_rank_gap: float = 0.05,
         pdf_selection: PdfLinkSelectionPort | None = None,
         catalog: SeedCatalog | None = None,
+        acquisition_retry_delay_seconds: float = 10.0,
     ) -> None:
         self._acquisition = acquisition
+        self._acquisition_retry_delay_seconds = acquisition_retry_delay_seconds
         self._pdf_selection = pdf_selection
         # The other offerings, for source discovery's cross-sell rule.
         self._catalog = catalog
@@ -229,7 +271,11 @@ class IndexingPipeline:
         artifact = await stage(
             "acquisition",
             OfferingFailureCode.ACQUISITION_FAILED,
-            self._acquisition.acquire(str(offering.seed_url)),
+            acquire_with_retry(
+                self._acquisition.acquire,
+                str(offering.seed_url),
+                delay_seconds=self._acquisition_retry_delay_seconds,
+            ),
         )
         if self._runs is not None:
             try:
@@ -599,12 +645,14 @@ class TariffPipeline:
                         span.set_attribute(
                             "tariff.offering_id", offering.offering_id.value
                         )
-                        result = await self._indexing.refresh(
-                            offering,
-                            run.id,
-                            execution.id,
-                            progress=tracker,
-                        )
+                        # Every model call of this offering is costed to it (F19).
+                        with pipeline_usage_scope(run.id, offering.offering_id.value):
+                            result = await self._indexing.refresh(
+                                offering,
+                                run.id,
+                                execution.id,
+                                progress=tracker,
+                            )
                 except OfferingPipelineError as exc:
                     failed += 1
                     failure_codes.append(exc.failure_code)

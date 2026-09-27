@@ -414,6 +414,9 @@ class HitlSettings(SettingsGroup):
 
 
 class SchedulerSettings(SettingsGroup):
+    # False keeps the worker claiming API runs and sweeping embeddings without the
+    # daily cron job (F21).
+    enabled: bool = True
     timezone: str = "Asia/Yerevan"
     hour: int = Field(default=6, ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)

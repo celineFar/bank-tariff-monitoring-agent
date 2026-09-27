@@ -68,7 +68,9 @@ shell, or SQL tool.
 - `app/services/`: pipeline orchestration interfaces and deterministic application
   services. `AcquisitionService` combines restricted static HTML retrieval, faithful
   structural parsing, conditional Playwright rendering, content-addressed artifact
-  storage, and linked-PDF retrieval (network responses are not captured). `PdfDownloader`
+  storage, and linked-PDF retrieval (network responses are not captured). The pipeline
+  retries a page once, after a short wait, when it fails with a browser failure or
+  incomplete content (`acquire_with_retry`). `PdfDownloader`
   uses an injected, caller-owned HTTP client and returns
   immutable PDF artifacts only after URL/redirect, status, size, MIME, and signature
   checks complete. `StructuralNormalizationService` converts the acquired page
@@ -123,7 +125,9 @@ shell, or SQL tool.
   model call/cost ledger shared by direct Gemini adapters and ADK callbacks. A chat
   model call made in an invocation that executes or resumes a monitoring run records
   that run: the monitoring node sets `temp:monitoring_active_run` on the invocation's
-  state. The
+  state. The pipeline's own calls (discovery, PDF transcription, extraction,
+  embeddings) record the run and offering through `pipeline_usage_scope`, a context
+  variable the pipeline sets around each offering. The
   read-only `scripts/model_cost_report.py` reports known and unknown costs;
   `docs/model-cost-monitoring.md` records coverage and pricing assumptions.
 - `app/repositories/embedding_cache.py` and migration `012`: document-text vectors
@@ -158,7 +162,9 @@ shell, or SQL tool.
   reliability, and change volume, read from the durable audit tables. Run
   latency excludes time waiting for a reviewer.
 - `app/worker.py`: PostgreSQL queue worker plus daily Asia/Yerevan scheduler; both
-  scheduled families are submitted independently through `RunService`. Claimed work
+  scheduled families are submitted independently through `RunService`.
+  `SCHEDULE_ENABLED=false` leaves out the daily job (`schedule_daily_monitoring`) and
+  keeps the rest of the worker. Claimed work
   calls `TariffPipeline.execute(run, progress=LogProgressSink)` directly; the worker
   owns no ADK app or session and imports nothing from `google.adk`. A run that
   pauses for review stays `awaiting_review` and is reviewed from the CLI. A claimed

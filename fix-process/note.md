@@ -345,3 +345,6 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
   `reason_code` and says "ranked N of M". Only 7 affected interpretation cases were
   re-recorded (~$0.03); the other 129 keep recordings made with the previous prompt. Q6
   reaches the 20-field shape cap and loses the fee paths.
+- **Phase 7 (operations).** One in-run fetch retry on transient failures; pipeline model
+  calls carry run and offering in the cost ledger; `SCHEDULE_ENABLED=false` switches off
+  the daily run. All 31 first-iteration regression tests pass; the suite is at baseline.

@@ -172,8 +172,9 @@ downloader receives `settings.http` and the PDF extraction service receives
   `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`. The latter defaults to three percentage
   points. These settings create deterministic review reasons; they do not authorize or
   apply a decision.
-- **Scheduling:** `SCHEDULE_TIMEZONE`, `SCHEDULE_HOUR`, and
-  `SCHEDULE_MINUTE`.
+- **Scheduling:** `SCHEDULE_ENABLED` (default `true`; `false` adds no daily run, while
+  the worker still executes API runs and sweeps embeddings), `SCHEDULE_TIMEZONE`,
+  `SCHEDULE_HOUR`, and `SCHEDULE_MINUTE`.
 - **Logging and serving:** `LOG_LEVEL`, `LOG_FILE`, `LOG_TIMEZONE`,
   `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, and `ALLOW_ORIGINS`.
   Compose sets a separate `LOG_FILE` for API and worker; `./tariff-chat` writes

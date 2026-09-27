@@ -175,6 +175,7 @@ def load_settings(
             review_admin_token=raw.review_admin_token,
         ),
         scheduler=SchedulerSettings(
+            enabled=raw.schedule_enabled,
             timezone=raw.schedule_timezone,
             hour=raw.schedule_hour,
             minute=raw.schedule_minute,

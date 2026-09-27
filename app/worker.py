@@ -48,6 +48,25 @@ class EmbeddingSweepPort(Protocol):
     async def embed_missing(self, *, limit: int = 200) -> int: ...
 
 
+def schedule_daily_monitoring(scheduler, settings, service: RunServicePort) -> bool:
+    """Add the daily run unless `SCHEDULE_ENABLED=false` (F21)."""
+    if not settings.enabled:
+        logger.info("daily scheduled monitoring is disabled (SCHEDULE_ENABLED=false)")
+        return False
+    scheduler.add_job(
+        run_scheduled_monitoring,
+        trigger="cron",
+        hour=settings.hour,
+        minute=settings.minute,
+        id="daily-ameria-tariff-monitoring",
+        max_instances=1,
+        coalesce=True,
+        replace_existing=True,
+        args=(service,),
+    )
+    return True
+
+
 async def run_scheduled_monitoring(service: RunServicePort) -> None:
     for product in PRODUCTS:
         result = await service.submit(
@@ -309,17 +328,7 @@ async def main() -> None:
         recovery_interval_seconds=settings.scheduler.run_recovery_interval_seconds,
     )
     scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)
-    scheduler.add_job(
-        run_scheduled_monitoring,
-        trigger="cron",
-        hour=settings.scheduler.hour,
-        minute=settings.scheduler.minute,
-        id="daily-ameria-tariff-monitoring",
-        max_instances=1,
-        coalesce=True,
-        replace_existing=True,
-        args=(container.run_service,),
-    )
+    schedule_daily_monitoring(scheduler, settings.scheduler, container.run_service)
     scheduler.start()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

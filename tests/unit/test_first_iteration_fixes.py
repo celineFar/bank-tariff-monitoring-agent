@@ -853,7 +853,6 @@ def test_f17_a_mortgage_keeps_its_collateral_fees() -> None:
 # --- F18: one in-run retry of a transient fetch failure ---------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F18")
 @pytest.mark.asyncio
 async def test_f18_a_transient_browser_failure_is_retried_once() -> None:
     from app.services.acquisition_errors import AcquisitionError, AcquisitionFailure
@@ -876,7 +875,6 @@ async def test_f18_a_transient_browser_failure_is_retried_once() -> None:
 # --- F19: pipeline model calls carry the run --------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F19")
 def test_f19_a_pipeline_call_is_attributed_to_its_run() -> None:
     from app.services.model_call_usage import active_run_id, pipeline_usage_scope
 
@@ -891,10 +889,29 @@ def test_f19_a_pipeline_call_is_attributed_to_its_run() -> None:
 # --- F21: the scheduler can be switched off ---------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F21")
 def test_f21_schedule_enabled_setting(monkeypatch) -> None:
     from app.config.loader import load_settings
 
     assert load_settings(_env_file=None).scheduler.enabled is True
     monkeypatch.setenv("SCHEDULE_ENABLED", "false")
     assert load_settings(_env_file=None).scheduler.enabled is False
+
+
+def test_f21_a_disabled_schedule_adds_no_job() -> None:
+    from app.config.models import SchedulerSettings
+    from app.worker import schedule_daily_monitoring
+
+    class Scheduler:
+        def __init__(self) -> None:
+            self.jobs: list[str] = []
+
+        def add_job(self, *args, **kwargs):
+            self.jobs.append(kwargs["id"])
+
+    off, on = Scheduler(), Scheduler()
+    assert (
+        schedule_daily_monitoring(off, SchedulerSettings(enabled=False), object())
+        is False
+    )
+    assert schedule_daily_monitoring(on, SchedulerSettings(), object()) is True
+    assert (off.jobs, on.jobs) == ([], ["daily-ameria-tariff-monitoring"])

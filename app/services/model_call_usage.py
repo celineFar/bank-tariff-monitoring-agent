@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -256,6 +258,10 @@ def new_usage(
     request_id: str | None = None,
     error_class: str | None = None,
 ) -> ModelCallUsage:
+    scope = _PIPELINE_SCOPE.get()
+    if scope is not None:
+        run_id = run_id or scope[0]
+        offering_id = offering_id or scope[1]
     return ModelCallUsage(
         call_id=call_id or str(uuid4()),
         attempt=attempt,
@@ -335,12 +341,34 @@ async def observe_model_call(
 ACTIVE_RUN_STATE_KEY = "temp:monitoring_active_run"
 
 
+# The run and offering a pipeline stage works for (F19). The pipeline's own model
+# calls (discovery, PDF transcription, extraction) run in their own ADK sessions
+# or none, so the chat session's run marker never reaches them.
+_PIPELINE_SCOPE: ContextVar[tuple[UUID, str | None] | None] = ContextVar(
+    "pipeline_usage_scope", default=None
+)
+
+
+@contextmanager
+def pipeline_usage_scope(run_id: UUID, offering_id: str | None) -> Iterator[None]:
+    """Attribute every model call made inside to this run and offering."""
+    token = _PIPELINE_SCOPE.set((run_id, offering_id))
+    try:
+        yield
+    finally:
+        _PIPELINE_SCOPE.reset(token)
+
+
 def active_run_id(callback_context) -> UUID | None:
     """The run the invocation is executing or resuming, if any."""
+    scope = _PIPELINE_SCOPE.get()
+    fallback = scope[0] if scope is not None else None
     try:
         value = callback_context.state.get(ACTIVE_RUN_STATE_KEY)
     except Exception:
-        return None
+        return fallback
+    if value is None:
+        return fallback
     if isinstance(value, dict):
         if value.get("invocation_id") not in (None, callback_context.invocation_id):
             return None

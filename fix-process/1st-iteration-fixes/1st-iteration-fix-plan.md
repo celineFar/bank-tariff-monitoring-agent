@@ -736,14 +736,37 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 7: Operations (F18, F19, F21)
 
-- [ ] F18: one in-run acquisition retry with backoff for transient failure codes.
-- [ ] F19: context variable with `run_id`/`offering_id` set by the pipeline; the usage
+- [x] F18: one in-run acquisition retry with backoff for transient failure codes.
+- [x] F19: context variable with `run_id`/`offering_id` set by the pipeline; the usage
       recorder falls back to it.
-- [ ] F21: `SCHEDULE_ENABLED` setting; document in
+- [x] F21: `SCHEDULE_ENABLED` setting; document in
       [docs/configuration.md](../../docs/configuration.md).
-- [ ] Update [docs/architecture.md](../../docs/architecture.md) (scheduler switch,
+- [x] Update [docs/architecture.md](../../docs/architecture.md) (scheduler switch,
       acquisition retry, ledger attribution).
-- [ ] Remove the `xfail` marks; run the suite.
+- [x] Remove the `xfail` marks; run the suite.
+
+**Phase 7 notes (done).**
+
+- **F18** ([monitoring_pipeline.py](../../app/services/monitoring_pipeline.py)):
+  `acquire_with_retry` retries once on `BROWSER_FAILED`, `BROWSER_UNAVAILABLE` or
+  `INCOMPLETE_CONTENT`, after `acquisition_retry_delay_seconds` (a new
+  `IndexingPipeline` argument, default 10 s; not an environment setting yet). Other
+  acquisition errors fail at once, as before. A failing page now costs up to two fetch
+  attempts per run (a browser timeout is about 4 minutes, as seen on 2026-09-27).
+- **F19** ([model_call_usage.py](../../app/services/model_call_usage.py)):
+  `pipeline_usage_scope(run_id, offering_id)` sets a context variable; `new_usage` (every
+  ledger row) and `active_run_id` (ADK callbacks) fall back to it. The pipeline wraps
+  each offering's `refresh` in it. Context variables follow `asyncio.gather` tasks, so
+  concurrent extraction calls inherit it. Chat calls keep using the session's run
+  marker first.
+- **F21** ([config](../../app/config/), [worker.py](../../app/worker.py)):
+  `SchedulerSettings.enabled` / `SCHEDULE_ENABLED` (default true, in `.env.example`);
+  `schedule_daily_monitoring` adds the cron job only when enabled and logs when it does
+  not. Test added: `test_f21_a_disabled_schedule_adds_no_job`.
+- Docs: configuration (scheduler switch), architecture (scheduler switch, acquisition
+  retry, pipeline cost attribution).
+- Full suite: 1,236 passed, 59 skipped, 0 xfailed; only the 4 baseline live-environment
+  tests fail. **Every regression test from Phase 0 now passes.**
 
 ### Phase 8: Live validation
 

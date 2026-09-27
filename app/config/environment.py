@@ -126,6 +126,7 @@ class EnvironmentSettings(BaseSettings):
     hitl_document_rank_gap: float = 0.05
     hitl_large_rate_change_percentage_points: float = 3
     review_admin_token: SecretStr | None = None
+    schedule_enabled: bool = True
     schedule_timezone: str = "Asia/Yerevan"
     schedule_hour: int = 6
     schedule_minute: int = 0
