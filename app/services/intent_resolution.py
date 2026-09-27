@@ -40,13 +40,15 @@ from app.domain.intent import (
     ResolutionTurn,
 )
 from app.domain.interpretation import (
+    InterpretationContext,
     InterpretationRequest,
     InterpretedIntent,
     PendingOffer,
     RequestInterpretation,
+    ScopeView,
 )
 from app.domain.models import OfferingId, ProductType
-from app.domain.query_shape import Currency, ReplyKind
+from app.domain.query_shape import Currency, QueryShape, ReplyKind
 from app.domain.structured_tariffs import (
     FieldPath,
     QueryOperation,
@@ -363,6 +365,42 @@ class RequestResolver:
             state=next_state(
                 current_state, resolution, message=message, now=_utc_now()
             ),
+        )
+
+    async def shape_for(
+        self,
+        question: str,
+        *,
+        product: ProductType,
+        offering_ids: tuple[OfferingId, ...] = (),
+    ) -> QueryShape:
+        """D9: the interpreter proposes only the shape of a typed-scope question.
+
+        Raises `InterpretationUnavailable` when the interpreter fails, and
+        `ValueError` when the question has no answerable shape in that scope.
+        """
+        message = question.strip()
+        if not message:
+            raise ValueError("query must not be empty")
+        if self._interpreter is None:
+            raise InterpretationUnavailable("no request interpreter configured")
+        request = InterpretationRequest(
+            message=message[:2000],
+            context=InterpretationContext(
+                last_scope=ScopeView(product=product, offering_ids=offering_ids)
+            ),
+            catalog=self._catalog_view,
+            allowed=self._allowed,
+        )
+        try:
+            interpretation = await self._interpreter.interpret(request)
+        except Exception as exc:
+            logger.warning(
+                "shape interpretation unavailable error=%s", type(exc).__name__
+            )
+            raise InterpretationUnavailable(type(exc).__name__) from exc
+        return self._validator.shape_within(
+            interpretation, message=message, product=product, offering_ids=offering_ids
         )
 
     def catalog_payload(

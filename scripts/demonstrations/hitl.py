@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import RunCommand, RunTrigger, SnapshotStatus
+from app.domain.query_shape import QueryShape
 from app.domain.review import (
     ReviewCandidate,
     ReviewDecision,
@@ -17,7 +18,7 @@ from app.domain.review import (
     ReviewStatus,
     ReviewTask,
 )
-from app.domain.structured_tariffs import FieldPath, QueryStatus
+from app.domain.structured_tariffs import FieldPath, QueryOperation, QueryStatus
 from app.repositories.monitoring import (
     PostgresRunRepository,
     PostgresSnapshotRepository,
@@ -28,7 +29,7 @@ from app.repositories.structured_tariff_query import (
 )
 from app.services.snapshot_lifecycle import detect_large_rate_changes
 from app.services.structured_backfill import StructuredProjectionBackfill
-from app.services.structured_query_planning import issue_typed_resolution_plan
+from app.services.structured_query_planning import issue_typed_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from scripts.demonstrations import ScenarioResult
 from scripts.demonstrations.support import (
@@ -166,10 +167,14 @@ async def run() -> ScenarioResult:
         service = StructuredTariffQueryService(
             PostgresStructuredTariffQueryRepository(sessions)
         )
-        plan = issue_typed_resolution_plan(
+        plan = issue_typed_plan(
             QUESTION,
             product=base.product,
             offering_ids=(base.offering_id,),
+            shape=QueryShape(
+                operation=QueryOperation.SINGLE,
+                fields=(FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM),
+            ),
             session_id="demo-hitl",
             turn_id="turn-1",
         )

@@ -165,12 +165,10 @@ async def resolve_request(tool_context: ToolContext) -> dict[str, object]:
         }
 
     if resolved_intent in _READ_INTENTS and not resolution.needs_clarification:
-        question = resolution.standalone_question or user_text.strip()[:1000]
         try:
             plan = issue_read_grant(
-                question,
                 resolution,
-                history=resolved_intent is RequestIntent.GET_CHANGE_HISTORY,
+                question=resolution.standalone_question or user_text.strip()[:1000],
                 session_id=tariff_session_id(tool_context),
                 turn_id=tariff_turn_id(tool_context),
             )

@@ -7,14 +7,15 @@ import httpx
 from app.config.models import HttpSettings
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import SourceFailureCode
-from app.domain.structured_tariffs import QueryStatus
+from app.domain.query_shape import QueryShape
+from app.domain.structured_tariffs import FieldPath, QueryOperation, QueryStatus
 from app.repositories.structured_tariff_query import (
     PostgresStructuredTariffQueryRepository,
 )
 from app.security.urls import DisallowedSourceUrl, validate_source_url
 from app.services.failure_mapping import source_failure_code
 from app.services.html_retriever import HtmlRetrievalError, HtmlRetriever
-from app.services.structured_query_planning import issue_typed_resolution_plan
+from app.services.structured_query_planning import issue_typed_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from scripts.demonstrations import ScenarioResult
 from scripts.demonstrations.support import demonstration_sessions
@@ -122,10 +123,13 @@ async def run() -> ScenarioResult:
             PostgresStructuredTariffQueryRepository(sessions)
         )
         question = "What application fee applies to the Express Mortgage?"
-        plan = issue_typed_resolution_plan(
+        plan = issue_typed_plan(
             question,
             product=ProductType.MORTGAGE,
             offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+            shape=QueryShape(
+                operation=QueryOperation.SINGLE, fields=(FieldPath.FEE_APPLICATION,)
+            ),
             session_id="demo-failures",
             turn_id="turn-1",
         )

@@ -30,7 +30,9 @@ def _restore_level():
     configure_retrieval_trace(previous)
 
 
-def _plan() -> ResolutionPlan:
+def _plan(
+    fields=(FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM),
+) -> ResolutionPlan:
     issued = datetime.now(UTC)
     return ResolutionPlan(
         session_id="trace-session",
@@ -41,15 +43,15 @@ def _plan() -> ResolutionPlan:
         product=ProductType.CONSUMER_LOAN,
         offering_ids=(OfferingId.OVERDRAFT,),
         operation=QueryOperation.SINGLE,
-        fields=(FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM),
+        fields=fields,
     )
 
 
-async def _answer(caplog, level: RetrievalTraceLevel):
+async def _answer(caplog, level: RetrievalTraceLevel, **plan):
     configure_retrieval_trace(level)
     with caplog.at_level("INFO", logger=RETRIEVAL_LOGGER_NAME):
         await StructuredTariffQueryService(EvaluationRepository()).answer(
-            _plan(), QUESTION
+            _plan(**plan), QUESTION
         )
     return [
         record.getMessage()
@@ -83,17 +85,14 @@ async def test_steps_records_every_stage_in_call_order(caplog) -> None:
         for part in line.split()
         if part.startswith("stage=")
     ]
+    # The question names its fields, so no retrieval runs (D4).
     assert stages == [
         "begin",
         "plan.authorized",
         "profiles.loaded",
+        "fields.selected",
         "facts.loaded",
         "branch.selected",
-        "lexical.query",
-        "lexical.result",
-        "vector.skipped",
-        "fusion.ranked",
-        "units.admitted",
     ]
     trace_ids = {
         part for line in lines for part in line.split() if part.startswith("trace=")
@@ -114,11 +113,15 @@ async def test_steps_keeps_question_and_unit_text_out_of_the_log(caplog) -> None
 
 @pytest.mark.asyncio
 async def test_verbose_adds_derived_terms_and_unit_text(caplog) -> None:
-    lines = await _answer(caplog, RetrievalTraceLevel.VERBOSE)
+    # A question naming no field runs the field finder, which the trace shows.
+    lines = await _answer(caplog, RetrievalTraceLevel.VERBOSE, fields=())
 
     logged = "\n".join(lines)
+    assert "stage=fusion.ranked" in logged
     assert "stage=lexical.terms" in logged
-    assert '"nominal" or "interest" or "rate" or "overdraft"' in logged
+    # The offering's own name is left out: it matches every one of its units.
+    assert "nominal:* | interest:* | rate:*" in logged
+    assert "overdraft:*" not in logged
     assert "stage=unit.content" in logged
     assert "minimum nominal interest rate (rate.nominal.minimum)" in logged
 

@@ -540,16 +540,12 @@ class ResolutionPlan(StructuredTariffModel):
             raise ValueError("comparison requires at least two offerings")
         if self.operation is QueryOperation.FAMILY_RANK and self.rank_direction is None:
             raise ValueError("family rank requires an explicit direction")
-        if (
-            self.operation
-            in {
-                QueryOperation.SINGLE,
-                QueryOperation.COMPARE,
-                QueryOperation.FAMILY_RANK,
-            }
-            and not self.fields
-        ):
-            raise ValueError("tariff query requires canonical fields")
+        if self.operation is QueryOperation.OVERVIEW and not self.offering_ids:
+            raise ValueError("an overview requires offerings")
+        # A single, compare or overview question may name no field: the answer
+        # path finds the fields (the field finder). A rank ranks exactly one.
+        if self.operation is QueryOperation.FAMILY_RANK and len(self.fields) != 1:
+            raise ValueError("family rank requires exactly one canonical field")
         return self
 
 

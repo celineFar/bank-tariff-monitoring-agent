@@ -17,8 +17,8 @@ from collections.abc import Iterable, Sequence
 from pydantic import BaseModel
 
 from app.config import load_seed_catalog
-from app.config.models import IntentResolutionSettings
 from app.domain.monitoring import SnapshotStatus
+from app.domain.query_shape import QueryShape
 from app.domain.semantic_extraction import (
     EvidenceCitation,
     ExtractedValue,
@@ -26,14 +26,13 @@ from app.domain.semantic_extraction import (
     ExtractionStatus,
     LoanProduct,
 )
-from app.domain.structured_tariffs import QueryStatus
+from app.domain.structured_tariffs import FieldPath, QueryOperation, QueryStatus
 from app.repositories.structured_tariff_query import (
     PostgresStructuredTariffQueryRepository,
 )
-from app.services.intent_resolution import RequestResolver
 from app.services.source_selection import select_sources
 from app.services.structured_backfill import StructuredProjectionBackfill
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_typed_plan
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from scripts.demonstrations import ScenarioResult
 from scripts.demonstrations.capture import Capture, load_capture
@@ -97,15 +96,22 @@ async def run() -> ScenarioResult:
         )
 
         result.section("Question — asked of the stored data")
-        resolver = RequestResolver(load_seed_catalog(), IntentResolutionSettings())
-        resolution = (await resolver.resolve_turn(QUESTION)).resolution
-        result.step(
-            f'Resolved "{QUESTION}" deterministically to '
-            f"{resolution.product.value}/{resolution.offering_id.value} "
-            f"by {resolution.method.value} match, with no model call."
+        # The chat interprets a question with one Gemini call; this demonstration
+        # makes no model call, so it states the interpretation as a typed shape.
+        plan = issue_typed_plan(
+            QUESTION,
+            product=offering.product,
+            offering_ids=(offering.offering_id,),
+            shape=QueryShape(
+                operation=QueryOperation.SINGLE,
+                fields=(FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM),
+            ),
+            session_id="demo-extraction",
+            turn_id="turn-1",
         )
-        plan = issue_resolution_plan(
-            QUESTION, resolution, session_id="demo-extraction", turn_id="turn-1"
+        result.step(
+            f'Stated "{QUESTION}" as a typed question: '
+            f"{offering.product.value}/{offering.offering_id.value}, nominal rate."
         )
         result.step(
             f"Issued a per-turn authorization plan: operation={plan.operation.value}, "

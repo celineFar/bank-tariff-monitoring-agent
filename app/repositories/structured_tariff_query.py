@@ -40,10 +40,29 @@ def _without_none(value):
 
 
 # Checked-in bilingual function words. The `simple` text-search configuration
-# has no stopword list, and `websearch_to_tsquery` joins bare terms with AND, so
-# a natural-language question would otherwise require every filler word to
-# appear in a unit and match nothing.
-LEXICAL_QUERY_VERSION = "simple-or-v1"
+# has no stopword list and no stemming: terms are ORed, and a term of four or
+# more characters matches as a prefix, so "fees" finds "fee"-led words and an
+# inflected Armenian word finds its stem's forms (D11).
+LEXICAL_QUERY_VERSION = "simple-prefix-v2"
+_PREFIX_MIN_CHARS = 4
+# A prefix only matches forward, so a query term is trimmed to its stem first:
+# "fees" -> "fee:*" finds "fee" and "fees"; Armenian drops its article and case
+# endings the same way. Longest first.
+_ARMENIAN_ENDINGS = (
+    "ները",
+    "ների",
+    "երը",
+    "երի",
+    "ներ",
+    "ից",
+    "ով",
+    "ում",
+    "ին",
+    "ը",
+    "ն",
+    "ի",
+)
+_ARMENIAN = re.compile(r"[\u0531-\u0586]")
 _STOPWORDS = frozenset(
     {
         "a",
@@ -148,18 +167,53 @@ _TERM_SPLIT = re.compile(r"[^0-9\w]+", re.UNICODE)
 _INTRA_WORD_MARKS = str.maketrans("", "", "\u055a\u055b\u055c\u055d\u055e\u055f")
 
 
-def lexical_search_terms(query: str) -> str | None:
-    """Turn one question into a deterministic OR query of content terms."""
-    normalized = query.casefold().translate(_INTRA_WORD_MARKS)
-    tokens = [
+def _terms(text: str) -> list[str]:
+    normalized = text.casefold().translate(_INTRA_WORD_MARKS)
+    return [
         token
         for token in _TERM_SPLIT.split(normalized)
         if len(token) > 1 and token not in _STOPWORDS
     ]
-    unique = list(dict.fromkeys(tokens))[:_MAX_LEXICAL_TERMS]
+
+
+def lexical_search_terms(query: str, exclude: Sequence[str] = ()) -> str | None:
+    """Turn one question into a deterministic `to_tsquery` of OR'ed terms.
+
+    `exclude` holds names whose words carry no signal inside the scope (the
+    offering's own name matches every one of its units).
+    """
+    excluded = {token for text in exclude for token in _terms(text)}
+    unique = list(
+        dict.fromkeys(token for token in _terms(query) if token not in excluded)
+    )[:_MAX_LEXICAL_TERMS]
     if not unique:
         return None
-    return " or ".join(f'"{token}"' for token in unique)
+    # Tokens are word characters only (split on everything else), so they
+    # need no quoting in to_tsquery; stripping stray underscores keeps it so.
+    parts: list[str] = []
+    for token in unique:
+        token = token.strip("_")
+        if not token:
+            continue
+        if len(token) >= _PREFIX_MIN_CHARS:
+            stem = _stem(token)
+            part = f"{stem}:*"
+        else:
+            part = token
+        if part not in parts:
+            parts.append(part)
+    return " | ".join(parts) or None
+
+
+def _stem(token: str) -> str:
+    if _ARMENIAN.search(token):
+        for ending in _ARMENIAN_ENDINGS:
+            if token.endswith(ending) and len(token) - len(ending) >= 3:
+                return token[: -len(ending)]
+        return token
+    if token.endswith("s") and not token.endswith("ss") and len(token) >= 4:
+        return token[:-1]
+    return token
 
 
 @dataclass(frozen=True)
@@ -372,21 +426,22 @@ class PostgresStructuredTariffQueryRepository:
         offering_ids: Sequence[OfferingId],
         query: str,
         limit: int = 8,
+        exclude_terms: Sequence[str] = (),
     ) -> tuple[RankedUnit, ...]:
         self._validate_search(product, offering_ids, limit)
-        terms = lexical_search_terms(query) if offering_ids else None
+        terms = lexical_search_terms(query, exclude_terms) if offering_ids else None
         record(
             "lexical.query",
             version=LEXICAL_QUERY_VERSION,
             offerings=[item.value for item in offering_ids],
-            terms=0 if terms is None else len(terms.split(" or ")),
+            terms=0 if terms is None else len(terms.split(" | ")),
             limit=limit,
         )
         record_text("lexical.terms", tsquery=repr(terms))
         if terms is None:
             return ()
         return await self._search(
-            """WITH q AS (SELECT websearch_to_tsquery('simple', :query) AS terms)
+            """WITH q AS (SELECT to_tsquery('simple', :query) AS terms)
             SELECT u.*, ts_rank_cd(u.search_vector, q.terms) AS score
             FROM retrieval_units AS u
             JOIN offering_profiles AS p ON p.snapshot_id = u.snapshot_id

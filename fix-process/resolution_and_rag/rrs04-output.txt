@@ -1,0 +1,36 @@
+
+repayment term in AMD keeps currency-less facts (RR24)
+  'What is the overdraft repayment term in AMD?' -> op=single status=answered
+  fields_source=question fields=['term.minimum_months', 'term.maximum_months', 'repayment.method']
+  facts=3 fact fields=['repayment.method'] reason=None
+
+field finder: documents (D4)
+  'What documents do I need for the overdraft?' -> op=single status=answered
+  fields_source=retrieval fields=['document.required', 'fee.other']
+  facts=17 fact fields=['document.required', 'fee.other'] reason=None
+
+field finder: fees, plural (D11)
+  'What are the overdraft fees?' -> op=single status=answered
+  fields_source=retrieval fields=['fee.other']
+  facts=11 fact fields=['fee.other'] reason=None
+
+field finder: Armenian inflection (D11)
+  'Օվերդրաֆտի տոկոսադրույքները' -> op=single status=answered
+  fields_source=retrieval fields=['rate.effective.minimum', 'rate.effective.maximum', 'rate.nominal.maximum']
+  facts=9 fact fields=['rate.effective.maximum', 'rate.effective.minimum', 'rate.nominal.maximum'] reason=None
+
+overview of two named offerings (RR18)
+  'What are the overdraft fees and the credit line fees?' -> op=overview status=answered
+  fields_source=question fields=['fee.other']
+  facts=6 fact fields=['fee.other'] reason=None
+  offerings without facts: ['credit_line']
+
+rank over the family (only one offering published)
+  'Which consumer loan has the lowest rate?' -> op=family_rank status=insufficient_evidence
+  fields_source=question fields=['rate.nominal.minimum']
+  facts=0 fact fields=[] reason=fewer than two offerings have a numeric disclosed value
+
+history
+  'What changed in the overdraft?' -> op=history status=missing
+  fields_source=None fields=None
+  facts=0 fact fields=[] reason=no accepted change in available history

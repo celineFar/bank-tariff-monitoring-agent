@@ -8,6 +8,7 @@ observed Ameriabank tariffs.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import NAMESPACE_DNS, uuid5
@@ -273,7 +274,7 @@ class EvaluationRepository:
         )
         self.active_facts: tuple[TariffFact, ...] = tuple(
             fact for item in active for fact in item.facts
-        )
+        ) + _conditional_variants(active)
         self.all_facts: tuple[TariffFact, ...] = self.active_facts + tuple(
             fact for item in historical for fact in item.facts
         )
@@ -309,29 +310,42 @@ class EvaluationRepository:
             if item.snapshot_id in set(snapshots) and item.field_path in wanted
         )
 
-    async def lexical_units(self, *, bank, product, offering_ids, query, limit):
-        """Mirror the PostgreSQL ranker's term selection and OR semantics."""
+    async def lexical_units(
+        self, *, bank, product, offering_ids, query, limit, exclude_terms=()
+    ):
+        """Mirror the PostgreSQL ranker's term selection, prefixes and OR semantics."""
         self.lexical_calls.append(query)
-        selected = lexical_search_terms(query)
+        selected = lexical_search_terms(query, exclude_terms)
         record(
             "lexical.query",
             version=LEXICAL_QUERY_VERSION,
             offerings=[item.value for item in offering_ids],
-            terms=0 if selected is None else len(selected.split(" or ")),
+            terms=0 if selected is None else len(selected.split(" | ")),
             limit=limit,
         )
         record_text("lexical.terms", tsquery=repr(selected))
         if selected is None:
             return ()
-        terms = [item.strip('"') for item in selected.split(" or ")]
+        terms = [item.strip() for item in selected.split(" | ")]
         scored = []
         for unit in self.units:
             if unit.offering_id not in offering_ids:
                 continue
-            haystack = " ".join(
-                (unit.identity_text, unit.alias_purpose_text, unit.detail_text)
-            ).casefold()
-            matched = sum(1 for term in terms if term in haystack)
+            words = (
+                " ".join(
+                    (unit.identity_text, unit.alias_purpose_text, unit.detail_text)
+                )
+                .casefold()
+                .split()
+            )
+            matched = sum(
+                1
+                for term in terms
+                if any(
+                    word.startswith(term[:-2]) if term.endswith(":*") else word == term
+                    for word in words
+                )
+            )
             if matched:
                 scored.append((matched, unit))
         scored.sort(key=lambda item: (-item[0], item[1].unit_id))
@@ -352,6 +366,38 @@ class EvaluationRepository:
             for item in self.changes
             if item.product is product and item.offering_id in offering_ids
         )[:limit]
+
+
+def _conditional_variants(
+    active: tuple[StructuredProjection, ...],
+) -> tuple[TariffFact, ...]:
+    """Real offerings disclose conditional variants (card type, salary client).
+
+    One salary-customer Overdraft rate, below its standard rate: before rank
+    by group (RR23) any such variant made every consumer ranking incomparable.
+    """
+    overdraft = next(
+        item for item in active if item.profile.offering_id is OfferingId.OVERDRAFT
+    )
+    base = next(
+        fact
+        for fact in overdraft.facts
+        if fact.field_path is FieldPath.NOMINAL_RATE_MINIMUM and fact.currency == "AMD"
+    )
+    return (
+        base.model_copy(
+            update={
+                "fact_id": hashlib.sha256(b"eval-overdraft-salary-variant").hexdigest(),
+                "variant_key": "salary-customer",
+                "number": Decimal("13"),
+                "value": "13",
+                "conditions": (
+                    *base.conditions,
+                    {"dimension": "customer_type", "operator": "=", "value": "salary"},
+                ),
+            }
+        ),
+    )
 
 
 def fact_numbers(

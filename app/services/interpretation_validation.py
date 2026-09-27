@@ -259,6 +259,58 @@ class InterpretationValidator:
             return self._clarify(base, intent, self._family_options(language))
         return self._answer(base, intent, interpretation, scope, shape)
 
+    def shape_within(
+        self,
+        interpretation: RequestInterpretation,
+        *,
+        message: str,
+        product: ProductType,
+        offering_ids: tuple[OfferingId, ...] = (),
+    ) -> QueryShape:
+        """D9: the shape of a question whose scope the caller fixed (typed API).
+
+        The interpreter's scope is discarded; only its shape is kept, bounded by
+        the same rules as a chat question. A single value asked of a whole
+        family has no answerable shape and raises.
+        """
+        forced = interpretation.model_copy(
+            update={
+                "product": product,
+                "offering_ids": offering_ids,
+                # Only a listing may read the whole family (V3); a single value
+                # asked of a family abstains, as in chat.
+                "family_wide": not offering_ids and interpretation.family_wide,
+                "replies_to": ReplyKind.NONE,
+                "clarification": interpretation.clarification.model_copy(
+                    update={"needed": False, "option_ids": ()}
+                ),
+            }
+        )
+        history = interpretation.request_intent is RequestIntent.GET_CHANGE_HISTORY
+        base = _Base(
+            language=interpretation.language,
+            normalized_query=message[:1000] or "-",
+            question=message[:1000] or "-",
+            replies_to=ReplyKind.NONE,
+            accepts=None,
+            replying=False,
+        )
+        if history:
+            return QueryShape(
+                operation=QueryOperation.HISTORY,
+                fields=interpretation.query.fields if interpretation.query else (),
+            )
+        resolution = self._answer(
+            base,
+            RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION,
+            forced,
+            _Scope(product, offering_ids),
+            interpretation.query,
+        )
+        if resolution.needs_clarification or resolution.query is None:
+            raise ValueError("the question needs one offering of the family")
+        return resolution.query
+
     # --- answer questions ----------------------------------------------------------
 
     def _answer(

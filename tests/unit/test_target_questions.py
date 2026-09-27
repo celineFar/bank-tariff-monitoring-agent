@@ -7,7 +7,7 @@ import pytest
 from app.domain.structured_tariffs import QueryOperation, QueryStatus
 from app.repositories.structured_tariff_query import lexical_search_terms
 from app.services.intent_resolution import RequestResolver
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_read_grant
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.eval.structured_metrics import measure
 from tests.fixtures.evaluation_corpus import EvaluationRepository
@@ -27,8 +27,7 @@ async def test_target_question_routes_and_answers_as_specified(
     question: TargetQuestion,
 ) -> None:
     resolution = (await _resolver().resolve_turn(question.question)).resolution
-    plan = issue_resolution_plan(
-        question.question,
+    plan = issue_read_grant(
         resolution,
         session_id=f"case-{question.case_id}",
         turn_id=question.case_id,
@@ -41,7 +40,7 @@ async def test_target_question_routes_and_answers_as_specified(
     assert set(question.required_fields) <= set(plan.fields)
 
     result = await StructuredTariffQueryService(EvaluationRepository()).answer(
-        plan, question.question
+        plan, plan.question
     )
 
     assert result.status is question.expected_status, result.reason
@@ -62,12 +61,10 @@ async def test_target_question_routes_and_answers_as_specified(
 async def test_fee_inventory_lists_scopes_without_inventing_a_highest_fee() -> None:
     question = next(item for item in TARGET_QUESTIONS if item.number == 13)
     resolution = (await _resolver().resolve_turn(question.question)).resolution
-    plan = issue_resolution_plan(
-        question.question, resolution, session_id="fees", turn_id="fees"
-    )
+    plan = issue_read_grant(resolution, session_id="fees", turn_id="fees")
 
     result = await StructuredTariffQueryService(EvaluationRepository()).answer(
-        plan, question.question
+        plan, plan.question
     )
 
     units = {(fact.field_path.value, fact.unit) for fact in result.facts}
@@ -82,30 +79,36 @@ async def test_fee_inventory_lists_scopes_without_inventing_a_highest_fee() -> N
 async def test_currency_condition_narrows_the_answer_to_one_variant() -> None:
     question = next(item for item in TARGET_QUESTIONS if item.number == 5)
     resolution = (await _resolver().resolve_turn(question.question)).resolution
-    plan = issue_resolution_plan(
-        question.question, resolution, session_id="usd", turn_id="usd"
-    )
+    plan = issue_read_grant(resolution, session_id="usd", turn_id="usd")
 
     result = await StructuredTariffQueryService(EvaluationRepository()).answer(
-        plan, question.question
+        plan, plan.question
     )
 
     assert plan.conditions == {"currency": "USD"}
     assert result.facts
-    assert {fact.currency for fact in result.facts} == {"USD"}
+    # No fact names another currency; facts without one stay (RR24).
+    assert {fact.currency for fact in result.facts} - {None} == {"USD"}
 
 
-def test_lexical_terms_drop_bilingual_function_words() -> None:
+def test_lexical_terms_drop_function_words_and_match_prefixes() -> None:
     assert (
         lexical_search_terms("What is the nominal interest rate of the Overdraft?")
-        == '"nominal" or "interest" or "rate" or "overdraft"'
+        == "nominal:* | interest:* | rate:* | overdraft:*"
+    )
+    # The scoped offering's own name matches every unit; it carries no signal.
+    assert (
+        lexical_search_terms(
+            "What fees apply to the Overdraft?", ("Overdraft", "card overdraft")
+        )
+        == "fee:*"
     )
     assert lexical_search_terms("Օվերդրաֆտի տոկոսադրույքը որքա՞ն է։") == (  # noqa: RUF001
-        '"օվերդրաֆտի" or "տոկոսադրույքը"'
+        "օվերդրաֆտ:* | տոկոսադրույք:*"
     )
     assert lexical_search_terms("what is the?") is None
     assert (
-        len(lexical_search_terms(" ".join(str(n) * 3 for n in range(30))).split(" or "))
+        len(lexical_search_terms(" ".join(str(n) * 3 for n in range(30))).split(" | "))
         == 12
     )
 
@@ -123,5 +126,4 @@ async def test_structured_eval_metrics_meet_the_acceptance_bar() -> None:
     assert metrics.scope_leakage_rate == 0.0
     assert metrics.comparison_correctness == 1.0
     assert metrics.abstention_correctness == 1.0
-    assert metrics.supported_unit_rate >= 0.8
     assert metrics.model_calls == 0

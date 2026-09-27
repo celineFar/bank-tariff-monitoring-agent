@@ -45,3 +45,44 @@ real tools, each replaying one case's live recording. **All pass.**
 - **Once per turn:** a repeat call in the same turn returns the same result.
 
 The `xfail` tests RR9, RR13, RR14 and RR15 now pass.
+
+## RRS04: answer path on the dev database (Phase 4)
+
+[probes/rrs04_answer_path.py](probes/rrs04_answer_path.py) runs on `tariff_monitor`
+(Overdraft only), with typed plans and no embedder, so it makes no model call. Output:
+[rrs04-output.txt](rrs04-output.txt). **All as expected:**
+
+| Question | Result |
+|---|---|
+| repayment term **in AMD** | answered, 3 `repayment.method` facts (dropped before, RR24) |
+| "What documents do I need for the overdraft?" (no field named) | field finder → `document.required` (+ `fee.other`), answered |
+| "What are the overdraft fees?" (no field named) | field finder → `fee.other` (the plural "fees" finds "fee", D11) |
+| "Օվերդրաֆտի տոկոսադրույքները" (no field named) | field finder → the rate paths (the Armenian ending is trimmed, D11) |
+| overdraft fees **and** credit line fees (overview) | answered; `credit_line` listed as having no facts |
+| lowest consumer rate (rank) | `insufficient_evidence`: only one offering is published |
+| what changed (history) | `missing`: no accepted change yet |
+
+## RRS05: ranking with conditional variants (Phase 4)
+
+`tests/unit/test_structured_tariff_query.py` and `test_resolution_rag_fixes.py`. **All pass.**
+- Two offerings with identical conditional variants rank as `answered` (RR23).
+- AMD and USD rank as separate groups, with no single winner across them.
+- A conditional winning variant is reported with its condition.
+- An `incomparable` result names what differs (e.g. "units").
+- The evaluation corpus gained a salary-customer Overdraft variant.
+
+## RRS06: the 25 target questions (Phase 4)
+
+`tests/unit/test_target_questions.py`, with recorded interpretations and `issue_read_grant`.
+**All 25 pass.**
+- **q24** ("lowest application fee") changed from `incomparable` to `answered`: the
+  fixed AMD fees rank among themselves, and Online Mortgage's percentage fee is
+  reported as not ranked.
+- **The eval metrics** meet the bar: route 1.0, exact facts 1.0, conditional
+  coverage 1.0.
+  - `supported_unit_rate` was removed: it measured retrieval inside single answers,
+    which no longer runs (D4).
+  - Coverage now follows rank by group and the RR24 currency rule.
+- **On Postgres,** the lexical-recall check became a field-finder check: with the
+  fields removed, ≥ 85% of the single-offering target questions find a required
+  field through the real prefix `to_tsquery`. It passes.

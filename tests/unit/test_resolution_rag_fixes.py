@@ -432,9 +432,6 @@ async def test_rr15_an_unrelated_refresh_request_does_not_confirm_the_family() -
 # --- RR23 / RR24 / RR26 ------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR23: conditional variants make every rank incomparable"
-)
 @pytest.mark.asyncio
 async def test_rr23_identical_conditional_variants_rank_as_answered() -> None:
     question = "Which consumer loan has the lowest rate?"
@@ -468,9 +465,6 @@ async def test_rr23_identical_conditional_variants_rank_as_answered() -> None:
     assert result.status is QueryStatus.ANSWERED
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR24: a currency word drops currency-less facts"
-)
 @pytest.mark.asyncio
 async def test_rr24_currency_keeps_facts_without_a_currency() -> None:
     question = "What is the overdraft repayment term in AMD?"

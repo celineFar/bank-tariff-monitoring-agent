@@ -79,7 +79,9 @@ class Repository:
             if item.snapshot_id in snapshots and item.field_path in fields
         )
 
-    async def lexical_units(self, *, bank, product, offering_ids, query, limit):
+    async def lexical_units(
+        self, *, bank, product, offering_ids, query, limit, exclude_terms=()
+    ):
         return tuple(
             RankedUnit(item, 0.5, "lexical")
             for item in self.units
@@ -100,12 +102,13 @@ async def test_single_answer_keeps_conditioned_fact_and_evidence_unit() -> None:
     assert len(result.facts) == 1
     assert result.facts[0].currency == "AMD"
     assert result.facts[0].evidence
-    assert result.retrieval_units
-    assert all(result.retrieval_units[0].evidence_ids)
+    # The question named its field: no retrieval runs (D4).
+    assert result.retrieval_units == ()
+    assert result.metadata["fields_source"] == "question"
 
 
 @pytest.mark.asyncio
-async def test_rank_requires_common_currency_and_explicit_direction() -> None:
+async def test_rank_by_group_ranks_each_currency_on_its_own() -> None:
     repository = Repository()
     service = StructuredTariffQueryService(repository)
     ids = (OfferingId.CONSUMER_STANDARD, OfferingId.OVERDRAFT)
@@ -115,8 +118,11 @@ async def test_rank_requires_common_currency_and_explicit_direction() -> None:
         offering_ids=ids,
         conditions={},
     )
-    incomparable = await service.answer(plan, QUESTION, now=NOW)
-    assert incomparable.status is QueryStatus.INCOMPARABLE
+    both = await service.answer(plan, QUESTION, now=NOW)
+    assert both.status is QueryStatus.ANSWERED
+    # AMD and USD rank separately; there is no single winner across them.
+    assert {group["currency"] for group in both.metadata["groups"]} == {"AMD", "USD"}
+    assert "winner" not in both.metadata
     result = await service.answer(
         plan.model_copy(update={"conditions": {"currency": "AMD"}}),
         QUESTION,
@@ -265,8 +271,13 @@ async def test_salary_privilege_is_retrievable_as_explicit_fact() -> None:
 
 
 @pytest.mark.asyncio
-async def test_lexical_vector_fusion_keeps_only_requested_evidence() -> None:
+async def test_the_field_finder_picks_fields_for_a_question_naming_none() -> None:
     class HybridRepository(Repository):
+        async def lexical_units(
+            self, *, bank, product, offering_ids, query, limit, exclude_terms=()
+        ):
+            return ()
+
         async def vector_units(
             self, *, bank, product, offering_ids, embedding, model_id, limit
         ):
@@ -286,26 +297,34 @@ async def test_lexical_vector_fusion_keeps_only_requested_evidence() -> None:
 
     class Embedder:
         model_name = "test-model"
-        ensure_calls = 0
 
-        async def ensure(self, **kwargs):
-            self.ensure_calls += 1
-            return 1
+        def __init__(self) -> None:
+            self.queries: list[str] = []
 
         async def embed_query(self, question):
+            self.queries.append(question)
             return [0.1] * 768
 
     embedder = Embedder()
-    result = await StructuredTariffQueryService(HybridRepository(), embedder).answer(
-        _plan(), QUESTION, now=NOW
+    service = StructuredTariffQueryService(HybridRepository(), embedder)
+    found = await service.answer(_plan(fields=()), QUESTION, now=NOW)
+    named = await service.answer(_plan(), QUESTION, now=NOW)
+
+    assert found.status is QueryStatus.ANSWERED
+    assert found.metadata["fields_source"] == "retrieval"
+    assert found.metadata["fields"] == [FieldPath.NOMINAL_RATE_MINIMUM.value]
+    # Only the field finder embeds the question; nothing embeds units (D10).
+    assert embedder.queries == [QUESTION]
+    assert named.metadata["fields_source"] == "question"
+
+
+@pytest.mark.asyncio
+async def test_no_field_found_answers_the_core_fields() -> None:
+    result = await StructuredTariffQueryService(Repository()).answer(
+        _plan(fields=(), conditions={}), QUESTION, now=NOW
     )
+    assert result.metadata["fields_source"] in {"retrieval", "core"}
     assert result.status is QueryStatus.ANSWERED
-    assert result.metadata["ranking_version"] == "rrf-v1-k60-lex1-vector0.7"
-    assert embedder.ensure_calls == 1
-    assert all(
-        set(unit.fact_ids) <= {fact.fact_id for fact in result.facts}
-        for unit in result.retrieval_units
-    )
 
 
 @pytest.mark.asyncio
@@ -333,7 +352,7 @@ async def test_rate_basis_mismatch_abstains_from_family_ranking() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rank_refuses_unmatched_promotional_conditions() -> None:
+async def test_rank_reports_the_conditions_of_a_winning_variant() -> None:
     repository = Repository()
     repository.facts_ = tuple(
         fact.model_copy(
@@ -355,7 +374,13 @@ async def test_rank_refuses_unmatched_promotional_conditions() -> None:
         QUESTION,
         now=NOW,
     )
-    assert result.status is QueryStatus.INCOMPARABLE
+    # Conditions no longer block a ranking (D3); they travel with the value.
+    assert result.status is QueryStatus.ANSWERED
+    assert result.metadata["winner"] == OfferingId.OVERDRAFT.value
+    winner = result.metadata["groups"][0]["ranking"][0]
+    assert winner["conditions"] == [
+        {"dimension": "salary", "value": "payroll customer"}
+    ]
 
 
 @pytest.mark.asyncio
@@ -395,3 +420,50 @@ async def test_formula_comparison_is_explicitly_incomparable() -> None:
     )
     assert result.status is QueryStatus.INCOMPARABLE
     assert result.comparison_rows[0].comparable is False
+
+
+@pytest.mark.asyncio
+async def test_overview_lists_each_offering_and_names_those_without_facts() -> None:
+    result = await StructuredTariffQueryService(Repository()).answer(
+        _plan(
+            operation=QueryOperation.OVERVIEW,
+            offering_ids=(
+                OfferingId.CONSUMER_STANDARD,
+                OfferingId.OVERDRAFT,
+                OfferingId.CREDIT_LINE,
+            ),
+            conditions={},
+        ),
+        QUESTION,
+        now=NOW,
+    )
+    assert result.status is QueryStatus.ANSWERED
+    assert result.comparison_rows == ()  # a listing, no comparability verdict
+    assert {fact.offering_id for fact in result.facts} == {
+        OfferingId.CONSUMER_STANDARD,
+        OfferingId.OVERDRAFT,
+    }
+    assert result.metadata["offerings_without_facts"] == ["credit_line"]
+
+
+@pytest.mark.asyncio
+async def test_an_incomparable_rank_names_what_differs() -> None:
+    repository = Repository()
+    repository.facts_ = tuple(
+        fact.model_copy(update={"unit": "months"})
+        if fact.offering_id is OfferingId.OVERDRAFT
+        and fact.field_path is FieldPath.NOMINAL_RATE_MINIMUM
+        else fact
+        for fact in repository.facts_
+    )
+    result = await StructuredTariffQueryService(repository).answer(
+        _plan(
+            operation=QueryOperation.FAMILY_RANK,
+            rank_direction=RankDirection.LOWEST,
+            offering_ids=(OfferingId.CONSUMER_STANDARD, OfferingId.OVERDRAFT),
+        ),
+        QUESTION,
+        now=NOW,
+    )
+    assert result.status is QueryStatus.INCOMPARABLE
+    assert "units" in result.reason

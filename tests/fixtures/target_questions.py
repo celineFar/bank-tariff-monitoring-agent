@@ -368,9 +368,13 @@ TARGET_QUESTIONS: tuple[TargetQuestion, ...] = (
         operation=QueryOperation.FAMILY_RANK,
         offering_ids=MORTGAGE_FAMILY,
         required_fields=(FieldPath.FEE_APPLICATION,),
-        expected_status=QueryStatus.INCOMPARABLE,
+        expected_status=QueryStatus.ANSWERED,
         rank_direction=RankDirection.LOWEST,
-        note="Fixed-amount and percentage application fees cannot be ranked.",
+        expected_winner=OfferingId.MORTGAGE_PRIMARY,
+        note=(
+            "Ranked by group (RR23): the fixed AMD fees rank among themselves; "
+            "the one percentage fee is reported as not ranked."
+        ),
     ),
     TargetQuestion(
         number=25,

@@ -21,9 +21,12 @@ from app.domain.structured_tariffs import (
     TariffQueryResult,
 )
 from app.services.intent_resolution import RequestResolver
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_read_grant
 from app.services.structured_shadow_read import _change_evidence
-from app.services.structured_tariff_query import StructuredTariffQueryService
+from app.services.structured_tariff_query import (
+    StructuredTariffQueryService,
+    _condition_match,
+)
 from tests.fixtures.evaluation_corpus import EvaluationRepository
 from tests.fixtures.recorded_interpretations import RecordedInterpreter
 from tests.fixtures.target_questions import TARGET_QUESTIONS, TargetQuestion
@@ -85,7 +88,6 @@ class StructuredEvalMetrics:
     scope_leakage_rate: float
     comparison_correctness: float
     abstention_correctness: float
-    supported_unit_rate: float
     median_latency_ms: float
     p95_latency_ms: float
     model_calls: int
@@ -104,21 +106,35 @@ def _rate(matched: int, total: int) -> float:
 def _expected_fact_count(
     repository: EvaluationRepository, question: TargetQuestion, plan
 ) -> int:
-    """Every disclosed variant in the authorized scope must survive the answer."""
+    """Every disclosed variant in the authorized scope must survive the answer.
+
+    A rank answers with one value per offering in each shared numeric group
+    (rank by group, RR23); an offering alone in its group is reported, not
+    ranked. Conditions follow the service's rule: a currency drops only facts
+    that name another currency (RR24).
+    """
     if plan.operation is QueryOperation.HISTORY:
         return 0
     wanted = set(plan.fields)
     authorized = set(plan.offering_ids)
-    currency = plan.conditions.get("currency")
-    return sum(
-        1
+    facts = [
+        fact
         for fact in repository.active_facts
         if fact.offering_id in authorized
         and fact.field_path in wanted
         and fact.status.value == "found"
         and fact.evidence
-        and (currency is None or fact.currency == currency)
-    )
+        and _condition_match(fact, plan.conditions)
+    ]
+    if plan.operation is QueryOperation.FAMILY_RANK:
+        groups: dict[tuple, set] = {}
+        for fact in facts:
+            if fact.number is None:
+                continue
+            key = (fact.unit, fact.currency, fact.rate_basis, fact.fee_scope)
+            groups.setdefault(key, set()).add(fact.offering_id)
+        return sum(len(items) for items in groups.values() if len(items) >= 2)
+    return len(facts)
 
 
 async def measure(
@@ -140,13 +156,12 @@ async def measure(
         plan = None
         try:
             resolution = (await resolver.resolve_turn(question.question)).resolution
-            plan = issue_resolution_plan(
-                question.question,
+            plan = issue_read_grant(
                 resolution,
                 session_id=f"eval-{question.case_id}",
                 turn_id=question.case_id,
             )
-            result = await service.answer(plan, question.question)
+            result = await service.answer(plan, plan.question)
         except ValueError as exc:
             route_error = str(exc)
         latency_ms = (time.perf_counter() - started) * 1000
@@ -216,9 +231,6 @@ async def measure(
         if item.expected_status in {status.value for status in ABSTENTIONS}
     ]
     answered = [item for item in outcomes if item.status == QueryStatus.ANSWERED.value]
-    single_answered = [
-        item for item in answered if item.operation == QueryOperation.SINGLE.value
-    ]
     return StructuredEvalMetrics(
         questions=len(outcomes),
         deterministic_route_rate=_rate(
@@ -246,9 +258,6 @@ async def measure(
         abstention_correctness=_rate(
             sum(1 for item in expected_abstentions if item.status_correct),
             len(expected_abstentions),
-        ),
-        supported_unit_rate=_rate(
-            sum(1 for item in single_answered if item.units), len(single_answered)
         ),
         median_latency_ms=round(statistics.median(latencies), 3) if latencies else 0.0,
         p95_latency_ms=(

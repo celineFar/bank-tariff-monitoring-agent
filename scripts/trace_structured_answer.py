@@ -20,7 +20,7 @@ from uuid import uuid4
 from app.config import get_settings
 from app.domain.structured_tariffs import QueryOperation, QueryStatus
 from app.runtime import build_application_container
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_read_grant
 
 
 def _line(title: str) -> None:
@@ -45,11 +45,8 @@ async def _trace(question: str, *, allow_vector: bool) -> int:
             return 1
 
         _line("[2] Per-turn authorization plan")
-        plan = issue_resolution_plan(
-            question,
-            resolution,
-            session_id=f"trace-{uuid4()}",
-            turn_id=str(uuid4()),
+        plan = issue_read_grant(
+            resolution, session_id=f"trace-{uuid4()}", turn_id=str(uuid4())
         )
         print(
             f"operation={plan.operation.value} "
@@ -63,7 +60,7 @@ async def _trace(question: str, *, allow_vector: bool) -> int:
         service = container.structured_query_service
         if not allow_vector:
             service._unit_embedder = None
-        result = await service.answer(plan, question)
+        result = await service.answer(plan, plan.question)
         print(
             f"status={result.status.value} as_of={result.as_of} "
             f"facts={len(result.facts)} rows={len(result.comparison_rows)} "

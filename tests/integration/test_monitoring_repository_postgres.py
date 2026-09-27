@@ -76,7 +76,7 @@ from app.services.run_service import RunService
 from app.services.structured_backfill import StructuredProjectionBackfill
 from app.services.structured_projection import RENDERER_VERSION
 from app.services.structured_projection_audit import StructuredProjectionAuditor
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_read_grant
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.fixtures.evaluation_corpus import CORPUS_SPECS, PREVIOUS_MORTGAGE_SPEC
 from tests.fixtures.interpretations import recorded_resolver
@@ -1832,19 +1832,18 @@ async def test_structured_read_model_answers_all_25_questions_on_postgres(
     service = StructuredTariffQueryService(
         PostgresStructuredTariffQueryRepository(monitoring_session_factory)
     )
-    lexical_hits = 0
+    finder_hits = 0
     single_offering_questions = 0
     failures: list[str] = []
 
     for question in TARGET_QUESTIONS:
         resolution = (await resolver.resolve_turn(question.question)).resolution
-        plan = issue_resolution_plan(
-            question.question,
+        plan = issue_read_grant(
             resolution,
             session_id=f"pg-eval-{question.case_id}",
             turn_id=question.case_id,
         )
-        result = await service.answer(plan, question.question)
+        result = await service.answer(plan, plan.question)
         if result.status is not question.expected_status:
             failures.append(
                 f"{question.case_id}: {result.status.value} "
@@ -1859,15 +1858,22 @@ async def test_structured_read_model_answers_all_25_questions_on_postgres(
                 f"{question.case_id}: winner {result.metadata.get('winner')}"
             )
         if plan.operation is QueryOperation.SINGLE and result.facts:
+            # The field finder (D4) on real SQL: with the fields removed, the
+            # prefix `to_tsquery` over the offering's units must find a field
+            # the question is about.
             single_offering_questions += 1
-            lexical_hits += bool(result.retrieval_units)
+            found = await service.answer(
+                plan.model_copy(update={"fields": ()}), plan.question
+            )
+            finder_hits += found.metadata.get("fields_source") == "retrieval" and bool(
+                set(found.metadata.get("fields", ()))
+                & {item.value for item in question.required_fields}
+            )
 
     assert not failures, failures
-    # Weighted `simple` full-text search must find supporting units for the
-    # descriptive part of most single-offering questions.
     assert single_offering_questions >= 10
-    assert lexical_hits / single_offering_questions >= 0.85, (
-        lexical_hits,
+    assert finder_hits / single_offering_questions >= 0.85, (
+        finder_hits,
         single_offering_questions,
     )
 
@@ -1883,13 +1889,12 @@ async def test_accepted_facts_never_leak_across_offering_or_family_scope(
 
     for question in TARGET_QUESTIONS:
         resolution = (await resolver.resolve_turn(question.question)).resolution
-        plan = issue_resolution_plan(
-            question.question,
+        plan = issue_read_grant(
             resolution,
             session_id=f"pg-scope-{question.case_id}",
             turn_id=question.case_id,
         )
-        result = await service.answer(plan, question.question)
+        result = await service.answer(plan, plan.question)
         assert all(fact.offering_id in plan.offering_ids for fact in result.facts)
         assert all(
             unit.offering_id in plan.offering_ids for unit in result.retrieval_units

@@ -17,18 +17,18 @@ from app.domain.monitoring import (
     RunTrigger,
 )
 from app.domain.review import ReviewStatus, ReviewTask
-from app.domain.structured_tariffs import TariffQueryResult
+from app.domain.structured_tariffs import ANSWERABLE_OPERATIONS, TariffQueryResult
 from app.domain.tariff_queries import (
     CurrentTariffResult,
     TariffHistoryResult,
 )
 from app.repositories.contracts import ReviewRepository
 from app.services.answer_read_model import TariffAnswerRouter
-from app.services.intent_resolution import RequestResolver
+from app.services.intent_resolution import InterpretationUnavailable, RequestResolver
 from app.services.rag_answer import RagAnswerService
 from app.services.review_resolution import ReviewResolutionService
 from app.services.run_service import RunServicePort, run_covers_command
-from app.services.structured_query_planning import issue_resolution_plan
+from app.services.structured_query_planning import issue_read_grant
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.tariff_queries import (
     CurrentTariffService,
@@ -200,16 +200,23 @@ async def query_structured_tariffs(
     """Resolve and answer one bounded query without triggering acquisition."""
     try:
         resolution = (await resolver.resolve_turn(command.query)).resolution
-        plan = issue_resolution_plan(
-            command.query,
+        plan = issue_read_grant(
             resolution,
             session_id=f"api-{uuid4()}",
             turn_id=str(uuid4()),
         )
+        if plan.operation not in ANSWERABLE_OPERATIONS:
+            raise ValueError("the question has no answerable tariff shape")
+    except InterpretationUnavailable as exc:
+        raise _failure(
+            503,
+            "query.interpretation_unavailable",
+            "The question could not be interpreted just now.",
+        ) from exc
     except ValueError as exc:
         raise _failure(422, "query.unresolved_scope", str(exc)) from exc
     try:
-        return await service.answer(plan, command.query)
+        return await service.answer(plan, plan.question)
     except ValueError as exc:
         raise _failure(422, "query.invalid_scope", str(exc)) from exc
     except Exception as exc:

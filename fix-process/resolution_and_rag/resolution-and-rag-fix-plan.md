@@ -1029,32 +1029,93 @@ outside the steps marked **(live)**.
 
 ### Phase 4: Planner and answer path
 
-- [ ] Add `plan_from_interpretation` (validation and bounds only). Delete
+- [x] Add `plan_from_interpretation` (validation and bounds only). Delete
       `select_tariff_query`, `select_typed_query`, `_RULES`, `_has` and the word lists
       (RR20, RR21, RR22).
-- [ ] Rewrite `issue_read_grant` on top of it; scope-only grants remain only for
+- [x] Rewrite `issue_read_grant` on top of it; scope-only grants remain only for
       `get_current_tariffs` and history listing.
-- [ ] Implement `overview` in `StructuredTariffQueryService` (1–9 offerings, requested
+- [x] Implement `overview` in `StructuredTariffQueryService` (1–9 offerings, requested
       or core fields, payload cap) (RR18, RR19).
-- [ ] Rewrite `_rank` as rank by group (D3). The result carries the groups, the ranking
+- [x] Rewrite `_rank` as rank by group (D3). The result carries the groups, the ranking
       in each, the winners and the winning variants' conditions, and reasons that name
       the real cause (RR23).
-- [ ] Add conditional variants to `tests/fixtures/evaluation_corpus.py` and update q24
+- [x] Add conditional variants to `tests/fixtures/evaluation_corpus.py` and update q24
       in `target_questions.py`.
-- [ ] Change the currency rule in `_condition_match` (RR24).
-- [ ] Field finder (RR25):
-  - [ ] run retrieval only when an answer operation has no fields;
-  - [ ] load the facts of the top units' field paths (at most 3);
-  - [ ] record `fields_source`.
-- [ ] Remove retrieval from the single-offering answer path when fields are named.
-- [ ] Lexical query: prefix terms, and leave out the scoped offering's names and aliases
+- [x] Change the currency rule in `_condition_match` (RR24).
+- [x] Field finder (RR25):
+  - [x] run retrieval only when an answer operation has no fields;
+  - [x] load the facts of the top units' field paths (at most 3);
+  - [x] record `fields_source`.
+- [x] Remove retrieval from the single-offering answer path when fields are named.
+- [x] Lexical query: prefix terms, and leave out the scoped offering's names and aliases
       (D11).
-- [ ] Remove `ensure()` from the request path, and add retrieval units to the worker's
+- [x] Remove `ensure()` from the request path, and add retrieval units to the worker's
       embedding sweep (D10).
-- [ ] `/questions`: shape-only interpreter with the caller's scope fixed (D9).
+- [x] `/questions`: shape-only interpreter with the caller's scope fixed (D9).
       `/tariffs/query` and the shadow reader go through the resolver.
-- [ ] Legacy router: accept `overview` (family retrieval with no offering filter).
-- [ ] Remove the xfail marks of RR23 and RR24. Run RRS04, RRS05 and RRS06.
+- [x] Legacy router: accept `overview` (family retrieval with no offering filter).
+- [x] Remove the xfail marks of RR23 and RR24. Run RRS04, RRS05 and RRS06.
+
+
+**Phase 4 notes (done).**
+- **The planner** ([structured_query_planning.py](../../app/services/structured_query_planning.py))
+  no longer reads words.
+  - `issue_read_grant(resolution, *, session_id, turn_id, question=None)` gives:
+    - an answer plan from the validated shape;
+    - a scope-only CURRENT grant for `get_current_tariffs` (and for an answer
+      resolution without a shape);
+    - a HISTORY grant from the history intent.
+  - `issue_typed_plan(question, product, offering_ids, shape, ...)` serves typed
+    callers.
+  - Deleted: `select_tariff_query`, `select_typed_query`, `issue_resolution_plan`,
+    `issue_typed_resolution_plan`, `_RULES`, `_has` and the word lists.
+  - The core field set moved to `CORE_FIELDS`.
+- **`ResolutionPlan` validation relaxed:** single, compare and overview plans may have
+  no fields (the field finder fills them); a rank plan has exactly one field; an
+  overview needs offerings.
+- **The answer service** ([structured_tariff_query.py](../../app/services/structured_tariff_query.py)):
+  - **single** answers from the facts only, with no retrieval;
+  - **`overview`**: at most 6 variants per offering and field and 240 facts in all.
+    It lists requested offerings without facts, including those with no projection.
+  - **rank by group** (D3), with `metadata.groups`. `metadata.winner` is set only when
+    exactly one group ranks. An `incomparable` reason names the dimensions that
+    differ.
+  - **currency rule** (RR24);
+  - **field finder** (D4): lexical plus vector over the scope's units, the offering's
+    own names left out, at most 3 paths, `metadata.fields_source` =
+    `question | retrieval | core`. It embeds the question only.
+- **Lexical query** (`LEXICAL_QUERY_VERSION = "simple-prefix-v2"`) uses `to_tsquery`
+  with OR'ed prefix terms.
+  - **Found while testing:** a prefix only matches forward, so the plan's
+    "prefix matching covers plurals" was wrong on its own. Query terms are now
+    trimmed first (English plural `-s`, Armenian article and case endings).
+  - The in-memory corpus repository mirrors this.
+- **Embeddings** (D10): `StructuredUnitEmbeddingService.embed_missing` plus
+  `CombinedEmbeddingSweep` (chunks, then units) is the worker's sweep
+  (`container.embedding_sweep`). Nothing embeds units on the request path.
+- **`/questions`** (D9): `TariffAnswerRouter(..., shapes=request_resolver.shape_for)`.
+  - `RequestResolver.shape_for` asks the interpreter for the shape only, with the
+    caller's scope fixed (`InterpretationValidator.shape_within`).
+  - A single value asked of a family abstains, as in chat. Only an interpreted
+    listing reads the whole family.
+- **`/tariffs/query` and the shadow reader** go through the resolver and
+  `issue_read_grant`. An unavailable interpreter answers 503
+  (`query.interpretation_unavailable`).
+- **Demonstration scripts** (`failures`, `change_detection`, `hitl`, `extraction`) use
+  explicit typed shapes and make no model call. `scripts/trace_structured_answer.py`
+  uses the resolver and the grant.
+- **Tests:**
+  - `test_structured_query_planning.py` rewritten (bounding, not keywords);
+  - structured-query tests updated for rank by group, the field finder and overview;
+  - q24 updated;
+  - the corpus has a conditional variant;
+  - the metrics dropped `supported_unit_rate`;
+  - the Postgres check is now a field-finder check.
+- **RR23 and RR24** `xfail` marks removed.
+- **The after-run answer still calls `answer_question`,** which now makes one
+  interpreter call for the shape. Phase 5 replaces it with the stored shape.
+- **Suite:** 1268 passed, 3 xfailed (RR26, RR27, RR28), plus the 4 known Gemini-key
+  failures.
 
 ### Phase 5: History, the after-run answer, the index
 

@@ -7,6 +7,7 @@ import pytest
 
 from app.config import load_settings
 from app.config.models import AnswerReadModel
+from app.domain.intent import RequestIntent
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     AnswerCitation,
@@ -23,6 +24,7 @@ from app.domain.structured_tariffs import (
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from tests.fixtures.evaluation_corpus import EvaluationRepository
+from tests.fixtures.interpretations import interp, scripted_resolver
 
 NOW = datetime(2026, 9, 22, tzinfo=UTC)
 QUESTION = "What is the nominal interest rate of the Overdraft?"
@@ -81,13 +83,41 @@ def _plan() -> ResolutionPlan:
     )
 
 
+def _shapes():
+    """The interpreter's shape for each typed question (D9), scripted."""
+    answer = RequestIntent.ANSWER_INDEXED_TARIFF_QUESTION
+    nominal = (FieldPath.NOMINAL_RATE_MINIMUM, FieldPath.NOMINAL_RATE_MAXIMUM)
+    return scripted_resolver(
+        {
+            QUESTION: interp(
+                answer,
+                offering_ids=(OfferingId.OVERDRAFT,),
+                operation=QueryOperation.SINGLE,
+                fields=nominal,
+            ),
+            "What is the nominal interest rate?": interp(
+                answer,
+                product=ProductType.CONSUMER_LOAN,
+                operation=QueryOperation.SINGLE,
+                fields=nominal,
+            ),
+            "What application fee applies to the Express Mortgage?": interp(
+                answer,
+                offering_ids=(OfferingId.MORTGAGE_EXPRESS,),
+                operation=QueryOperation.SINGLE,
+                fields=(FieldPath.FEE_APPLICATION,),
+            ),
+        }
+    ).shape_for
+
+
 def _router(read_model: AnswerReadModel, legacy: _Legacy) -> TariffAnswerRouter:
     structured = (
         StructuredTariffQueryService(EvaluationRepository())
         if read_model is AnswerReadModel.STRUCTURED
         else _Structured()
     )
-    return TariffAnswerRouter(structured, legacy, read_model)
+    return TariffAnswerRouter(structured, legacy, read_model, shapes=_shapes())
 
 
 def test_default_settings_select_the_structured_read_model() -> None:
@@ -186,7 +216,7 @@ async def test_unresolvable_family_scope_abstains_instead_of_widening() -> None:
     )
 
     assert result.status is AnswerStatus.INSUFFICIENT_EVIDENCE
-    assert "comparison or rank" in str(result.audit_metadata["reason"])
+    assert "one offering" in str(result.audit_metadata["reason"])
 
 
 @pytest.mark.asyncio

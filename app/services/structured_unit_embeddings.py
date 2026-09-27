@@ -123,3 +123,40 @@ class StructuredUnitEmbeddingService:
 
     async def embed_query(self, question: str) -> Sequence[float]:
         return await self._query_provider.embed_query(question)
+
+    async def embed_missing(self, *, limit: int = 200) -> int:
+        """The worker's sweep: embed active retrieval units that lack a vector.
+
+        Units are embedded here, off the request path (fix plan D10); a
+        question only embeds itself, and only in the field finder.
+        """
+        filled = 0
+        for product in ProductType:
+            remaining = limit - filled
+            if remaining <= 0:
+                break
+            filled += await self.ensure(
+                bank="ameria",
+                product=product,
+                offering_ids=tuple(
+                    item for item in OfferingId if item.product is product
+                ),
+                limit=min(remaining, 500),
+            )
+        return filled
+
+
+class CombinedEmbeddingSweep:
+    """One sweep over knowledge chunks, then structured retrieval units."""
+
+    def __init__(self, *sweeps) -> None:
+        self._sweeps = tuple(sweep for sweep in sweeps if sweep is not None)
+
+    async def embed_missing(self, *, limit: int = 200) -> int:
+        filled = 0
+        for sweep in self._sweeps:
+            remaining = limit - filled
+            if remaining <= 0:
+                break
+            filled += await sweep.embed_missing(limit=remaining)
+        return filled
