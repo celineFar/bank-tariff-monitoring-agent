@@ -506,9 +506,6 @@ async def test_rr24_currency_keeps_facts_without_a_currency() -> None:
     assert [f.field_path for f in result.facts] == [FieldPath.REPAYMENT_METHOD]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR26: one added field withholds the whole history"
-)
 @pytest.mark.asyncio
 async def test_rr26_a_change_that_adds_a_field_still_answers() -> None:
     from app.domain.monitoring import SnapshotChange, SnapshotChangeSet
@@ -562,9 +559,6 @@ async def test_rr26_a_change_that_adds_a_field_still_answers() -> None:
 # --- RR27 / RR28 -------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR27: the after-run answer uses the run's scope"
-)
 @pytest.mark.asyncio
 async def test_rr27_offering_request_joining_a_family_run_answers_the_offering() -> (
     None
@@ -593,6 +587,8 @@ async def test_rr27_offering_request_joining_a_family_run_answers_the_offering()
         id=uuid4(),
         command=RunCommand(product=ProductType.MORTGAGE, trigger=RunTrigger.SCHEDULE),
         status=RunStatus.SUCCEEDED,
+        queued_at=NOW,
+        completed_at=NOW,
         created_at=NOW,
         updated_at=NOW,
     )
@@ -615,9 +611,6 @@ async def test_rr27_offering_request_joining_a_family_run_answers_the_offering()
     assert result.answer_status == "answered"
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR28: history values reach the model without evidence"
-)
 def test_rr28_history_values_carry_a_compact_citation() -> None:
     from app.domain.intent import HistoryQuery, HistoryRequestKind
     from app.domain.tariff_queries import HistoryResultStatus, TariffHistoryResult

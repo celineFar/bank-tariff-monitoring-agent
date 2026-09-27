@@ -135,7 +135,10 @@ async def test_a_natural_yes_takes_up_the_offer_and_the_run_answers_the_question
     )
     assert ran == {"status": "succeeded"}
     # The run answers the question of record, not the reply.
-    assert flow.chat.node_inputs[0]["question"] == first["standalone_question"]
+    answer = flow.chat.node_inputs[0]["answer"]
+    assert answer["question"] == first["standalone_question"]
+    assert answer["offering_ids"] == ["mortgage_express"]
+    assert answer["shape"]["operation"] == "single"
 
 
 @pytest.mark.asyncio

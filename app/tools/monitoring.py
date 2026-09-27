@@ -117,16 +117,33 @@ async def run_tariff_monitoring(
                 "reason_code": "run.full_product_scope",
             }
     tool_context.state[MONITOR_OFFER_KEY] = None
-    request = tool_context.state.get(MONITORING_ANSWER_REQUEST_KEY)
-    question = request.get("question") if isinstance(request, dict) else None
     return await tool_context.run_node(
         services.monitoring_node,
         {
             "product": resolved_product.value,
             "offering_id": resolved_offering.value if resolved_offering else None,
-            "question": question if isinstance(question, str) else None,
+            "answer": _answer_request(tool_context, resolved_product),
         },
     )
+
+
+def _answer_request(
+    tool_context: ToolContext, product: ProductType
+) -> dict[str, object] | None:
+    """The question of record the run answers, if it is about this family."""
+    request = tool_context.state.get(MONITORING_ANSWER_REQUEST_KEY)
+    if (
+        not isinstance(request, dict)
+        or not request.get("question")
+        or request.get("product") != product.value
+    ):
+        return None
+    return {
+        "question": request["question"],
+        "product": request["product"],
+        "offering_ids": list(request.get("offering_ids") or ()),
+        "shape": request.get("shape"),
+    }
 
 
 async def review_pending_candidates(

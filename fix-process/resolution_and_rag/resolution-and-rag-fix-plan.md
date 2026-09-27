@@ -1119,17 +1119,64 @@ outside the steps marked **(live)**.
 
 ### Phase 5: History, the after-run answer, the index
 
-- [ ] `_history`: require evidence only on the non-missing side, leave out and list
+- [x] `_history`: require evidence only on the non-missing side, leave out and list
       unverifiable items, and skip initial change sets (RR26).
-- [ ] `get_tariff_history`:
-  - [ ] one compact citation per value (RR28, D15);
-  - [ ] `what_changed` uses the evidence-enriched structured history.
-- [ ] `MonitoringNodeInput` carries the answer request. `_with_answer` plans from its
+- [x] `get_tariff_history`:
+  - [x] one compact citation per value (RR28, D15);
+  - [x] `what_changed` uses the evidence-enriched structured history.
+        *(Done differently: `TariffHistoryService` cites each changed value from the
+        snapshot that accepted it. See the Phase 5 notes.)*
+- [x] `MonitoringNodeInput` carries the answer request. `_with_answer` plans from its
       scope and shape, and `answer_status` reports the real status (RR27).
-- [ ] Migration `025_offering_profiles_one_active.sql`: a duplicate check, then the
+- [x] Migration `025_offering_profiles_one_active.sql`: a duplicate check, then the
       partial unique index (RR29). Apply it to the test database, and to a copy of the
       dev database.
-- [ ] Remove the xfail marks of RR26, RR27 and RR28.
+- [x] Remove the xfail marks of RR26, RR27 and RR28.
+
+
+**Phase 5 notes (done).**
+- **Structured history** (`_history`, RR26/D14).
+  - A change item needs evidence only for a side that has a value. An item without
+    it is left out and listed in `metadata.omitted` (offering, field, reason); the
+    rest of the answer stands.
+  - Initial change sets (no changes) are skipped.
+  - `insufficient_evidence` only when no item can be cited.
+- **`get_tariff_history`** (RR28/D15). `field_citations(snapshot, field)` in
+  [tariff_queries.py](../../app/services/tariff_queries.py) returns up to 3 compact
+  citations `{source_url, section, page, quote≤300}`, from the snapshot's own
+  extraction.
+  - **`show_history`:** each snapshot in the payload gets `citations: {field: [...]}`.
+  - **`what_changed`:** `TariffHistoryService.query` fills each change item's
+    `previous_evidence` / `current_evidence` from the two snapshots.
+    `tariff_history_payload` leaves out any value that has no citation on its
+    non-missing side, and lists it under `omitted_changes`.
+  - **Deviation from the plan:** the checklist said "`what_changed` uses the
+    evidence-enriched structured history". The structured history needs a family
+    and a projection of both snapshots. Citing from the snapshots themselves covers
+    family-less history and snapshots accepted before the read model, with the same
+    guarantee (no uncited value).
+- **The after-run answer** (RR27).
+  - `MonitoringNodeInput.answer: MonitoringAnswerRequest` carries the question,
+    product, offering_ids and shape. `run_tariff_monitoring` fills it from
+    `MONITORING_ANSWER_REQUEST_KEY`, only when it is about the family being run.
+  - `_with_answer` plans with `issue_typed_plan` at the *request's* scope and calls
+    `answer_router.answer_plan`. A missing shape becomes single or overview; the
+    field finder picks the fields.
+  - A bare `question` (the node test fixture) is answered with `answer_question` at
+    the request's scope, never `run.command`.
+  - `answer_status` is the answer's real status (e.g. `insufficient_evidence`); the
+    node test now expects that.
+- **Migration 025** (RR29):
+  - a `DO` block that raises, listing the offerings, if any has more than one active
+    profile;
+  - then `CREATE UNIQUE INDEX offering_profiles_one_active_uq ... WHERE is_active`.
+  - Applied: the test database (all migrations run per test), and a copy of the dev
+    database (`rr_dev_copy`: 1 profile, 1 active; index created).
+  - The dev database itself is not migrated; that is a deployment step (the indexing
+    notes say it is still at 015).
+  - Tested in `test_the_database_allows_one_active_profile_per_offering`.
+- **All 12 regression tests pass;** no `xfail` is left.
+- **Suite:** 1272 passed, plus the 4 known Gemini-key failures.
 
 ### Phase 6: Validation and docs
 

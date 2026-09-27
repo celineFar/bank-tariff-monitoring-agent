@@ -126,6 +126,58 @@ class TariffHistoryService:
         self._clock = clock
 
     async def query(self, query: HistoryQuery) -> TariffHistoryResult:
+        """Read one scope, with a compact citation on every changed value (RR28)."""
+        result = await self._query(query)
+        if not result.changes:
+            return result
+        return result.model_copy(
+            update={"changes": await self._cited_changes(result.changes)}
+        )
+
+    async def _cited_changes(self, changes):
+        """Each changed value's citations, from the snapshot that accepted it."""
+        get = getattr(self._snapshots, "get", None)
+        if get is None:
+            return changes
+        loaded: dict = {}
+
+        async def snapshot(snapshot_id):
+            if snapshot_id is None:
+                return None
+            if snapshot_id not in loaded:
+                loaded[snapshot_id] = await get(snapshot_id)
+            return loaded[snapshot_id]
+
+        cited = []
+        for change in changes:
+            previous = await snapshot(change.previous_snapshot_id)
+            current = await snapshot(change.current_snapshot_id)
+            cited.append(
+                change.model_copy(
+                    update={
+                        "changes": tuple(
+                            item.model_copy(
+                                update={
+                                    "previous_evidence": (
+                                        field_citations(previous, item.field)
+                                        if previous is not None
+                                        else ()
+                                    ),
+                                    "current_evidence": (
+                                        field_citations(current, item.field)
+                                        if current is not None
+                                        else ()
+                                    ),
+                                }
+                            )
+                            for item in change.changes
+                        )
+                    }
+                )
+            )
+        return tuple(cited)
+
+    async def _query(self, query: HistoryQuery) -> TariffHistoryResult:
         """Read one scope; a subset of offerings is read per offering and merged."""
         family = (
             frozenset(item for item in OfferingId if item.product is query.product)
@@ -263,6 +315,42 @@ class TariffHistoryService:
             changes=(),
             last_change_before_window_at=(older.created_at if older else None),
         )
+
+
+CITATIONS_PER_FIELD = 3
+QUOTE_CHARS = 300
+
+
+def field_citations(snapshot, field: str) -> tuple[dict[str, object], ...]:
+    """Compact citations of one accepted field (D15): URL, section, page, quote.
+
+    Read from the snapshot's own extraction, so a history value carries the
+    evidence it was accepted with, at a bounded size (the RV8 payload bound).
+    """
+    product = (snapshot.semantic_extraction or {}).get("loan_product") or {}
+    value = product.get(field)
+    if not isinstance(value, dict) or value.get("status") != "found":
+        return ()
+    citations: list[dict[str, object]] = []
+    for item in value.get("evidence") or ():
+        if not isinstance(item, dict):
+            continue
+        locator = item.get("locator") or {}
+        url = item.get("source_url") or locator.get("source_url")
+        quote = str(item.get("quote") or "").strip()
+        if not url or not quote:
+            continue
+        citations.append(
+            {
+                "source_url": str(url),
+                "section": item.get("section"),
+                "page": locator.get("pdf_page"),
+                "quote": quote[:QUOTE_CHARS],
+            }
+        )
+        if len(citations) >= CITATIONS_PER_FIELD:
+            break
+    return tuple(citations)
 
 
 def _require_aware(value: datetime, label: str) -> None:

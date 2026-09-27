@@ -299,7 +299,7 @@ async def test_monitoring_runs_the_node_only_for_the_granted_scope(wired) -> Non
 
     assert result == {"status": "succeeded"}
     assert context.node_inputs == [
-        {"product": "mortgage", "offering_id": "mortgage_express", "question": None}
+        {"product": "mortgage", "offering_id": "mortgage_express", "answer": None}
     ]
 
 

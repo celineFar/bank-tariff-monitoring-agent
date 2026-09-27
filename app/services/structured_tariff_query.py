@@ -664,10 +664,14 @@ class StructuredTariffQueryService:
         relevant = tuple(
             change
             for change in changes
-            if not plan.fields
-            or any(
-                set(_paths_for_change(item.field)) & set(plan.fields)
-                for item in change.changes
+            # An initial accepted snapshot records no change.
+            if change.changes
+            and (
+                not plan.fields
+                or any(
+                    set(_paths_for_change(item.field)) & set(plan.fields)
+                    for item in change.changes
+                )
             )
         )
         if not relevant:
@@ -699,6 +703,7 @@ class StructuredTariffQueryService:
             include_inactive=True,
         )
         enriched = []
+        omitted: list[dict[str, object]] = []
         for change in relevant:
             updated_items = []
             for item in change.changes:
@@ -719,12 +724,26 @@ class StructuredTariffQueryService:
                     and fact.field_path in item_paths
                     for evidence in fact.evidence
                 )
-                if not previous_evidence or not current_evidence:
-                    return self._empty(
-                        plan,
-                        QueryStatus.INSUFFICIENT_EVIDENCE,
-                        "accepted change lacks old or new verified source evidence",
+                # Evidence is required only for a side that has a value: an
+                # added field has no previous value, a removed one no current
+                # value (RR26). An item missing it is left out and listed.
+                missing = [
+                    side
+                    for side, value, evidence in (
+                        ("previous", item.previous, previous_evidence),
+                        ("current", item.current, current_evidence),
                     )
+                    if value is not None and not evidence
+                ]
+                if missing:
+                    omitted.append(
+                        {
+                            "offering_id": change.offering_id.value,
+                            "field": item.field,
+                            "reason": f"no verified evidence for the {missing[0]} value",
+                        }
+                    )
+                    continue
                 updated_items.append(
                     item.model_copy(
                         update={
@@ -733,14 +752,32 @@ class StructuredTariffQueryService:
                         }
                     )
                 )
-            enriched.append(change.model_copy(update={"changes": tuple(updated_items)}))
+            if updated_items:
+                enriched.append(
+                    change.model_copy(update={"changes": tuple(updated_items)})
+                )
+        record(
+            "history.items",
+            kept=sum(len(c.changes) for c in enriched),
+            omitted=len(omitted),
+        )
+        if not enriched:
+            result = self._empty(
+                plan,
+                QueryStatus.INSUFFICIENT_EVIDENCE,
+                "no accepted change has verified source evidence",
+            )
+            return result.model_copy(update={"metadata": {"omitted": omitted}})
         return TariffQueryResult(
             status=QueryStatus.ANSWERED,
             operation=plan.operation,
             product=plan.product,
             offering_ids=offering_ids,
             as_of=max(item.created_at for item in enriched),
-            metadata={"changes": [item.model_dump(mode="json") for item in enriched]},
+            metadata={
+                "changes": [item.model_dump(mode="json") for item in enriched],
+                "omitted": omitted,
+            },
         )
 
     @staticmethod

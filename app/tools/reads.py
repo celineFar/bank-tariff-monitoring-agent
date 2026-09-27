@@ -15,6 +15,7 @@ from google.adk.tools import ToolContext
 from app.domain.intent import FreshnessStatus, HistoryQuery, HistoryRequestKind
 from app.domain.structured_tariffs import ANSWERABLE_OPERATIONS, ResolutionPlan
 from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
+from app.services.tariff_queries import field_citations
 from app.tools._services import services
 from app.tools._state import (
     MONITOR_OFFER_KEY,
@@ -184,15 +185,52 @@ def current_tariffs_payload(result: CurrentTariffResult) -> dict[str, object]:
 
 
 def tariff_history_payload(result: TariffHistoryResult) -> dict[str, object]:
-    """History for the model: each snapshot's values and times, without the
-    evidence catalog and extraction internals a stored snapshot carries (a
-    snapshot's evidence alone is hundreds of kB)."""
+    """History for the model: values and times, each value with a compact
+    citation (RR28), without the evidence catalog and extraction internals a
+    stored snapshot carries (a snapshot's evidence alone is hundreds of kB).
+
+    A changed value whose non-missing side has no citation is left out and
+    listed under `omitted_changes`, never shown uncited (D14).
+    """
     payload = result.model_dump(
         mode="json",
         exclude={
             "snapshots": {"__all__": {"evidence", "semantic_extraction", "validation"}}
         },
     )
+    for dumped, snapshot in zip(
+        payload.get("snapshots", ()), getattr(result, "snapshots", ()), strict=False
+    ):
+        dumped["citations"] = {
+            field: list(citations)
+            for field in snapshot.normalized_tariff
+            if (citations := field_citations(snapshot, field))
+        }
+    omitted: list[dict[str, object]] = []
+    for change in payload.get("changes", ()):
+        kept = []
+        for item in change["changes"]:
+            missing_previous = (
+                item["previous"] is not None and not item["previous_evidence"]
+            )
+            missing_current = (
+                item["current"] is not None and not item["current_evidence"]
+            )
+            if missing_previous or missing_current:
+                omitted.append(
+                    {
+                        "offering_id": change["offering_id"],
+                        "field": item["field"],
+                        "reason": "no verified citation for the "
+                        + ("previous" if missing_previous else "current")
+                        + " value",
+                    }
+                )
+                continue
+            kept.append(item)
+        change["changes"] = kept
+    if omitted:
+        payload["omitted_changes"] = omitted
     return payload
 
 
