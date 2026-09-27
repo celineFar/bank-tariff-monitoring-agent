@@ -608,3 +608,71 @@ async def test_p4_the_chat_announces_only_reviews_it_can_reach() -> None:
         configure_services(None, None)
 
     assert counts == {"credit_line": 1}
+
+
+# --- P5: an answer that could not be applied is reported, not dropped -------------
+
+
+@pytest.mark.asyncio
+async def test_p5_an_answer_to_a_superseded_review_is_reported() -> None:
+    from app.domain.review import ReviewStatus
+    from tests.fixtures.monitoring_node import (
+        OFFERING,
+        PRODUCT,
+        build,
+        call,
+        function_responses,
+        interrupts,
+        reply,
+        text,
+    )
+
+    harness = await build(review_scopes=("interest_rate",))
+    harness.model.play(
+        call("run_tariff_monitoring", product=PRODUCT, offering_id=OFFERING)
+    )
+    ((interrupt_id, _),) = interrupts(await harness.turn(text("monitor")))
+    # A newer run's candidate replaces this one while the question is open.
+    for task in harness.reviews.tasks.values():
+        harness.reviews._set(task.id, status=ReviewStatus.SUPERSEDED)
+
+    events = await harness.turn(
+        reply(
+            interrupt_id,
+            {"decision_type": "select_candidate", "candidate_id": "candidate-1"},
+        )
+    )
+
+    result = function_responses(events, "run_tariff_monitoring")[0]
+    assert result["answers_not_applied"] == ["overdraft · interest rate (superseded)"]
+    assert "Not applied" in result["message"]
+    assert harness.decisions.applied == []
+
+
+@pytest.mark.asyncio
+async def test_p5_a_conflict_while_applying_is_not_a_tool_error() -> None:
+    from app.domain.models import OfferingId
+    from app.domain.review import ReviewDecision, ReviewDecisionType, ReviewStatus
+    from app.repositories.reviews import ReviewConflictError
+    from app.services.review_resolution import ReviewResolutionService
+    from tests.fixtures.monitoring_node import Reviews, Runs, queued_run, review_task
+
+    runs, reviews = Runs(), Reviews()
+    run = runs.add(queued_run())
+    task = review_task(run, OfferingId.OVERDRAFT, "interest_rate")
+    reviews.tasks[task.id] = task
+
+    class Racing:
+        async def apply(self, review_id, decision, *, reviewer):
+            reviews._set(review_id, status=ReviewStatus.SUPERSEDED)
+            raise ReviewConflictError("review is no longer pending")
+
+    service = ReviewResolutionService(runs=runs, reviews=reviews, decisions=Racing())
+
+    result = await service.apply(
+        task,
+        ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL),
+        reviewer="cli-user",
+    )
+
+    assert result.status is ReviewStatus.SUPERSEDED

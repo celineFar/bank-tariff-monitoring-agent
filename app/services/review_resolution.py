@@ -115,6 +115,9 @@ class ReviewResolutionService:
         )
         return tuple(sorted(tasks, key=lambda task: (task.created_at, str(task.id))))
 
+    async def get(self, review_id: UUID) -> ReviewTask | None:
+        return await self._reviews.get(review_id)
+
     async def all_reviews(self, run_id: UUID) -> tuple[ReviewTask, ...]:
         """Every review of one run, decided or not, in the same stable order."""
         tasks = await self._reviews.list(run_id=run_id, limit=_REVIEW_PAGE)
@@ -224,6 +227,11 @@ class ReviewResolutionService:
                 payload={"review_ids": [str(task.id)]},
             )
             return await self._reviews.supersede(task.id)
+        except ReviewConflictError:  # after StaleReviewError, its subclass
+            # Superseded or aborted between reading it and deciding it. Nothing
+            # was written; the caller reports the answer as not applied.
+            latest = await self._reviews.get(task.id)
+            return latest if latest is not None else task
         except ValueError as exc:
             await self._runs.record_audit(
                 task.run_id,

@@ -161,7 +161,9 @@ evidence re-opens the question. `approve` (a rate change or an OCR reading) and
   runs through `ReviewResolutionService.reject_all_pending`. It requires
   `X-Review-Admin-Token` matching `REVIEW_ADMIN_TOKEN` and reports completed and failed
   runs separately. A chat paused on one of those reviews learns on its next resume
-  that the run was closed; it does not start a new run.
+  that the run was closed; it does not start a new run, and the tool result lists the
+  answer under `answers_not_applied` (the same happens when a newer candidate
+  superseded the review while the question was open).
 - On start and every `RUN_RECOVERY_INTERVAL_SECONDS`, the worker completes any run left
   `awaiting_review` none of whose reviews is pending (decided, superseded by a newer
   candidate, or aborted).

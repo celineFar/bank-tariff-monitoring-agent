@@ -39,7 +39,7 @@ from app.domain.monitoring import (
     RunTrigger,
 )
 from app.domain.query_shape import QueryShape
-from app.domain.review import ReviewDecisionInput, ReviewTask
+from app.domain.review import ReviewDecisionInput, ReviewStatus, ReviewTask
 from app.domain.structured_tariffs import QueryOperation, ResolutionPlan
 from app.repositories.contracts import RunRepository
 from app.services.contracts import TariffPipeline
@@ -134,6 +134,9 @@ class MonitoringResult(NodeModel):
     failure_code: str | None = None
     failure_summary: str | None = None
     message: str | None = None
+    # Answers the reviewer gave that were not applied: the review was superseded
+    # by a newer candidate or aborted while the question was open.
+    answers_not_applied: tuple[str, ...] = ()
 
 
 def review_interrupt_id(run_id: UUID, review_id: UUID, attempt: int = 1) -> str:
@@ -380,6 +383,18 @@ def build_monitoring_node(
 
         # 5. Report, and answer the original question from accepted facts.
         result = await _outcome(runs, run, request, created=created, followed=followed)
+        dropped = await _answers_not_applied(resolution, resume, reviewer=ctx.user_id)
+        if dropped:
+            result = result.model_copy(
+                update={
+                    "answers_not_applied": dropped,
+                    "message": (
+                        "Not applied: the review was closed before your answer "
+                        "arrived (a newer candidate replaced it, or it was "
+                        "aborted). Nothing was changed for: " + "; ".join(dropped)
+                    ),
+                }
+            )
         if (request.answer is not None or request.question) and run.status in {
             RunStatus.SUCCEEDED,
             RunStatus.PARTIAL_SUCCESS,
@@ -463,6 +478,39 @@ async def _run_to_review(
         except Exception:
             logger.warning("could not close reviewed run %s", run.id, exc_info=True)
     return None
+
+
+async def _answers_not_applied(
+    resolution: ReviewResolutionService,
+    resume: dict[str, Any],
+    *,
+    reviewer: str,
+) -> tuple[str, ...]:
+    """Reviews this invocation answered whose answer was never applied.
+
+    ADK hands every answer of the invocation back on each resume. An answer is
+    applied when its review is decided by this reviewer; a review superseded or
+    decided by someone else (an admin abort) while the question was open kept
+    nothing of it, and the reviewer must be told rather than left to assume.
+    """
+    answered = {
+        parsed[1]
+        for key in resume
+        if (parsed := parse_review_interrupt_id(key)) is not None
+    }
+    dropped: list[str] = []
+    for review_id in sorted(answered, key=str):
+        task = await resolution.get(review_id)
+        if task is None or task.status is ReviewStatus.PENDING:
+            continue
+        if (
+            task.status in {ReviewStatus.APPROVED, ReviewStatus.REJECTED}
+            and task.reviewer == reviewer
+        ):
+            continue
+        field = task.issue_scope.replace("_", " ")
+        dropped.append(f"{task.offering_id.value} · {field} ({task.status.value})")
+    return tuple(dropped)
 
 
 def _latest_reply(
