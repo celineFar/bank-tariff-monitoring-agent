@@ -37,7 +37,7 @@ def fmt_plan(query, res):
             session_id="s",
             turn_id="t",
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"grant ERR {type(exc).__name__}: {exc}"
     return (
         f"plan op={plan.operation.value} ids={[i.value for i in plan.offering_ids]} "
@@ -58,7 +58,7 @@ async def main(queries):
         stub.calls.clear()
         try:
             turn = await resolver.resolve_turn(q, state if chained else None)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"\nQ: {q!r}\n  CRASH {type(exc).__name__}: {str(exc)[:200]}")
             continue
         state = turn.state

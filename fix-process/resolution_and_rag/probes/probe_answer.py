@@ -13,7 +13,11 @@ from app.repositories.structured_tariff_query import (
     lexical_search_terms,
 )
 from app.services.intent_resolution import RequestResolver
-from app.services.structured_query_planning import issue_read_grant, _plan, QuerySelection
+from app.services.structured_query_planning import (
+    QuerySelection,
+    _plan,
+    issue_read_grant,
+)
 from app.services.structured_tariff_query import StructuredTariffQueryService
 
 URL = "postgresql+asyncpg://tariff:tariff@localhost:5434/tariff_monitor"

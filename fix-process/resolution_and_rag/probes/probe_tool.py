@@ -80,7 +80,7 @@ async def main():
         }
         try:
             await turn(state, 2, reply)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"  RAISED {type(exc).__name__}: {exc}; offer now={state.get(MONITOR_OFFER_KEY)}")
 
     print("\n== 'yes' twice in the same turn")

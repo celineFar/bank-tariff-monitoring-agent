@@ -86,3 +86,18 @@ The `xfail` tests RR9, RR13, RR14 and RR15 now pass.
 - **On Postgres,** the lexical-recall check became a field-finder check: with the
   fields removed, ≥ 85% of the single-offering target questions find a required
   field through the real prefix `to_tsquery`. It passes.
+
+## Final validation (Phase 6)
+
+| Scenario | Result |
+|---|---|
+| RRS01 recorded case set | 133/133 (`tests/unit/test_interpretation_cases.py`) |
+| RRS02 live case set, final run after Phases 3–5 | **133/133 (100%), 0 safety mismatches** (dry run, recordings unchanged) |
+| RRS03 tool flows | 14/14 |
+| RRS04 dev database answer path | all as expected (see above) |
+| RRS05 ranking | all pass |
+| RRS06 target questions | 25/25, metrics at the bar |
+| RRS07 agent eval | **not run: needs the user's approval** (whole-agent Gemini calls) |
+| RRS08 cost and latency | final run: 152 calls, mean 3,779 input / 198 output tokens, p50 1.8 s, p90 2.5 s |
+| Suite | 1272 passed, 0 `xfail`; the 4 known Gemini-key tests fail as at baseline |
+| `agents-cli lint` | clean for everything this fix touched. It still fails on 10 findings in `fix-process/adk-behavior/stop/*.py`, which predate this branch |

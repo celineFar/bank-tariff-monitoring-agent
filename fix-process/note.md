@@ -212,3 +212,40 @@ without asking:
 
   "Block only this session's run" also needs a column recording the chat session that
   started a run; runs do not record it today.
+- **Decisions taken without asking** (D6–D20 in the plan, all implemented):
+  - **D6.** No keyword fallback when the interpreter fails: the turn is "unavailable".
+  - **D7.** `resolve_request` and `answer_tariff_query` take no text argument.
+  - **D8.** `overview` is a new operation.
+  - **D9.** `/questions` asks the interpreter for the shape only.
+  - **D10.** Unit embeddings moved to the worker sweep.
+  - **D11.** Prefix `to_tsquery`, with stemmed terms.
+  - **D12.** The intent enum values are unchanged, plus `route`.
+  - **D13.** The standalone question is the question of record.
+  - **D14 and D15.** History items without evidence are left out and listed; history
+    citations are compact.
+  - **D16.** Migration 025, a partial unique index.
+  - **D17.** One family per turn.
+  - **D18.** The `clarification_response` contract is kept.
+  - **D19.** The V5 cross-check can only force a question, never add a scope.
+  - **D20.** The model is unchanged (`generation_model`).
+- **Decisions found while implementing:**
+  - **Gemini rejects `additionalProperties`** in a response schema. The interpreter's
+    output models use `extra="ignore"`, and pydantic still validates every value.
+  - **The model is not deterministic at temperature 0,** so interpretations are
+    recorded per case.
+  - **V3 is enforced in code for replies:** `PendingClarification.expects_single_value`.
+  - **One prompt rule was added,** after the live run: a singular value asked of a
+    family is `single`.
+  - **Lexical query terms are stemmed before the prefix,** because a prefix only
+    matches forward.
+  - **History citations come from the accepted snapshots,** not from the structured
+    projection. This covers family-less history and pre-read-model snapshots.
+- **Live runs.** The interpreter runs used `GEMINI_API_KEY` from
+  `../bank-tariff-monitoring-agent/.env` at run time, without printing or copying it.
+  They made intent-interpretation calls only, ~150 per full run, with ~3.8k input and
+  ~200 output tokens per call. The final run scored 133/133 with 0 safety mismatches.
+- **Not done (needs the user):**
+  - RRS07, the whole-agent `agents-cli eval`, which spends whole-agent tokens.
+  - The AGENTS.md Gemini-boundary wording.
+  - Applying migration 025 to the dev database.
+  - Deployment.

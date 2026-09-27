@@ -79,7 +79,7 @@ holding a tool:
 
 | Call site | Model setting | What it decides | What validates the response |
 |---|---|---|---|
-| `AdkIntentClassifier` | `MODEL_NAME` | intent and offering, only when exact and fuzzy matching were insufficient | output restricted to the supplied enum values and candidate IDs |
+| `AdkRequestInterpreter` | `MODEL_NAME` | every chat turn: intent, family/offerings, standalone question, and the question's shape (operation, fields, rank, currency) | enum-bounded schema; code checks IDs against the catalog and scope rules (V1–V10) and alone issues grants |
 | `GeminiPdfExtractionService` | `PDF_EXTRACTION_MODEL_NAME` | transcribing an admitted PDF into blocks, tables, and notes | every page present exactly once, rectangular tables, strict schema |
 | `TesseractOcrTranscriber` | none — local engine, no model | reading a rendered page image when the probe says `image_only` and Gemini returned nothing | deterministic trigger, page/pixel/timeout bounds, confidence floor, OCR-marked provenance |
 | `AdkSourceDiscoveryClassifier` | `SOURCE_DISCOVERY_MODEL_NAME` | whether an unresolved unit belongs to this product | exactly one known source ID per requested item |
@@ -201,11 +201,11 @@ Questions never acquire sources. They read what monitoring already accepted.
 ```mermaid
 flowchart LR
     Q["question<br/>Armenian · English · mixed"]
-    R["RequestResolver<br/>exact → fuzzy → bounded Gemini<br/>→ typed clarification"]
+    R["RequestResolver<br/>one Gemini interpretation<br/>→ code validation · typed clarification"]
     P["ResolutionPlan<br/>one turn, one use, 30 min<br/>session + question hash bound"]
-    SVC["StructuredTariffQueryService<br/>single · compare · family_rank · history"]
+    SVC["StructuredTariffQueryService<br/>single · compare · overview · family_rank · history"]
     F[("tariff_facts + fact_evidence<br/>accepted, active only")]
-    U[("retrieval_units<br/>lexical first, vector if sparse")]
+    U[("retrieval_units<br/>field finder: only when no field is named")]
     ANSWER["answer + per-value citation<br/>quote · URL · page/section · as_of"]
     ABSTAIN["abstention<br/>names the offering and field<br/>that have no accepted evidence"]
 

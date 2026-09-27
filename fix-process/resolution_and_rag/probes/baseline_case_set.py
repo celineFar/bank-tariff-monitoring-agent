@@ -51,7 +51,7 @@ def _outcome(message, resolution, offer) -> TurnOutcome:
             direction = plan.rank_direction
             rank_field = plan.fields[0] if plan.rank_direction else None
             currency = plan.conditions.get("currency")
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     spend = False
     if offer is not None:
@@ -97,7 +97,7 @@ async def main() -> None:
         for index, turn in enumerate(case.turns):
             try:
                 result = await resolver.resolve_turn(turn.message, state)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 failures.append(f"turn {index}: CRASH {type(exc).__name__}")
                 checks["crash"] += 1
                 if turn.expect.safety:

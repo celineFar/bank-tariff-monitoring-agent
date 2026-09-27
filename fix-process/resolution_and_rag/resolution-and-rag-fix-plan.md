@@ -1,7 +1,8 @@
 # Resolution and RAG: fix plan
 
 Date: 2026-09-27 · Branch: `fix/resolution_and_rag` (from `integration/process-fixes` at
-`180ea9f`) · Status: **planned**. The design choices were agreed with the user on
+`180ea9f`) · Status: **implemented and validated** (Phases 0–6). Open: RRS07 and the
+AGENTS.md wording need the user; deployment needs approval. The design choices were agreed with the user on
 2026-09-27; the smaller ones taken without asking are marked in [Decisions](#decisions).
 
 ## Scope
@@ -88,6 +89,11 @@ T1, T2 and T3 are the three parts of the [target design](#target-design).
 | RR27 | The after-run answer uses the run's scope, not the request's *(code)* | review | medium | T3 |
 | RR28 | `get_tariff_history` shows values without evidence | review | medium | T3 |
 | RR29 | The database does not enforce one active profile per offering | user (question) | low | migration 025 |
+
+**Status:** all 29 items are fixed and covered by tests. RR7, RR9, RR10, RR12–RR15 and
+RR23, RR24, RR26–RR28 have the regression tests in
+`tests/unit/test_resolution_rag_fixes.py`. The rest are covered by the case set, the
+tool flows, and the structured-query tests. See the phase notes.
 
 ---
 
@@ -1180,22 +1186,55 @@ outside the steps marked **(live)**.
 
 ### Phase 6: Validation and docs
 
-- [ ] Run RRS01–RRS06 and RRS08, and record the results in `scenario-results.md`.
+- [x] Run RRS01–RRS06 and RRS08, and record the results in `scenario-results.md`.
 - [ ] **(live, needs approval)** Run RRS07 with `agents-cli eval run` on the expanded
       suite plus the new multi-turn cases; compare with the baseline
       (`agents-cli eval compare`).
-- [ ] Update `docs/intent-resolution.md`: the resolution order, the interpreter
+- [x] Update `docs/intent-resolution.md`: the resolution order, the interpreter
       contract, validation V1–V10, and session state.
-- [ ] Update `docs/architecture.md`: the Gemini boundary, the "typed API remains
+- [x] Update `docs/architecture.md`: the Gemini boundary, the "typed API remains
       classifier-free" wording (D9), and the tool signatures.
-- [ ] Update `docs/agent-and-tool-architecture.md`, `docs/rag-answering.md`,
+- [x] Update `docs/agent-and-tool-architecture.md`, `docs/rag-answering.md`,
       `docs/rag-retrieval.md` and `docs/tariff-query-services.md`: `overview`, rank by
       group, the field finder, and history citations.
 - [ ] Propose the AGENTS.md Gemini-boundary wording to the user ("intent resolution,
       including the question's query shape"), and edit it only once they agree.
-- [ ] Record the decisions taken without asking (D6–D20) and the Phase notes in
+- [x] Record the decisions taken without asking (D6–D20) and the Phase notes in
       `fix-process/note.md`.
-- [ ] Final `uv run pytest tests/unit tests/integration`, `agents-cli lint`.
+- [x] Final `uv run pytest tests/unit tests/integration`, `agents-cli lint`.
+      *(Lint is clean for this fix; `agents-cli lint` still reports 10 older findings in
+      `fix-process/adk-behavior/stop/`.)*
+
+
+**Phase 6 notes (done, except two items that need the user).**
+- **Validation:** RRS01–RRS06 and RRS08 all pass, and the final live RRS02 run scored
+  133/133 with 0 safety mismatches. See [scenario-results.md](scenario-results.md).
+- **Docs updated:**
+  - `docs/intent-resolution.md`: rewritten for the interpreter design.
+  - `docs/architecture.md`: the Gemini boundary, grants, payload citations, the
+    worker sweep, `/questions` (D9), the case-set fixtures, the lexical query.
+  - `docs/agent-and-tool-architecture.md`: the tool table and grants.
+  - `docs/tariff-query-services.md`: overview, rank by group, field finder, currency
+    rule, history citations.
+  - `docs/rag-retrieval.md`: the field finder, prefix query, trace.
+  - `docs/architecture-diagram.md`, `docs/seed-catalog.md`, `docs/configuration.md`.
+- **`fix-process/note.md`** records D6–D20, the decisions found while implementing,
+  and the live-run facts.
+- **Still open, for the user:**
+  1. **RRS07**, `agents-cli eval run` on the expanded suite. It runs the whole agent on
+     Gemini, so it needs approval. When it runs, expect the eval references to need
+     updating: they name the old tool call shapes (`resolve_request` with a query,
+     `get_current_tariffs` for "current rate" questions, which now route to
+     `answer_tariff_query`).
+  2. **The AGENTS.md wording.** Proposed: "Keep Gemini limited to request
+     interpretation (intent, catalog scope and the question's query shape, one
+     tool-free call per chat turn, validated by code), source discovery ..., bounded
+     PDF structure transcription, and evidence-bound structured extraction." Edit it
+     only once the user agrees.
+- **Not in scope and still open:**
+  - the waiting-review rule (hand-off in `note.md`);
+  - applying migrations 024 and 025 to the dev database;
+  - deployment.
 
 ## Deployment (needs human approval)
 
