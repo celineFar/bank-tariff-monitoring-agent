@@ -370,7 +370,7 @@ class SemanticExtractionSettings(SettingsGroup):
     # operational choice, so it is configured rather than assumed here.
     fallback_model_names: tuple[str, ...] = ()
     schema_version: str = Field(default="6", min_length=1, max_length=50)
-    prompt_version: str = Field(default="6", min_length=1, max_length=50)
+    prompt_version: str = Field(default="7", min_length=1, max_length=50)
     # `full`: every call reads the offering's whole selected evidence (SE6).
     # `budgeted`: whole tables and sections chosen by their labels within
     # `budget_chars` per call -- cheaper, for very large offerings.

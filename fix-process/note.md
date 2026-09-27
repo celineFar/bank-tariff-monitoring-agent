@@ -316,3 +316,8 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
   by the income check) and F12 (budget spent first). F12's "would-be reviews first"
   ordering orders nothing, because every flagged field blocks publication; only the
   budget changes.
+- **Phase 1 (extraction validation).** Per-result parsing (`parse_batch_response`),
+  stitched-quote splitting, the explicit-income regex and schema-error locations.
+  Prompt version 7. The local `.env` still pins `SEMANTIC_EXTRACTION_PROMPT_VERSION=6`;
+  update it before the live run. One timing-sensitive monitoring-node test failed once
+  under full-suite load and passed on re-runs.

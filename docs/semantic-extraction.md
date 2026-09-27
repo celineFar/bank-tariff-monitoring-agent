@@ -81,13 +81,28 @@ agent on `MODEL_NAME`:
 Every call carries the exact JSON Schema of its fields. Condition dimensions come
 from a closed set.
 
-After the model responds, Python validates fields independently. Missing, duplicate
-or extra fields become review items without discarding valid sibling fields, as do:
+After the model responds, Python validates fields independently. The answer is
+parsed result by result (`parse_batch_response`): a result that fails the response
+schema is dropped and logged with each error's location and type, and the call's other
+results are kept. The call is retried only when the answer as a whole is unusable (not
+JSON, no `results` list, a failing result naming no known field, or no valid result).
+A dropped field goes to repair and then review with its schema errors, not as
+"missing".
+
+A quote joined with `...` or `…` is split into one citation per part when every part
+is verbatim in the same evidence item; otherwise it fails. Quotes may be up to 10,000
+characters; the prompt asks for at most 300 per value.
+
+Missing, duplicate or extra fields become review items without discarding valid
+sibling fields, as do:
 - out-of-batch evidence IDs and quotes absent from the cited evidence (compared
   whitespace-insensitively);
 - numbers of a value absent from its quotes;
 - alternatives that share their conditions;
 - values supported only by related-product evidence;
+- an income-verification value whose quotes do not name explicit income
+  documentation ("proof of employment and/or other income", "proof of income",
+  "income statement", "salary certificate", ...);
 - a category other than the catalog's;
 - a term threshold rule not split into its own conditional range;
 - a product name not anchored to the canonical page.

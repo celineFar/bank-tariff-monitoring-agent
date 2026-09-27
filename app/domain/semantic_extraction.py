@@ -493,7 +493,10 @@ class EvidenceItem(ExtractionModel):
 
 class ModelCitation(ExtractionModel):
     evidence_id: str = Field(pattern=r"^ev_[0-9a-f]{24}$")
-    quote: str = Field(min_length=1, max_length=1500)
+    # The prompt asks for at most 300 characters. A longer quote that is verbatim
+    # in its evidence is still a valid citation; at 1,500 one over-long quote
+    # failed the whole call and sent all its fields to review (F7/F8).
+    quote: str = Field(min_length=1, max_length=10_000)
 
 
 class ModelFieldResult(ExtractionModel):

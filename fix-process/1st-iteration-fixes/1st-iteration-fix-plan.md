@@ -457,15 +457,53 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 1: Extraction validation (F8, F7, F10, F20)
 
-- [ ] F8: parse the envelope, validate each result separately; route an invalid result
+- [x] F8: parse the envelope, validate each result separately; route an invalid result
       to repair, then review; retry the call only for an unusable envelope.
-- [ ] F7: prompt rule (one quote per value, ≤ 300 characters, no ellipses); bump
+- [x] F7: prompt rule (one quote per value, ≤ 300 characters, no ellipses); bump
       `SEMANTIC_EXTRACTION_PROMPT_VERSION` to 7 in `.env.example` and config defaults.
-- [ ] F7: split ellipsis quotes into verbatim segments of the same evidence item; keep
-      an over-long verbatim quote and trim it to the value's sentence(s) before storage.
-- [ ] F10: replace the marker tuple with the explicit-income pattern.
-- [ ] F20: log validation error locations and types; show them in `4_pre_validation.md`.
-- [ ] Remove the matching `xfail` marks; run the suite.
+- [x] F7: split ellipsis quotes into verbatim segments of the same evidence item; keep
+      an over-long verbatim quote whole (trimming dropped, see F7).
+- [x] F10: replace the marker tuple with the explicit-income pattern.
+- [x] F20: log validation error locations and types; show them in `4_pre_validation.md`.
+- [x] Remove the matching `xfail` marks; run the suite.
+
+**Phase 1 notes (done).**
+
+- **What changed** (all in [semantic_extraction.py](../../app/services/semantic_extraction.py)
+  unless named):
+  - `parse_batch_response` replaces the all-or-nothing `model_validate_json` in
+    `AdkSemanticExtractor._extract_once`. Invalid results are dropped and returned as
+    `ExtractorOutput.dropped` (field + `ValidationIssue`s); `_CallOutcome` carries them;
+    `extract()` keys them by `(batch.id, field)` and `_cardinality_issues` turns a dropped
+    field's schema errors into its repair and review issues (instead of "field is
+    missing"). The call is still retried when the envelope is unusable.
+  - `_schema_error_summary` formats errors as `results[3].evidence[0].quote
+    string_too_long` (no input values), used in the call error and in a warning per
+    dropped field. The audit's `4_pre_validation.md` shows them through the review
+    items' validation issues and the raw outputs' error text; no audit code changed.
+  - `_expand_stitched_quotes` runs on fresh, cached and repaired responses before
+    validation.
+  - `_EXPLICIT_INCOME` (a regex) replaces the income marker tuple.
+  - [domain/semantic_extraction.py](../../app/domain/semantic_extraction.py):
+    `ModelCitation.quote` max length 1,500 → 10,000.
+  - Prompt: one quote per value, at most 300 characters, never `...`/`…`.
+    `SEMANTIC_EXTRACTION_PROMPT_VERSION` 6 → 7 in `environment.py`, `models.py` and
+    `.env.example`. **The local `.env` still says 6** and overrides the default: set it
+    to 7 before the Phase 8 live run (the prompt text change alone already changes the
+    cache fingerprint, so this is for the record, not for correctness).
+  - [docs/semantic-extraction.md](../../docs/semantic-extraction.md) describes
+    per-result parsing, quote splitting and the income check.
+- **F12 early.** The repair loop now names skipped fields in its warning (it was
+  rewritten for F8), so `test_f12_skipped_repairs_are_logged_by_field` passes already;
+  its `xfail` was removed here. The budget default stays for Phase 2.
+- **Tests.** `test_f7_*` (3), `test_f8_*` (2, one added: a dropped field reaches review
+  with its schema error while the call's other fields are kept), `test_f10_*`,
+  `test_f20_*` pass. Full suite: 1,212 passed, 59 skipped, 18 xfailed; the only
+  non-passing tests are the 4 baseline live-environment ones.
+- **Flaky test seen once:** `tests/unit/test_monitoring_node.py::test_a_run_owned_by_
+  another_process_is_followed_not_executed` failed in one full run and passed in the
+  next full run and 3 isolated runs of its module. Nothing in Phase 1 touches the
+  monitoring node; it is timing-sensitive under load.
 
 ### Phase 2: Repairs (F11, F12)
 

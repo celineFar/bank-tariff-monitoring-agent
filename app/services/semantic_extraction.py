@@ -127,7 +127,9 @@ string. For example, category uses value_json="\\\"consumer_loan\\\"" and a list
 uses value_json="[\\\"purchase\\\"]". Preserve ranges,
 currencies, units, conditions, formulas, and nominal-versus-effective distinctions,
 and cite one or more supplied evidence_id values with a short verbatim quote that
-contains the value's numbers.
+contains the value's numbers. Copy each quote exactly from its evidence item, one quote
+per value, at most 300 characters; never use '...' or '…' to join passages. To support
+a value from several places, cite several short quotes instead of one long one.
 Use not_stated when the supplied evidence does not state the field, ambiguous when
 multiple interpretations are plausible, and conflicting when supplied authoritative
 sources disagree. Do not collapse condition-specific values into an unconditional one.
@@ -273,12 +275,26 @@ class SemanticExtractionCallError(RuntimeError):
         self.retryable = retryable
 
 
+DroppedResult = tuple[ExtractionField, tuple[ValidationIssue, ...]]
+
+
 @dataclass(frozen=True)
 class ExtractorOutput:
-    """A parsed response with the exact text it was parsed from."""
+    """A parsed response with the exact text it was parsed from.
+
+    `dropped` names results that failed the response schema on their own; the
+    other results of the call are kept (F8).
+    """
 
     response: ExtractionBatchResponse
     raw_response: str | None = None
+    dropped: tuple[DroppedResult, ...] = ()
+
+
+@dataclass(frozen=True)
+class ParsedBatchResponse:
+    response: ExtractionBatchResponse
+    dropped: tuple[DroppedResult, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -289,6 +305,7 @@ class _CallOutcome:
     model_name: str
     error: Exception | None = None
     raw_response: str | None = None
+    dropped: tuple[DroppedResult, ...] = ()
 
 
 class SemanticExtractor(Protocol):
@@ -464,16 +481,20 @@ class AdkSemanticExtractor:
                 raw_response=raw_response,
                 retryable=True,
             )
-        try:
-            response = ExtractionBatchResponse.model_validate_json(raw_response)
-        except ValidationError as exc:
-            raise SemanticExtractionCallError(
-                f"answer does not match the response schema: {exc.error_count()} "
-                "error(s)",
-                raw_response=raw_response,
-                retryable=True,
-            ) from exc
-        return ExtractorOutput(response=response, raw_response=raw_response)
+        parsed = parse_batch_response(raw_response)
+        for field, issues in parsed.dropped:
+            logger.warning(
+                "Semantic-extraction answer for %s: dropped field %s (%s); the "
+                "call's other fields are kept",
+                batch.id,
+                field.value,
+                _issue_summary(issues),
+            )
+        return ExtractorOutput(
+            response=parsed.response,
+            raw_response=raw_response,
+            dropped=parsed.dropped,
+        )
 
     def _retry_delay(self, failed_attempt: int) -> float:
         base = min(
@@ -655,6 +676,7 @@ class SemanticExtractionService:
         )
         answered_by: dict[str, str] = {}
         answered_batches: list[ExtractionBatch] = []
+        dropped: dict[tuple[str, ExtractionField], tuple[ValidationIssue, ...]] = {}
         for outcome in outcomes:
             raw_outputs.extend(outcome.raw_outputs)
             if outcome.response is None:
@@ -665,17 +687,28 @@ class SemanticExtractionService:
             responses.append(outcome.response)
             answered_batches.append(outcome.batch)
             answered_by[outcome.batch.content_fingerprint] = outcome.model_name
+            for field, issues in outcome.dropped:
+                dropped[(outcome.batch.id, field)] = issues
         if plan.batches and not responses and not plan.cache_hits:
             raise execution_failures[-1][1]
-        fresh_pairs = tuple(zip(answered_batches, responses, strict=True))
+        fresh_pairs = tuple(
+            (batch, _expand_stitched_quotes(batch, response))
+            for batch, response in zip(answered_batches, responses, strict=True)
+        )
         # A cached answer had its repair chance when it was fresh; repairing it
         # again every run would pay for the same failure each time (SE12).
         fresh_pairs, repair_outputs = await self._repair_suspicious_fields(
             plan,
             fresh_pairs,
+            dropped=dropped,
         )
         batch_pairs = (
-            *zip(plan.cached_batches, plan.cache_hits, strict=True),
+            *(
+                (batch, _expand_stitched_quotes(batch, response))
+                for batch, response in zip(
+                    plan.cached_batches, plan.cache_hits, strict=True
+                )
+            ),
             *fresh_pairs,
         )
         raw_outputs.extend(repair_outputs)
@@ -685,6 +718,7 @@ class SemanticExtractionService:
             batch_pairs,
             execution_failures,
             fresh_ids={batch.id for batch in answered_batches},
+            dropped=dropped,
         )
         # Each answer is cached under the model that gave it (SE25).
         by_model: dict[str, list[tuple[str, ExtractionBatchResponse, str]]] = {}
@@ -820,7 +854,8 @@ class SemanticExtractionService:
                     )
                     return _CallOutcome(answering, response, tuple(outputs), model)
             try:
-                raw_model, raw_text = _unpack(await extractor.extract(answering))
+                output = await extractor.extract(answering)
+                raw_model, raw_text = _unpack(output)
                 response, notes = _normalize_response_contract(raw_model)
             except Exception as exc:
                 error = exc
@@ -859,7 +894,9 @@ class SemanticExtractionService:
                     normalization_notes=notes,
                 )
             )
-            return _CallOutcome(answering, response, tuple(outputs), model)
+            return _CallOutcome(
+                answering, response, tuple(outputs), model, dropped=_dropped(output)
+            )
         assert error is not None
         return _CallOutcome(
             batch, None, tuple(outputs), self._model_name, error, raw_error_text
@@ -970,6 +1007,9 @@ class SemanticExtractionService:
         self,
         plan: SemanticExtractionPlan,
         batch_pairs: Sequence[tuple[ExtractionBatch, ExtractionBatchResponse]],
+        *,
+        dropped: dict[tuple[str, ExtractionField], tuple[ValidationIssue, ...]]
+        | None = None,
     ) -> tuple[
         tuple[tuple[ExtractionBatch, ExtractionBatchResponse], ...],
         tuple[RawBatchOutput, ...],
@@ -1006,7 +1046,7 @@ class SemanticExtractionService:
                 : self._settings.max_repairs_per_run
             ]
         }
-        repairs_skipped = 0
+        skipped: list[str] = []
         for batch, response in batch_pairs:
             replacements: dict[ExtractionField, ModelFieldResult] = {}
             by_field: dict[ExtractionField, list[ModelFieldResult]] = {}
@@ -1023,21 +1063,13 @@ class SemanticExtractionService:
                         product=plan.product,
                     )
                 else:
-                    issues = (
-                        ValidationIssue(
-                            location=(field.value,),
-                            message=(
-                                "field is missing from model response"
-                                if not candidates
-                                else "field occurs more than once in model response"
-                            ),
-                            error_type="field_cardinality",
-                        ),
+                    issues = _cardinality_issues(
+                        batch, field, candidates, dropped or {}
                     )
                 if not issues:
                     continue
                 if (batch.id, field) not in allowed:
-                    repairs_skipped += 1
+                    skipped.append(field.value)
                     continue
                 repair_batch = _repair_batch(
                     batch,
@@ -1059,6 +1091,7 @@ class SemanticExtractionService:
                     repaired, normalization_notes = _normalize_response_contract(
                         raw_repaired
                     )
+                    repaired = _expand_stitched_quotes(repair_batch, repaired)
                     _validate_response(repair_batch, repaired)
                     candidate = repaired.results[0]
                     validated = _validate_field_result(
@@ -1122,12 +1155,13 @@ class SemanticExtractionService:
                 )
                 response = ExtractionBatchResponse(results=tuple(updated))
             repaired_pairs.append((batch, response))
-        if repairs_skipped:
+        if skipped:
             logger.warning(
                 "Semantic-extraction repair budget of %s exhausted; %s suspicious "
-                "field(s) left for review without a repair call",
+                "field(s) left for review without a repair call: %s",
                 self._settings.max_repairs_per_run,
-                repairs_skipped,
+                len(skipped),
+                ", ".join(skipped),
             )
         return tuple(repaired_pairs), tuple(raw_outputs)
 
@@ -1956,6 +1990,32 @@ def _repair_batch(
     )
 
 
+def _cardinality_issues(
+    batch: ExtractionBatch,
+    field: ExtractionField,
+    candidates: Sequence[ModelFieldResult],
+    dropped: dict[tuple[str, ExtractionField], tuple[ValidationIssue, ...]],
+) -> tuple[ValidationIssue, ...]:
+    """Why a field has no single result: its schema errors when the parser
+    dropped it (F8), else missing or repeated."""
+    if not candidates and (batch.id, field) in dropped:
+        return tuple(
+            issue.model_copy(update={"location": (field.value, *issue.location)})
+            for issue in dropped[(batch.id, field)]
+        )
+    return (
+        ValidationIssue(
+            location=(field.value,),
+            message=(
+                "field is missing from model response"
+                if not candidates
+                else "field occurs more than once in model response"
+            ),
+            error_type="field_cardinality",
+        ),
+    )
+
+
 def _field_semantic_issues(
     batch: ExtractionBatch,
     result: ModelFieldResult,
@@ -2135,22 +2195,23 @@ def _validate_semantic_completeness(
             if item.evidence_id
             in {citation.evidence_id for citation in result.evidence}
         )
-        explicit_income_markers = (
-            "income verification",
-            "proof of income",
-            "income document",
-            "income statement",
-            "documentary proof of income",
-            "income certificate",
-            "certificate of income",
-            "salary statement",
-            "salary certificate",
-        )
-        if not any(marker in cited_text for marker in explicit_income_markers):
+        if not _EXPLICIT_INCOME.search(cited_text):
             raise ValueError(
                 "income verification cannot be inferred from creditworthiness "
                 "assessment; explicit income-document evidence is required"
             )
+
+
+# Explicit proof or documentation of income (F10). Ameria writes "Proof of
+# employment and/or other income"; creditworthiness wording alone is not it.
+_EXPLICIT_INCOME = re.compile(
+    r"income verification"
+    r"|proof of (?:employment (?:and/or |and |or )?)?(?:other )?income"
+    r"|documentary proof of income"
+    r"|income (?:document|statement|certificate|reference)"
+    r"|certificate of income"
+    r"|(?:salary|employment) (?:statement|certificate|reference)"
+)
 
 
 def _validate_response(
@@ -2185,6 +2246,8 @@ def _validate_individual_fields(
     execution_failures: Sequence[tuple[ExtractionBatch, Exception, str | None]],
     *,
     fresh_ids: set[str] | None = None,
+    dropped: dict[tuple[str, ExtractionField], tuple[ValidationIssue, ...]]
+    | None = None,
 ) -> tuple[
     tuple[ValidatedFieldResult, ...],
     tuple[ExtractionReviewItem, ...],
@@ -2210,17 +2273,7 @@ def _validate_individual_fields(
                         batch,
                         field,
                         candidates[0] if candidates else None,
-                        (
-                            ValidationIssue(
-                                location=(field.value,),
-                                message=(
-                                    "field is missing from model response"
-                                    if not candidates
-                                    else "field occurs more than once in model response"
-                                ),
-                                error_type="field_cardinality",
-                            ),
-                        ),
+                        _cardinality_issues(batch, field, candidates, dropped or {}),
                         response.model_dump_json(indent=2),
                     )
                 )
@@ -2546,6 +2599,153 @@ def _unpack(
     if isinstance(output, ExtractorOutput):
         return output.response, output.raw_response
     return output, None
+
+
+def _dropped(
+    output: ExtractionBatchResponse | ExtractorOutput,
+) -> tuple[DroppedResult, ...]:
+    return output.dropped if isinstance(output, ExtractorOutput) else ()
+
+
+def _error_location(location: Sequence[str | int]) -> str:
+    text = ""
+    for part in location:
+        text += (
+            f"[{part}]"
+            if isinstance(part, int)
+            else (f".{part}" if text else str(part))
+        )
+    return text
+
+
+def _schema_error_summary(exc: ValidationError) -> str:
+    """Where and how an answer failed the schema, never the input itself (F20)."""
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    shown = "; ".join(
+        f"{_error_location(error.get('loc', ()))} {error['type']}"
+        for error in errors[:5]
+    )
+    more = f"; +{len(errors) - 5} more" if len(errors) > 5 else ""
+    return f"{len(errors)} error(s): {shown}{more}"
+
+
+def _issue_summary(issues: Sequence[ValidationIssue]) -> str:
+    return "; ".join(
+        f"{_error_location(issue.location)} {issue.error_type}" for issue in issues[:5]
+    )
+
+
+def parse_batch_response(raw_response: str) -> ParsedBatchResponse:
+    """Validate an answer result by result (F8).
+
+    A result that fails the schema is dropped and named, with the location and
+    type of each error; the call's other results are kept. The whole answer
+    fails only when its envelope is unusable (not JSON, no `results` list), a
+    failing result does not name a known field, or no result is valid.
+    """
+    try:
+        return ParsedBatchResponse(
+            response=ExtractionBatchResponse.model_validate_json(raw_response)
+        )
+    except ValidationError as exc:
+        whole = exc
+
+    def failure(detail: str) -> SemanticExtractionCallError:
+        return SemanticExtractionCallError(
+            f"answer does not match the response schema: {detail}",
+            raw_response=raw_response,
+            retryable=True,
+        )
+
+    try:
+        data = json.loads(raw_response)
+    except json.JSONDecodeError:
+        raise failure(_schema_error_summary(whole)) from whole
+    results = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(results, list):
+        raise failure(_schema_error_summary(whole)) from whole
+    kept: list[ModelFieldResult] = []
+    dropped: list[DroppedResult] = []
+    for item in results:
+        try:
+            kept.append(ModelFieldResult.model_validate(item))
+        except ValidationError as exc:
+            try:
+                field = ExtractionField(
+                    item.get("field") if isinstance(item, dict) else None
+                )
+            except ValueError:
+                raise failure(_schema_error_summary(whole)) from whole
+            dropped.append(
+                (
+                    field,
+                    tuple(
+                        ValidationIssue(
+                            location=tuple(error.get("loc", ())),
+                            message=error["msg"],
+                            error_type=error["type"],
+                        )
+                        for error in exc.errors(
+                            include_url=False,
+                            include_context=False,
+                            include_input=False,
+                        )
+                    ),
+                )
+            )
+    if not kept:
+        raise failure(_schema_error_summary(whole)) from whole
+    return ParsedBatchResponse(
+        response=ExtractionBatchResponse(results=tuple(kept)), dropped=tuple(dropped)
+    )
+
+
+_ELLIPSIS = re.compile(r"\s*(?:\.\.\.|\u2026)\s*")
+
+
+def _expand_stitched_quotes(
+    batch: ExtractionBatch, response: ExtractionBatchResponse
+) -> ExtractionBatchResponse:
+    """Split a quote joined with '...' into one citation per verbatim part (F7).
+
+    Only when the whole quote is not in its evidence item and every part is, in
+    that same item; anything else is left for validation to reject.
+    """
+    contents = {item.evidence_id: _collapsed(item.content) for item in batch.evidence}
+    changed = False
+    results: list[ModelFieldResult] = []
+    for result in response.results:
+        citations: list[ModelCitation] = []
+        for citation in result.evidence:
+            source = contents.get(citation.evidence_id)
+            if (
+                source is None
+                or _collapsed(citation.quote) in source
+                or not _ELLIPSIS.search(citation.quote)
+            ):
+                citations.append(citation)
+                continue
+            parts = [
+                part.strip(" .,;:")
+                for part in _ELLIPSIS.split(citation.quote)
+                if len(part.strip(" .,;:")) >= 3
+            ]
+            if parts and all(_collapsed(part) in source for part in parts):
+                citations.extend(
+                    ModelCitation(evidence_id=citation.evidence_id, quote=part)
+                    for part in parts
+                )
+                changed = True
+            else:
+                citations.append(citation)
+        results.append(
+            result.model_copy(update={"evidence": tuple(citations)})
+            if len(citations) != len(result.evidence)
+            else result
+        )
+    if not changed:
+        return response
+    return ExtractionBatchResponse(results=tuple(results))
 
 
 def assemble_loan_product(

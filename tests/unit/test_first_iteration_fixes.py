@@ -21,8 +21,6 @@ from app.domain.semantic_extraction import (
     ExtractionBatchResponse,
     ExtractionField,
     ExtractionStatus,
-    ModelCitation,
-    ModelFieldResult,
 )
 from app.domain.structured_tariffs import (
     FieldPath,
@@ -123,7 +121,10 @@ async def test_f1_a_ranking_names_every_offering_it_could_not_rank() -> None:
     )
     states = _States(
         {
-            OfferingId.CONSUMER_STANDARD: {"state": "awaiting_review", "pending_reviews": 1},
+            OfferingId.CONSUMER_STANDARD: {
+                "state": "awaiting_review",
+                "pending_reviews": 1,
+            },
             OfferingId.ONLINE_CONSUMER_FINANCE: {"state": "never_monitored"},
         }
     )
@@ -151,7 +152,9 @@ async def test_f1_a_ranking_names_every_offering_it_could_not_rank() -> None:
     assert coverage["consumer_standard"]["state"] == "awaiting_review"
     assert coverage["consumer_standard"]["pending_reviews"] == 1
     assert coverage["online_consumer_finance"]["state"] == "never_monitored"
-    not_ranked = {item["offering_id"]: item["reason"] for item in result.metadata["not_ranked"]}
+    not_ranked = {
+        item["offering_id"]: item["reason"] for item in result.metadata["not_ranked"]
+    }
     assert not_ranked == {
         "consumer_standard": "awaiting_review",
         "online_consumer_finance": "never_monitored",
@@ -229,7 +232,12 @@ def test_f3_the_interpreter_is_told_what_broad_words_mean() -> None:
 async def test_f4_a_missing_answer_says_the_offering_awaits_review() -> None:
     question = "What repayment term does the Primary Market Mortgage offer?"
     states = _States(
-        {OfferingId.MORTGAGE_PRIMARY: {"state": "awaiting_review", "pending_reviews": 2}}
+        {
+            OfferingId.MORTGAGE_PRIMARY: {
+                "state": "awaiting_review",
+                "pending_reviews": 2,
+            }
+        }
     )
     service = StructuredTariffQueryService(
         _ProjectionRepository(), offering_states=states
@@ -295,7 +303,6 @@ def recorded_chat():
         return _Chat()
 
     yield wire
-    from app.tools import configure_services
 
     configure_services()
 
@@ -330,8 +337,14 @@ LTV_TEXT = (
 )
 LTV_VALUE = json.dumps(
     [
-        {"value": 90, "conditions": [{"dimension": "term_range", "value": "61-240 months"}]},
-        {"value": 80, "conditions": [{"dimension": "term_range", "value": "above 240 months"}]},
+        {
+            "value": 90,
+            "conditions": [{"dimension": "term_range", "value": "61-240 months"}],
+        },
+        {
+            "value": 80,
+            "conditions": [{"dimension": "term_range", "value": "above 240 months"}],
+        },
     ]
 )
 STITCHED = (
@@ -340,9 +353,10 @@ STITCHED = (
 )
 
 
-@pytest.mark.xfail(strict=True, reason="F7")
 @pytest.mark.asyncio
-async def test_f7_a_quote_stitched_with_an_ellipsis_is_split_into_verbatim_parts() -> None:
+async def test_f7_a_quote_stitched_with_an_ellipsis_is_split_into_verbatim_parts() -> (
+    None
+):
     from tests.unit.test_semantic_extraction_fixes import (
         RETRIEVED_AT,
         ScriptedExtractor,
@@ -356,20 +370,24 @@ async def test_f7_a_quote_stitched_with_an_ellipsis_is_split_into_verbatim_parts
         bundle, discovery, retrieved_at=RETRIEVED_AT
     )
     assert ExtractionField.LTV_PCT not in {item.field for item in result.review_items}
-    ltv = next(item for item in result.validated_fields if item.field is ExtractionField.LTV_PCT)
+    ltv = next(
+        item
+        for item in result.validated_fields
+        if item.field is ExtractionField.LTV_PCT
+    )
     assert len(ltv.evidence) == 2
     assert all("..." not in citation.quote for citation in ltv.evidence)
 
 
-@pytest.mark.xfail(strict=True, reason="F7")
 def test_f7_the_commercial_answers_fit_the_response_schema() -> None:
     for attempt in (1, 2):
         ExtractionBatchResponse.model_validate_json(commercial_raw_answer(attempt))
 
 
-@pytest.mark.xfail(strict=True, reason="F7")
 def test_f7_the_prompt_states_the_quote_limit() -> None:
-    from app.services.semantic_extraction import SEMANTIC_EXTRACTION_INSTRUCTION as EXTRACTION_INSTRUCTION
+    from app.services.semantic_extraction import (
+        SEMANTIC_EXTRACTION_INSTRUCTION as EXTRACTION_INSTRUCTION,
+    )
 
     assert "300 characters" in EXTRACTION_INSTRUCTION
     assert "never use '...'" in EXTRACTION_INSTRUCTION
@@ -384,7 +402,6 @@ def _with_bad_citation(raw: str) -> str:
     return json.dumps(data)
 
 
-@pytest.mark.xfail(strict=True, reason="F8")
 def test_f8_an_invalid_result_is_dropped_and_the_rest_kept() -> None:
     from app.services.semantic_extraction import parse_batch_response
 
@@ -393,7 +410,55 @@ def test_f8_an_invalid_result_is_dropped_and_the_rest_kept() -> None:
     assert [field for field, _ in parsed.dropped] == [ExtractionField.LTV_PCT]
 
 
-@pytest.mark.xfail(strict=True, reason="F20")
+@pytest.mark.asyncio
+async def test_f8_a_dropped_field_reaches_review_with_its_schema_error() -> None:
+    from app.domain.semantic_extraction import ValidationIssue
+    from app.services.semantic_extraction import ExtractorOutput
+    from tests.unit.test_semantic_extraction_fixes import (
+        RETRIEVED_AT,
+        ScriptedExtractor,
+        _mortgage_bundle,
+        _service,
+    )
+
+    issue = ValidationIssue(
+        location=("evidence", 0, "quote"),
+        message="String should have at most 10000 characters",
+        error_type="string_too_long",
+    )
+
+    class DropsLtv(ScriptedExtractor):
+        async def extract(self, batch):
+            response = await super().extract(batch)
+            if ExtractionField.LTV_PCT not in batch.fields:
+                return response
+            return ExtractorOutput(
+                response=ExtractionBatchResponse(
+                    results=tuple(
+                        item
+                        for item in response.results
+                        if item.field is not ExtractionField.LTV_PCT
+                    )
+                ),
+                dropped=((ExtractionField.LTV_PCT, (issue,)),),
+            )
+
+    bundle, discovery = _mortgage_bundle(LTV_TEXT)
+    settings = SemanticExtractionSettings(max_repairs_per_run=0)
+    result = await _service(DropsLtv(), settings=settings).extract(
+        bundle, discovery, retrieved_at=RETRIEVED_AT
+    )
+    (review,) = [
+        item for item in result.review_items if item.field is ExtractionField.LTV_PCT
+    ]
+    assert review.validation_issues[0].error_type == "string_too_long"
+    assert review.validation_issues[0].location[0] == "ltv_pct"
+    # The call's other fields were kept, not sent to review with it.
+    assert any(
+        item.field is ExtractionField.CATEGORY for item in result.validated_fields
+    )
+
+
 def test_f20_a_schema_failure_names_where_it_failed() -> None:
     from app.services.semantic_extraction import (
         SemanticExtractionCallError,
@@ -401,7 +466,7 @@ def test_f20_a_schema_failure_names_where_it_failed() -> None:
     )
 
     parsed = parse_batch_response(_with_bad_citation(commercial_raw_answer(1)))
-    (_, issues), = parsed.dropped
+    ((_, issues),) = parsed.dropped
     assert issues[0].location[:3] == ("evidence", 0, "evidence_id")
     with pytest.raises(SemanticExtractionCallError, match=r"results\[0\]"):
         parse_batch_response('{"results": [{"field": "ltv_pct", "status": "bogus"}]}')
@@ -416,7 +481,6 @@ INCOME_TEXT = (
 INCOME_VALUE = json.dumps({"default_required": True, "exceptions": []})
 
 
-@pytest.mark.xfail(strict=True, reason="F10")
 @pytest.mark.asyncio
 async def test_f10_proof_of_employment_and_other_income_is_explicit() -> None:
     from tests.unit.test_semantic_extraction_fixes import (
@@ -455,7 +519,12 @@ async def test_f10_a_creditworthiness_passage_is_still_not_income_evidence() -> 
     text = "The decision is made based on your creditworthiness criteria."
     bundle, discovery = _mortgage_bundle(text)
     extractor = ScriptedExtractor(
-        {ExtractionField.INCOME_VERIFICATION_REQUIRED: (INCOME_VALUE, "creditworthiness criteria")}
+        {
+            ExtractionField.INCOME_VERIFICATION_REQUIRED: (
+                INCOME_VALUE,
+                "creditworthiness criteria",
+            )
+        }
     )
     result = await _service(extractor).extract(
         bundle, discovery, retrieved_at=RETRIEVED_AT
@@ -520,12 +589,14 @@ def test_f12_six_repairs_per_offering_by_default() -> None:
     from app.config.environment import EnvironmentSettings
 
     assert SemanticExtractionSettings().max_repairs_per_run == 6
-    assert EnvironmentSettings.model_fields[
-        "semantic_extraction_max_repairs_per_run"
-    ].default == 6
+    assert (
+        EnvironmentSettings.model_fields[
+            "semantic_extraction_max_repairs_per_run"
+        ].default
+        == 6
+    )
 
 
-@pytest.mark.xfail(strict=True, reason="F12")
 @pytest.mark.asyncio
 async def test_f12_skipped_repairs_are_logged_by_field(caplog) -> None:
     from tests.unit.test_semantic_extraction_fixes import (
@@ -537,7 +608,12 @@ async def test_f12_skipped_repairs_are_logged_by_field(caplog) -> None:
 
     bundle, discovery = _mortgage_bundle(INCOME_TEXT)
     extractor = ScriptedExtractor(
-        {ExtractionField.INCOME_VERIFICATION_REQUIRED: ("{broken", "Proof of employment")}
+        {
+            ExtractionField.INCOME_VERIFICATION_REQUIRED: (
+                "{broken",
+                "Proof of employment",
+            )
+        }
     )
     settings = SemanticExtractionSettings(max_repairs_per_run=0)
     with caplog.at_level(logging.WARNING):
@@ -572,6 +648,8 @@ async def test_f13_confirming_a_missing_field_publishes_the_snapshot() -> None:
     from app.services.review_decisions import ReviewDecisionService
     from tests.unit.test_multi_review_approval import (
         NOW as REVIEW_NOW,
+    )
+    from tests.unit.test_multi_review_approval import (
         _extraction,
         _Reviews,
         _Snapshots,
@@ -609,7 +687,9 @@ async def test_f13_confirming_a_missing_field_publishes_the_snapshot() -> None:
     assert update.ready_for_activation is True
     stored = SemanticExtractionResult.model_validate(update.semantic_extraction)
     repayment = next(
-        item for item in stored.validated_fields if item.field is ExtractionField.REPAYMENT
+        item
+        for item in stored.validated_fields
+        if item.field is ExtractionField.REPAYMENT
     )
     assert repayment.status is ExtractionStatus.NOT_STATED
     assert repayment.confirmed_not_stated is True
@@ -628,7 +708,7 @@ def test_f9_hero_tariff_lines_are_content_not_page_header() -> None:
     page = _page(
         _block("b2", "EN • ՀԱՅ", block_type=NormalizedBlockType.LIST),
         _block("b3", "Apply online: Get a mortgage without income verification"),
-        _block("b4", "Repayment term: 61 – 360 months"),
+        _block("b4", "Repayment term: 61 – 360 months"),  # noqa: RUF001 (the page's dash)
         _block("b5", "Loan amount: Up to AMD 100 million"),
         _block("b6", "Down payment: From 30%"),
         _block("b7", "Mortgage", block_type=NormalizedBlockType.HEADING),
@@ -674,9 +754,7 @@ def test_f15_each_fee_cites_its_own_evidence() -> None:
 def test_f16_fact_citations_carry_a_readable_section() -> None:
     facts = _projection("credit_line").facts
     sections = [
-        evidence.locator.get("section")
-        for fact in facts
-        for evidence in fact.evidence
+        evidence.locator.get("section") for fact in facts for evidence in fact.evidence
     ]
     assert any(sections)
 
@@ -736,7 +814,9 @@ async def test_f18_a_transient_browser_failure_is_retried_once() -> None:
     async def acquire(url):
         calls.append(url)
         if len(calls) == 1:
-            raise AcquisitionError(AcquisitionFailure.BROWSER_FAILED, "navigation timeout")
+            raise AcquisitionError(
+                AcquisitionFailure.BROWSER_FAILED, "navigation timeout"
+            )
         return "artifact"
 
     assert await acquire_with_retry(acquire, "https://x", delay_seconds=0) == "artifact"
