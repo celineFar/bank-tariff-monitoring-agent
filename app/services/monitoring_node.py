@@ -438,6 +438,10 @@ async def _run_to_review(
     supersedes an older one's reviews. A paused run left with nothing pending
     (its reviews decided or superseded elsewhere) is closed on the way.
     """
+    try:
+        await resolution.close_orphaned_reviews()
+    except Exception:
+        logger.warning("could not close reviews of ended runs", exc_info=True)
     waiting = sorted(
         await runs.list_by_status(RunStatus.AWAITING_REVIEW, limit=100),
         key=lambda item: (item.queued_at, str(item.id)),

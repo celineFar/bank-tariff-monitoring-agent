@@ -57,6 +57,10 @@ claiming the requested offering started. Startup recovery marks expired or inter
 running claims failed; it does not re-execute partially completed nondeterministic work.
 On start, and every `RUN_RECOVERY_INTERVAL_SECONDS`, the worker also completes any
 paused run none of whose reviews is pending (decided, or superseded by a newer candidate).
+A family run creates each offering's reviews as it goes; if it then ends `failed`
+(cancelled, abandoned, interrupted), those reviews can no longer be answered, so the same
+pass (and "review them") supersedes them and closes their candidates, and the chat never
+announces a review of a run that ended.
 
 Each family run owns per-offering executions. Successful offerings publish independently;
 a failed sibling leaves its previous current index/snapshot untouched and produces family

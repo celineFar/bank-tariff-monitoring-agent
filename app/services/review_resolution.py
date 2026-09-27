@@ -34,7 +34,7 @@ from app.repositories.contracts import (
     ReviewRepository,
     RunRepository,
 )
-from app.repositories.reviews import StaleReviewError
+from app.repositories.reviews import ReviewConflictError, StaleReviewError
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.review_evidence import (
     MODEL_EXCERPT_CHARS,
@@ -312,6 +312,35 @@ class ReviewResolutionService:
             if closed.status.is_terminal:
                 completed += 1
         return completed
+
+    async def close_orphaned_reviews(self, *, limit: int = 500) -> int:
+        """Supersede pending reviews whose run already ended.
+
+        A family run creates each offering's reviews as it goes; cancelled,
+        abandoned or interrupted later, it ends `failed` with those reviews still
+        pending. Nothing could answer them ("review them" walks paused runs), yet
+        every turn announced them. Superseding also closes their candidates.
+        """
+        tasks = await self._reviews.list(status=ReviewStatus.PENDING, limit=limit)
+        ended: dict[UUID, bool] = {}
+        closed = 0
+        for task in tasks:
+            if task.run_id not in ended:
+                run = await self._runs.get(task.run_id)
+                ended[task.run_id] = run is not None and run.status.is_terminal
+            if not ended[task.run_id]:
+                continue
+            try:
+                await self._reviews.supersede(task.id)
+            except ReviewConflictError:
+                continue
+            closed += 1
+            await self._runs.record_audit(
+                task.run_id,
+                "review.superseded",
+                payload={"review_ids": [str(task.id)], "reason": "run_closed"},
+            )
+        return closed
 
     async def reject_all_pending(self, *, reviewer: str) -> dict[str, object]:
         """Reject every pending review, run by run, and close those runs."""

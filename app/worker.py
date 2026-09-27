@@ -37,6 +37,8 @@ PRODUCTS = (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
 
 
 class ReviewCompletionPort(Protocol):
+    async def close_orphaned_reviews(self, *, limit: int = 500) -> int: ...
+
     async def complete_runs_without_pending_reviews(
         self, *, limit: int = 100
     ) -> int: ...
@@ -185,6 +187,12 @@ class MonitoringWorker:
         """
         if self._resolution is None:
             return 0
+        try:
+            orphaned = await self._resolution.close_orphaned_reviews()
+            if orphaned:
+                logger.info("superseded %s review(s) of ended runs", orphaned)
+        except Exception:
+            logger.warning("closing reviews of ended runs failed", exc_info=True)
         try:
             completed = await self._resolution.complete_runs_without_pending_reviews()
         except Exception:

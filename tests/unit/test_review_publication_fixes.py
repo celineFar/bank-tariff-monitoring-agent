@@ -264,6 +264,9 @@ async def test_p2_the_worker_keeps_closing_reviewed_runs_and_survives_errors() -
     class Resolution:
         calls = 0
 
+        async def close_orphaned_reviews(self, *, limit=500):
+            return 0
+
         async def complete_runs_without_pending_reviews(self, *, limit=100):
             self.calls += 1
             if self.calls == 1:
@@ -281,7 +284,9 @@ async def test_p2_the_worker_keeps_closing_reviewed_runs_and_survives_errors() -
     )
     stop = asyncio.Event()
     loop = asyncio.create_task(worker._recover_forever(stop))
-    while resolution.calls < 2:
+    for _ in range(500):
+        if resolution.calls >= 2:
+            break
         await asyncio.sleep(0.01)
     stop.set()
     await loop
@@ -543,3 +548,63 @@ async def test_p2_the_same_result_as_an_approved_one_is_marked_confirmed() -> No
     assert confirmed.batch_id == "memory:review-7"
     assert confirmed.value == read.value
     assert confirmed.evidence == read.evidence
+
+
+# --- P4: reviews of a run that ended are closed, not announced forever ------------
+
+
+@pytest.mark.asyncio
+async def test_p4_reviews_of_an_ended_run_are_superseded() -> None:
+    from app.domain.models import OfferingId
+    from app.domain.monitoring import RunFailureCode, RunStatus
+    from app.domain.review import ReviewStatus
+    from app.services.review_resolution import ReviewResolutionService
+    from tests.fixtures.monitoring_node import (
+        Decisions,
+        Reviews,
+        Runs,
+        queued_run,
+        review_task,
+    )
+
+    runs, reviews = Runs(), Reviews()
+    cancelled = runs.add(
+        queued_run(status=RunStatus.FAILED, failure_code=RunFailureCode.CANCELLED.value)
+    )
+    waiting = runs.add(queued_run(status=RunStatus.AWAITING_REVIEW))
+    orphan = review_task(cancelled, OfferingId.OVERDRAFT, "interest_rate")
+    live = review_task(waiting, OfferingId.CREDIT_LINE, "interest_rate")
+    reviews.tasks = {orphan.id: orphan, live.id: live}
+    service = ReviewResolutionService(
+        runs=runs, reviews=reviews, decisions=Decisions(reviews)
+    )
+
+    assert await service.close_orphaned_reviews() == 1
+    assert reviews.tasks[orphan.id].status is ReviewStatus.SUPERSEDED
+    assert reviews.tasks[live.id].status is ReviewStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_p4_the_chat_announces_only_reviews_it_can_reach() -> None:
+    from app.domain.models import OfferingId
+    from app.domain.monitoring import RunStatus
+    from app.tools._services import configure_services
+    from app.tools.resolution import _pending_review_counts
+    from tests.fixtures.monitoring_node import Reviews, Runs, queued_run, review_task
+
+    runs, reviews = Runs(), Reviews()
+    ended = runs.add(queued_run(status=RunStatus.FAILED))
+    waiting = runs.add(queued_run(status=RunStatus.AWAITING_REVIEW))
+    for run, offering in (
+        (ended, OfferingId.OVERDRAFT),
+        (waiting, OfferingId.CREDIT_LINE),
+    ):
+        task = review_task(run, offering, "interest_rate")
+        reviews.tasks[task.id] = task
+    configure_services(None, None, runs=runs, reviews=reviews)
+    try:
+        counts = await _pending_review_counts()
+    finally:
+        configure_services(None, None)
+
+    assert counts == {"credit_line": 1}

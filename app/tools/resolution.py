@@ -235,7 +235,24 @@ async def _pending_review_counts() -> dict[str, int]:
     if services.reviews is None:
         return {}
     try:
-        tasks = await services.reviews.list(status=ReviewStatus.PENDING, limit=500)
+        tasks = await reviewable_pending_reviews()
     except Exception:
         return {}
     return dict(Counter(task.offering_id.value for task in tasks))
+
+
+async def reviewable_pending_reviews() -> list:
+    """Pending reviews of runs still going or waiting for review. A review left
+    behind by a run that ended cannot be answered and is not announced."""
+    tasks = await services.reviews.list(status=ReviewStatus.PENDING, limit=500)
+    if services.runs is None:
+        return list(tasks)
+    waiting: dict = {}
+    reviewable = []
+    for task in tasks:
+        if task.run_id not in waiting:
+            run = await services.runs.get(task.run_id)
+            waiting[task.run_id] = run is not None and not run.status.is_terminal
+        if waiting[task.run_id]:
+            reviewable.append(task)
+    return reviewable
