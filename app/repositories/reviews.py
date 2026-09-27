@@ -26,6 +26,7 @@ from app.repositories.knowledge_publication import (
 )
 from app.repositories.monitoring import _snapshot_from_row
 from app.repositories.review_supersession import (
+    close_unreviewable_snapshots,
     newer_accepted_snapshot_exists,
     supersede_reviews_older_than,
 )
@@ -177,6 +178,16 @@ class PostgresReviewRepository:
                             ),
                         },
                     )
+                # The new review's own snapshot keeps a pending review: it is
+                # inserted below.
+                await close_unreviewable_snapshots(
+                    session,
+                    (
+                        item.snapshot_id
+                        for item in superseded_rows
+                        if item.snapshot_id != review.snapshot_id
+                    ),
+                )
             row = (
                 await session.execute(
                     text(
@@ -544,6 +555,7 @@ class PostgresReviewRepository:
             ).one()
             if current.snapshot_id is not None:
                 await discard_snapshot_documents(session, current.snapshot_id)
+                await close_unreviewable_snapshots(session, (current.snapshot_id,))
         return _review_from_row(row)
 
     @staticmethod

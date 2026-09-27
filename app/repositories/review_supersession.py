@@ -8,6 +8,7 @@ publication lock.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
@@ -80,7 +81,56 @@ async def supersede_reviews_older_than(
         )
     for older_snapshot_id in dict.fromkeys(row.snapshot_id for row in rows):
         await discard_snapshot_documents(session, older_snapshot_id)
+    await close_unreviewable_snapshots(session, (row.snapshot_id for row in rows))
     return tuple(row.id for row in rows)
+
+
+async def close_unreviewable_snapshots(
+    session: AsyncSession, snapshot_ids: Iterable[UUID | None]
+) -> None:
+    """Close each candidate snapshot left with no pending review.
+
+    A superseded review discards its snapshot's never-published documents, so
+    once a snapshot's last pending review is gone it can never be activated.
+    Leaving it `review_required` kept "a newer candidate awaits review" true
+    for the offering and its execution in `candidate_review` for good. It is
+    closed the way a rejection closes it: snapshot `rejected`, execution
+    `failed` at `review_superseded`. Runs inside the caller's transaction.
+    """
+    for snapshot_id in dict.fromkeys(item for item in snapshot_ids if item):
+        closed = (
+            await session.execute(
+                text(
+                    """
+                    UPDATE tariff_snapshots
+                    SET status = 'rejected', accepted_at = NULL
+                    WHERE id = :snapshot_id
+                      AND status = 'review_required'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM human_reviews
+                          WHERE snapshot_id = :snapshot_id AND status = 'pending'
+                      )
+                    RETURNING offering_execution_id
+                    """
+                ),
+                {"snapshot_id": snapshot_id},
+            )
+        ).first()
+        if closed is None or closed.offering_execution_id is None:
+            continue
+        await session.execute(
+            text(
+                """
+                UPDATE offering_executions
+                SET status = 'failed', current_stage = 'review_superseded',
+                    failure_count = failure_count + 1,
+                    completed_at = COALESCE(completed_at, now()),
+                    updated_at = now()
+                WHERE id = :execution_id AND status = 'candidate_review'
+                """
+            ),
+            {"execution_id": closed.offering_execution_id},
+        )
 
 
 async def newer_accepted_snapshot_exists(

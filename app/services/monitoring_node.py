@@ -39,7 +39,7 @@ from app.domain.monitoring import (
     RunTrigger,
 )
 from app.domain.query_shape import QueryShape
-from app.domain.review import ReviewDecisionInput, ReviewDecisionType, ReviewTask
+from app.domain.review import ReviewDecisionInput, ReviewTask
 from app.domain.structured_tariffs import QueryOperation, ResolutionPlan
 from app.repositories.contracts import RunRepository
 from app.services.contracts import TariffPipeline
@@ -311,12 +311,23 @@ def build_monitoring_node(
 
         # 4. Ask for each pending review, one pause per review.
         if run.status is RunStatus.AWAITING_REVIEW:
-            pending = await resolution.pending(run.id)
             # Position among all of the run's reviews, so "2/2" stays "2/2"
             # when the node re-runs with the first one already decided.
             ordered = [item.id for item in await resolution.all_reviews(run.id)]
             total = len(ordered)
-            for task in pending:
+            handled: set[UUID] = set()
+            while True:
+                # Re-read after every decision: a rejection supersedes the rest
+                # of its snapshot, while other offerings' reviews stay pending.
+                pending = [
+                    item
+                    for item in await resolution.pending(run.id)
+                    if item.id not in handled
+                ]
+                if not pending:
+                    break
+                task = pending[0]
+                handled.add(task.id)
                 position = ordered.index(task.id) + 1 if task.id in ordered else 1
                 attempt, reply = _latest_reply(resume, run.id, task.id)
                 passages = await resolution.passages(task)
@@ -365,8 +376,6 @@ def build_monitoring_node(
                         rejected=rejected,
                     )
                     return
-                if decision.decision_type is ReviewDecisionType.REJECT_ALL:
-                    break
             run = await resolution.complete_run(run.id)
 
         # 5. Report, and answer the original question from accepted facts.

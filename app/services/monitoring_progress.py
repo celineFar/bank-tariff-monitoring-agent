@@ -173,6 +173,7 @@ STAGE_LABELS: dict[str, str] = {
     "projection": "Preparing documents",
     "review_approved": "Review approved",
     "review_rejected": "Review rejected",
+    "review_superseded": "Review superseded by a newer candidate",
     "published": "Snapshot published",
     "internal": "Recovering from an internal error",
 }

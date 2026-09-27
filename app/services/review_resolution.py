@@ -183,7 +183,11 @@ class ReviewResolutionService:
         *,
         reviewer: str,
     ) -> ReviewTask:
-        """Apply one validated decision; `reject_all` supersedes the run's rest.
+        """Apply one validated decision; `reject_all` supersedes the snapshot's rest.
+
+        A rejection closes one offering's candidate snapshot, so only the other
+        pending reviews of that snapshot are moot. A family run holds one
+        snapshot per offering, and the other offerings' reviews stay pending.
 
         Idempotent: a review that is no longer pending is returned unchanged, so
         a node that re-runs after a crash never applies a decision twice.
@@ -205,7 +209,10 @@ class ReviewResolutionService:
             decided = await self._decisions.apply(task.id, decision, reviewer=reviewer)
             if decision.decision_type is ReviewDecisionType.REJECT_ALL:
                 for sibling in await self.pending(task.run_id):
-                    if sibling.id != task.id:
+                    if (
+                        sibling.id != task.id
+                        and sibling.snapshot_id == task.snapshot_id
+                    ):
                         await self._reviews.supersede(sibling.id)
         except StaleReviewError:
             # A newer snapshot was accepted while this review waited (the race
@@ -325,11 +332,17 @@ class ReviewResolutionService:
         failed: list[dict[str, str]] = []
         for run_id, tasks in grouped.items():
             try:
-                await self.apply(
-                    tasks[0],
-                    ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL),
-                    reviewer=reviewer,
-                )
+                # One rejection per candidate snapshot: it supersedes the rest
+                # of that snapshot's reviews.
+                first_per_snapshot = {
+                    task.snapshot_id: task for task in reversed(tasks)
+                }
+                for task in first_per_snapshot.values():
+                    await self.apply(
+                        task,
+                        ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL),
+                        reviewer=reviewer,
+                    )
                 run = await self.complete_run(run_id)
                 if not run.status.is_terminal or await self.pending(run_id):
                     raise RuntimeError("run still has pending reviews")

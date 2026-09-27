@@ -281,6 +281,8 @@ class Pipeline:
     runs: Runs
     reviews: Reviews
     review_scopes: tuple[str, ...] = ()
+    # Reviews raised for other offerings of the same (family) run.
+    other_reviews: tuple[tuple[OfferingId, str], ...] = ()
     fail: bool = False
     block: bool = False
     stage_delay: float = 0.0
@@ -338,8 +340,25 @@ class Pipeline:
                 status=OfferingRunStatus.CANDIDATE_REVIEW,
                 stage="publication",
             )
-            for index, scope in enumerate(self.review_scopes):
-                task = review_task(run, offering, scope, order=index)
+            # One candidate snapshot per offering, as the pipeline publishes.
+            snapshots: dict[OfferingId, UUID] = {}
+            reviews = [(offering, scope) for scope in self.review_scopes]
+            reviews.extend(self.other_reviews)
+            for index, (target, scope) in enumerate(reviews):
+                if target is not offering:
+                    self.runs.execution(
+                        run.id,
+                        target,
+                        status=OfferingRunStatus.CANDIDATE_REVIEW,
+                        stage="publication",
+                    )
+                task = review_task(
+                    run,
+                    target,
+                    scope,
+                    order=index,
+                    snapshot_id=snapshots.setdefault(target, uuid4()),
+                )
                 self.reviews.tasks[task.id] = task
             return self.runs.set(
                 run.id,
@@ -383,7 +402,12 @@ class Pipeline:
 
 
 def review_task(
-    run: MonitoringRun, offering: OfferingId, scope: str, *, order: int = 0
+    run: MonitoringRun,
+    offering: OfferingId,
+    scope: str,
+    *,
+    order: int = 0,
+    snapshot_id: UUID | None = None,
 ) -> ReviewTask:
     review_id = uuid4()
     return ReviewTask(
@@ -391,7 +415,7 @@ def review_task(
         idempotency_key=f"review:{review_id}",
         run_id=run.id,
         offering_execution_id=uuid4(),
-        snapshot_id=uuid4(),
+        snapshot_id=snapshot_id or uuid4(),
         product=offering.product,
         offering_id=offering,
         reason=ReviewReason.OFFICIAL_SOURCE_CONFLICT,
@@ -535,6 +559,7 @@ async def build(
     *,
     tools: list | None = None,
     review_scopes: tuple[str, ...] = (),
+    other_reviews: tuple[tuple[OfferingId, str], ...] = (),
     fail: bool = False,
     block: bool = False,
     stage_delay: float = 0.0,
@@ -550,6 +575,7 @@ async def build(
         runs,
         reviews,
         review_scopes=review_scopes,
+        other_reviews=other_reviews,
         fail=fail,
         block=block,
         stage_delay=stage_delay,
