@@ -146,6 +146,12 @@ See the [Evaluation Guide](https://google.github.io/agents-cli/guide/evaluation/
   record (answers, retrieved context, costs, review inventory) is
   `../seed_url_eval_2026-09-27.json`. Tariffs change, so refresh the expected
   values before reusing them.
+- `seed-url-ground-truth-v2.json`: version 2, 24 questions: version 1's 15 plus
+  target questions #5-#8 and #21-#25 (USD amount, salary privilege, application
+  fees, comparisons, lowest APR, lowest application fee, change history). Same
+  config and metrics; `metadata.baseline_v2` records the run on
+  `fix/1st-iteration`. Full record: `../seed_url_eval_v2_2026-09-27.json`.
+  Version 1 stays as the pre-fix baseline.
 - `../fixtures.sql`: evaluation-only accepted/stale/history/review-pending rows.
   It starts with `TRUNCATE ... CASCADE`; apply it only to a disposable database
   whose name ends in `_test`.
