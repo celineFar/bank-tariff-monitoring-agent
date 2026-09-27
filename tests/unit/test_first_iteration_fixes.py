@@ -584,7 +584,6 @@ async def test_f11_an_unparseable_value_is_sent_to_the_repair_call() -> None:
 # --- F12: repair budget ------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F12")
 def test_f12_six_repairs_per_offering_by_default() -> None:
     from app.config.environment import EnvironmentSettings
 

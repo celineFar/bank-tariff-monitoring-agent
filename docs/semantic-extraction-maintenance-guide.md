@@ -280,7 +280,7 @@ It cannot expand retrieval, cite a new evidence ID, or re-extract the whole prod
 The repaired field is validated through the same path as the original.
 
 Repairs are also capped across the whole run by
-`SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `3`). Each repair is a full
+`SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `6`). Each repair is a full
 paid model call, and a batch whose contract keeps failing would otherwise repair
 the same suspicious fields on every run. Once the budget is spent, the remaining
 invalid fields are logged and enter the review queue exactly as an exhausted

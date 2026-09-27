@@ -163,7 +163,7 @@ downloader receives `settings.http` and the PDF extraction service receives
   `SEMANTIC_EXTRACTION_MAX_OUTPUT_TOKENS` (default `16384`) caps each answer; an
   answer cut at the cap, or one that does not parse, is asked once more before the
   batch goes to repair or review. `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN`
-  (default `3`) caps how many suspicious fields may be re-asked in one run, so a
+  (default `6`) caps how many suspicious fields may be re-asked per offering, so a
   batch that keeps failing its contract falls through to human review instead of
   issuing an unbounded number of paid repair calls.
   The demonstration command uses the source-discovery retry, fallback-model, and

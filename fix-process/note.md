@@ -321,3 +321,6 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
   Prompt version 7. The local `.env` still pins `SEMANTIC_EXTRACTION_PROMPT_VERSION=6`;
   update it before the live run. One timing-sensitive monitoring-node test failed once
   under full-suite load and passed on re-runs.
+- **Phase 2 (repairs).** Repair budget 3 → 6 per offering. F11 needed no code. The local
+  `.env` pins the old budget (3) and prompt version (6); both lines must change before
+  the live run or the new defaults do not apply.

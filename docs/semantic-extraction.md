@@ -115,7 +115,7 @@ condition written as a key (a rate's `currency`) into `conditions`, and never in
 meaning. The audit output keeps both the raw and adapted response. Anything still
 invalid gets one bounded repair call (the original result, the field schema, the
 validation paths, only the original packet), capped per run by
-`SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `3`) and spent on the required
+`SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` (default `6`) and spent on the required
 tariff fields first. A field still invalid enters the review queue, unless a
 remembered review decision for the same call or the same result answers it. If
 review items remain, the run is `completed_with_review` and no full `LoanProduct` is

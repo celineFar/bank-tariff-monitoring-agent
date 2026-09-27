@@ -507,10 +507,30 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 2: Repairs (F11, F12)
 
-- [ ] F11: an unparseable `value_json` becomes a repair candidate carrying the parse error.
-- [ ] F12: default `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN=6`; order would-be reviews
-      first; log skipped fields by name.
-- [ ] Remove the matching `xfail` marks; run the suite.
+- [x] F11: an unparseable `value_json` becomes a repair candidate carrying the parse
+      error. (Already the behaviour; kept by the guard test, no code change.)
+- [x] F12: default `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN=6`; log skipped fields by
+      name. (The reordering was dropped, see F12.)
+- [x] Remove the matching `xfail` marks; run the suite.
+
+**Phase 2 notes (done).**
+
+- **F11:** no code change. `test_f11_an_unparseable_value_is_sent_to_the_repair_call`
+  (a guard since Phase 0) shows a broken `value_json` gets a repair call.
+- **F12:** the default is 6 in [environment.py](../../app/config/environment.py),
+  [models.py](../../app/config/models.py) and `.env.example`, and in
+  [docs/configuration.md](../../docs/configuration.md),
+  [docs/semantic-extraction.md](../../docs/semantic-extraction.md) and the maintenance
+  guide. `tests/unit/test_config.py::test_defaults_match_the_approved_architecture`
+  pinned 3 and now pins 6. The skipped-field log line landed in Phase 1.
+- **The local `.env` pins `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN=3`** and overrides the
+  new default. Set it to 6 (or remove the line) before the Phase 8 live run, together
+  with `SEMANTIC_EXTRACTION_PROMPT_VERSION=7` (Phase 1 note).
+- **Cost bound:** at about $0.01–0.02 per repair, 6 repairs add at most about $0.12 per
+  offering, $1.56 for all 13 in the worst case; on 2026-09-27 the worst offering needed
+  7 (Secondary: 3 repaired, 4 skipped).
+- Full suite: as after Phase 1 plus the F12 default test; only the 4 baseline
+  live-environment tests fail.
 
 ### Phase 3: Source discovery (F9)
 

@@ -40,7 +40,7 @@ def test_defaults_match_the_approved_architecture() -> None:
     assert settings.semantic_extraction.fallback_model_names == ("gemini-3.8-flash",)
     assert settings.source_discovery.max_price_per_million_tokens_usd == 2.5
     assert settings.semantic_extraction.thinking_budget == 0
-    assert settings.semantic_extraction.max_repairs_per_run == 3
+    assert settings.semantic_extraction.max_repairs_per_run == 6  # F12
     assert settings.intent_resolution.classifier_max_attempts == 2
     assert settings.tariff_queries.freshness_days == 7
     assert settings.tariff_queries.recent_change_days == 60

@@ -382,7 +382,7 @@ class SemanticExtractionSettings(SettingsGroup):
     thinking_budget: int = Field(default=0, ge=-1, le=24_576)
     # Caps each answer; a cut answer is asked once more, then goes to review.
     max_output_tokens: int = Field(default=16_384, ge=1024, le=65_536)
-    max_repairs_per_run: int = Field(default=3, ge=0, le=50)
+    max_repairs_per_run: int = Field(default=6, ge=0, le=50)
     # An offering's calls run concurrently, this many at a time (SE26).
     max_concurrent_calls: int = Field(default=3, ge=1, le=10)
 
