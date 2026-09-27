@@ -12,7 +12,7 @@ import pytest
 from google.genai import errors
 
 from app.config.models import RagSettings
-from app.services.knowledge_index import (
+from app.services.embedding_providers import (
     EmbeddingError,
     EmbeddingQuotaExhausted,
     GeminiEmbeddingProvider,

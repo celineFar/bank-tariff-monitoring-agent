@@ -263,6 +263,9 @@ class _Resolution:
     def __init__(self) -> None:
         self.calls = 0
 
+    async def close_orphaned_reviews(self, *, limit: int = 500):
+        return 0
+
     async def complete_runs_without_pending_reviews(self, *, limit: int = 100):
         self.calls += 1
         return 0

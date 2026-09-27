@@ -6,7 +6,6 @@ import pytest
 from app.domain.acquisition import SourceLocator, SourceType
 from app.domain.knowledge import chunk_id, document_version_id
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
-from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.normalization import (
     NormalizedBlock,
     NormalizedBlockType,
@@ -17,14 +16,6 @@ from app.domain.normalization import (
     NormalizedTableRow,
     SourceReference,
 )
-from app.domain.semantic_extraction import (
-    EvidenceCitation,
-    ExtractedValue,
-    ExtractionStatus,
-    LoanCategory,
-    LoanProduct,
-)
-from app.domain.source_discovery import Authority
 from app.services.knowledge_projection import KnowledgeProjectionService
 
 NOW = datetime(2026, 9, 19, tzinfo=UTC)
@@ -196,88 +187,6 @@ def test_selected_document_filter_excludes_unselected_sources() -> None:
     )
 
     assert documents == ()
-
-
-def test_snapshot_summary_is_deterministic_and_non_authoritative() -> None:
-    snapshot = SnapshotAttempt(
-        id=uuid4(),
-        run_id=uuid4(),
-        offering_execution_id=uuid4(),
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=OfferingId.CONSUMER_STANDARD,
-        status=SnapshotStatus.ACCEPTED,
-        normalized_tariff={
-            "term": {"max_months": 60},
-            "interest_rate": {"max": "13.5", "min": "13.5"},
-        },
-        evidence=({"evidence_id": "ev_0123456789abcdef01234567"},),
-        canonical_sha256="c" * 64,
-        created_at=NOW,
-        accepted_at=NOW,
-    )
-    service = KnowledgeProjectionService()
-    kwargs = {
-        "run_id": snapshot.run_id,
-        "product": ProductType.CONSUMER_LOAN,
-        "offering_id": OfferingId.CONSUMER_STANDARD,
-        "display_name": "Consumer loans",
-        "source_url": URL,
-        "value": snapshot,
-        "language": "en",
-    }
-
-    first = service.project_summary(**kwargs)
-    second = service.project_summary(**kwargs)
-
-    assert first.document_kind is KnowledgeDocumentKind.OFFERING_SUMMARY
-    assert first.metadata["authoritative_evidence"] is False
-    assert first.chunks[0].metadata["authoritative_evidence"] is False
-    assert first.content_sha256 == second.content_sha256
-    assert first.chunks == second.chunks
-    assert "## Interest Rate" in first.chunks[0].content
-    evidence_ids = first.metadata["evidence_ids"]
-    assert isinstance(evidence_ids, list)
-    assert "ev_0123456789abcdef01234567" in evidence_ids
-
-
-def test_loan_product_summary_retains_evidence_ids() -> None:
-    citation = EvidenceCitation(
-        evidence_id="ev_0123456789abcdef01234567",
-        source_item_id="rate",
-        source_url=URL,
-        source_type=SourceType.PAGE,
-        quote="13.5%",
-        locator=SourceLocator(
-            source_url=URL,
-            source_type=SourceType.PAGE,
-            block_id="rate",
-        ),
-        authority=Authority.OFFICIAL_PRODUCT_CONTENT,
-    )
-    product_name = ExtractedValue[str](
-        value="Consumer loans",
-        evidence=(citation,),
-        status=ExtractionStatus.FOUND,
-    )
-    product = LoanProduct.model_construct(
-        product_name=product_name,
-        category=LoanCategory.CONSUMER_LOAN,
-        canonical_url=URL,
-        retrieved_at=NOW,
-    )
-
-    summary = KnowledgeProjectionService().project_summary(
-        run_id=uuid4(),
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=OfferingId.CONSUMER_STANDARD,
-        display_name="Consumer loans",
-        source_url=URL,
-        value=product,
-        language="en",
-    )
-
-    assert "Status: found" in summary.chunks[0].content
-    assert summary.metadata["evidence_ids"] == [citation.evidence_id]
 
 
 def test_projection_rejects_cross_family_offering() -> None:

@@ -14,7 +14,6 @@ from google.adk.tools import ToolContext
 
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import RunStatus, RunTrigger
-from app.domain.review import ReviewStatus
 from app.tools._services import services
 from app.tools._state import (
     FULL_PRODUCT_ACK_KEY,
@@ -210,7 +209,9 @@ async def get_monitoring_status(tool_context: ToolContext) -> dict[str, object]:
             )
     pending: dict[str, int] = {}
     if services.reviews is not None:
-        tasks = await services.reviews.list(status=ReviewStatus.PENDING, limit=500)
+        from app.tools.resolution import reviewable_pending_reviews
+
+        tasks = await reviewable_pending_reviews()
         pending = dict(Counter(task.offering_id.value for task in tasks))
     accepted: dict[str, str | None] = {}
     if services.current_tariff_service is not None:

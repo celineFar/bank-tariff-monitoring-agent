@@ -34,7 +34,7 @@ from app.repositories.contracts import (
     ReviewRepository,
     RunRepository,
 )
-from app.repositories.reviews import StaleReviewError
+from app.repositories.reviews import ReviewConflictError, StaleReviewError
 from app.services.review_decisions import coerce_review_candidate_value
 from app.services.review_evidence import (
     MODEL_EXCERPT_CHARS,
@@ -115,6 +115,9 @@ class ReviewResolutionService:
         )
         return tuple(sorted(tasks, key=lambda task: (task.created_at, str(task.id))))
 
+    async def get(self, review_id: UUID) -> ReviewTask | None:
+        return await self._reviews.get(review_id)
+
     async def all_reviews(self, run_id: UUID) -> tuple[ReviewTask, ...]:
         """Every review of one run, decided or not, in the same stable order."""
         tasks = await self._reviews.list(run_id=run_id, limit=_REVIEW_PAGE)
@@ -183,7 +186,11 @@ class ReviewResolutionService:
         *,
         reviewer: str,
     ) -> ReviewTask:
-        """Apply one validated decision; `reject_all` supersedes the run's rest.
+        """Apply one validated decision; `reject_all` supersedes the snapshot's rest.
+
+        A rejection closes one offering's candidate snapshot, so only the other
+        pending reviews of that snapshot are moot. A family run holds one
+        snapshot per offering, and the other offerings' reviews stay pending.
 
         Idempotent: a review that is no longer pending is returned unchanged, so
         a node that re-runs after a crash never applies a decision twice.
@@ -205,7 +212,10 @@ class ReviewResolutionService:
             decided = await self._decisions.apply(task.id, decision, reviewer=reviewer)
             if decision.decision_type is ReviewDecisionType.REJECT_ALL:
                 for sibling in await self.pending(task.run_id):
-                    if sibling.id != task.id:
+                    if (
+                        sibling.id != task.id
+                        and sibling.snapshot_id == task.snapshot_id
+                    ):
                         await self._reviews.supersede(sibling.id)
         except StaleReviewError:
             # A newer snapshot was accepted while this review waited (the race
@@ -217,6 +227,11 @@ class ReviewResolutionService:
                 payload={"review_ids": [str(task.id)]},
             )
             return await self._reviews.supersede(task.id)
+        except ReviewConflictError:  # after StaleReviewError, its subclass
+            # Superseded or aborted between reading it and deciding it. Nothing
+            # was written; the caller reports the answer as not applied.
+            latest = await self._reviews.get(task.id)
+            return latest if latest is not None else task
         except ValueError as exc:
             await self._runs.record_audit(
                 task.run_id,
@@ -306,6 +321,35 @@ class ReviewResolutionService:
                 completed += 1
         return completed
 
+    async def close_orphaned_reviews(self, *, limit: int = 500) -> int:
+        """Supersede pending reviews whose run already ended.
+
+        A family run creates each offering's reviews as it goes; cancelled,
+        abandoned or interrupted later, it ends `failed` with those reviews still
+        pending. Nothing could answer them ("review them" walks paused runs), yet
+        every turn announced them. Superseding also closes their candidates.
+        """
+        tasks = await self._reviews.list(status=ReviewStatus.PENDING, limit=limit)
+        ended: dict[UUID, bool] = {}
+        closed = 0
+        for task in tasks:
+            if task.run_id not in ended:
+                run = await self._runs.get(task.run_id)
+                ended[task.run_id] = run is not None and run.status.is_terminal
+            if not ended[task.run_id]:
+                continue
+            try:
+                await self._reviews.supersede(task.id)
+            except ReviewConflictError:
+                continue
+            closed += 1
+            await self._runs.record_audit(
+                task.run_id,
+                "review.superseded",
+                payload={"review_ids": [str(task.id)], "reason": "run_closed"},
+            )
+        return closed
+
     async def reject_all_pending(self, *, reviewer: str) -> dict[str, object]:
         """Reject every pending review, run by run, and close those runs."""
         pending: list[ReviewTask] = []
@@ -325,11 +369,17 @@ class ReviewResolutionService:
         failed: list[dict[str, str]] = []
         for run_id, tasks in grouped.items():
             try:
-                await self.apply(
-                    tasks[0],
-                    ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL),
-                    reviewer=reviewer,
-                )
+                # One rejection per candidate snapshot: it supersedes the rest
+                # of that snapshot's reviews.
+                first_per_snapshot = {
+                    task.snapshot_id: task for task in reversed(tasks)
+                }
+                for task in first_per_snapshot.values():
+                    await self.apply(
+                        task,
+                        ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL),
+                        reviewer=reviewer,
+                    )
                 run = await self.complete_run(run_id)
                 if not run.status.is_terminal or await self.pending(run_id):
                     raise RuntimeError("run still has pending reviews")

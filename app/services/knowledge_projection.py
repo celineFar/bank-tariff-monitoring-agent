@@ -8,13 +8,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 from app.domain.acquisition import SourceLocator
-from app.domain.catalog import SeedCatalog
 from app.domain.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
-from app.domain.monitoring import SnapshotAttempt
 from app.domain.normalization import (
     NormalizedBlock,
     NormalizedBlockType,
@@ -22,7 +20,6 @@ from app.domain.normalization import (
     NormalizedSourceBundle,
     NormalizedTable,
 )
-from app.domain.semantic_extraction import ExtractedValue, LoanProduct
 from app.domain.source_discovery import (
     ProductAssociation,
     SourceAssessment,
@@ -112,71 +109,6 @@ class KnowledgeProjectionService:
                 )
             )
             is not None
-        )
-
-    def project_summary(
-        self,
-        *,
-        run_id: UUID,
-        product: ProductType,
-        offering_id: OfferingId,
-        display_name: str,
-        source_url: HttpUrl | str,
-        value: LoanProduct | SnapshotAttempt,
-        language: str,
-    ) -> KnowledgeDocument:
-        if offering_id.product is not product:
-            raise ValueError("offering does not belong to product")
-        content, evidence_ids = render_offering_summary(
-            display_name=display_name,
-            offering_id=offering_id,
-            product=product,
-            value=value,
-        )
-        retrieved_at = (
-            value.retrieved_at if isinstance(value, LoanProduct) else value.created_at
-        )
-        chunks = self._chunks_from_units(
-            (
-                _ProjectionUnit(
-                    content=content,
-                    section="Offering summary",
-                    locators=(),
-                    source_item_ids=(),
-                    extraction_method="deterministic_summary",
-                    quality_score=None,
-                    unit_type="offering_summary",
-                ),
-            ),
-            language=language,
-            common_metadata={
-                "authoritative_evidence": False,
-                "evidence_ids": list(evidence_ids),
-                "offering_id": offering_id.value,
-            },
-        )
-        return KnowledgeDocument(
-            run_id=run_id,
-            product=product,
-            offering_id=offering_id,
-            document_kind=KnowledgeDocumentKind.OFFERING_SUMMARY,
-            document_key=f"offering-summary:{offering_id.value}",
-            document_name=f"{display_name} - deterministic summary",
-            source_url=source_url,
-            final_url=source_url,
-            mime_type="text/markdown",
-            content_sha256=_sha256(content),
-            retrieved_at=retrieved_at,
-            extraction_method="deterministic_summary",
-            metadata={
-                "authoritative_evidence": False,
-                "evidence_ids": list(evidence_ids),
-                "summary_schema": "loan_product_or_snapshot_v2",
-                # Kept out of the content, so the summary's hash changes only
-                # when the tariff or its evidence does (IX11).
-                "as_of": retrieved_at.isoformat(),
-            },
-            chunks=chunks,
         )
 
     def _project_source_document(
@@ -346,87 +278,6 @@ class KnowledgeProjectionService:
         if not chunks:
             raise ValueError("projection produced no knowledge chunks")
         return tuple(chunks)
-
-
-class OfferingSummaryProjector:
-    """The offering summary of a snapshot, from the catalog's offering entry.
-
-    The pipeline projects an accepted run's summary itself; an approval builds it
-    from the *final* snapshot (the reviewer's decisions applied), which exists
-    only at decision time (IX6).
-    """
-
-    def __init__(
-        self, projection: KnowledgeProjectionService, catalog: SeedCatalog
-    ) -> None:
-        self._projection = projection
-        self._catalog = catalog
-
-    def project(self, snapshot: SnapshotAttempt) -> KnowledgeDocument:
-        offering = self._catalog.get(snapshot.product, snapshot.offering_id)
-        return self._projection.project_summary(
-            run_id=snapshot.run_id,
-            product=snapshot.product,
-            offering_id=snapshot.offering_id,
-            display_name=offering.display_name,
-            source_url=offering.seed_url,
-            value=snapshot,
-            language=offering.language or "en",
-        )
-
-
-def render_offering_summary(
-    *,
-    display_name: str,
-    offering_id: OfferingId,
-    product: ProductType,
-    value: LoanProduct | SnapshotAttempt,
-) -> tuple[str, tuple[str, ...]]:
-    lines = [
-        f"# {display_name}",
-        "",
-        f"Offering ID: {offering_id.value}",
-        f"Product family: {product.value}",
-        "Document kind: deterministic offering summary",
-        "Evidence policy: retrieve official source chunks for citations.",
-    ]
-    evidence_ids: list[str] = []
-    # No "As of" line: the time is the document's `retrieved_at` and
-    # `metadata.as_of`, so an unchanged tariff keeps its version (IX11).
-    lines.append("")
-    if isinstance(value, LoanProduct):
-        for field_name, field_value in value:
-            if field_name in {"canonical_url", "retrieved_at"}:
-                continue
-            lines.extend(_render_summary_field(field_name, field_value, evidence_ids))
-    else:
-        for field_name in sorted(value.normalized_tariff):
-            lines.append(f"## {_humanize(field_name)}")
-            lines.append(_stable_text(value.normalized_tariff[field_name]))
-            lines.append("")
-        evidence_ids.extend(_evidence_ids(value.evidence))
-    return "\n".join(lines).strip() + "\n", tuple(dict.fromkeys(evidence_ids))
-
-
-def _render_summary_field(
-    field_name: str,
-    value: Any,
-    evidence_ids: list[str],
-) -> list[str]:
-    lines = [f"## {_humanize(field_name)}"]
-    if isinstance(value, ExtractedValue):
-        lines.append(f"Status: {value.status.value}")
-        if value.value is not None:
-            lines.append(_stable_text(value.value))
-        ids = tuple(citation.evidence_id for citation in value.evidence)
-        if ids:
-            lines.append("Evidence IDs: " + ", ".join(ids))
-            evidence_ids.extend(ids)
-    else:
-        lines.append(_stable_text(value))
-        evidence_ids.extend(_evidence_ids(value))
-    lines.append("")
-    return lines
 
 
 def _indexed(label: SourceAssessment) -> bool:
@@ -604,24 +455,6 @@ def _evidence_ids(value: Any) -> list[str]:
     if isinstance(value, (list, tuple)):
         return [item for nested in value for item in _evidence_ids(nested)]
     return []
-
-
-def _stable_text(value: Any) -> str:
-    if isinstance(value, BaseModel):
-        value = value.model_dump(mode="json", exclude_none=True)
-    if isinstance(value, (dict, list, tuple)):
-        return json.dumps(
-            value,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        )
-    return str(value)
-
-
-def _humanize(value: str) -> str:
-    return value.replace("_", " ").strip().title()
 
 
 def _escape_cell(value: str) -> str:

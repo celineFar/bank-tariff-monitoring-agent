@@ -1,11 +1,10 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from app.domain.acquisition import AcquisitionInventory, PageArtifact
 from app.domain.models import (
-    KnowledgeDocumentKind,
     OfferingId,
     ProductType,
     TariffSnapshot,
@@ -25,7 +24,6 @@ from app.domain.monitoring import (
     SnapshotChangeSet,
 )
 from app.domain.pdf_extraction import PdfExtractionResponse
-from app.domain.retrieval import RetrievalCandidate
 from app.domain.review import (
     ReviewDecision,
     ReviewSnapshotUpdate,
@@ -246,34 +244,6 @@ class ReviewRepository(Protocol):
     ) -> ReviewTask: ...
     async def supersede(self, review_id: UUID) -> ReviewTask: ...
     async def fail(self, review_id: UUID, detail: str) -> ReviewTask: ...
-
-
-class ChunkEmbeddingRepository(Protocol):
-    """Active chunks stored without a vector, and filling them (IX5, IX7)."""
-
-    async def list_missing(
-        self, *, offering_id: OfferingId | None, limit: int
-    ) -> tuple[tuple[str, str], ...]:
-        """Up to `limit` (chunk id, content) pairs, oldest first."""
-        ...
-
-    async def fill(self, vectors: Mapping[str, Sequence[float]]) -> int:
-        """Store vectors for chunks still without one; returns rows filled."""
-        ...
-
-
-class HybridRetrievalRepository(Protocol):
-    async def search_candidates(
-        self,
-        *,
-        bank: str,
-        product: ProductType,
-        offering_id: OfferingId | None,
-        document_kinds: Sequence[KnowledgeDocumentKind],
-        lexical_query: str,
-        query_embedding: Sequence[float],
-        limit: int,
-    ) -> Sequence[RetrievalCandidate]: ...
 
 
 class SourceDiscoveryRepository(Protocol):

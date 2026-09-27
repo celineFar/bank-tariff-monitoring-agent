@@ -39,7 +39,7 @@ from app.domain.monitoring import (
     RunTrigger,
 )
 from app.domain.query_shape import QueryShape
-from app.domain.review import ReviewDecisionInput, ReviewDecisionType, ReviewTask
+from app.domain.review import ReviewDecisionInput, ReviewStatus, ReviewTask
 from app.domain.structured_tariffs import QueryOperation, ResolutionPlan
 from app.repositories.contracts import RunRepository
 from app.services.contracts import TariffPipeline
@@ -134,6 +134,9 @@ class MonitoringResult(NodeModel):
     failure_code: str | None = None
     failure_summary: str | None = None
     message: str | None = None
+    # Answers the reviewer gave that were not applied: the review was superseded
+    # by a newer candidate or aborted while the question was open.
+    answers_not_applied: tuple[str, ...] = ()
 
 
 def review_interrupt_id(run_id: UUID, review_id: UUID, attempt: int = 1) -> str:
@@ -191,7 +194,7 @@ def build_monitoring_node(
         #    never submits again; that keeps a replay from starting a new run.
         run = await _resumed_run(runs, resume)
         if run is None and request.review_only:
-            run = await _oldest_awaiting_review(runs, request)
+            run = await _run_to_review(runs, resolution, request)
             if run is None:
                 yield _result(
                     status="no_pending_reviews",
@@ -311,12 +314,23 @@ def build_monitoring_node(
 
         # 4. Ask for each pending review, one pause per review.
         if run.status is RunStatus.AWAITING_REVIEW:
-            pending = await resolution.pending(run.id)
             # Position among all of the run's reviews, so "2/2" stays "2/2"
             # when the node re-runs with the first one already decided.
             ordered = [item.id for item in await resolution.all_reviews(run.id)]
             total = len(ordered)
-            for task in pending:
+            handled: set[UUID] = set()
+            while True:
+                # Re-read after every decision: a rejection supersedes the rest
+                # of its snapshot, while other offerings' reviews stay pending.
+                pending = [
+                    item
+                    for item in await resolution.pending(run.id)
+                    if item.id not in handled
+                ]
+                if not pending:
+                    break
+                task = pending[0]
+                handled.add(task.id)
                 position = ordered.index(task.id) + 1 if task.id in ordered else 1
                 attempt, reply = _latest_reply(resume, run.id, task.id)
                 passages = await resolution.passages(task)
@@ -365,12 +379,22 @@ def build_monitoring_node(
                         rejected=rejected,
                     )
                     return
-                if decision.decision_type is ReviewDecisionType.REJECT_ALL:
-                    break
             run = await resolution.complete_run(run.id)
 
         # 5. Report, and answer the original question from accepted facts.
         result = await _outcome(runs, run, request, created=created, followed=followed)
+        dropped = await _answers_not_applied(resolution, resume, reviewer=ctx.user_id)
+        if dropped:
+            result = result.model_copy(
+                update={
+                    "answers_not_applied": dropped,
+                    "message": (
+                        "Not applied: the review was closed before your answer "
+                        "arrived (a newer candidate replaced it, or it was "
+                        "aborted). Nothing was changed for: " + "; ".join(dropped)
+                    ),
+                }
+            )
         if (request.answer is not None or request.question) and run.status in {
             RunStatus.SUCCEEDED,
             RunStatus.PARTIAL_SUCCESS,
@@ -418,10 +442,27 @@ async def _reload(runs: RunRepository, run_id: UUID) -> MonitoringRun:
     return run
 
 
-async def _oldest_awaiting_review(
-    runs: RunRepository, request: MonitoringNodeInput
+async def _run_to_review(
+    runs: RunRepository,
+    resolution: ReviewResolutionService,
+    request: MonitoringNodeInput,
 ) -> MonitoringRun | None:
-    for run in await runs.list_by_status(RunStatus.AWAITING_REVIEW, limit=100):
+    """The newest paused run in scope that still has a pending review.
+
+    Newest first: a newer candidate is the one worth deciding, and publishing it
+    supersedes an older one's reviews. A paused run left with nothing pending
+    (its reviews decided or superseded elsewhere) is closed on the way.
+    """
+    try:
+        await resolution.close_orphaned_reviews()
+    except Exception:
+        logger.warning("could not close reviews of ended runs", exc_info=True)
+    waiting = sorted(
+        await runs.list_by_status(RunStatus.AWAITING_REVIEW, limit=100),
+        key=lambda item: (item.queued_at, str(item.id)),
+        reverse=True,
+    )
+    for run in waiting:
         if request.product is not None and run.command.product is not request.product:
             continue
         if (
@@ -430,8 +471,46 @@ async def _oldest_awaiting_review(
             and run.command.offering_id is not request.offering_id
         ):
             continue
-        return run
+        if await resolution.pending(run.id):
+            return run
+        try:
+            await resolution.complete_run(run.id)
+        except Exception:
+            logger.warning("could not close reviewed run %s", run.id, exc_info=True)
     return None
+
+
+async def _answers_not_applied(
+    resolution: ReviewResolutionService,
+    resume: dict[str, Any],
+    *,
+    reviewer: str,
+) -> tuple[str, ...]:
+    """Reviews this invocation answered whose answer was never applied.
+
+    ADK hands every answer of the invocation back on each resume. An answer is
+    applied when its review is decided by this reviewer; a review superseded or
+    decided by someone else (an admin abort) while the question was open kept
+    nothing of it, and the reviewer must be told rather than left to assume.
+    """
+    answered = {
+        parsed[1]
+        for key in resume
+        if (parsed := parse_review_interrupt_id(key)) is not None
+    }
+    dropped: list[str] = []
+    for review_id in sorted(answered, key=str):
+        task = await resolution.get(review_id)
+        if task is None or task.status is ReviewStatus.PENDING:
+            continue
+        if (
+            task.status in {ReviewStatus.APPROVED, ReviewStatus.REJECTED}
+            and task.reviewer == reviewer
+        ):
+            continue
+        field = task.issue_scope.replace("_", " ")
+        dropped.append(f"{task.offering_id.value} · {field} ({task.status.value})")
+    return tuple(dropped)
 
 
 def _latest_reply(

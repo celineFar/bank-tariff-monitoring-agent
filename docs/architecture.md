@@ -20,9 +20,9 @@ Daily scheduler ----------+-> RunService              |
  -> bounded Gemini PDF link selection (which admitted PDFs belong to the offering)
  -> bounded Gemini PDF structure extraction + deterministic HTML parsing
  -> structural normalization -> cached/rule prefilter -> bounded Gemini source classification
- -> clean/chunk -> PostgreSQL + pgvector -> hybrid retrieval
  -> Gemini evidence-bound extraction -> deterministic validation
- -> snapshot comparison -> HITL routing -> report
+ -> snapshot comparison -> HITL routing -> atomic publication
+    (evidence documents as text, typed facts, retrieval units) -> report
 ```
 
 Gemini is restricted to request interpretation (one tool-free call per chat turn that
@@ -85,8 +85,7 @@ shell, or SQL tool.
   repositories, ingestion, per-model discovery and extraction fallback chains,
   `TariffPipeline`, `RunService`, `RequestResolver`, deterministic tariff query services,
   `ReviewResolutionService`, the monitoring node (built with the entry point's
-  owner: `cli:` from the CLI, `api:` from FastAPI), retrieval, and
-  `RagAnswerService`.
+  owner: `cli:` from the CLI, `api:` from FastAPI), and `TariffAnswerRouter`.
 - `app/services/intent_resolution.py`, `app/services/interpretation_validation.py`,
   `app/services/structured_query_planning.py` and `app/tools/`: the request
   interpreter proposes intent, scope, a standalone question and a query shape
@@ -110,18 +109,16 @@ shell, or SQL tool.
   and uses the same `StructuredTariffQueryService` as ADK. It rejects caller-supplied
   scope fields, answers 503 when the interpreter is unavailable, and never triggers
   acquisition.
-- `app/services/answer_read_model.py` and `TARIFF_ANSWER_READ_MODEL`: the
-  reversible cutover switch. `structured` (default) answers every ordinary
-  question from typed accepted facts; `legacy` restores the old RAG answer path
-  with no code change while production behaviour is still being observed. The
-  ADK `answer_tariff_query` tool, the post-monitoring answer, and
-  `POST /api/v1/questions` all route through `TariffAnswerRouter`, so both read
-  models stay inside the same authorized scope. After cutover `/questions`
-  builds an equivalent typed plan from its own product/offering scope, with the
+- `app/services/answer_read_model.py`: `TariffAnswerRouter`, the one answer path.
+  Every ordinary question is answered from typed accepted facts: the ADK
+  `answer_tariff_query` tool, the post-monitoring answer, and
+  `POST /api/v1/questions` all route through it, each inside its authorized scope.
+  `/questions` builds a typed plan from its own product/offering scope, with the
   question's shape proposed by the request interpreter
   (`RequestResolver.shape_for`), and returns fact-evidence citations; the
   post-monitoring answer plans from the answer request stored with the question
-  (its own scope and shape, not the run's). The model cannot change the switch.
+  (its own scope and shape, not the run's). The RAG answer path that once sat
+  beside it was removed.
 - `app/services/model_call_usage.py` and `model_call_usage`: redacted, dated paid-tier
   model call/cost ledger shared by direct Gemini adapters and ADK callbacks. A chat
   model call made in an invocation that executes or resumes a monitoring run records
@@ -171,8 +168,8 @@ shell, or SQL tool.
   `RUN_RECOVERY_INTERVAL_SECONDS`, it fails runs whose lease expired
   (`run.abandoned`); on start it also completes paused runs whose reviews are all
   decided.
-  A separate loop embeds active chunks, then active structured retrieval units, stored
-  without a vector (`CombinedEmbeddingSweep.embed_missing`, every
+  A separate loop embeds active structured retrieval units stored without a vector
+  (`StructuredUnitEmbeddingService.embed_missing`, every
   `EMBEDDING_SWEEP_INTERVAL_SECONDS`), so a provider quota wait never blocks claiming
   runs and no chat question embeds units.
 - `app/services/monitoring_progress.py`: the pipeline's progress port
@@ -242,22 +239,6 @@ shell, or SQL tool.
   `app/services/structured_projection_audit.py` and its script compare typed
   stored facts and verified citations with canonical accepted extraction without
   model calls; failed evidence gates are reported.
-- `app/services/structured_shadow_read.py` and
-  `scripts/shadow_read_report.py`: read-only shadow comparison of the legacy and
-  structured paths over a checked-in set of representative queries. It records
-  statuses, fact/citation counts, latency, and evidence-source overlap, and logs
-  only a question hash, never question text, source text, or generated wording.
-  The structured path runs alone by default; `--with-legacy` additionally spends
-  one embedding and one generation call per case. The cutover gate stays closed
-  until both paths ran, the structured model answered at least one query, and
-  every divergence was audited.
-- `app/services/evidence_retention_audit.py` and
-  `scripts/audit_evidence_retention.py`: prove each active accepted fact carries
-  a self-contained citation (exact quote, locator, retained provenance document
-  with a matching checksum) before the legacy summary/source embeddings are
-  deprecated. An empty structured read model is reported as not ready, never as
-  vacuously safe. Physical cleanup of `knowledge_chunks` remains a separate,
-  unscheduled task.
 - `migrations/011_structured_tariff_read_model.sql`: additive read-model tables
   `offering_profiles`, `tariff_facts`, `fact_evidence`, and `retrieval_units`, plus
   `model_call_usage` for call and cost monitoring. Live new runs populate these
@@ -269,7 +250,7 @@ shell, or SQL tool.
   Migration `019` scopes the source-discovery assessment cache to the offering;
   migration `020` adds `pdf_link_selections`, the cache of PDF link decisions.
 - `tests/unit/`: deterministic logic tests.
-- `tests/eval/`: non-deterministic agent/RAG behavioral evaluation.
+- `tests/eval/`: non-deterministic agent behavioral evaluation.
 
 ## Human-readable end-to-end inspection
 
@@ -424,8 +405,7 @@ never presented as a fresh check.
 
 Acquisition, parsing, PDF, model, and validation exceptions are translated at the
 pipeline boundary into stable source failure codes while retaining only exception type
-and stage in bounded audit payloads. RAG generation/malformed-output failures return a
-typed no-answer result. See `docs/failure-behavior.md`.
+and stage in bounded audit payloads. See `docs/failure-behavior.md`.
 
 ## Structural normalization boundary
 
@@ -524,8 +504,8 @@ prompt version, and model name; every classifier batch names the offering its pr
 association is judged against. Stable structure with changed content supplies only a prior
 hint and still requires reassessment. Deterministic Python validates response IDs,
 persists assessments, expands inheritance, and builds one `SourceSelection` that
-semantic extraction and the RAG projection both read: the knowledge index holds only
-selected content of this offering (no sibling products, navigation, or superseded
+semantic extraction and the document projection both read: the evidence documents hold
+only selected content of this offering (no sibling products, navigation, or superseded
 versions), each chunk labelled with its discovery assessments. See
 `docs/source-discovery.md` for the full contract and no-LLM preflight workflow.
 
@@ -585,12 +565,7 @@ Claim generation, cross-source verification, snapshot comparison and HITL decisi
 remain downstream. See `docs/semantic-extraction.md` for the complete contract and
 demonstration flow.
 
-## RAG index / knowledge-store boundary
-
-`KnowledgeIndexer` accepts page-aware source-faithful and deterministic-summary chunks
-and requests `RETRIEVAL_DOCUMENT` embeddings through an injected embedding provider
-(content-addressed cache first); it writes nothing but vectors (`embed_missing`). Neither
-the embedding client nor the repositories are exposed as an ADK tool.
+## Evidence document boundary
 
 `app/repositories/knowledge_publication.py` is the only writer of document versions,
 always inside the offering publication or review transaction and under the offering's
@@ -600,51 +575,22 @@ publication advisory lock (taken before any review row lock):
   bank, product, offering, kind, document key, source checksum and projection hash
   (`projection_sha256`, chunk content and metadata plus `PROJECTION_SCHEMA_VERSION`),
   and chunk IDs from the version and ordinal. Versions are immutable: storing one again
-  refreshes bookkeeping and fills missing vectors only;
+  refreshes bookkeeping only;
 - `snapshot_documents` (migration `023`) records the versions each snapshot was built
   from; fact evidence links to documents through it;
-- `activate_snapshot_set` makes a snapshot's set the offering's whole active index and
+- `activate_snapshot_set` makes a snapshot's set the offering's whole active set and
   retires everything else of the offering, keeping history;
 - `discard_snapshot_documents` deletes a rejected or superseded snapshot's
   never-published versions that no other snapshot names.
 
 `knowledge_documents` retains source/version metadata, publication state
 (`pending_review`, `active`, `retired`), retrieval time, extraction method, and quality.
-`knowledge_chunks` retains page/section/language, content, extraction metadata, a
-generated `tsvector`, and a `vector(768)` embedding that is `NULL` until embedded
-(content under review, quota-deferred runs). Partial GIN and HNSW indexes over active
-chunks support the lexical/vector retrieval component. Migrations `002` and `023` own
-this schema; `app/repositories/knowledge_records.py` mirrors it.
-
-## RAG retrieval boundary
-
-`RagRetriever` accepts an already resolved bank, product, query, and tariff-field
-scope. It creates a `RETRIEVAL_QUERY` embedding and calls only the narrow
-`HybridRetrievalRepository`; no database handle or SQL operation crosses into the
-agent/tool layer. `PostgresRagRetrievalRepository` unions full-text and cosine
-candidates while enforcing bank/product and active-version predicates in every SQL
-branch.
-
-The application service performs documented weighted reciprocal-rank fusion,
-absolute relevance scoring, threshold rejection, deterministic tie-breaking,
-same-document overlap deduplication, and top-k limiting. It returns immutable typed
-hits with complete document/chunk provenance, or an explicit
-`INSUFFICIENT_EVIDENCE` result. See `docs/rag-retrieval.md` for the exact formula and
-query contract.
-
-
-## RAG answer boundary
-
-`RagAnswerService` is shared by `POST /api/v1/questions` and the ADK question tool.
-It retrieves active offering summaries and official source chunks with typed
-bank/product/offering/document-kind filters, constructs a bounded evidence packet, and
-performs one structured generation call. Summaries improve precision but cannot be
-cited. Citation IDs and exact excerpts must match retrieved source chunks; URL,
-document, page, and section are restored server-side. Missing scope returns
-`ambiguous_product`; missing or invalid evidence returns `insufficient_evidence`.
-Question answering never invokes acquisition. See `docs/rag-answering.md`.
-`scripts/trace_rag_answer.py` runs this same answer path for one scoped question
-and prints retrieval, generation, and citation-validation stages for inspection.
+`knowledge_chunks` retains page/section/language, content and extraction metadata, as
+text: nothing embeds or searches it. Questions are answered from typed facts; the field
+finder searches retrieval units (`docs/rag-retrieval.md`). Migrations `002`, `023` and
+`027` own this schema (`027` dropped the vectors, full-text column and search indexes
+of the removed RAG answer path, and its offering-summary documents);
+`app/repositories/knowledge_records.py` mirrors it.
 
 ## Intent and offering resolution boundary
 
@@ -700,8 +646,12 @@ of their own.
 
 The business lifecycle is `queued -> running -> awaiting_review -> terminal`, where the
 terminal states are `succeeded`, `partial_success`, and `failed`. A run may go directly
-from `running` to a terminal state. `awaiting_review` remains an active state for family
-deduplication and owns no worker claim while waiting for a person.
+from `running` to a terminal state. `awaiting_review` owns no worker claim and blocks no
+new run (migration `026`): monitoring keeps running while a review waits. Publishing a
+newer snapshot of an offering, accepted or not, supersedes the older candidate's pending
+reviews and closes that candidate, so at most one candidate per offering waits; a paused
+run closes once none of its reviews is pending (at the end of a chat review, when
+"review them" passes it, and on the worker's recovery interval).
 
 State ownership is deliberately split. PostgreSQL business tables own runs, offering
 executions, candidates, evidence, reviews, snapshots, changes, and publication state.
@@ -733,9 +683,8 @@ for the reviewer's `?`. An override citing a passage outside the shown units wri
 `review_citation_outside_shown_units` in the decision's transaction
 (`ReviewSnapshotUpdate.audit_events`). After all reviews
 for a snapshot are approved, one database transaction updates and accepts the snapshot,
-records its change set, adds the final values' offering summary to the snapshot's set,
-activates that set as the offering's whole index, and completes the offering; the
-approved chunks are embedded after the commit. Rejection deletes the snapshot's
+records its change set, publishes its structured projection, activates the snapshot's
+document set, and completes the offering. Rejection deletes the snapshot's
 never-published versions and leaves the previous accepted publication active. See `docs/review-quarantine.md` and `docs/native-hitl-review.md`.
 
 `app/services/review_input.py` owns the reviewer-facing side of that contract: for every
@@ -777,10 +726,10 @@ original tool call on resume. The ADK behaviours this relies on are re-demonstra
 
 Deterministic acquisition, extraction, normalization, validation and persistence stay
 inside `TariffPipeline`; they are not split into agent nodes. Migration
-`008_monitoring_workflow.sql` includes `AWAITING_REVIEW` in active-run uniqueness, and
-`010_offering_scoped_active_runs.sql` makes that boundary specific to an offering while
-keeping family-wide work exclusive; a paused run cannot be bypassed by another request
-for the same offering. Migration `016_drop_review_workflow_correlation.sql` removed the
+`010_offering_scoped_active_runs.sql` makes active-run uniqueness specific to an offering
+while keeping family-wide work exclusive, and `026_awaiting_review_does_not_block.sql`
+limits it to `queued` and `running`: a paused run no longer blocks its offering or family.
+"Review them" walks the newest paused run in scope first. Migration `016_drop_review_workflow_correlation.sql` removed the
 review-to-session correlation columns an earlier workflow design needed.
 
 Cancellation: cancelling the consumer of `run_async` raises `CancelledError` inside the
@@ -804,12 +753,11 @@ session.
 ## Indexing coordinator boundary
 
 `IndexingPipeline.refresh()` orders acquisition, normalization, discovery, extraction,
-projection, embedding, and atomic publication for one offering. Its acquisition port is
+projection, and atomic publication for one offering. Its acquisition port is
 the freshness gate, so reuse is a composition detail the coordinator never has to know
 about. `TariffPipeline` owns
 the family run and isolates siblings, allowing `partial_success`. Source-faithful
-documents preserve normalized evidence locations; accepted snapshots additionally
-produce deterministic offering summaries. See `docs/indexing-projection.md`,
+documents preserve normalized evidence locations. See `docs/indexing-projection.md`,
 `docs/run-lifecycle.md`, and `docs/snapshot-lifecycle.md`.
 
 ## Offering and seed-catalog boundary
@@ -874,7 +822,8 @@ constraint without replaying partially published work.
 `POST /api/v1/runs`, the ADK monitoring tool, and the 06:00 scheduler all submit the
 same typed `RunCommand` through `RunService`. The HTTP adapter returns `202` with the
 durable run record and honors `Idempotency-Key`; `GET /api/v1/runs/{run_id}` reads the
-same repository state. Only the worker invokes `TariffPipeline`, after a durable claim.
+same repository state. `TariffPipeline` runs only after a durable claim: the worker
+claims queued runs, and the chat's monitoring node claims the run it submitted.
 
 `PostgresOfferingPublicationRepository` publishes the offering’s knowledge versions,
 source manifest, snapshot, optional change set, execution status, and audit event in one

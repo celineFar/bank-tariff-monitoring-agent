@@ -329,6 +329,10 @@ def field_citations(snapshot, field: str) -> tuple[dict[str, object], ...]:
     """
     product = (snapshot.semantic_extraction or {}).get("loan_product") or {}
     value = product.get(field)
+    if value is None:
+        # Category-specific fields (down payment, credit limit, ...) are nested.
+        details = product.get("details")
+        value = details.get(field) if isinstance(details, dict) else None
     if not isinstance(value, dict) or value.get("status") != "found":
         return ()
     citations: list[dict[str, object]] = []

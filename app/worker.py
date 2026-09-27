@@ -37,6 +37,8 @@ PRODUCTS = (ProductType.CONSUMER_LOAN, ProductType.MORTGAGE)
 
 
 class ReviewCompletionPort(Protocol):
+    async def close_orphaned_reviews(self, *, limit: int = 500) -> int: ...
+
     async def complete_runs_without_pending_reviews(
         self, *, limit: int = 100
     ) -> int: ...
@@ -175,19 +177,37 @@ class MonitoringWorker:
     async def startup_checks(self) -> None:
         """Close what a previous process left open; nothing needs correlating."""
         await self.recover_abandoned()
-        if self._resolution is not None:
+        await self.complete_reviewed_runs()
+
+    async def complete_reviewed_runs(self) -> int:
+        """Close paused runs none of whose reviews is pending any more.
+
+        A newer candidate supersedes a waiting one's reviews, and an admin can
+        abort them, without the paused run's own chat being there to close it.
+        """
+        if self._resolution is None:
+            return 0
+        try:
+            orphaned = await self._resolution.close_orphaned_reviews()
+            if orphaned:
+                logger.info("superseded %s review(s) of ended runs", orphaned)
+        except Exception:
+            logger.warning("closing reviews of ended runs failed", exc_info=True)
+        try:
             completed = await self._resolution.complete_runs_without_pending_reviews()
-            if completed:
-                logger.warning(
-                    "completed %s reviewed run(s) left awaiting review", completed
-                )
+        except Exception:
+            logger.warning("closing reviewed runs failed", exc_info=True)
+            return 0
+        if completed:
+            logger.info("completed %s reviewed run(s) left awaiting review", completed)
+        return completed
 
     async def sweep_embeddings(self) -> int:
-        """Embed active chunks stored text-only; never raises (IX7).
+        """Embed active retrieval units stored without a vector; never raises.
 
-        An approval activates its documents before their vectors exist, and a
-        quota refusal publishes a run as text; lexical search serves both until
-        this fills the vectors.
+        Publication and approval write units as text; the field finder's lexical
+        search serves them until this fills the vectors (units are never
+        embedded on the request path).
         """
         if self._embeddings is None or self._embedding_sweep_batch <= 0:
             return 0
@@ -224,6 +244,7 @@ class MonitoringWorker:
                 )
             except TimeoutError:
                 await self.recover_abandoned()
+                await self.complete_reviewed_runs()
 
     async def run_forever(self, stop: asyncio.Event) -> None:
         await self.startup_checks()

@@ -15,6 +15,7 @@ from google.adk.tools import ToolContext
 from app.domain.intent import FreshnessStatus, HistoryQuery, HistoryRequestKind
 from app.domain.structured_tariffs import ANSWERABLE_OPERATIONS, ResolutionPlan
 from app.domain.tariff_queries import CurrentTariffResult, TariffHistoryResult
+from app.services.snapshot_lifecycle import tariff_fields
 from app.services.tariff_queries import field_citations
 from app.tools._services import services
 from app.tools._state import (
@@ -203,7 +204,7 @@ def tariff_history_payload(result: TariffHistoryResult) -> dict[str, object]:
     ):
         dumped["citations"] = {
             field: list(citations)
-            for field in snapshot.normalized_tariff
+            for field in tariff_fields(snapshot.normalized_tariff)
             if (citations := field_citations(snapshot, field))
         }
     omitted: list[dict[str, object]] = []

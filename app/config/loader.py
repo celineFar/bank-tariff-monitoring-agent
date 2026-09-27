@@ -104,8 +104,6 @@ def load_settings(
         ),
         rag=RagSettings(
             chunk_size_chars=raw.chunk_size_chars,
-            retrieval_top_k=raw.retrieval_top_k,
-            retrieval_min_score=raw.retrieval_min_score,
             embedding_max_attempts=raw.embedding_max_attempts,
             embedding_backoff_base_seconds=raw.embedding_backoff_base_seconds,
             embedding_quota_max_attempts=raw.embedding_quota_max_attempts,
@@ -124,7 +122,6 @@ def load_settings(
             default_history_days=raw.tariff_default_history_days,
             max_history_results=raw.tariff_max_history_results,
             run_poll_seconds=raw.tariff_run_poll_seconds,
-            answer_read_model=raw.tariff_answer_read_model,
             retrieval_trace_level=raw.retrieval_trace_level,
             retrieval_log_file=raw.retrieval_log_file,
         ),

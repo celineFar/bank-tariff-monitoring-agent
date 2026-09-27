@@ -6,25 +6,20 @@ PostgreSQL integration tests, and skip without it.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
-import asyncpg
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
-    create_async_engine,
 )
-from sqlalchemy.pool import NullPool
 
 from app.domain.knowledge import (
-    EMBEDDING_DIMENSIONS,
-    EmbeddedKnowledgeChunk,
-    EmbeddedKnowledgeDocument,
+    KnowledgeChunk,
+    KnowledgeDocument,
 )
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 from app.domain.monitoring import (
@@ -40,10 +35,6 @@ from app.domain.review import (
     ReviewStatus,
 )
 from app.repositories.monitoring import PostgresOfferingPublicationRepository
-from app.repositories.rag_retrieval import (
-    HYBRID_SEARCH_SQL,
-    PostgresRagRetrievalRepository,
-)
 from app.repositories.reviews import PostgresReviewRepository, ReviewConflictError
 from tests.integration import test_monitoring_repository_postgres as repository_tests
 from tests.integration.test_monitoring_repository_postgres import (
@@ -59,7 +50,6 @@ monitoring_session_factory = repository_tests.monitoring_session_factory
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
 # The fixture snapshot's evidence cites this document key and URL.
 EVIDENCE_KEY = "synthetic-page"
-SUMMARY_KEY = "offering-summary:consumer_standard"
 
 
 def _doc(
@@ -69,9 +59,8 @@ def _doc(
     checksum: str = "a" * 64,
     contents: Sequence[str] = ("Nominal interest rate: 13.5%",),
     kind: KnowledgeDocumentKind = KnowledgeDocumentKind.SOURCE,
-    embedded: bool = True,
-) -> EmbeddedKnowledgeDocument:
-    return EmbeddedKnowledgeDocument(
+) -> KnowledgeDocument:
+    return KnowledgeDocument(
         run_id=run_id,
         product=ProductType.CONSUMER_LOAN,
         offering_id=OfferingId.CONSUMER_STANDARD,
@@ -86,32 +75,16 @@ def _doc(
         extraction_method="browser",
         quality_score=0.99,
         chunks=tuple(
-            EmbeddedKnowledgeChunk(
+            KnowledgeChunk(
                 ordinal=index,
                 content=content,
                 section="Rates",
                 language="en",
                 extraction_method="browser",
                 quality_score=0.99,
-                embedding=(
-                    tuple(0.01 for _ in range(EMBEDDING_DIMENSIONS))
-                    if embedded
-                    else None
-                ),
             )
             for index, content in enumerate(contents)
         ),
-    )
-
-
-def _summary(run_id: UUID, content: str, *, embedded: bool = True):
-    return _doc(
-        run_id,
-        key=SUMMARY_KEY,
-        checksum=("5" + content.encode().hex() + "0" * 64)[:64],
-        contents=(content,),
-        kind=KnowledgeDocumentKind.OFFERING_SUMMARY,
-        embedded=embedded,
     )
 
 
@@ -120,10 +93,18 @@ async def _publish(
     documents,
     *,
     accepted: bool = True,
+    created_at: datetime | None = None,
 ) -> SnapshotAttempt:
-    """Publish one offering run; `documents` builds the documents from its run id."""
+    """Publish one offering run; `documents` builds the documents from its run id.
+
+    `created_at` dates the snapshot as another run's fetch would (reuse).
+    """
     runs, run, execution = await _running_offering(session_factory)
     snapshot = _snapshot(run.id, execution.id)
+    if created_at is not None:
+        snapshot = snapshot.model_copy(
+            update={"created_at": created_at, "accepted_at": created_at}
+        )
     if not accepted:
         snapshot = snapshot.model_copy(
             update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}
@@ -206,19 +187,16 @@ async def test_ix1_accepted_publication_replaces_the_whole_active_set(
         lambda run_id: (
             _doc(run_id, key="page:1111", checksum="1" * 64, contents=("old page",)),
             _doc(run_id, key="document:2222", checksum="2" * 64, contents=("pdf",)),
-            _summary(run_id, "summary one"),
         ),
     )
     await _publish(
         monitoring_session_factory,
         lambda run_id: (
             _doc(run_id, key="page:3333", checksum="3" * 64, contents=("new page",)),
-            _summary(run_id, "summary two"),
         ),
     )
 
     assert await _active(monitoring_session_factory) == [
-        ("offering_summary", SUMMARY_KEY, ("summary two",)),
         ("source", "page:3333", ("new page",)),
     ]
 
@@ -311,259 +289,6 @@ async def test_ix4_approval_is_refused_when_a_newer_snapshot_was_accepted(
 
     assert await _active(monitoring_session_factory) == [
         ("source", EVIDENCE_KEY, ("newer accepted",)),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_ix6_approval_activates_the_summary_it_carries(
-    monitoring_session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    await _publish(
-        monitoring_session_factory,
-        lambda run_id: (
-            _doc(run_id, contents=("accepted rate",)),
-            _summary(run_id, "summary of the accepted values"),
-        ),
-    )
-    pending = await _publish(
-        monitoring_session_factory,
-        lambda run_id: (_doc(run_id, checksum="b" * 64, contents=("reviewed rate",)),),
-        accepted=False,
-    )
-    review = await _review(monitoring_session_factory, pending, "ix6")
-
-    await _approve(
-        monitoring_session_factory,
-        review,
-        pending,
-        summary=_summary(
-            pending.run_id, "summary of the reviewed values", embedded=False
-        ),
-    )
-
-    assert await _active(monitoring_session_factory) == [
-        ("offering_summary", SUMMARY_KEY, ("summary of the reviewed values",)),
-        ("source", EVIDENCE_KEY, ("reviewed rate",)),
-    ]
-
-
-class _Provider:
-    dimensions = EMBEDDING_DIMENSIONS
-    model_name = "test-embedding"
-
-    def __init__(self) -> None:
-        self.calls: list[int] = []
-
-    async def embed_documents(self, contents, *, stage="indexing.embedding"):
-        self.calls.append(len(contents))
-        return [tuple(0.02 for _ in range(EMBEDDING_DIMENSIONS)) for _ in contents]
-
-
-@pytest.mark.asyncio
-async def test_ix7_text_only_active_chunks_are_filled_by_embed_missing(
-    monitoring_session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    from app.repositories.knowledge_embeddings import (
-        PostgresChunkEmbeddingRepository,
-    )
-    from app.services.knowledge_index import KnowledgeIndexer
-
-    await _publish(
-        monitoring_session_factory,
-        lambda run_id: (
-            _doc(run_id, contents=("rate", "term", "fees"), embedded=False),
-        ),
-    )
-    assert await _active(monitoring_session_factory) == [
-        ("source", EVIDENCE_KEY, ("rate", "term", "fees")),
-    ]
-    provider = _Provider()
-    indexer = KnowledgeIndexer(
-        provider,
-        embeddings=PostgresChunkEmbeddingRepository(monitoring_session_factory),
-    )
-
-    filled = await indexer.embed_missing()
-
-    assert filled == 3
-    assert provider.calls == [3]
-    async with monitoring_session_factory() as session:
-        missing = await session.scalar(
-            text(
-                "SELECT count(*) FROM knowledge_chunks "
-                "WHERE is_active AND embedding IS NULL"
-            )
-        )
-    assert missing == 0
-
-
-@pytest.mark.asyncio
-async def test_ix8_vector_search_uses_a_partial_index_over_active_vectors(
-    monitoring_session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    await _publish(monitoring_session_factory, lambda run_id: (_doc(run_id),))
-    async with monitoring_session_factory() as session:
-        definitions = dict(
-            (
-                await session.execute(
-                    text(
-                        "SELECT indexname, indexdef FROM pg_indexes "
-                        "WHERE tablename = 'knowledge_chunks'"
-                    )
-                )
-            ).all()
-        )
-    async with monitoring_session_factory() as session, session.begin():
-        # On a table this small the planner prefers a btree path and a sort;
-        # without those, only the HNSW index can order the rows -- which it can
-        # only do if the query repeats the index's partial predicate.
-        await session.execute(text("SET LOCAL enable_seqscan = off"))
-        await session.execute(text("SET LOCAL enable_sort = off"))
-        explained = await session.execute(
-            text("EXPLAIN " + HYBRID_SEARCH_SQL),
-            {
-                "bank": "ameria",
-                "product": ProductType.CONSUMER_LOAN.value,
-                "lexical_query": "rate",
-                "query_embedding": "["
-                + ",".join("0.01" for _ in range(EMBEDDING_DIMENSIONS))
-                + "]",
-                "candidate_limit": 5,
-                "offering_id": OfferingId.CONSUMER_STANDARD.value,
-                "document_kinds": [],
-                "filter_document_kinds": False,
-            },
-        )
-        plan = "\n".join(explained.scalars())
-
-    hnsw = definitions["knowledge_chunks_embedding_hnsw_idx"]
-    assert "WHERE (is_active AND (embedding IS NOT NULL))" in hnsw
-    assert "WHERE is_active" in definitions["knowledge_chunks_search_gin_idx"]
-    assert "knowledge_chunks_embedding_hnsw_idx" in plan
-
-
-def _unit_vector(axis: int, *, jitter_axis: int, jitter: float) -> tuple[float, ...]:
-    values = [0.0] * EMBEDDING_DIMENSIONS
-    values[axis] = 1.0
-    values[jitter_axis] += jitter
-    return tuple(values)
-
-
-def _vector_doc(
-    run_id: UUID,
-    offering_id: OfferingId,
-    *,
-    key: str,
-    axis: int,
-    count: int,
-) -> EmbeddedKnowledgeDocument:
-    return EmbeddedKnowledgeDocument(
-        run_id=run_id,
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=offering_id,
-        document_key=key,
-        document_name=key,
-        source_url=URL,
-        final_url=URL,
-        mime_type="text/html",
-        content_sha256="c" * 64,
-        retrieved_at=datetime.now(UTC),
-        extraction_method="browser",
-        chunks=tuple(
-            EmbeddedKnowledgeChunk(
-                ordinal=index,
-                content=f"{key} passage {index}",
-                language="en",
-                extraction_method="browser",
-                embedding=_unit_vector(
-                    axis, jitter_axis=2 + index % 700, jitter=0.001 * (index + 1)
-                ),
-            )
-            for index in range(count)
-        ),
-    )
-
-
-@pytest.mark.asyncio
-async def test_ix8_retired_chunks_never_crowd_the_vector_search(
-    monitoring_session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    """IXS07: 200 retired chunks closer to the query than the 5 active ones.
-
-    With a full index, the HNSW scan returns its `ef_search` (40) nearest rows --
-    all retired -- before the `is_active` filter, and the active chunks are lost.
-    The partial index holds active vectors only. A retired row's old entry stays
-    in it until (auto)vacuum removes it, so the test vacuums, as autovacuum would.
-    """
-    from tests.fixtures.knowledge import store_active_document
-
-    async with monitoring_session_factory() as session, session.begin():
-        run_id = await session.scalar(
-            text(
-                "INSERT INTO monitoring_runs (id, trigger_type, product, status) "
-                "VALUES (gen_random_uuid(), 'user', 'consumer_loan', 'running') "
-                "RETURNING id"
-            )
-        )
-    await store_active_document(
-        monitoring_session_factory,
-        _vector_doc(
-            run_id, OfferingId.CONSUMER_STANDARD, key="retired", axis=0, count=200
-        ),
-    )
-    async with monitoring_session_factory() as session, session.begin():
-        await session.execute(
-            text(
-                "UPDATE knowledge_chunks SET is_active = false WHERE document_id IN "
-                "(SELECT id FROM knowledge_documents WHERE document_key = 'retired')"
-            )
-        )
-        await session.execute(
-            text(
-                "UPDATE knowledge_documents SET is_active = false, "
-                "publication_state = 'retired' WHERE document_key = 'retired'"
-            )
-        )
-    await store_active_document(
-        monitoring_session_factory,
-        _vector_doc(
-            run_id, OfferingId.CONSUMER_STANDARD, key="active", axis=1, count=5
-        ),
-    )
-    connection = await asyncpg.connect(
-        os.environ["TEST_DATABASE_URL"].replace(
-            "postgresql+asyncpg://", "postgresql://"
-        )
-    )
-    try:
-        await connection.execute("VACUUM knowledge_chunks")
-    finally:
-        await connection.close()
-    # Force the HNSW path: on a table this small the planner would scan and sort.
-    engine = create_async_engine(
-        os.environ["TEST_DATABASE_URL"],
-        poolclass=NullPool,
-        connect_args={
-            "server_settings": {"enable_seqscan": "off", "enable_sort": "off"}
-        },
-    )
-    try:
-        candidates = await PostgresRagRetrievalRepository(
-            async_sessionmaker(engine, expire_on_commit=False)
-        ).search_candidates(
-            bank="ameria",
-            product=ProductType.CONSUMER_LOAN,
-            lexical_query="nothing-matches-this",
-            query_embedding=_unit_vector(0, jitter_axis=1, jitter=0.0),
-            limit=5,
-            offering_id=OfferingId.CONSUMER_STANDARD,
-            document_kinds=(),
-        )
-    finally:
-        await engine.dispose()
-
-    assert sorted(item.content for item in candidates) == [
-        f"active passage {index}" for index in range(5)
     ]
 
 

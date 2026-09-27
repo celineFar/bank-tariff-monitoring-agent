@@ -191,6 +191,11 @@ _FAILURE_EXPLANATIONS = {
         "the page, an operator can accept it with "
         "`python -m scripts.reset_acquisition_baseline <offering_id>`"
     ),
+    SourceFailureCode.LINKED_DOCUMENT_UNAVAILABLE: (
+        "a document the tariffs were read from could not be downloaded or read "
+        "this time, so values it held would have looked removed; nothing was "
+        "published and the previous tariffs stay current until the next run"
+    ),
     IndexingFailureCode.INVALID_DOCUMENT: "a source document failed its index checks",
     IndexingFailureCode.EMBEDDING_FAILED: "the evidence index could not be built",
     IndexingFailureCode.PUBLICATION_FAILED: "the snapshot could not be published",

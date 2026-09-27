@@ -87,9 +87,7 @@ holding a tool:
 | `GeminiEmbeddingProvider` | `EMBEDDING_MODEL_NAME` | nothing — vectors only | count, 768 dimensions, finite values |
 
 The root chat agent itself is a sixth site: it chooses which tool to call, and
-every tool re-checks its own authorization rather than trusting that choice. The
-legacy `GeminiAnswerGenerator` is a seventh, reachable only under
-`TARIFF_ANSWER_READ_MODEL=legacy`.
+every tool re-checks its own authorization rather than trusting that choice.
 
 The four schema-bound stages run with thinking disabled, since reasoning tokens
 were being billed at the output rate for output whose shape is already fixed. The
@@ -224,9 +222,6 @@ replayed, expired, cross-session, or widened is rejected before any repository
 call. Comparisons and rankings are computed in Python from typed facts — Gemini
 never does the arithmetic, and a ranking abstains rather than comparing values that
 differ in currency, unit, rate basis, or fee scope.
-
-`TARIFF_ANSWER_READ_MODEL=legacy` swaps the fact reads for the older
-chunk-retrieval path within the same authorized scope.
 
 ---
 

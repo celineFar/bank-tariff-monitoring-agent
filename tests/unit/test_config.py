@@ -176,8 +176,6 @@ def test_chunk_size_stays_inside_the_embedding_input() -> None:
         ("pdf_extraction_backoff_base_seconds", -1),
         ("pdf_extraction_max_price_per_million_tokens_usd", 0),
         ("chunk_size_chars", 499),
-        ("retrieval_top_k", 0),
-        ("retrieval_min_score", 1.1),
         ("intent_classifier_max_attempts", 0),
         ("source_discovery_max_items_per_batch", 0),
         ("source_discovery_max_chars_per_item", 499),

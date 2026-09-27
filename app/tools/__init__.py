@@ -7,7 +7,6 @@
 """
 
 from app.tools._services import (
-    configure_run_service,
     configure_services,
     services,
 )
@@ -25,7 +24,6 @@ from app.tools.resolution import resolve_request
 
 __all__ = [
     "answer_tariff_query",
-    "configure_run_service",
     "configure_services",
     "get_current_tariffs",
     "get_monitoring_status",

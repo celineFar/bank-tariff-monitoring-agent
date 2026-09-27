@@ -884,8 +884,24 @@ class SemanticExtractionService:
         """
         if self._review_memory is None or not plan.offering_id:
             return validated_fields, review_items, ()
-        catalog = {item.evidence_id for item in plan.evidence_catalog}
+        evidence_by_id = {item.evidence_id: item for item in plan.evidence_catalog}
+        catalog = set(evidence_by_id)
         fields = {item.field: item for item in validated_fields}
+
+        def rebound(field_result: ValidatedFieldResult) -> ValidatedFieldResult:
+            # A stored citation carries the labels its passage had at review
+            # time. The evidence ID is unchanged, but source discovery may have
+            # labelled the passage differently since, and acceptance compares
+            # each citation with this run's catalog. Cite it as it is now.
+            return field_result.model_copy(
+                update={
+                    "evidence": tuple(
+                        _hydrate_citation(item.evidence_id, item.quote, evidence_by_id)
+                        for item in field_result.evidence
+                    )
+                }
+            )
+
         remaining: list[ExtractionReviewItem] = []
         reused: list[dict[str, str]] = []
 
@@ -910,7 +926,7 @@ class SemanticExtractionService:
             if decision is None:
                 remaining.append(item)
                 continue
-            fields[item.field] = decision.decision.model_copy(
+            fields[item.field] = rebound(decision.decision).model_copy(
                 update={
                     "prompt_fingerprint": item.prompt_fingerprint,
                     "result_fingerprint": item.result_fingerprint,
@@ -925,12 +941,22 @@ class SemanticExtractionService:
             decision = await lookup(
                 field, item.prompt_fingerprint, item.result_fingerprint
             )
-            if decision is None or (
-                decision.decision.value == item.value
-                and (decision.decision.status is item.status)
-            ):
+            if decision is None:
                 continue
-            fields[field] = decision.decision.model_copy(
+            if (
+                decision.decision.value == item.value
+                and decision.decision.status is item.status
+            ):
+                if decision.result_fingerprint == item.result_fingerprint:
+                    # A person confirmed exactly this result (value and cited
+                    # evidence) -- an approved OCR reading. Keep it as read, and
+                    # mark it confirmed so it is not put to review again.
+                    fields[field] = item.model_copy(
+                        update={"batch_id": decision.decision.batch_id}
+                    )
+                    reused.append(_reuse_record(decision, item.prompt_fingerprint))
+                continue
+            fields[field] = rebound(decision.decision).model_copy(
                 update={
                     "prompt_fingerprint": item.prompt_fingerprint,
                     "result_fingerprint": item.result_fingerprint,
@@ -1781,6 +1807,39 @@ _MULTIPLIERS = (
 def _collapsed(text: str) -> str:
     """Text compared for citations: case and whitespace (NBSP too) collapsed."""
     return " ".join(text.split()).casefold()
+
+
+def source_span(quote: str, content: str) -> str:
+    """The exact text of `content` that `quote` matches under `_collapsed`.
+
+    A citation is checked with case and whitespace collapsed, but what is stored
+    must be the source's own text: publication verifies each fact citation as a
+    plain substring of its evidence, and a table row spans several lines that a
+    model quotes on one. Returns `quote` unchanged when it does not match.
+    """
+    if quote in content:
+        return quote
+    folded: list[str] = []
+    origin: list[int] = []
+    pending_space = False
+    for index, char in enumerate(content):
+        if char.isspace():
+            pending_space = bool(folded)
+            continue
+        if pending_space:
+            folded.append(" ")
+            origin.append(index)
+            pending_space = False
+        for piece in char.casefold():
+            folded.append(piece)
+            origin.append(index)
+    target = _collapsed(quote)
+    start = "".join(folded).find(target) if target else -1
+    if start < 0:
+        return quote
+    first = origin[start]
+    last = origin[start + len(target) - 1]
+    return content[first : last + 1]
 
 
 def _value_numbers(value: Any) -> set[Decimal]:
@@ -2695,7 +2754,7 @@ def _hydrate_citation(evidence_id: str, quote: str, catalog: dict) -> EvidenceCi
         source_item_id=item.source_item_id,
         source_url=item.locator.source_url,
         source_type=item.locator.source_type,
-        quote=quote,
+        quote=source_span(quote, item.content),
         section=item.section,
         locator=item.locator,
         authority=item.authority,

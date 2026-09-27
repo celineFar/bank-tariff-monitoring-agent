@@ -19,13 +19,12 @@ from app.domain.review import (
 from app.repositories.knowledge_publication import (
     activate_snapshot_set,
     discard_snapshot_documents,
-    link_snapshot_documents,
     lock_offering_publication,
     lock_review_publication,
-    store_document_version,
 )
 from app.repositories.monitoring import _snapshot_from_row
 from app.repositories.review_supersession import (
+    close_unreviewable_snapshots,
     newer_accepted_snapshot_exists,
     supersede_reviews_older_than,
 )
@@ -177,6 +176,16 @@ class PostgresReviewRepository:
                             ),
                         },
                     )
+                # The new review's own snapshot keeps a pending review: it is
+                # inserted below.
+                await close_unreviewable_snapshots(
+                    session,
+                    (
+                        item.snapshot_id
+                        for item in superseded_rows
+                        if item.snapshot_id != review.snapshot_id
+                    ),
+                )
             row = (
                 await session.execute(
                     text(
@@ -544,6 +553,7 @@ class PostgresReviewRepository:
             ).one()
             if current.snapshot_id is not None:
                 await discard_snapshot_documents(session, current.snapshot_id)
+                await close_unreviewable_snapshots(session, (current.snapshot_id,))
         return _review_from_row(row)
 
     @staticmethod
@@ -554,11 +564,6 @@ class PostgresReviewRepository:
         now: datetime,
     ) -> None:
         # The offering's publication lock is held (`approve_with_snapshot`).
-        if update.summary is not None:
-            summary = await store_document_version(session, update.summary, now)
-            await link_snapshot_documents(
-                session, update.snapshot_id, (summary.document_id,)
-            )
         # The snapshot's set -- including versions first stored by an earlier
         # run (IX3) -- becomes the offering's whole index (IX1).
         await activate_snapshot_set(session, update.snapshot_id, now)

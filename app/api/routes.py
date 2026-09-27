@@ -25,7 +25,6 @@ from app.domain.tariff_queries import (
 from app.repositories.contracts import ReviewRepository
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.intent_resolution import InterpretationUnavailable, RequestResolver
-from app.services.rag_answer import RagAnswerService
 from app.services.review_resolution import ReviewResolutionService
 from app.services.run_service import RunServicePort, run_covers_command
 from app.services.structured_query_planning import issue_read_grant
@@ -70,10 +69,6 @@ async def health() -> dict[str, str]:
 
 def get_run_service(request: Request) -> RunServicePort:
     return request.app.state.run_service
-
-
-def get_answer_service(request: Request) -> RagAnswerService:
-    return request.app.state.answer_service
 
 
 def get_answer_router(request: Request) -> TariffAnswerRouter:

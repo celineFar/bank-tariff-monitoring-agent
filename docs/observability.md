@@ -31,13 +31,11 @@ POST /api/v1/runs  (or the scheduler)       CLI turn
 └── execute_run    (worker)                 └── invocation → execute_tool run_tariff_monitoring
     └── offering mortgage_primary               └── monitoring node
         ├── stage acquisition                       └── offering mortgage_primary
-        ├── stage normalization                         └── stage …  (same seven stages)
+        ├── stage normalization                         └── stage …  (same six stages)
         ├── stage source_discovery
         │   └── invoke_agent → call_llm
         ├── stage semantic_extraction
         │   └── invoke_agent → call_llm
-        ├── stage embedding
-        │   └── generate_content
         ├── stage previous_snapshot
         └── stage publication
 ```

@@ -697,7 +697,6 @@ async def test_chat_survives_an_unexpected_error_in_one_turn(
     prompts = iter(["show me the overdraft tariff", "quit"])
     container = SimpleNamespace(
         run_service=None,
-        answer_service=None,
         request_resolver=None,
         current_tariff_service=None,
         tariff_history_service=None,

@@ -36,8 +36,7 @@ reading order.
 |---|---|
 | [intent-resolution.md](intent-resolution.md) | How an imprecise, bilingual product name becomes a canonical offering |
 | [tariff-query-services.md](tariff-query-services.md) | How an ordinary question is answered from accepted typed facts |
-| [rag-retrieval.md](rag-retrieval.md) | Ranking: structured retrieval units, and the legacy chunk path |
-| [rag-answering.md](rag-answering.md) | The legacy answer path kept for rollback |
+| [rag-retrieval.md](rag-retrieval.md) | The field finder: ranking the offering's retrieval units |
 
 ## Running it, reviewing it, operating it
 

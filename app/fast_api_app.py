@@ -55,11 +55,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     await services.ensure_session_service_ready()
     configure_services(
-        container.run_service,
-        container.answer_service,
-        container.request_resolver,
-        container.current_tariff_service,
-        container.tariff_history_service,
+        request_resolver=container.request_resolver,
+        current_tariff_service=container.current_tariff_service,
+        tariff_history_service=container.tariff_history_service,
         structured_query_service=container.structured_query_service,
         answer_router=container.answer_router,
         monitoring_node=container.monitoring_node,
@@ -77,7 +75,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.application_container = container
     app.state.run_service = container.run_service
-    app.state.answer_service = container.answer_service
     app.state.structured_query_service = container.structured_query_service
     app.state.answer_router = container.answer_router
     app.state.request_resolver = container.request_resolver
@@ -95,7 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        configure_services(None, None)
+        configure_services()
         await container.close()
 
 

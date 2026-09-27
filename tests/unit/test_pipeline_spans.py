@@ -50,7 +50,6 @@ async def test_every_pipeline_stage_emits_its_own_span(
         "stage normalization",
         "stage source_discovery",
         "stage semantic_extraction",
-        "stage embedding",
         "stage publication",
     }
 
@@ -77,16 +76,22 @@ async def test_stage_spans_carry_run_and_offering_identifiers(
 async def test_failing_stage_records_its_failure_code_on_the_span(
     spans: InMemorySpanExporter,
 ) -> None:
-    service, _, _ = _indexing(fail_embedding=True)
+    class Unreadable:
+        async def get_latest_accepted(self, **kwargs):
+            raise RuntimeError("database away")
+
+    service, _, _ = _indexing(snapshots=Unreadable())
 
     with pytest.raises(OfferingPipelineError):
         await service.refresh(_offering(), uuid4(), uuid4())
 
-    embedding = next(
-        span for span in spans.get_finished_spans() if span.name == "stage embedding"
+    failed = next(
+        span
+        for span in spans.get_finished_spans()
+        if span.name == "stage previous_snapshot"
     )
-    assert embedding.attributes["tariff.failure_code"]
-    assert embedding.status.is_ok is False
+    assert failed.attributes["tariff.failure_code"]
+    assert failed.status.is_ok is False
 
 
 @pytest.mark.asyncio

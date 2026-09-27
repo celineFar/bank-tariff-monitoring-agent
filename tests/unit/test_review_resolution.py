@@ -398,9 +398,14 @@ async def test_apply_records_attempt_and_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reject_all_supersedes_the_other_pending_reviews_of_the_run() -> None:
+async def test_reject_all_supersedes_the_other_pending_reviews_of_its_snapshot() -> (
+    None
+):
     run = _run()
-    first, second = _review(run), _review(run, "fees", order=1)
+    first = _review(run)
+    second = _review(run, "fees", order=1).model_copy(
+        update={"snapshot_id": first.snapshot_id}
+    )
     service, _, reviews, _ = _service(run, first, second)
 
     await service.apply(
@@ -498,7 +503,10 @@ async def test_rejection_after_a_prior_success_is_partial() -> None:
 @pytest.mark.asyncio
 async def test_all_rejected_without_prior_success_fails() -> None:
     run = _run()
-    first, second = _review(run), _review(run, "fees", order=1)
+    first = _review(run)
+    second = _review(run, "fees", order=1).model_copy(
+        update={"snapshot_id": first.snapshot_id}
+    )
     service, *_ = _service(run, first, second)
     await service.apply(
         first,

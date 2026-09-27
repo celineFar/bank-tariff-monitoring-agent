@@ -169,10 +169,9 @@ commit history and in `model_call_usage`.
 
 An extracted value carries an immutable evidence ID, an exact quote, and the
 original source locator, and Python rejects a citation whose quote does not occur
-verbatim in the evidence the model was actually given. `scripts/audit_evidence_retention.py`
-exists to prove, before the legacy chunk embeddings could be deprecated, that every
-active accepted fact still carries a self-contained citation with a matching
-document checksum.
+verbatim in the evidence the model was actually given, and stores the source's own
+text of that quote, so publication can verify every fact citation as a plain
+substring of its evidence.
 
 That strictness is what makes partial success safe: a field that fails validation
 becomes a review item with its raw value, validation paths, and evidence, while its
@@ -223,17 +222,17 @@ official candidates, a rate jump past the configured threshold, a missing requir
 field with usable evidence, conflicting official sources. A model execution failure
 with no valid response fails the offering instead of manufacturing a task.
 
-### The read side moved off RAG, and the old path stayed
+### The read side moved off RAG
 
 Ordinary questions are answered from typed accepted facts, not from retrieved
 chunks. Chunk retrieval ranks by similarity, and similarity is not authority — a
 confidently retrieved passage from a superseded PDF reads exactly like the current
 one. Typed facts carry acceptance, scope, and verified evidence by construction.
 
-The legacy path was kept behind `TARIFF_ANSWER_READ_MODEL=legacy` rather than
-deleted, with a shadow-comparison report and an evidence-retention gate to close the
-cutover honestly. Retrieval still earns its place: explanatory retrieval units
-supply the wording around a fact, and monitoring still uses chunk retrieval.
+The RAG answer path was kept for a while as a rollback, then removed with its chunk
+vectors and offering summaries (migration `027`). Retrieval still earns its place in
+the field finder: when a question names no field, the offering's retrieval units say
+which fields it is about.
 
 ### Observability shaped by what each signal can answer
 

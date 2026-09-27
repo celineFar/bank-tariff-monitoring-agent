@@ -1,72 +1,16 @@
-# RAG retrieval
+# Retrieval
 
-The retrieval component returns a small, typed, evidence-bearing chunk set for
-structured tariff extraction. It is a deterministic application service and is not
-exposed to Gemini as a database or SQL tool.
+Ordinary questions are answered from accepted, typed facts
+(`docs/tariff-query-services.md`). Retrieval here is the *field finder*: when a
+question names no tariff field, it finds which fields the question is about by
+searching the active offering's retrieval units. It is a deterministic application
+service and is never exposed to Gemini as a database or SQL tool.
 
-This document describes the **legacy chunk retrieval** used by monitoring and by
-the rollback answer path (`TARIFF_ANSWER_READ_MODEL=legacy`). Ordinary questions
-are answered from the structured read model; see
-[Structured retrieval units](#structured-retrieval-units) below and
-`docs/tariff-query-services.md`.
+The earlier chunk retrieval (hybrid search over `knowledge_chunks` for a RAG answer
+path) was removed together with that path; migration `027` dropped its vectors and
+search indexes.
 
-## Query contract
-
-`RetrievalRequest` requires a bank, product, natural-language query, and at least one
-tariff field. Supported fields cover amount, term, nominal/effective rates,
-application/disbursement/service fees, collateral, and salary-customer privileges.
-The service deterministically expands each field with Armenian and English search
-terms. The enriched text is embedded with Gemini's configured embedding model using
-the `RETRIEVAL_QUERY` task, paired with the store's `RETRIEVAL_DOCUMENT` vectors.
-
-Both lexical and vector SQL branches require exact bank and product matches and only
-consider active documents and chunks. The final select repeats those predicates as a
-defense-in-depth guard. Callers cannot request an unscoped search. The chunk predicates
-are written exactly as the partial indexes' (`c.is_active`, and
-`c.is_active AND c.embedding IS NOT NULL` for vectors), the vector side orders by the
-bound query vector (pgvector uses the HNSW index only for a constant), and the search
-runs with `hnsw.iterative_scan = relaxed_order`, so offering and product filters
-applied after the approximate scan do not starve the result. A chunk still without a
-vector is found by the lexical side only.
-
-## Hybrid ranking
-
-PostgreSQL returns the union of the best lexical and vector candidates:
-
-- lexical score: `ts_rank_cd / (ts_rank_cd + 1)`, bounded to `[0, 1]`;
-- vector score: cosine similarity `1 - cosine_distance`, bounded to `[0, 1]`;
-- candidate pool: `max(20, top_k * 4)`, capped at 200 per branch.
-
-The service applies weighted reciprocal-rank fusion with lexical weight `0.45`,
-vector weight `0.55`, and `k = 60`. It normalizes that value against the theoretical
-rank-one maximum. Absolute relevance is the same weighted combination of the two
-normalized source scores. The final score is:
-
-```text
-0.70 * weighted_relevance + 0.30 * normalized_weighted_rrf
-```
-
-The absolute-score term prevents a merely first-ranked but irrelevant vector from
-passing solely because it leads a weak candidate set. Results below
-`RETRIEVAL_MIN_SCORE` are rejected. Ties are stable: final score, vector score,
-lexical score, then chunk ID.
-
-## Deduplication and result contract
-
-After thresholding, chunks from the same document are overlap-deduplicated in rank
-order using a Unicode token overlap coefficient of `0.85`. This removes ingestion
-overlap while retaining similarly worded evidence from different documents. The
-first `top_k` surviving chunks are returned.
-
-Every `RetrievalHit` contains chunk content/ID, lexical/vector/final scores, a typed
-rank explanation, document version UUID and checksum, source/final URL, page range,
-section, language, retrieval time, extraction method, and quality. If no candidate
-passes the threshold, the result status is explicitly `INSUFFICIENT_EVIDENCE` with
-an empty hit tuple and reason; downstream extraction must stop rather than infer.
-
-
-
-## Structured retrieval units
+## Retrieval units
 
 Ordinary tariff questions no longer rank source chunks. `retrieval_units` holds
 deterministic, versioned text rendered from accepted typed facts, and each unit
@@ -151,5 +95,4 @@ nor any unit text is written; the question stays correlatable through the
 
 `uv run python -m scripts.trace_structured_answer "<question>" --no-vector`
 prints the resolution (one interpreter call), the issued authorization plan, and
-the typed facts with their verified citations. `scripts/trace_rag_answer.py` still traces the legacy
-chunk path for rollback comparison.
+the typed facts with their verified citations.

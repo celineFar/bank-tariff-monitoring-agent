@@ -36,6 +36,9 @@ from app.repositories.review_supersession import supersede_reviews_older_than
 from app.repositories.structured_projection import publish_structured_projection
 from app.services.telemetry import inject_trace_context
 
+# Two runs that reuse one fetch give their snapshots the same timestamp (the
+# fetch time); the later-queued run is the newer one.
+_RUN_QUEUED_AT = "(SELECT queued_at FROM monitoring_runs WHERE id = snapshot.run_id)"
 _RUN_COLUMNS = """
     id,
     trigger_type,
@@ -1119,7 +1122,8 @@ class PostgresRunRepository:
                     SELECT {_RUN_COLUMNS}
                     FROM monitoring_runs
                     WHERE product = :product
-                      AND status IN ('queued', 'running', 'awaiting_review')
+                      -- A run waiting for review blocks nothing (026).
+                      AND status IN ('queued', 'running')
                       {scope_clause}
                     ORDER BY queued_at, id
                     LIMIT 1
@@ -1197,7 +1201,9 @@ class PostgresSnapshotRepository:
                           AND snapshot.offering_id = :offering_id
                           AND snapshot.status = 'accepted'
                           {before_clause}
-                        ORDER BY snapshot.accepted_at DESC, snapshot.id DESC
+                        ORDER BY snapshot.accepted_at DESC,
+                                 {_RUN_QUEUED_AT} DESC,
+                                 snapshot.id DESC
                         LIMIT 1
                         """
                     ),
@@ -1233,6 +1239,7 @@ class PostgresSnapshotRepository:
                         ORDER BY
                             snapshot.offering_id,
                             snapshot.accepted_at DESC,
+                            {_RUN_QUEUED_AT} DESC,
                             snapshot.id DESC
                         """
                     ),
@@ -1435,9 +1442,11 @@ class PostgresOfferingPublicationRepository:
                 if document_results:
                     await activate_snapshot_set(session, snapshot_id, now)
                 await publish_structured_projection(session, snapshot)
-                # Approving a review of an older snapshot would now roll the
-                # offering back, so those reviews are closed (IX4).
-                await supersede_reviews_older_than(session, snapshot_id, now)
+            # Approving a review of an older snapshot would now roll the
+            # offering back (IX4), and a newer candidate replaces an older one
+            # still waiting for review: runs do not block while a review waits,
+            # so at most one candidate per offering stays in the queue.
+            await supersede_reviews_older_than(session, snapshot_id, now)
             for manifest in publication.manifests:
                 await session.execute(
                     text(

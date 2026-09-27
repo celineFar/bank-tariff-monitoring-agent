@@ -255,3 +255,46 @@ without asking:
   now reads "request interpretation (intent, catalog scope and the question's query
   shape, one tool-free call per chat turn, validated by code)" instead of "intent
   resolution".
+
+## Review and publication fixes (fix/review-and-publication)
+
+From the end-to-end review of 2026-09-27; merged into `integration/process-fixes`.
+
+- **Rule for waiting reviews: never block** (the hand-off above asked for a choice;
+  taken without asking, as "block only this session's run" needs a session column and
+  still stalls the scheduler on its own paused runs). Migration `026` limits active-run
+  uniqueness to `queued`/`running`. The four safeguards listed in the hand-off are in:
+  1. an answer to a review superseded or aborted while the chat waited is reported
+     (`answers_not_applied`), and a `ReviewConflictError` is no longer a tool error;
+  2. paused runs with nothing pending are closed every recovery interval and by
+     "review them", not only at worker start;
+  3. "review them" walks the newest paused run first, and publishing any newer
+     snapshot of an offering supersedes the older candidate's reviews;
+  4. scheduled runs proceed while a review waits.
+- **Superseding a snapshot's last review closes it** (snapshot `rejected`, execution
+  `failed` at `review_superseded`), so "a newer candidate awaits review" stops being
+  true for good. Snapshot age ties (two runs reusing one fetch) break on run queue time.
+- **`reject_all` supersedes only its own snapshot's reviews** (family runs hold one
+  snapshot per offering).
+- **Reviews of runs that ended are superseded** (`close_orphaned_reviews`) and never
+  announced.
+- **OCR approvals are remembered** for the exact result approved; a remembered
+  confirmation raises no OCR signal again. Reused review citations take the passage's
+  current discovery labels. A candidate needing review with no signal fails the offering
+  (`offering.validation_failed`) instead of pausing with nothing to ask.
+- **Citation quotes are stored as the source's own text** (`source_span`), which the
+  projector's exact-substring check requires.
+- **Nested `details` fields** are compared and cited one by one (`tariff_fields`).
+- **A linked document that failed this run** (not a 404) fails the offering with
+  `source.linked_document_unavailable` when a field the last accepted snapshot found is
+  no longer found.
+- **Legacy RAG removed** at the user's request: the answer path, its settings
+  (`TARIFF_ANSWER_READ_MODEL`, `RETRIEVAL_TOP_K`, `RETRIEVAL_MIN_SCORE`), chunk
+  embeddings, offering summaries, the shadow read and the evidence-retention audit.
+  Migration `027` drops the chunk vectors, full-text column and search indexes and the
+  summary documents; chunk text stays (it anchors fact evidence).
+- **Existing databases** need `026` and `027` (after `016`–`025`); a fresh volume gets
+  all of them from `docker-entrypoint-initdb.d`.
+- **Phase research scripts** under `fix-process/*/scenarios|probes|survey` reflect the
+  code of their phase; several no longer run against this branch and are kept as
+  records.
