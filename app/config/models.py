@@ -288,8 +288,10 @@ class OcrSettings(SettingsGroup):
 
 
 class RagSettings(SettingsGroup):
-    chunk_size_chars: int = Field(default=1500, ge=200, le=20_000)
-    chunk_overlap_chars: int = Field(default=150, ge=0)
+    # 500 is the projection's floor. 2,000 keeps a chunk inside
+    # gemini-embedding-001's 2,048-token input even at one token per character,
+    # so no chunk is truncated silently (IX14).
+    chunk_size_chars: int = Field(default=1500, ge=500, le=2_000)
     retrieval_top_k: int = Field(default=8, ge=1, le=50)
     retrieval_min_score: float = Field(default=0.25, ge=0, le=1)
     # Embedding retries are split by what the refusal means. A 5xx is transient
@@ -302,14 +304,11 @@ class RagSettings(SettingsGroup):
     embedding_backoff_base_seconds: float = Field(default=10.0, ge=0, le=300)
     embedding_quota_max_attempts: int = Field(default=4, ge=1, le=10)
     embedding_quota_backoff_base_seconds: float = Field(default=30.0, ge=0, le=600)
-
-    @model_validator(mode="after")
-    def validate_chunk_sizes(self) -> RagSettings:
-        if self.chunk_overlap_chars >= self.chunk_size_chars:
-            raise ValueError(
-                "CHUNK_OVERLAP_CHARS must be smaller than CHUNK_SIZE_CHARS"
-            )
-        return self
+    # The worker's sweep embeds active chunks stored text-only (an approval's
+    # documents, a quota-deferred run; IX5, IX7): up to this many chunks every
+    # interval. 0 turns the sweep off.
+    embedding_sweep_batch: int = Field(default=200, ge=0, le=5_000)
+    embedding_sweep_interval_seconds: float = Field(default=300.0, ge=10, le=86_400)
 
 
 class IntentResolutionSettings(SettingsGroup):

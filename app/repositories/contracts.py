@@ -1,14 +1,9 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from app.domain.acquisition import AcquisitionInventory, PageArtifact
-from app.domain.knowledge import (
-    DocumentVersionSummary,
-    EmbeddedKnowledgeDocument,
-    IndexWriteResult,
-)
 from app.domain.models import (
     KnowledgeDocumentKind,
     OfferingId,
@@ -241,14 +236,18 @@ class ReviewRepository(Protocol):
     async def fail(self, review_id: UUID, detail: str) -> ReviewTask: ...
 
 
-class KnowledgeStoreRepository(Protocol):
-    async def upsert_document(
-        self, document: EmbeddedKnowledgeDocument
-    ) -> IndexWriteResult: ...
+class ChunkEmbeddingRepository(Protocol):
+    """Active chunks stored without a vector, and filling them (IX5, IX7)."""
 
-    async def list_document_versions(
-        self, bank: str, product: ProductType, document_key: str
-    ) -> tuple[DocumentVersionSummary, ...]: ...
+    async def list_missing(
+        self, *, offering_id: OfferingId | None, limit: int
+    ) -> tuple[tuple[str, str], ...]:
+        """Up to `limit` (chunk id, content) pairs, oldest first."""
+        ...
+
+    async def fill(self, vectors: Mapping[str, Sequence[float]]) -> int:
+        """Store vectors for chunks still without one; returns rows filled."""
+        ...
 
 
 class HybridRetrievalRepository(Protocol):

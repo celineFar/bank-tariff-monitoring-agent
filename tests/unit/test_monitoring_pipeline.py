@@ -396,13 +396,13 @@ async def test_indexing_failure_before_publication_leaves_state_untouched() -> N
 
 
 @pytest.mark.asyncio
-async def test_a_quota_refusal_publishes_the_snapshot_without_the_corpus() -> None:
-    """A validated, reviewed run must survive a provider quota window.
+async def test_a_quota_refusal_publishes_the_snapshot_and_its_corpus_as_text() -> None:
+    """A validated run must survive a provider quota window (IX7).
 
-    The snapshot, its facts and its retrieval units are projected from the
-    snapshot itself, and the answer path falls back to lexical recall, so
-    publishing without the source corpus degrades retrieval instead of
-    discarding the tariff data.
+    The snapshot is published with its documents, text only: the set is
+    activated, lexical search serves it at once, and the embedding sweep fills
+    the vectors later. Publishing nothing would leave the previous corpus (and
+    its summary) answering for the new tariff.
     """
     service, _, publications = _indexing(out_of_quota=True)
 
@@ -410,11 +410,10 @@ async def test_a_quota_refusal_publishes_the_snapshot_without_the_corpus() -> No
 
     published = publications.values[-1]
     assert published.snapshot is result.snapshot
-    # No corpus was written, so nothing supersedes the last good one.
-    assert published.documents == ()
+    assert published.documents
+    assert not any(document.fully_embedded for document in published.documents)
     # And the deferral is auditable rather than silent.
     assert "indexing.embedding_deferred" in result.manifest.warning_codes
-    assert result.manifest.document_count == 0
 
 
 @pytest.mark.asyncio

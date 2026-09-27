@@ -4,17 +4,9 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, text, update
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.domain.knowledge import (
-    EmbeddedKnowledgeDocument,
-    IndexWriteResult,
-    chunk_content_sha256,
-    chunk_id,
-    document_version_id,
-)
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     ClaimedRun,
@@ -32,11 +24,13 @@ from app.domain.monitoring import (
     SnapshotChangeSet,
     SnapshotStatus,
 )
-from app.repositories.knowledge_store import (
-    KnowledgeChunkRecord,
-    KnowledgeDocumentRecord,
-    PostgresKnowledgeStore,
+from app.repositories.knowledge_publication import (
+    activate_snapshot_set,
+    link_snapshot_documents,
+    lock_offering_publication,
+    store_document_version,
 )
+from app.repositories.review_supersession import supersede_reviews_older_than
 from app.repositories.structured_projection import publish_structured_projection
 from app.services.telemetry import inject_trace_context
 
@@ -1216,14 +1210,11 @@ class PostgresOfferingPublicationRepository:
         now = datetime.now(UTC)
 
         async with self._session_factory() as session, session.begin():
-            await session.execute(
-                text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-                {
-                    "lock_key": (
-                        f"publication:{snapshot.bank.lower()}:"
-                        f"{snapshot.product.value}:{snapshot.offering_id.value}"
-                    )
-                },
+            await lock_offering_publication(
+                session,
+                bank=snapshot.bank,
+                product=snapshot.product.value,
+                offering_id=snapshot.offering_id.value,
             )
             execution = (
                 await session.execute(
@@ -1253,18 +1244,26 @@ class PostgresOfferingPublicationRepository:
 
             document_results = tuple(
                 [
-                    await _upsert_document(
-                        session,
-                        document,
-                        now,
-                        activate=snapshot.status is SnapshotStatus.ACCEPTED,
-                    )
+                    await store_document_version(session, document, now)
                     for document in publication.documents
                 ]
             )
             snapshot_id = await _insert_snapshot(session, snapshot)
+            await link_snapshot_documents(
+                session,
+                snapshot_id,
+                [result.document_id for result in document_results],
+            )
             if snapshot.status is SnapshotStatus.ACCEPTED:
+                # The snapshot's set becomes the offering's whole index (IX1). A
+                # publication with no documents leaves the previous index as is
+                # rather than emptying it.
+                if document_results:
+                    await activate_snapshot_set(session, snapshot_id, now)
                 await publish_structured_projection(session, snapshot)
+                # Approving a review of an older snapshot would now roll the
+                # offering back, so those reviews are closed (IX4).
+                await supersede_reviews_older_than(session, snapshot_id, now)
             for manifest in publication.manifests:
                 await session.execute(
                     text(
@@ -1580,198 +1579,6 @@ async def _insert_changes(session: AsyncSession, changes: SnapshotChangeSet) -> 
             "change_count": len(changes.changes),
             "created_at": changes.created_at,
         },
-    )
-
-
-async def _upsert_document(
-    session: AsyncSession,
-    document: EmbeddedKnowledgeDocument,
-    now: datetime,
-    *,
-    activate: bool,
-) -> IndexWriteResult:
-    PostgresKnowledgeStore._validate_embeddings(document)
-    version_id = document_version_id(document)
-    incoming_chunk_ids = tuple(chunk_id(document, chunk) for chunk in document.chunks)
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtextextended(:document_identity, 0))"),
-        {
-            "document_identity": "\x1f".join(
-                (
-                    document.bank.lower(),
-                    document.product.value,
-                    document.offering_id.value if document.offering_id else "",
-                    document.document_kind.value,
-                    document.document_key,
-                )
-            )
-        },
-    )
-    document_created = (
-        await session.scalar(
-            select(KnowledgeDocumentRecord.id).where(
-                KnowledgeDocumentRecord.id == version_id
-            )
-        )
-        is None
-    )
-    existing_chunk_ids = set(
-        (
-            await session.scalars(
-                select(KnowledgeChunkRecord.id).where(
-                    KnowledgeChunkRecord.id.in_(incoming_chunk_ids)
-                )
-            )
-        ).all()
-    )
-    await session.execute(
-        insert(KnowledgeDocumentRecord)
-        .values(
-            id=version_id,
-            run_id=document.run_id,
-            last_seen_run_id=document.run_id,
-            bank=document.bank.lower(),
-            product=document.product.value,
-            offering_id=(
-                document.offering_id.value if document.offering_id is not None else None
-            ),
-            document_kind=document.document_kind.value,
-            document_key=document.document_key,
-            document_name=document.document_name,
-            source_url=str(document.source_url),
-            final_url=str(document.final_url),
-            mime_type=document.mime_type,
-            content_sha256=document.content_sha256,
-            retrieved_at=document.retrieved_at,
-            extraction_method=document.extraction_method,
-            quality_score=document.quality_score,
-            extra_metadata=document.metadata,
-            is_active=activate,
-            publication_state="active" if activate else "pending_review",
-            first_seen_at=now,
-            last_seen_at=now,
-            retired_at=None,
-        )
-        .on_conflict_do_update(
-            index_elements=[KnowledgeDocumentRecord.id],
-            set_={
-                "last_seen_run_id": document.run_id,
-                "document_name": document.document_name,
-                "source_url": str(document.source_url),
-                "final_url": str(document.final_url),
-                "mime_type": document.mime_type,
-                "retrieved_at": document.retrieved_at,
-                "extraction_method": document.extraction_method,
-                "quality_score": document.quality_score,
-                "metadata": document.metadata,
-                "last_seen_at": now,
-                **(
-                    {
-                        "is_active": True,
-                        "publication_state": "active",
-                        "retired_at": None,
-                    }
-                    if activate
-                    else {}
-                ),
-            },
-        )
-    )
-    superseded_ids = tuple(
-        (
-            await session.scalars(
-                select(KnowledgeDocumentRecord.id).where(
-                    KnowledgeDocumentRecord.bank == document.bank.lower(),
-                    KnowledgeDocumentRecord.product == document.product.value,
-                    KnowledgeDocumentRecord.offering_id
-                    == (
-                        document.offering_id.value
-                        if document.offering_id is not None
-                        else None
-                    ),
-                    KnowledgeDocumentRecord.document_kind
-                    == document.document_kind.value,
-                    KnowledgeDocumentRecord.document_key == document.document_key,
-                    KnowledgeDocumentRecord.id != version_id,
-                    KnowledgeDocumentRecord.is_active.is_(True),
-                )
-            )
-        ).all()
-        if activate
-        else ()
-    )
-    retired_chunks = 0
-    if superseded_ids:
-        result = await session.execute(
-            update(KnowledgeChunkRecord)
-            .where(
-                KnowledgeChunkRecord.document_id.in_(superseded_ids),
-                KnowledgeChunkRecord.is_active.is_(True),
-            )
-            .values(is_active=False, retired_at=now, updated_at=now)
-        )
-        retired_chunks += result.rowcount
-        await session.execute(
-            update(KnowledgeDocumentRecord)
-            .where(KnowledgeDocumentRecord.id.in_(superseded_ids))
-            .values(is_active=False, publication_state="retired", retired_at=now)
-        )
-    for identifier, chunk in zip(incoming_chunk_ids, document.chunks, strict=True):
-        await session.execute(
-            insert(KnowledgeChunkRecord)
-            .values(
-                id=identifier,
-                document_id=version_id,
-                ordinal=chunk.ordinal,
-                page_start=chunk.page_start,
-                page_end=chunk.page_end,
-                section=chunk.section,
-                language=chunk.language,
-                content=chunk.content,
-                content_sha256=chunk_content_sha256(chunk.content),
-                extraction_method=chunk.extraction_method,
-                quality_score=chunk.quality_score,
-                extra_metadata=chunk.metadata,
-                embedding=list(chunk.embedding),
-                is_active=activate,
-                retired_at=None,
-                created_at=now,
-                updated_at=now,
-            )
-            .on_conflict_do_update(
-                index_elements=[KnowledgeChunkRecord.id],
-                set_={
-                    "content": chunk.content,
-                    "content_sha256": chunk_content_sha256(chunk.content),
-                    "language": chunk.language,
-                    "extraction_method": chunk.extraction_method,
-                    "quality_score": chunk.quality_score,
-                    "metadata": chunk.metadata,
-                    "embedding": list(chunk.embedding),
-                    **({"is_active": True, "retired_at": None} if activate else {}),
-                    "updated_at": now,
-                },
-            )
-        )
-    if activate:
-        result = await session.execute(
-            update(KnowledgeChunkRecord)
-            .where(
-                KnowledgeChunkRecord.document_id == version_id,
-                KnowledgeChunkRecord.id.not_in(incoming_chunk_ids),
-                KnowledgeChunkRecord.is_active.is_(True),
-            )
-            .values(is_active=False, retired_at=now, updated_at=now)
-        )
-        retired_chunks += result.rowcount
-    chunks_created = len(set(incoming_chunk_ids) - existing_chunk_ids)
-    return IndexWriteResult(
-        document_id=version_id,
-        document_created=document_created,
-        chunks_created=chunks_created,
-        chunks_updated=len(incoming_chunk_ids) - chunks_created,
-        chunks_retired=retired_chunks,
-        versions_retired=len(superseded_ids),
     )
 
 

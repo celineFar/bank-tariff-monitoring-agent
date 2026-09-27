@@ -29,9 +29,9 @@ from app.domain.retrieval import (
     RetrievalStatus,
     TariffField,
 )
-from app.repositories.knowledge_store import PostgresKnowledgeStore
 from app.repositories.rag_retrieval import PostgresRagRetrievalRepository
 from app.services.rag_retrieval import RagRetriever
+from tests.fixtures.knowledge import store_active_document
 
 pytestmark = pytest.mark.postgres
 
@@ -102,7 +102,6 @@ def _document(
     *,
     checksum: str = "a" * 64,
     content: str = "Nominal interest rate: 13.5%",
-    include_fee_chunk: bool = False,
 ) -> EmbeddedKnowledgeDocument:
     chunks = [
         EmbeddedKnowledgeChunk(
@@ -117,20 +116,6 @@ def _document(
             embedding=tuple(0.01 for _ in range(EMBEDDING_DIMENSIONS)),
         )
     ]
-    if include_fee_chunk:
-        chunks.append(
-            EmbeddedKnowledgeChunk(
-                ordinal=1,
-                content="Application fee: 5,000 AMD",
-                page_start=4,
-                page_end=4,
-                section="Fees",
-                language="en",
-                extraction_method="digital_pdf",
-                quality_score=0.97,
-                embedding=tuple(0.02 for _ in range(EMBEDDING_DIMENSIONS)),
-            )
-        )
     return EmbeddedKnowledgeDocument(
         run_id=run_id,
         product=ProductType.CONSUMER_LOAN,
@@ -148,104 +133,11 @@ def _document(
 
 
 @pytest.mark.asyncio
-async def test_unchanged_reingestion_is_idempotent(
-    session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    run_id = await _create_run(session_factory)
-    repository = PostgresKnowledgeStore(session_factory)
-    document = _document(run_id)
-
-    first = await repository.upsert_document(document)
-    repeated = await repository.upsert_document(document)
-
-    assert first.document_created is True
-    assert first.chunks_created == 1
-    assert repeated.document_id == first.document_id
-    assert repeated.document_created is False
-    assert repeated.chunks_created == 0
-    assert repeated.chunks_updated == 1
-    assert repeated.versions_retired == 0
-
-    async with session_factory() as session:
-        document_count = await session.scalar(
-            text("SELECT count(*) FROM knowledge_documents")
-        )
-        chunk_count = await session.scalar(
-            text("SELECT count(*) FROM knowledge_chunks")
-        )
-    assert document_count == 1
-    assert chunk_count == 1
-
-
-@pytest.mark.asyncio
-async def test_changed_version_retires_old_chunks_but_preserves_history(
-    session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    first_run = await _create_run(session_factory)
-    second_run = await _create_run(session_factory)
-    repository = PostgresKnowledgeStore(session_factory)
-
-    first = await repository.upsert_document(_document(first_run))
-    changed = await repository.upsert_document(
-        _document(
-            second_run,
-            checksum="b" * 64,
-            content="Nominal interest rate: 14.0%",
-        )
-    )
-    versions = await repository.list_document_versions(
-        "ameria",
-        ProductType.CONSUMER_LOAN,
-        "consumer-loan-information-summary",
-    )
-
-    assert changed.document_id != first.document_id
-    assert changed.versions_retired == 1
-    assert changed.chunks_retired == 1
-    assert len(versions) == 2
-    assert [version.is_active for version in versions] == [False, True]
-
-    async with session_factory() as session:
-        states = (
-            await session.execute(
-                text(
-                    "SELECT d.content_sha256, c.is_active "
-                    "FROM knowledge_chunks c "
-                    "JOIN knowledge_documents d ON d.id = c.document_id "
-                    "ORDER BY d.content_sha256"
-                )
-            )
-        ).all()
-    assert states == [("a" * 64, False), ("b" * 64, True)]
-
-
-@pytest.mark.asyncio
-async def test_reingesting_same_version_retires_removed_chunks(
-    session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    run_id = await _create_run(session_factory)
-    repository = PostgresKnowledgeStore(session_factory)
-
-    await repository.upsert_document(_document(run_id, include_fee_chunk=True))
-    result = await repository.upsert_document(_document(run_id))
-
-    assert result.document_created is False
-    assert result.chunks_retired == 1
-    async with session_factory() as session:
-        active_states = (
-            await session.scalars(
-                text("SELECT is_active FROM knowledge_chunks ORDER BY ordinal")
-            )
-        ).all()
-    assert active_states == [True, False]
-
-
-@pytest.mark.asyncio
 async def test_vector_and_lexical_indexes_exist_and_vector_plan_uses_hnsw(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     run_id = await _create_run(session_factory)
-    await PostgresKnowledgeStore(session_factory).upsert_document(_document(run_id))
+    await store_active_document(session_factory, _document(run_id))
 
     async with session_factory() as session, session.begin():
         indexes = set(
@@ -264,6 +156,9 @@ async def test_vector_and_lexical_indexes_exist_and_vector_plan_uses_hnsw(
             await session.execute(
                 text(
                     "EXPLAIN SELECT id FROM knowledge_chunks "
+                    # The index is partial (migration 023): the query repeats
+                    # its predicate, as retrieval does.
+                    "WHERE is_active AND embedding IS NOT NULL "
                     "ORDER BY embedding <=> CAST(:embedding AS vector) LIMIT 1"
                 ),
                 {"embedding": query_vector},
@@ -330,8 +225,8 @@ async def test_hybrid_retrieval_isolates_products_and_preserves_provenance(
     consumer_run = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
     mortgage_run = await _create_run(session_factory, ProductType.MORTGAGE)
     other_bank_run = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
-    store = PostgresKnowledgeStore(session_factory)
-    await store.upsert_document(
+    await store_active_document(
+        session_factory,
         _retrieval_document(
             consumer_run,
             product=ProductType.CONSUMER_LOAN,
@@ -339,9 +234,10 @@ async def test_hybrid_retrieval_isolates_products_and_preserves_provenance(
             document_key="consumer-tariff",
             content="Consumer loan amount is up to 20,000,000 AMD.",
             language="en",
-        )
+        ),
     )
-    await store.upsert_document(
+    await store_active_document(
+        session_factory,
         _retrieval_document(
             other_bank_run,
             product=ProductType.CONSUMER_LOAN,
@@ -350,9 +246,10 @@ async def test_hybrid_retrieval_isolates_products_and_preserves_provenance(
             content="Consumer loan amount is up to 99,000,000 AMD.",
             language="en",
             bank="other-bank",
-        )
+        ),
     )
-    await store.upsert_document(
+    await store_active_document(
+        session_factory,
         _retrieval_document(
             mortgage_run,
             product=ProductType.MORTGAGE,
@@ -360,7 +257,7 @@ async def test_hybrid_retrieval_isolates_products_and_preserves_provenance(
             document_key="mortgage-tariff",
             content="Հիփոթեքային վարկի ժամկետը մինչև 240 ամիս է",
             language="hy",
-        )
+        ),
     )
     retriever = RagRetriever(
         _QueryEmbeddingProvider(),
@@ -401,11 +298,13 @@ async def test_normal_rag_excludes_every_quarantined_publication_state(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     run_id = await _create_run(session_factory, ProductType.CONSUMER_LOAN)
-    store = PostgresKnowledgeStore(session_factory)
-    states = ("active", "pending_review", "rejected", "superseded")
+    # Migration 023: a document never published is deleted, not kept as
+    # rejected/superseded; these are the states a stored document can have.
+    states = ("active", "pending_review", "retired")
     for index, publication_state in enumerate(states):
         checksum = str(index + 1) * 64
-        await store.upsert_document(
+        await store_active_document(
+            session_factory,
             _retrieval_document(
                 run_id,
                 product=ProductType.CONSUMER_LOAN,
@@ -413,7 +312,7 @@ async def test_normal_rag_excludes_every_quarantined_publication_state(
                 document_key=f"{publication_state}-tariff",
                 content=f"Consumer loan amount {publication_state} evidence",
                 language="en",
-            )
+            ),
         )
         if publication_state != "active":
             async with session_factory() as session, session.begin():
@@ -579,7 +478,8 @@ async def test_only_selected_offering_content_reaches_knowledge_chunks(
         language="en",
         labels=select_sources(discovery).items,
     )
-    await PostgresKnowledgeStore(session_factory).upsert_document(
+    await store_active_document(
+        session_factory,
         EmbeddedKnowledgeDocument(
             **document.model_dump(exclude={"chunks"}),
             chunks=tuple(
@@ -589,7 +489,7 @@ async def test_only_selected_offering_content_reaches_knowledge_chunks(
                 )
                 for chunk in document.chunks
             ),
-        )
+        ),
     )
 
     async with session_factory() as session:

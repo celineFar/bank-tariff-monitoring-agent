@@ -21,7 +21,13 @@ the `RETRIEVAL_QUERY` task, paired with the store's `RETRIEVAL_DOCUMENT` vectors
 
 Both lexical and vector SQL branches require exact bank and product matches and only
 consider active documents and chunks. The final select repeats those predicates as a
-defense-in-depth guard. Callers cannot request an unscoped search.
+defense-in-depth guard. Callers cannot request an unscoped search. The chunk predicates
+are written exactly as the partial indexes' (`c.is_active`, and
+`c.is_active AND c.embedding IS NOT NULL` for vectors), the vector side orders by the
+bound query vector (pgvector uses the HNSW index only for a constant), and the search
+runs with `hnsw.iterative_scan = relaxed_order`, so offering and product filters
+applied after the approximate scan do not starve the result. A chunk still without a
+vector is found by the lexical side only.
 
 ## Hybrid ranking
 

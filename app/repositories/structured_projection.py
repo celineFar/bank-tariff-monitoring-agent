@@ -112,16 +112,37 @@ async def publish_structured_projection(
                 )
     linked_documents: dict[str, tuple[object, str]] = {}
     if source_keys:
+        # The versions the snapshot was built from (IX12). A version unchanged
+        # since an earlier run keeps that run's `run_id`, so the run is not a
+        # way to find it; only snapshots without a recorded set (accepted
+        # before migration 023, re-projected by the backfill) fall back to it.
+        has_set = await session.scalar(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM snapshot_documents "
+                "WHERE snapshot_id = :snapshot_id)"
+            ),
+            {"snapshot_id": snapshot.id},
+        )
         linked_rows = (
             await session.execute(
                 text(
-                    """SELECT document_key, id, content_sha256, source_url, final_url
+                    """SELECT d.document_key, d.id, d.content_sha256,
+                           d.source_url, d.final_url
+                    FROM knowledge_documents AS d
+                    JOIN snapshot_documents AS sd ON sd.document_id = d.id
+                    WHERE sd.snapshot_id = :snapshot_id
+                      AND d.document_key = ANY(:source_keys)
+                    ORDER BY d.retrieved_at DESC"""
+                    if has_set
+                    else """SELECT document_key, id, content_sha256, source_url,
+                           final_url
                     FROM knowledge_documents
                     WHERE run_id = :run_id AND offering_id = :offering_id
                       AND document_key = ANY(:source_keys)
                     ORDER BY is_active DESC, retrieved_at DESC"""
                 ),
                 {
+                    "snapshot_id": snapshot.id,
                     "run_id": snapshot.run_id,
                     "offering_id": snapshot.offering_id.value,
                     "source_keys": list(source_keys),

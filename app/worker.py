@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import signal
 import socket
@@ -40,6 +41,10 @@ class ReviewCompletionPort(Protocol):
     ) -> int: ...
 
 
+class EmbeddingSweepPort(Protocol):
+    async def embed_missing(self, *, limit: int = 200) -> int: ...
+
+
 async def run_scheduled_monitoring(service: RunServicePort) -> None:
     for product in PRODUCTS:
         result = await service.submit(
@@ -72,6 +77,9 @@ class MonitoringWorker:
         worker_id: str,
         abandoned_after: timedelta = timedelta(minutes=30),
         poll_interval_seconds: float = 2.0,
+        embeddings: EmbeddingSweepPort | None = None,
+        embedding_sweep_batch: int = 200,
+        embedding_sweep_interval_seconds: float = 300.0,
     ) -> None:
         self._runs = runs
         self._pipeline = pipeline
@@ -79,6 +87,9 @@ class MonitoringWorker:
         self._worker_id = worker_id
         self._abandoned_after = abandoned_after
         self._poll_interval_seconds = poll_interval_seconds
+        self._embeddings = embeddings
+        self._embedding_sweep_batch = embedding_sweep_batch
+        self._embedding_sweep_interval_seconds = embedding_sweep_interval_seconds
 
     async def recover_abandoned(self) -> int:
         recovered = await self._runs.recover_abandoned(
@@ -141,18 +152,56 @@ class MonitoringWorker:
                     "completed %s reviewed run(s) left awaiting review", completed
                 )
 
-    async def run_forever(self, stop: asyncio.Event) -> None:
-        await self.startup_checks()
+    async def sweep_embeddings(self) -> int:
+        """Embed active chunks stored text-only; never raises (IX7).
+
+        An approval activates its documents before their vectors exist, and a
+        quota refusal publishes a run as text; lexical search serves both until
+        this fills the vectors.
+        """
+        if self._embeddings is None or self._embedding_sweep_batch <= 0:
+            return 0
+        try:
+            filled = await self._embeddings.embed_missing(
+                limit=self._embedding_sweep_batch
+            )
+        except Exception:
+            logger.warning("embedding sweep failed", exc_info=True)
+            return 0
+        if filled:
+            logger.info("embedding sweep filled %s chunk vector(s)", filled)
+        return filled
+
+    async def _sweep_forever(self, stop: asyncio.Event) -> None:
+        # Its own loop: a quota refusal can keep the provider retrying for
+        # minutes, and that must never hold up claiming runs.
         while not stop.is_set():
-            if await self.process_next():
-                continue
+            await self.sweep_embeddings()
             try:
                 await asyncio.wait_for(
-                    stop.wait(),
-                    timeout=self._poll_interval_seconds,
+                    stop.wait(), timeout=self._embedding_sweep_interval_seconds
                 )
             except TimeoutError:
                 pass
+
+    async def run_forever(self, stop: asyncio.Event) -> None:
+        await self.startup_checks()
+        sweep = asyncio.create_task(self._sweep_forever(stop))
+        try:
+            while not stop.is_set():
+                if await self.process_next():
+                    continue
+                try:
+                    await asyncio.wait_for(
+                        stop.wait(),
+                        timeout=self._poll_interval_seconds,
+                    )
+                except TimeoutError:
+                    pass
+        finally:
+            sweep.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweep
 
 
 async def main() -> None:
@@ -165,6 +214,9 @@ async def main() -> None:
         pipeline=container.tariff_pipeline,
         resolution=container.review_resolution,
         worker_id=f"{socket.gethostname()}:{id(container)}",
+        embeddings=container.knowledge_indexer,
+        embedding_sweep_batch=settings.rag.embedding_sweep_batch,
+        embedding_sweep_interval_seconds=settings.rag.embedding_sweep_interval_seconds,
     )
     scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)
     scheduler.add_job(

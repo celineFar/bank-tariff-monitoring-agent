@@ -17,7 +17,7 @@ from app.repositories.acquisition_snapshots import (
     PostgresAcquisitionSnapshotRepository,
 )
 from app.repositories.embedding_cache import PostgresEmbeddingCache
-from app.repositories.knowledge_store import PostgresKnowledgeStore
+from app.repositories.knowledge_embeddings import PostgresChunkEmbeddingRepository
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
     PostgresRunRepository,
@@ -48,7 +48,10 @@ from app.services.knowledge_index import (
     GeminiQueryEmbeddingProvider,
     KnowledgeIndexer,
 )
-from app.services.knowledge_projection import KnowledgeProjectionService
+from app.services.knowledge_projection import (
+    KnowledgeProjectionService,
+    OfferingSummaryProjector,
+)
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     configure_default_model_usage_repository,
@@ -110,6 +113,8 @@ class ApplicationContainer:
     tariff_history_service: TariffHistoryService
     # The reviewer's terminal reads a review's units through this (RV9).
     review_display: ReviewDisplayService | None = None
+    # The worker's embedding sweep (IX7).
+    knowledge_indexer: KnowledgeIndexer | None = None
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -263,6 +268,9 @@ def build_application_container(
             for extraction_model in extraction_models
         )
     )
+    projection = KnowledgeProjectionService(
+        max_chunk_chars=settings.rag.chunk_size_chars
+    )
     embedding_client = genai.Client(api_key=api_key) if api_key else genai.Client()
     indexer = KnowledgeIndexer(
         GeminiEmbeddingProvider(
@@ -276,8 +284,8 @@ def build_application_container(
                 settings.rag.embedding_quota_backoff_base_seconds
             ),
         ),
-        PostgresKnowledgeStore(sessions),
-        PostgresEmbeddingCache(sessions),
+        embeddings=PostgresChunkEmbeddingRepository(sessions),
+        embedding_cache=PostgresEmbeddingCache(sessions),
         usage_repository=model_usage,
     )
     audit_archive = (
@@ -304,9 +312,7 @@ def build_application_container(
         catalog=catalog,
         discovery=discovery,
         extraction=extraction,
-        projection=KnowledgeProjectionService(
-            max_chunk_chars=settings.rag.chunk_size_chars
-        ),
+        projection=projection,
         embedder=indexer,
         snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
@@ -373,7 +379,11 @@ def build_application_container(
         runs=runs,
         reviews=reviews,
         decisions=ReviewDecisionService(
-            reviews, snapshots, memory=PostgresReviewDecisionMemory(sessions)
+            reviews,
+            snapshots,
+            memory=PostgresReviewDecisionMemory(sessions),
+            summaries=OfferingSummaryProjector(projection, catalog),
+            vectors=indexer,
         ),
         snapshots=snapshots,
     )
@@ -412,4 +422,5 @@ def build_application_container(
         monitoring_owner=owner,
         tariff_pipeline=tariff_pipeline,
         review_display=ReviewDisplayService(reviews, snapshots),
+        knowledge_indexer=indexer,
     )

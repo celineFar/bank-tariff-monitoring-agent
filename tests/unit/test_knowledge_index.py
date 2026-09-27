@@ -7,9 +7,6 @@ import pytest
 from google.genai import errors
 
 from app.domain.knowledge import (
-    DocumentVersionSummary,
-    EmbeddedKnowledgeDocument,
-    IndexWriteResult,
     KnowledgeChunk,
     KnowledgeDocument,
     chunk_id,
@@ -85,41 +82,17 @@ class _FakeEmbeddingProvider:
         return self.embeddings
 
 
-class _FakeKnowledgeStore:
-    def __init__(self) -> None:
-        self.document: EmbeddedKnowledgeDocument | None = None
-
-    async def upsert_document(
-        self, document: EmbeddedKnowledgeDocument
-    ) -> IndexWriteResult:
-        self.document = document
-        return IndexWriteResult(
-            document_id=document_version_id(document),
-            document_created=True,
-            chunks_created=len(document.chunks),
-            chunks_updated=0,
-            chunks_retired=0,
-            versions_retired=0,
-        )
-
-    async def list_document_versions(
-        self, bank: str, product: ProductType, document_key: str
-    ) -> tuple[DocumentVersionSummary, ...]:
-        return ()
-
-
 @pytest.mark.asyncio
-async def test_indexer_embeds_chunks_before_repository_write() -> None:
+async def test_indexer_embeds_every_chunk() -> None:
     document = _document()
     provider = _FakeEmbeddingProvider(((0.1, 0.2, 0.3),))
-    repository = _FakeKnowledgeStore()
 
-    result = await KnowledgeIndexer(provider, repository).index(document)
+    embedded = await KnowledgeIndexer(provider).embed(document)
 
     assert provider.received == [document.chunks[0].content]
-    assert repository.document is not None
-    assert repository.document.chunks[0].embedding == (0.1, 0.2, 0.3)
-    assert result.chunks_created == 1
+    assert embedded.chunks[0].embedding == (0.1, 0.2, 0.3)
+    assert embedded.fully_embedded
+    assert document_version_id(embedded) == document_version_id(document)
 
 
 @pytest.mark.asyncio
@@ -127,17 +100,11 @@ async def test_indexer_embeds_chunks_before_repository_write() -> None:
     "embeddings",
     [(), ((0.1, 0.2),), ((0.1, float("nan"), 0.3),)],
 )
-async def test_invalid_embedding_response_never_reaches_repository(
+async def test_invalid_embedding_response_is_an_embedding_error(
     embeddings: Sequence[Sequence[float]],
 ) -> None:
-    repository = _FakeKnowledgeStore()
-
     with pytest.raises(EmbeddingError):
-        await KnowledgeIndexer(_FakeEmbeddingProvider(embeddings), repository).index(
-            _document()
-        )
-
-    assert repository.document is None
+        await KnowledgeIndexer(_FakeEmbeddingProvider(embeddings)).embed(_document())
 
 
 @pytest.mark.asyncio
@@ -272,7 +239,7 @@ async def test_indexer_reuses_content_model_dimension_and_task_cache() -> None:
 
     provider = Provider()
     cache = Cache()
-    indexer = KnowledgeIndexer(provider, _FakeKnowledgeStore(), cache)
+    indexer = KnowledgeIndexer(provider, embedding_cache=cache)
     first = await indexer.embed(_document())
     second = await indexer.embed(_document(checksum="b" * 64))
     assert first.chunks[0].embedding == second.chunks[0].embedding

@@ -153,9 +153,9 @@ def test_invalid_timezone_fails_startup() -> None:
         load_settings(_env_file=None, schedule_timezone="Mars/Olympus")
 
 
-def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
-    with pytest.raises(ValidationError, match="CHUNK_OVERLAP_CHARS"):
-        load_settings(_env_file=None, chunk_size_chars=500, chunk_overlap_chars=500)
+def test_chunk_size_stays_inside_the_embedding_input() -> None:
+    with pytest.raises(ValidationError, match="chunk_size_chars"):
+        load_settings(_env_file=None, chunk_size_chars=2_001)
 
 
 @pytest.mark.parametrize(
@@ -178,8 +178,7 @@ def test_chunk_overlap_must_be_smaller_than_chunk_size() -> None:
         ("pdf_extraction_max_attempts", 0),
         ("pdf_extraction_backoff_base_seconds", -1),
         ("pdf_extraction_max_price_per_million_tokens_usd", 0),
-        ("chunk_size_chars", 199),
-        ("chunk_overlap_chars", -1),
+        ("chunk_size_chars", 499),
         ("retrieval_top_k", 0),
         ("retrieval_min_score", 1.1),
         ("intent_fuzzy_min_score", 1.1),

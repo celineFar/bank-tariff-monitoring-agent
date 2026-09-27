@@ -11,8 +11,7 @@ from app.domain.retrieval import RetrievalCandidate
 HYBRID_SEARCH_SQL = """
 WITH search_input AS (
     SELECT
-        websearch_to_tsquery('simple', :lexical_query) AS text_query,
-        CAST(:query_embedding AS vector) AS query_embedding
+        websearch_to_tsquery('simple', :lexical_query) AS text_query
 ),
 lexical_candidates AS (
     SELECT
@@ -38,8 +37,9 @@ lexical_candidates AS (
           :filter_document_kinds IS FALSE
           OR d.document_kind = ANY(CAST(:document_kinds AS text[]))
       )
-      AND d.is_active IS TRUE
-      AND c.is_active IS TRUE
+      AND d.is_active
+      -- Repeats the partial GIN index predicate (migration 023, IX8).
+      AND c.is_active
       AND c.search_vector @@ i.text_query
     ORDER BY lexical_score DESC, c.id
     LIMIT :candidate_limit
@@ -48,15 +48,14 @@ vector_candidates AS (
     SELECT
         c.id,
         row_number() OVER (
-            ORDER BY c.embedding <=> i.query_embedding, c.id
+            ORDER BY c.embedding <=> CAST(:query_embedding AS vector), c.id
         ) AS vector_rank,
         GREATEST(
             0.0,
-            LEAST(1.0, 1.0 - (c.embedding <=> i.query_embedding))
+            LEAST(1.0, 1.0 - (c.embedding <=> CAST(:query_embedding AS vector)))
         ) AS vector_score
     FROM knowledge_chunks AS c
     JOIN knowledge_documents AS d ON d.id = c.document_id
-    CROSS JOIN search_input AS i
     WHERE d.bank = :bank
       AND d.product = :product
       AND (
@@ -67,9 +66,14 @@ vector_candidates AS (
           :filter_document_kinds IS FALSE
           OR d.document_kind = ANY(CAST(:document_kinds AS text[]))
       )
-      AND d.is_active IS TRUE
-      AND c.is_active IS TRUE
-    ORDER BY c.embedding <=> i.query_embedding, c.id
+      AND d.is_active
+      -- Repeats the partial HNSW index predicate (migration 023, IX8); a chunk
+      -- without a vector yet is found by the lexical side only.
+      AND c.is_active
+      AND c.embedding IS NOT NULL
+    -- The bound parameter, not a column of `search_input`: pgvector can use
+    -- the HNSW index only for a constant query vector.
+    ORDER BY c.embedding <=> CAST(:query_embedding AS vector), c.id
     LIMIT :candidate_limit
 ),
 candidate_ids AS (
@@ -105,8 +109,8 @@ LEFT JOIN lexical_candidates AS l ON l.id = c.id
 LEFT JOIN vector_candidates AS v ON v.id = c.id
 WHERE d.bank = :bank
   AND d.product = :product
-  AND d.is_active IS TRUE
-  AND c.is_active IS TRUE
+  AND d.is_active
+  AND c.is_active
   AND (
       CAST(:offering_id AS text) IS NULL
       OR d.offering_id = CAST(:offering_id AS text)
@@ -138,7 +142,11 @@ class PostgresRagRetrievalRepository:
         embedding_literal = (
             "[" + ",".join(str(value) for value in query_embedding) + "]"
         )
-        async with self._session_factory() as session:
+        async with self._session_factory() as session, session.begin():
+            # The offering and product filters apply after the HNSW scan; an
+            # iterative scan keeps reading the index until enough rows pass
+            # them, instead of returning fewer than asked (IX8, pgvector 0.8).
+            await session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
             rows = (
                 await session.execute(
                     text(HYBRID_SEARCH_SQL),

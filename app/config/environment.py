@@ -77,12 +77,13 @@ class EnvironmentSettings(BaseSettings):
     ocr_timeout_seconds: float = 60.0
     ocr_tesseract_cmd: str | None = None
     chunk_size_chars: int = 1500
-    chunk_overlap_chars: int = 150
     retrieval_top_k: int = 8
     embedding_max_attempts: int = 3
     embedding_backoff_base_seconds: float = 10.0
     embedding_quota_max_attempts: int = 4
     embedding_quota_backoff_base_seconds: float = 30.0
+    embedding_sweep_batch: int = 200
+    embedding_sweep_interval_seconds: float = 300.0
     retrieval_min_score: float = 0.25
     intent_fuzzy_min_score: float = 0.82
     intent_fuzzy_min_gap: float = 0.08

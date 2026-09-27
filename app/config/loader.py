@@ -104,7 +104,6 @@ def load_settings(
         ),
         rag=RagSettings(
             chunk_size_chars=raw.chunk_size_chars,
-            chunk_overlap_chars=raw.chunk_overlap_chars,
             retrieval_top_k=raw.retrieval_top_k,
             retrieval_min_score=raw.retrieval_min_score,
             embedding_max_attempts=raw.embedding_max_attempts,
@@ -113,6 +112,8 @@ def load_settings(
             embedding_quota_backoff_base_seconds=(
                 raw.embedding_quota_backoff_base_seconds
             ),
+            embedding_sweep_batch=raw.embedding_sweep_batch,
+            embedding_sweep_interval_seconds=raw.embedding_sweep_interval_seconds,
         ),
         intent_resolution=IntentResolutionSettings(
             fuzzy_min_score=raw.intent_fuzzy_min_score,

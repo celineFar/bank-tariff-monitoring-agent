@@ -228,7 +228,11 @@ def test_hybrid_sql_enforces_filters_and_uses_both_indexes() -> None:
 
     assert "d.bank = :bank" in normalized
     assert "d.product = :product" in normalized
-    assert "d.is_active is true" in normalized
-    assert "c.is_active is true" in normalized
-    assert "c.search_vector @@ i.text_query" in normalized
-    assert "c.embedding <=> i.query_embedding" in normalized
+    assert "d.is_active" in normalized
+    # The partial indexes' predicates, verbatim (migration 023, IX8): a
+    # rewritten predicate (e.g. `is true`) stops the planner using them.
+    assert "c.is_active is true" not in normalized
+    assert "and c.is_active and c.search_vector @@ i.text_query" in normalized
+    assert "and c.is_active and c.embedding is not null" in normalized
+    # A bound query vector, which the HNSW index can order by.
+    assert "c.embedding <=> cast(:query_embedding as vector)" in normalized

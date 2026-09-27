@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel, HttpUrl
 
 from app.domain.acquisition import SourceLocator
+from app.domain.catalog import SeedCatalog
 from app.domain.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 from app.domain.monitoring import SnapshotAttempt
@@ -52,10 +53,19 @@ class _ProjectionUnit:
     unit_type: str
     # The discovery assessment that selected this unit, when known.
     label: SourceAssessment | None = None
+    # Leading lines every piece of a split unit repeats: a table's title and
+    # header row, so rows after the first split keep their column names (IX10).
+    repeat_prefix: str = ""
+
+
+# Units whose own content already names their context; any other unit that
+# starts a chunk is preceded by its heading path (IX10).
+_SELF_TITLED_UNITS = frozenset({"heading", "table", "offering_summary"})
+_BREADCRUMB_MAX_CHARS = 200
 
 
 class KnowledgeProjectionService:
-    def __init__(self, *, max_chunk_chars: int = 6_000) -> None:
+    def __init__(self, *, max_chunk_chars: int = 1_500) -> None:
         if max_chunk_chars < 500:
             raise ValueError("max_chunk_chars must be at least 500")
         self._max_chunk_chars = max_chunk_chars
@@ -161,7 +171,10 @@ class KnowledgeProjectionService:
             metadata={
                 "authoritative_evidence": False,
                 "evidence_ids": list(evidence_ids),
-                "summary_schema": "loan_product_or_snapshot_v1",
+                "summary_schema": "loan_product_or_snapshot_v2",
+                # Kept out of the content, so the summary's hash changes only
+                # when the tariff or its evidence does (IX11).
+                "as_of": retrieved_at.isoformat(),
             },
             chunks=chunks,
         )
@@ -246,19 +259,19 @@ class KnowledgeProjectionService:
         current: list[_ProjectionUnit] = []
         current_size = 0
         for unit in expanded:
-            separator_size = 2 if current else 0
             if current and (
-                current_size + separator_size + len(unit.content)
-                > self._max_chunk_chars
+                current_size + 2 + len(unit.content) > self._max_chunk_chars
                 # A chunk never mixes the offering's own content with generic
                 # bank material, so each chunk's labels describe all of it.
                 or _association(current[-1]) != _association(unit)
             ):
                 groups.append(current)
                 current = []
-                current_size = 0
+            if current:
+                current_size += 2 + len(unit.content)
+            else:
+                current_size = _breadcrumb_size(unit) + len(unit.content)
             current.append(unit)
-            current_size += separator_size + len(unit.content)
         if current:
             groups.append(current)
 
@@ -308,7 +321,8 @@ class KnowledgeProjectionService:
             chunks.append(
                 KnowledgeChunk(
                     ordinal=ordinal,
-                    content="\n\n".join(unit.content for unit in group),
+                    content=_breadcrumb_line(group[0])
+                    + "\n\n".join(unit.content for unit in group),
                     page_start=page_numbers[0] if page_numbers else None,
                     page_end=page_numbers[-1] if page_numbers else None,
                     section=" / ".join(sections)[:500] or None,
@@ -334,6 +348,33 @@ class KnowledgeProjectionService:
         return tuple(chunks)
 
 
+class OfferingSummaryProjector:
+    """The offering summary of a snapshot, from the catalog's offering entry.
+
+    The pipeline projects an accepted run's summary itself; an approval builds it
+    from the *final* snapshot (the reviewer's decisions applied), which exists
+    only at decision time (IX6).
+    """
+
+    def __init__(
+        self, projection: KnowledgeProjectionService, catalog: SeedCatalog
+    ) -> None:
+        self._projection = projection
+        self._catalog = catalog
+
+    def project(self, snapshot: SnapshotAttempt) -> KnowledgeDocument:
+        offering = self._catalog.get(snapshot.product, snapshot.offering_id)
+        return self._projection.project_summary(
+            run_id=snapshot.run_id,
+            product=snapshot.product,
+            offering_id=snapshot.offering_id,
+            display_name=offering.display_name,
+            source_url=offering.seed_url,
+            value=snapshot,
+            language=offering.language or "en",
+        )
+
+
 def render_offering_summary(
     *,
     display_name: str,
@@ -350,14 +391,15 @@ def render_offering_summary(
         "Evidence policy: retrieve official source chunks for citations.",
     ]
     evidence_ids: list[str] = []
+    # No "As of" line: the time is the document's `retrieved_at` and
+    # `metadata.as_of`, so an unchanged tariff keeps its version (IX11).
+    lines.append("")
     if isinstance(value, LoanProduct):
-        lines.extend((f"As of: {value.retrieved_at.isoformat()}", ""))
         for field_name, field_value in value:
             if field_name in {"canonical_url", "retrieved_at"}:
                 continue
             lines.extend(_render_summary_field(field_name, field_value, evidence_ids))
     else:
-        lines.extend((f"As of: {value.created_at.isoformat()}", ""))
         for field_name in sorted(value.normalized_tariff):
             lines.append(f"## {_humanize(field_name)}")
             lines.append(_stable_text(value.normalized_tariff[field_name]))
@@ -400,6 +442,21 @@ def _indexed(label: SourceAssessment) -> bool:
 
 def _association(unit: _ProjectionUnit) -> str | None:
     return unit.label.product_association.value if unit.label is not None else None
+
+
+def _breadcrumb_line(unit: _ProjectionUnit) -> str:
+    """The heading path a chunk starting with `unit` opens with, and a newline.
+
+    A chunk that starts mid-section would otherwise carry its heading only in
+    metadata, which is neither embedded nor in the text search (IX10).
+    """
+    if unit.unit_type in _SELF_TITLED_UNITS or not unit.section:
+        return ""
+    return f"## {unit.section}"[:_BREADCRUMB_MAX_CHARS] + "\n"
+
+
+def _breadcrumb_size(unit: _ProjectionUnit) -> int:
+    return len(_breadcrumb_line(unit))
 
 
 def _block_unit(
@@ -447,6 +504,7 @@ def _table_unit(
                 "| " + " | ".join("---" for _ in table.headers) + " |",
             )
         )
+    head = "\n".join(lines)
     for row in table.rows:
         lines.append(
             "| "
@@ -471,33 +529,40 @@ def _table_unit(
         quality_score=document.quality_score,
         unit_type="table",
         label=label,
+        repeat_prefix=head,
     )
 
 
 def _split_unit(unit: _ProjectionUnit, limit: int) -> tuple[_ProjectionUnit, ...]:
-    if len(unit.content) <= limit:
+    """Pieces of at most `limit` characters, breadcrumb included.
+
+    Every piece keeps the unit's label and locators (IX13), and a table's
+    pieces each repeat its title and header row (IX10).
+    """
+    budget = limit - _breadcrumb_size(unit)
+    if len(unit.content) <= budget:
         return (unit,)
+    prefix = unit.repeat_prefix
+    body = unit.content
+    if prefix and body.startswith(prefix) and len(prefix) + 1 <= budget // 2:
+        body = body[len(prefix) :].lstrip("\n")
+        piece_limit = budget - len(prefix) - 1
+    else:
+        prefix = ""
+        piece_limit = budget
     pieces: list[str] = []
     current = ""
-    for line in unit.content.splitlines():
+    for line in body.splitlines():
         candidate = f"{current}\n{line}".strip() if current else line
-        if current and len(candidate) > limit:
-            pieces.extend(_hard_split(current, limit))
+        if current and len(candidate) > piece_limit:
+            pieces.extend(_hard_split(current, piece_limit))
             current = line
         else:
             current = candidate
     if current:
-        pieces.extend(_hard_split(current, limit))
+        pieces.extend(_hard_split(current, piece_limit))
     return tuple(
-        _ProjectionUnit(
-            content=piece,
-            section=unit.section,
-            locators=unit.locators,
-            source_item_ids=unit.source_item_ids,
-            extraction_method=unit.extraction_method,
-            quality_score=unit.quality_score,
-            unit_type=unit.unit_type,
-        )
+        replace(unit, content=f"{prefix}\n{piece}" if prefix else piece)
         for piece in pieces
     )
 
