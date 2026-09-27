@@ -453,6 +453,9 @@ class QueryOperation(StrEnum):
     COMPARE = "compare"
     FAMILY_RANK = "family_rank"
     HISTORY = "history"
+    # Requested fields for 1-9 offerings of one family, side by side, with no
+    # comparability verdict (a listing question, not a comparison).
+    OVERVIEW = "overview"
     # Scope-only read grant: which offerings the read tools may show, with no
     # answerable field shape (plan §6.6). `answer_tariff_query` declines it.
     CURRENT = "current"

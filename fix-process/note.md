@@ -182,3 +182,33 @@ without asking:
   dead owner cannot block monitoring when no worker is running.
 - **Migration 024 must be applied** before deploying (the dev database is still at
   015, see the indexing notes).
+
+## Resolution and RAG (fix-process/resolution_and_rag/)
+
+- **Branch.** `fix/resolution_and_rag` did not exist; it is created from
+  `integration/process-fixes` at `180ea9f`.
+- **Design choices agreed with the user** (2026-09-27): D1–D5 in the
+  [plan](resolution_and_rag/resolution-and-rag-fix-plan.md#decisions). D6–D20 were taken
+  without asking and are listed there as open to change.
+- **Hand-off (monitoring/HITL): a run waiting for review blocks new runs.** `_find_active`
+  ([repositories/monitoring.py](../app/repositories/monitoring.py)) counts
+  `awaiting_review` as active:
+  - a chat refresh is pulled into an older run's reviews, possibly a scheduler run;
+  - a family refresh is refused as "already in progress" while an offering run waits,
+    possibly for days.
+
+  The rule is still open ("never block" or "block only this session's run"). Either
+  rule needs four safeguards:
+  1. Catch `ReviewConflictError` in the monitoring node's review loop and tell the
+     reviewer the review was superseded and nothing was applied. A resumed pause whose
+     review is no longer pending must say so, not drop the answer silently.
+  2. Close a run as soon as its last pending review is superseded. Today that happens
+     only at worker startup (`complete_runs_without_pending_reviews`).
+  3. Review the newest waiting run of an offering first (`_oldest_awaiting_review` is
+     oldest first). Approving a newer run should supersede the older one's reviews, so
+     an older approval never leaves a stale comparison baseline.
+  4. Expect daily scheduler runs to proceed while a review waits. The new review of the
+     same field supersedes the old one, so the queue does not grow.
+
+  "Block only this session's run" also needs a column recording the chat session that
+  started a run; runs do not record it today.
