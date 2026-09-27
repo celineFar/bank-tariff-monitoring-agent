@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -25,9 +26,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.domain.knowledge import (
-    EMBEDDING_DIMENSIONS,
-    EmbeddedKnowledgeChunk,
-    EmbeddedKnowledgeDocument,
+    KnowledgeChunk,
+    KnowledgeDocument,
 )
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
@@ -147,9 +147,8 @@ def _document(
     *,
     checksum: str = "a" * 64,
     document_key: str = "consumer-standard-page",
-    dimensions: int = EMBEDDING_DIMENSIONS,
-) -> EmbeddedKnowledgeDocument:
-    return EmbeddedKnowledgeDocument(
+) -> KnowledgeDocument:
+    return KnowledgeDocument(
         run_id=run_id,
         product=ProductType.CONSUMER_LOAN,
         offering_id=OfferingId.CONSUMER_STANDARD,
@@ -163,14 +162,13 @@ def _document(
         extraction_method="browser",
         quality_score=0.99,
         chunks=(
-            EmbeddedKnowledgeChunk(
+            KnowledgeChunk(
                 ordinal=0,
                 content="Nominal interest rate: 13.5%",
                 section="Rates",
                 language="en",
                 extraction_method="browser",
                 quality_score=0.99,
-                embedding=tuple(0.01 for _ in range(dimensions)),
             ),
         ),
     )
@@ -759,22 +757,26 @@ async def test_atomic_publication_rolls_back_everything_on_index_failure(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     _, run, execution = await _running_offering(monitoring_session_factory)
+    snapshot = _snapshot(run.id, execution.id)
+    extraction = json.loads(json.dumps(snapshot.semantic_extraction))
+    # A citation that is not in its evidence fails the structured projection,
+    # after the documents and the snapshot were written in the transaction.
+    for value in extraction["loan_product"].values():
+        for citation in (
+            (value.get("evidence") or []) if isinstance(value, dict) else []
+        ):
+            citation["quote"] = "not in the page"
     publication = OfferingPublication(
         offering_execution_id=execution.id,
         documents=(
             _document(run.id),
-            _document(
-                run.id,
-                checksum="b" * 64,
-                document_key="invalid-embedding",
-                dimensions=1,
-            ),
+            _document(run.id, checksum="b" * 64, document_key="second-document"),
         ),
-        snapshot=_snapshot(run.id, execution.id),
+        snapshot=snapshot.model_copy(update={"semantic_extraction": extraction}),
         manifests=(_manifest(run.id, execution.id),),
     )
 
-    with pytest.raises(ValueError, match="embedding"):
+    with pytest.raises(ValueError, match="citation"):
         await PostgresOfferingPublicationRepository(monitoring_session_factory).publish(
             publication
         )

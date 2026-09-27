@@ -17,7 +17,6 @@ from app.repositories.acquisition_snapshots import (
     PostgresAcquisitionSnapshotRepository,
 )
 from app.repositories.embedding_cache import PostgresEmbeddingCache
-from app.repositories.knowledge_embeddings import PostgresChunkEmbeddingRepository
 from app.repositories.monitoring import (
     PostgresOfferingPublicationRepository,
     PostgresRunRepository,
@@ -41,16 +40,12 @@ from app.services.acquisition_freshness import FreshnessGatedAcquisitionService
 from app.services.answer_read_model import TariffAnswerRouter
 from app.services.artifact_store import FileSystemArtifactStore
 from app.services.discovery_classifier import AdkSourceDiscoveryClassifier
-from app.services.intent_resolution import AdkRequestInterpreter, RequestResolver
-from app.services.knowledge_index import (
+from app.services.embedding_providers import (
     GeminiEmbeddingProvider,
     GeminiQueryEmbeddingProvider,
-    KnowledgeIndexer,
 )
-from app.services.knowledge_projection import (
-    KnowledgeProjectionService,
-    OfferingSummaryProjector,
-)
+from app.services.intent_resolution import AdkRequestInterpreter, RequestResolver
+from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.model_call_usage import (
     PostgresModelCallUsageRepository,
     configure_default_model_usage_repository,
@@ -83,7 +78,6 @@ from app.services.source_discovery import (
 )
 from app.services.structured_tariff_query import StructuredTariffQueryService
 from app.services.structured_unit_embeddings import (
-    CombinedEmbeddingSweep,
     StructuredUnitEmbeddingService,
 )
 from app.services.tariff_queries import (
@@ -112,10 +106,9 @@ class ApplicationContainer:
     tariff_history_service: TariffHistoryService
     # The reviewer's terminal reads a review's units through this (RV9).
     review_display: ReviewDisplayService | None = None
-    # The worker's embedding sweep (IX7).
-    knowledge_indexer: KnowledgeIndexer | None = None
-    # The worker's embedding sweep: knowledge chunks, then retrieval units.
-    embedding_sweep: CombinedEmbeddingSweep | None = None
+    # The worker's embedding sweep: structured retrieval units stored without
+    # a vector (units are never embedded on the request path).
+    embedding_sweep: StructuredUnitEmbeddingService | None = None
 
     async def close(self) -> None:
         await self.http_client.aclose()
@@ -273,22 +266,6 @@ def build_application_container(
         max_chunk_chars=settings.rag.chunk_size_chars
     )
     embedding_client = genai.Client(api_key=api_key) if api_key else genai.Client()
-    indexer = KnowledgeIndexer(
-        GeminiEmbeddingProvider(
-            embedding_client,
-            settings.models.embedding_model,
-            usage_repository=model_usage,
-            max_attempts=settings.rag.embedding_max_attempts,
-            backoff_base_seconds=settings.rag.embedding_backoff_base_seconds,
-            quota_max_attempts=settings.rag.embedding_quota_max_attempts,
-            quota_backoff_base_seconds=(
-                settings.rag.embedding_quota_backoff_base_seconds
-            ),
-        ),
-        embeddings=PostgresChunkEmbeddingRepository(sessions),
-        embedding_cache=PostgresEmbeddingCache(sessions),
-        usage_repository=model_usage,
-    )
     audit_archive = (
         FileSystemPipelineAuditArchive(settings.application.pipeline_audit_dir)
         if settings.application.pipeline_audit_enabled
@@ -314,7 +291,6 @@ def build_application_container(
         discovery=discovery,
         extraction=extraction,
         projection=projection,
-        embedder=indexer,
         snapshots=snapshots,
         publications=PostgresOfferingPublicationRepository(sessions),
         runs=runs,
@@ -367,8 +343,6 @@ def build_application_container(
             reviews,
             snapshots,
             memory=PostgresReviewDecisionMemory(sessions),
-            summaries=OfferingSummaryProjector(projection, catalog),
-            vectors=indexer,
         ),
         snapshots=snapshots,
     )
@@ -408,6 +382,5 @@ def build_application_container(
         monitoring_owner=owner,
         tariff_pipeline=tariff_pipeline,
         review_display=ReviewDisplayService(reviews, snapshots),
-        knowledge_indexer=indexer,
-        embedding_sweep=CombinedEmbeddingSweep(indexer, unit_embeddings),
+        embedding_sweep=unit_embeddings,
     )

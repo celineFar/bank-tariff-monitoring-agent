@@ -19,10 +19,8 @@ from app.domain.review import (
 from app.repositories.knowledge_publication import (
     activate_snapshot_set,
     discard_snapshot_documents,
-    link_snapshot_documents,
     lock_offering_publication,
     lock_review_publication,
-    store_document_version,
 )
 from app.repositories.monitoring import _snapshot_from_row
 from app.repositories.review_supersession import (
@@ -566,11 +564,6 @@ class PostgresReviewRepository:
         now: datetime,
     ) -> None:
         # The offering's publication lock is held (`approve_with_snapshot`).
-        if update.summary is not None:
-            summary = await store_document_version(session, update.summary, now)
-            await link_snapshot_documents(
-                session, update.snapshot_id, (summary.document_id,)
-            )
         # The snapshot's set -- including versions first stored by an earlier
         # run (IX3) -- becomes the offering's whole index (IX1).
         await activate_snapshot_set(session, update.snapshot_id, now)

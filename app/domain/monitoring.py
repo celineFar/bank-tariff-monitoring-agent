@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.domain.knowledge import EmbeddedKnowledgeDocument, IndexWriteResult
+from app.domain.knowledge import IndexWriteResult, KnowledgeDocument
 from app.domain.models import OfferingId, ProductType
 
 
@@ -367,7 +367,7 @@ class SnapshotChangeSet(MonitoringModel):
 
 class OfferingPublication(MonitoringModel):
     offering_execution_id: UUID
-    documents: tuple[EmbeddedKnowledgeDocument, ...]
+    documents: tuple[KnowledgeDocument, ...]
     snapshot: SnapshotAttempt
     changes: SnapshotChangeSet | None = None
     manifests: tuple[SourceManifestItem, ...] = ()

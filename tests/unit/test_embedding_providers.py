@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
@@ -13,11 +12,10 @@ from app.domain.knowledge import (
     document_version_id,
 )
 from app.domain.models import ProductType
-from app.services.knowledge_index import (
+from app.services.embedding_providers import (
     EmbeddingError,
     GeminiEmbeddingProvider,
     GeminiQueryEmbeddingProvider,
-    KnowledgeIndexer,
 )
 
 
@@ -66,45 +64,6 @@ def test_document_and_chunk_ids_are_stable_and_version_aware() -> None:
     assert chunk_id(first, first.chunks[0]) != chunk_id(
         changed_location, changed_location.chunks[0]
     )
-
-
-class _FakeEmbeddingProvider:
-    dimensions = 3
-
-    def __init__(self, embeddings: Sequence[Sequence[float]]) -> None:
-        self.embeddings = embeddings
-        self.received: list[str] = []
-
-    async def embed_documents(
-        self, contents: Sequence[str]
-    ) -> Sequence[Sequence[float]]:
-        self.received = list(contents)
-        return self.embeddings
-
-
-@pytest.mark.asyncio
-async def test_indexer_embeds_every_chunk() -> None:
-    document = _document()
-    provider = _FakeEmbeddingProvider(((0.1, 0.2, 0.3),))
-
-    embedded = await KnowledgeIndexer(provider).embed(document)
-
-    assert provider.received == [document.chunks[0].content]
-    assert embedded.chunks[0].embedding == (0.1, 0.2, 0.3)
-    assert embedded.fully_embedded
-    assert document_version_id(embedded) == document_version_id(document)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "embeddings",
-    [(), ((0.1, 0.2),), ((0.1, float("nan"), 0.3),)],
-)
-async def test_invalid_embedding_response_is_an_embedding_error(
-    embeddings: Sequence[Sequence[float]],
-) -> None:
-    with pytest.raises(EmbeddingError):
-        await KnowledgeIndexer(_FakeEmbeddingProvider(embeddings)).embed(_document())
 
 
 @pytest.mark.asyncio
@@ -210,41 +169,3 @@ async def test_embedding_provider_reports_non_retryable_api_status(caplog) -> No
 
     assert "code=400 status=INVALID_ARGUMENT" in caplog.text
     assert "tariff evidence" not in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_indexer_reuses_content_model_dimension_and_task_cache() -> None:
-    class Provider:
-        dimensions = 3
-        model_name = "test-embedding-model"
-
-        def __init__(self):
-            self.calls: list[list[str]] = []
-
-        async def embed_documents(self, contents):
-            self.calls.append(list(contents))
-            return [[0.1, 0.2, 0.3] for _ in contents]
-
-    class Cache:
-        def __init__(self):
-            self.values: dict[str, tuple[float, ...]] = {}
-            self.keys: list[tuple[str, int, str]] = []
-
-        async def get_many(self, model_id, dimensions, task_type, hashes):
-            self.keys.append((model_id, dimensions, task_type))
-            return {key: self.values[key] for key in hashes if key in self.values}
-
-        async def put_many(self, model_id, dimensions, task_type, values):
-            self.values.update(values)
-
-    provider = Provider()
-    cache = Cache()
-    indexer = KnowledgeIndexer(provider, embedding_cache=cache)
-    first = await indexer.embed(_document())
-    second = await indexer.embed(_document(checksum="b" * 64))
-    assert first.chunks[0].embedding == second.chunks[0].embedding
-    assert provider.calls == [["Nominal interest rate: 13.5%"]]
-    assert cache.keys == [
-        ("test-embedding-model", 3, "RETRIEVAL_DOCUMENT"),
-        ("test-embedding-model", 3, "RETRIEVAL_DOCUMENT"),
-    ]

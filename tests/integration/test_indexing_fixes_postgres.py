@@ -18,9 +18,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.domain.knowledge import (
-    EMBEDDING_DIMENSIONS,
-    EmbeddedKnowledgeChunk,
-    EmbeddedKnowledgeDocument,
+    KnowledgeChunk,
+    KnowledgeDocument,
 )
 from app.domain.models import KnowledgeDocumentKind, OfferingId, ProductType
 from app.domain.monitoring import (
@@ -51,7 +50,6 @@ monitoring_session_factory = repository_tests.monitoring_session_factory
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
 # The fixture snapshot's evidence cites this document key and URL.
 EVIDENCE_KEY = "synthetic-page"
-SUMMARY_KEY = "offering-summary:consumer_standard"
 
 
 def _doc(
@@ -61,9 +59,8 @@ def _doc(
     checksum: str = "a" * 64,
     contents: Sequence[str] = ("Nominal interest rate: 13.5%",),
     kind: KnowledgeDocumentKind = KnowledgeDocumentKind.SOURCE,
-    embedded: bool = True,
-) -> EmbeddedKnowledgeDocument:
-    return EmbeddedKnowledgeDocument(
+) -> KnowledgeDocument:
+    return KnowledgeDocument(
         run_id=run_id,
         product=ProductType.CONSUMER_LOAN,
         offering_id=OfferingId.CONSUMER_STANDARD,
@@ -78,32 +75,16 @@ def _doc(
         extraction_method="browser",
         quality_score=0.99,
         chunks=tuple(
-            EmbeddedKnowledgeChunk(
+            KnowledgeChunk(
                 ordinal=index,
                 content=content,
                 section="Rates",
                 language="en",
                 extraction_method="browser",
                 quality_score=0.99,
-                embedding=(
-                    tuple(0.01 for _ in range(EMBEDDING_DIMENSIONS))
-                    if embedded
-                    else None
-                ),
             )
             for index, content in enumerate(contents)
         ),
-    )
-
-
-def _summary(run_id: UUID, content: str, *, embedded: bool = True):
-    return _doc(
-        run_id,
-        key=SUMMARY_KEY,
-        checksum=("5" + content.encode().hex() + "0" * 64)[:64],
-        contents=(content,),
-        kind=KnowledgeDocumentKind.OFFERING_SUMMARY,
-        embedded=embedded,
     )
 
 
@@ -206,19 +187,16 @@ async def test_ix1_accepted_publication_replaces_the_whole_active_set(
         lambda run_id: (
             _doc(run_id, key="page:1111", checksum="1" * 64, contents=("old page",)),
             _doc(run_id, key="document:2222", checksum="2" * 64, contents=("pdf",)),
-            _summary(run_id, "summary one"),
         ),
     )
     await _publish(
         monitoring_session_factory,
         lambda run_id: (
             _doc(run_id, key="page:3333", checksum="3" * 64, contents=("new page",)),
-            _summary(run_id, "summary two"),
         ),
     )
 
     assert await _active(monitoring_session_factory) == [
-        ("offering_summary", SUMMARY_KEY, ("summary two",)),
         ("source", "page:3333", ("new page",)),
     ]
 
@@ -312,89 +290,6 @@ async def test_ix4_approval_is_refused_when_a_newer_snapshot_was_accepted(
     assert await _active(monitoring_session_factory) == [
         ("source", EVIDENCE_KEY, ("newer accepted",)),
     ]
-
-
-@pytest.mark.asyncio
-async def test_ix6_approval_activates_the_summary_it_carries(
-    monitoring_session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    await _publish(
-        monitoring_session_factory,
-        lambda run_id: (
-            _doc(run_id, contents=("accepted rate",)),
-            _summary(run_id, "summary of the accepted values"),
-        ),
-    )
-    pending = await _publish(
-        monitoring_session_factory,
-        lambda run_id: (_doc(run_id, checksum="b" * 64, contents=("reviewed rate",)),),
-        accepted=False,
-    )
-    review = await _review(monitoring_session_factory, pending, "ix6")
-
-    await _approve(
-        monitoring_session_factory,
-        review,
-        pending,
-        summary=_summary(
-            pending.run_id, "summary of the reviewed values", embedded=False
-        ),
-    )
-
-    assert await _active(monitoring_session_factory) == [
-        ("offering_summary", SUMMARY_KEY, ("summary of the reviewed values",)),
-        ("source", EVIDENCE_KEY, ("reviewed rate",)),
-    ]
-
-
-class _Provider:
-    dimensions = EMBEDDING_DIMENSIONS
-    model_name = "test-embedding"
-
-    def __init__(self) -> None:
-        self.calls: list[int] = []
-
-    async def embed_documents(self, contents, *, stage="indexing.embedding"):
-        self.calls.append(len(contents))
-        return [tuple(0.02 for _ in range(EMBEDDING_DIMENSIONS)) for _ in contents]
-
-
-@pytest.mark.asyncio
-async def test_ix7_text_only_active_chunks_are_filled_by_embed_missing(
-    monitoring_session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    from app.repositories.knowledge_embeddings import (
-        PostgresChunkEmbeddingRepository,
-    )
-    from app.services.knowledge_index import KnowledgeIndexer
-
-    await _publish(
-        monitoring_session_factory,
-        lambda run_id: (
-            _doc(run_id, contents=("rate", "term", "fees"), embedded=False),
-        ),
-    )
-    assert await _active(monitoring_session_factory) == [
-        ("source", EVIDENCE_KEY, ("rate", "term", "fees")),
-    ]
-    provider = _Provider()
-    indexer = KnowledgeIndexer(
-        provider,
-        embeddings=PostgresChunkEmbeddingRepository(monitoring_session_factory),
-    )
-
-    filled = await indexer.embed_missing()
-
-    assert filled == 3
-    assert provider.calls == [3]
-    async with monitoring_session_factory() as session:
-        missing = await session.scalar(
-            text(
-                "SELECT count(*) FROM knowledge_chunks "
-                "WHERE is_active AND embedding IS NULL"
-            )
-        )
-    assert missing == 0
 
 
 @pytest.mark.asyncio

@@ -30,7 +30,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.domain.knowledge import EMBEDDING_DIMENSIONS, EmbeddedKnowledgeDocument
+from app.domain.knowledge import EMBEDDING_DIMENSIONS
 
 
 class KnowledgeBase(DeclarativeBase):
@@ -193,13 +193,3 @@ class SnapshotDocumentRecord(KnowledgeBase):
         ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
         primary_key=True,
     )
-
-
-def validate_embeddings(document: EmbeddedKnowledgeDocument) -> None:
-    """Every vector present has the index's dimensions; absent ones wait for
-    `embed_missing` (IX5, IX7)."""
-    if any(
-        chunk.embedding is not None and len(chunk.embedding) != EMBEDDING_DIMENSIONS
-        for chunk in document.chunks
-    ):
-        raise ValueError(f"every embedding must have {EMBEDDING_DIMENSIONS} dimensions")

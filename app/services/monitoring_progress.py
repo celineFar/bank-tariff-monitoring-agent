@@ -168,7 +168,6 @@ STAGE_LABELS: dict[str, str] = {
     "source_discovery": "Finding tariff evidence",
     "semantic_extraction": "Extracting tariff fields",
     "previous_snapshot": "Checking previous snapshot",
-    "embedding": "Indexing evidence",
     "publication": "Saving tariffs",
     "projection": "Preparing documents",
     "review_approved": "Review approved",

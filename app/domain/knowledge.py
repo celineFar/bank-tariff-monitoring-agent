@@ -70,21 +70,6 @@ class KnowledgeChunk(KnowledgeModel):
         return self
 
 
-class EmbeddedKnowledgeChunk(KnowledgeChunk):
-    # None until embedded: content under review is stored as text only, and a
-    # quota-deferred run publishes before its vectors (IX5, IX7).
-    embedding: tuple[float, ...] | None = None
-
-    @field_validator("embedding")
-    @classmethod
-    def reject_empty_vector(
-        cls, value: tuple[float, ...] | None
-    ) -> tuple[float, ...] | None:
-        if value is not None and not value:
-            raise ValueError("embedding must not be empty")
-        return value
-
-
 class KnowledgeDocument(KnowledgeModel):
     run_id: UUID
     bank: str = Field(default="ameria", min_length=1, max_length=100)
@@ -141,7 +126,7 @@ class KnowledgeDocument(KnowledgeModel):
 
     @property
     def projection_sha256(self) -> str:
-        """Hash of the projected chunks (vectors excluded), with the schema version.
+        """Hash of the projected chunks, with the schema version.
 
         `content_sha256` is the raw source; this is what the index holds. The
         same bytes projected into other chunks -- another discovery selection,
@@ -149,35 +134,13 @@ class KnowledgeDocument(KnowledgeModel):
         """
         payload = {
             "schema": PROJECTION_SCHEMA_VERSION,
-            "chunks": [
-                chunk.model_dump(mode="json", exclude={"embedding"})
-                for chunk in self.chunks
-            ],
+            "chunks": [chunk.model_dump(mode="json") for chunk in self.chunks],
         }
         return hashlib.sha256(
             json.dumps(
                 payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
             ).encode("utf-8")
         ).hexdigest()
-
-
-class EmbeddedKnowledgeDocument(KnowledgeDocument):
-    chunks: tuple[EmbeddedKnowledgeChunk, ...] = Field(min_length=1)
-
-    @classmethod
-    def text_only(cls, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument:
-        """The document with no vectors yet; `embed_missing` fills them later."""
-        return cls(
-            **document.model_dump(exclude={"chunks"}),
-            chunks=tuple(
-                EmbeddedKnowledgeChunk(**chunk.model_dump())
-                for chunk in document.chunks
-            ),
-        )
-
-    @property
-    def fully_embedded(self) -> bool:
-        return all(chunk.embedding is not None for chunk in self.chunks)
 
 
 class IndexWriteResult(KnowledgeModel):

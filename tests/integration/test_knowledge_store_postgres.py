@@ -18,9 +18,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.domain.knowledge import (
-    EMBEDDING_DIMENSIONS,
-    EmbeddedKnowledgeChunk,
-    EmbeddedKnowledgeDocument,
+    KnowledgeChunk,
+    KnowledgeDocument,
 )
 from app.domain.models import ProductType
 from tests.fixtures.knowledge import store_active_document
@@ -218,12 +217,11 @@ async def test_only_selected_offering_content_reaches_knowledge_chunks(
     )
     await store_active_document(
         session_factory,
-        EmbeddedKnowledgeDocument(
+        KnowledgeDocument(
             **document.model_dump(exclude={"chunks"}),
             chunks=tuple(
-                EmbeddedKnowledgeChunk(
+                KnowledgeChunk(
                     **chunk.model_dump(),
-                    embedding=tuple(0.01 for _ in range(EMBEDDING_DIMENSIONS)),
                 )
                 for chunk in document.chunks
             ),

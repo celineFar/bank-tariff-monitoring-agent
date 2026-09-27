@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
@@ -13,7 +13,6 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from app.domain.acquisition import AcquisitionWarningCode, PageArtifact
 from app.domain.catalog import SeedCatalog, SeedCatalogEntry
 from app.domain.knowledge import (
-    EmbeddedKnowledgeDocument,
     KnowledgeDocument,
     document_version_id,
 )
@@ -54,7 +53,6 @@ from app.services.failure_mapping import (
     describe_failure,
     source_failure_code,
 )
-from app.services.knowledge_index import EmbeddingQuotaExhausted
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.monitoring_progress import (
     PipelineProgress,
@@ -130,10 +128,6 @@ class SemanticExtractionPort(Protocol):
     ) -> SemanticExtractionResult: ...
 
 
-class KnowledgeEmbeddingPort(Protocol):
-    async def embed(self, document: KnowledgeDocument) -> EmbeddedKnowledgeDocument: ...
-
-
 class OfferingPipelineError(RuntimeError):
     def __init__(self, stage: str, failure_code: str, cause: Exception) -> None:
         super().__init__(f"{stage} failed: {type(cause).__name__}")
@@ -161,7 +155,6 @@ class IndexingPipeline:
         discovery: SourceDiscoveryPort,
         extraction: SemanticExtractionPort,
         projection: KnowledgeProjectionService,
-        embedder: KnowledgeEmbeddingPort,
         snapshots: MonitoringSnapshotRepository,
         publications: OfferingPublicationRepository,
         runs: RunRepository | None = None,
@@ -179,7 +172,6 @@ class IndexingPipeline:
         self._discovery = discovery
         self._extraction = extraction
         self._projection = projection
-        self._embedder = embedder
         self._snapshots = snapshots
         self._publications = publications
         self._runs = runs
@@ -424,39 +416,17 @@ class IndexingPipeline:
                 OfferingFailureCode.SOURCE_DISCOVERY_FAILED.value,
                 ValueError("source discovery selected no projectable documents"),
             )
+        # Stored as text: the documents anchor each fact's evidence (version,
+        # checksum) and are what a reviewer reads; nothing embeds them.
         documents: tuple[KnowledgeDocument, ...] = source_documents
-        if snapshot.status is SnapshotStatus.ACCEPTED:
-            documents = (
-                *documents,
-                self._projection.project_summary(
-                    run_id=run_id,
-                    product=offering.product,
-                    offering_id=offering.offering_id,
-                    display_name=offering.display_name,
-                    source_url=offering.seed_url,
-                    value=snapshot,
-                    language=offering.language or artifact.language or "en",
-                ),
-            )
-        embedded, index_deferred = await stage(
-            "embedding",
-            "indexing.embedding_failed",
-            (
-                self._embed_all_or_defer(documents)
-                if snapshot.status is SnapshotStatus.ACCEPTED
-                # Content under review is stored as text only: nothing is spent
-                # on vectors a reviewer may reject. Approval embeds it (IX5).
-                else self._text_only(documents)
-            ),
-        )
-        selected = {document.document_key: document for document in embedded}
+        selected = {document.document_key: document for document in documents}
         manifest_items = tuple(
             _manifest_item(
                 run_id=run_id,
                 offering_execution_id=offering_execution_id,
                 offering=offering,
                 document=document,
-                embedded_by_key=selected,
+                published_by_key=selected,
             )
             for document in bundle.documents
         )
@@ -465,12 +435,11 @@ class IndexingPipeline:
             items=manifest_items,
             source_count=len(manifest_items),
             selected_count=sum(item.selected for item in manifest_items),
-            document_count=len(embedded),
-            chunk_count=sum(len(document.chunks) for document in embedded),
+            document_count=len(documents),
+            chunk_count=sum(len(document.chunks) for document in documents),
             warning_codes=(
                 *(warning.code.value for warning in artifact.warnings),
                 *(warning.code.value for warning in bundle.warnings),
-                *(("indexing.embedding_deferred",) if index_deferred else ()),
             ),
             timings=tuple(timings),
         )
@@ -481,7 +450,7 @@ class IndexingPipeline:
             self._publications.publish(
                 OfferingPublication(
                     offering_execution_id=offering_execution_id,
-                    documents=embedded,
+                    documents=documents,
                     snapshot=snapshot,
                     changes=(change_set if change_set and change_set.changes else None),
                     manifests=manifest.items,
@@ -522,48 +491,6 @@ class IndexingPipeline:
             )
             return None
 
-    async def _embed_all_or_defer(
-        self, documents: Sequence[KnowledgeDocument]
-    ) -> tuple[tuple[EmbeddedKnowledgeDocument, ...], bool]:
-        """Embed the corpus, or publish it as text when the provider is out of quota.
-
-        A quota refusal says the request was well-formed and the window has
-        moved, so losing a run that was acquired, extracted and validated is the
-        wrong trade. The documents are published anyway: those embedded before
-        the refusal with their vectors, the rest as text only. The snapshot's
-        set is activated as usual, so lexical search serves the new tariff at
-        once, and the worker's `embed_missing` sweep fills the vectors when the
-        quota returns (IX7).
-
-        Every other embedding failure still raises: a malformed response or a
-        dimension mismatch is a defect, not a window to wait out.
-        """
-        embedded: list[EmbeddedKnowledgeDocument] = []
-        for index, document in enumerate(documents):
-            try:
-                embedded.append(await self._embedder.embed(document))
-            except EmbeddingQuotaExhausted:
-                logger.warning(
-                    "embedding deferred for lack of provider quota; publishing "
-                    "%s of %s documents as text for the embedding sweep",
-                    len(documents) - index,
-                    len(documents),
-                )
-                embedded.extend(
-                    EmbeddedKnowledgeDocument.text_only(item)
-                    for item in documents[index:]
-                )
-                return tuple(embedded), True
-        return tuple(embedded), False
-
-    @staticmethod
-    async def _text_only(
-        documents: Sequence[KnowledgeDocument],
-    ) -> tuple[tuple[EmbeddedKnowledgeDocument, ...], bool]:
-        return tuple(
-            EmbeddedKnowledgeDocument.text_only(item) for item in documents
-        ), False
-
     @staticmethod
     async def _stage(
         stage: str,
@@ -578,7 +505,7 @@ class IndexingPipeline:
             raise
         except Exception as exc:
             code = source_failure_code(exc, stage=stage).value
-            if stage in {"embedding", "publication", "previous_snapshot"}:
+            if stage in {"publication", "previous_snapshot"}:
                 code = (
                     failure_code.value
                     if hasattr(failure_code, "value")
@@ -1038,9 +965,9 @@ def _manifest_item(
     offering_execution_id: UUID,
     offering: SeedCatalogEntry,
     document,
-    embedded_by_key: dict[str, EmbeddedKnowledgeDocument],
+    published_by_key: dict[str, KnowledgeDocument],
 ) -> SourceManifestItem:
-    embedded = embedded_by_key.get(document.id)
+    embedded = published_by_key.get(document.id)
     return SourceManifestItem(
         id=uuid4(),
         run_id=run_id,

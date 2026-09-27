@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
-from app.domain.knowledge import EmbeddedKnowledgeDocument
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import SnapshotChangeSet, validate_offering_product
 
@@ -233,6 +232,3 @@ class ReviewSnapshotUpdate(ReviewModel):
     # Audit events written in the same transaction as the decision, e.g.
     # `review_citation_outside_shown_units` (RV13): {"event_type", "payload"}.
     audit_events: tuple[dict[str, JsonValue], ...] = ()
-    # The final snapshot's offering summary, text only, set on the decision that
-    # activates the snapshot; activation adds it to the snapshot's set (IX6).
-    summary: EmbeddedKnowledgeDocument | None = None

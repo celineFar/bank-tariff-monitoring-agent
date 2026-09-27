@@ -1,11 +1,12 @@
-"""Document versions, snapshot sets and activation for the RAG index.
+"""Document versions, snapshot sets and activation for the evidence store.
 
 Called inside the caller's transaction, under the offering's publication
 advisory lock: the offering publication repository (a run's documents) and the
 review repository (an approval's activation and a rejection's clean-up).
 
 - A version row is immutable: one projection of one source's bytes. Storing it
-  again only refreshes bookkeeping and fills vectors still missing (IX2).
+  again only refreshes bookkeeping (IX2). Versions are stored as text: they
+  anchor fact evidence and are read by reviewers; nothing embeds them.
 - A snapshot owns the versions it was built from (`snapshot_documents`).
 - Activating a snapshot makes its set the offering's whole active index and
   retires everything else of the offering (IX1).
@@ -17,13 +18,13 @@ from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.knowledge import (
-    EmbeddedKnowledgeDocument,
     IndexWriteResult,
+    KnowledgeDocument,
     chunk_content_sha256,
     document_version_id,
     version_chunk_id,
@@ -31,23 +32,20 @@ from app.domain.knowledge import (
 from app.repositories.knowledge_records import (
     KnowledgeChunkRecord,
     KnowledgeDocumentRecord,
-    validate_embeddings,
 )
 
 
 async def store_document_version(
     session: AsyncSession,
-    document: EmbeddedKnowledgeDocument,
+    document: KnowledgeDocument,
     now: datetime,
 ) -> IndexWriteResult:
     """Insert a version if absent; never change an existing version's content.
 
     New rows start inactive (`pending_review`); only `activate_snapshot_set`
-    makes a version searchable. On an existing row, the upsert refreshes
-    bookkeeping (last seen, retrieval time, document metadata) and fills a
-    chunk's vector if it has none yet.
+    makes a version current. On an existing row, the upsert refreshes
+    bookkeeping (last seen, retrieval time, document metadata).
     """
-    validate_embeddings(document)
     version_id = document_version_id(document)
     chunk_ids = tuple(
         version_chunk_id(version_id, chunk.ordinal) for chunk in document.chunks
@@ -126,27 +124,12 @@ async def store_document_version(
             extraction_method=chunk.extraction_method,
             quality_score=chunk.quality_score,
             extra_metadata=chunk.metadata,
-            embedding=list(chunk.embedding) if chunk.embedding is not None else None,
             is_active=False,
             retired_at=None,
             created_at=now,
             updated_at=now,
         )
-        if chunk.embedding is None:
-            await session.execute(statement.on_conflict_do_nothing())
-            continue
-        await session.execute(
-            statement.on_conflict_do_update(
-                index_elements=[KnowledgeChunkRecord.id],
-                set_={
-                    "embedding": func.coalesce(
-                        KnowledgeChunkRecord.embedding, statement.excluded.embedding
-                    ),
-                    "updated_at": now,
-                },
-                where=KnowledgeChunkRecord.embedding.is_(None),
-            )
-        )
+        await session.execute(statement.on_conflict_do_nothing())
     chunks_created = len(set(chunk_ids) - existing_chunk_ids)
     return IndexWriteResult(
         document_id=version_id,

@@ -9,7 +9,7 @@ from typing import Protocol
 from app.domain.models import OfferingId, ProductType
 from app.repositories.embedding_cache import PostgresEmbeddingCache
 from app.repositories.structured_tariff_query import UnitEmbeddingInput
-from app.services.knowledge_index import (
+from app.services.embedding_providers import (
     GeminiEmbeddingProvider,
     GeminiQueryEmbeddingProvider,
 )
@@ -143,20 +143,4 @@ class StructuredUnitEmbeddingService:
                 ),
                 limit=min(remaining, 500),
             )
-        return filled
-
-
-class CombinedEmbeddingSweep:
-    """One sweep over knowledge chunks, then structured retrieval units."""
-
-    def __init__(self, *sweeps) -> None:
-        self._sweeps = tuple(sweep for sweep in sweeps if sweep is not None)
-
-    async def embed_missing(self, *, limit: int = 200) -> int:
-        filled = 0
-        for sweep in self._sweeps:
-            remaining = limit - filled
-            if remaining <= 0:
-                break
-            filled += await sweep.embed_missing(limit=remaining)
         return filled

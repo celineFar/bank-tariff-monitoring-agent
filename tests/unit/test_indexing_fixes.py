@@ -7,17 +7,16 @@ tests/integration/test_indexing_fixes_postgres.py.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 
-from app.config import load_seed_catalog
 from app.config.models import RagSettings
 from app.domain.acquisition import SourceLocator, SourceType
 from app.domain.knowledge import KnowledgeChunk, KnowledgeDocument, document_version_id
 from app.domain.models import OfferingId, ProductType
-from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
+from app.domain.monitoring import SnapshotStatus
 from app.domain.normalization import (
     NormalizedBlock,
     NormalizedBlockType,
@@ -28,7 +27,6 @@ from app.domain.normalization import (
     NormalizedTableRow,
     SourceReference,
 )
-from app.domain.semantic_extraction import ExtractionField
 from app.domain.source_discovery import (
     Authority,
     DecisionSource,
@@ -41,16 +39,7 @@ from app.domain.source_discovery import (
 )
 from app.services import monitoring_pipeline
 from app.services.knowledge_projection import KnowledgeProjectionService
-from app.services.review_decisions import ReviewDecisionService
 from tests.unit.test_monitoring_pipeline import _indexing, _offering
-from tests.unit.test_multi_review_approval import (
-    OPEN_FIELDS,
-    _decision,
-    _extraction,
-    _Reviews,
-    _Snapshots,
-    _task,
-)
 
 NOW = datetime(2026, 9, 26, tzinfo=UTC)
 URL = "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
@@ -119,159 +108,20 @@ def test_ix2_same_source_bytes_with_other_chunks_is_another_version() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ix5_review_required_run_embeds_nothing_and_publishes_text(
+async def test_ix5_review_required_run_publishes_its_documents_as_text(
     monkeypatch,
 ) -> None:
     _review_required(monkeypatch)
-    service, events, publications = _indexing()
+    service, _, publications = _indexing()
 
     await service.refresh(_offering(), uuid4(), uuid4())
 
-    assert [event for event in events if event[0] == "embed"] == []
     published = publications.values[-1]
     assert published.snapshot.status is SnapshotStatus.REVIEW_REQUIRED
     assert published.documents
-    assert all(
-        chunk.embedding is None
-        for document in published.documents
-        for chunk in document.chunks
-    )
-
-
-# IX6 -------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_ix6_final_decision_carries_a_summary_of_the_final_snapshot() -> None:
-    from app.services.knowledge_projection import OfferingSummaryProjector
-
-    extraction = _extraction()
-    snapshot_id = uuid4()
-    snapshot = SnapshotAttempt(
-        id=snapshot_id,
-        run_id=uuid4(),
-        offering_execution_id=uuid4(),
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=OfferingId.OVERDRAFT,
-        status=SnapshotStatus.REVIEW_REQUIRED,
-        normalized_tariff={},
-        semantic_extraction=extraction.model_dump(mode="json"),
-        validation={"accepted": False, "review_signals": []},
-        canonical_sha256="a" * 64,
-        created_at=NOW,
-    )
-    snapshots = _Snapshots(snapshot)
-    tasks = [_task(snapshot_id, field) for field in OPEN_FIELDS]
-    reviews = _Reviews(tasks, snapshots)
-    service = ReviewDecisionService(
-        reviews,
-        snapshots,
-        summaries=OfferingSummaryProjector(
-            KnowledgeProjectionService(), load_seed_catalog()
-        ),
-    )
-    name = "Overdrafts via Cards not secured with property"
-
-    await service.apply(
-        tasks[0].id,
-        _decision(ExtractionField.PRODUCT_NAME, name),
-        reviewer="reviewer-1",
-    )
-    assert reviews.updates[0].summary is None  # not ready: nothing to publish
-    await service.apply(
-        tasks[1].id,
-        _decision(ExtractionField.COLLATERAL, "none"),
-        reviewer="reviewer-1",
-    )
-
-    final = reviews.updates[-1]
-    assert final.ready_for_activation is True
-    assert final.summary is not None
-    assert final.summary.document_key == "offering-summary:overdraft"
-    assert name in final.summary.chunks[0].content
-    assert all(chunk.embedding is None for chunk in final.summary.chunks)
-
-
-class _Vectors:
-    def __init__(self, *, fail: Exception | None = None) -> None:
-        self.offerings: list[OfferingId | None] = []
-        self.fail = fail
-
-    async def embed_missing(self, *, offering_id=None, limit: int = 200) -> int:
-        self.offerings.append(offering_id)
-        if self.fail is not None:
-            raise self.fail
-        return 1
-
-
-def _overdraft_review_batch():
-    extraction = _extraction()
-    snapshot_id = uuid4()
-    snapshot = SnapshotAttempt(
-        id=snapshot_id,
-        run_id=uuid4(),
-        offering_execution_id=uuid4(),
-        product=ProductType.CONSUMER_LOAN,
-        offering_id=OfferingId.OVERDRAFT,
-        status=SnapshotStatus.REVIEW_REQUIRED,
-        normalized_tariff={},
-        semantic_extraction=extraction.model_dump(mode="json"),
-        validation={"accepted": False, "review_signals": []},
-        canonical_sha256="a" * 64,
-        created_at=NOW,
-    )
-    snapshots = _Snapshots(snapshot)
-    tasks = [_task(snapshot_id, field) for field in OPEN_FIELDS]
-    return snapshots, tasks, _Reviews(tasks, snapshots)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("fail", [None, RuntimeError("quota")])
-async def test_ix5_approval_embeds_the_activated_documents_after_the_last_decision(
-    fail,
-) -> None:
-    snapshots, tasks, reviews = _overdraft_review_batch()
-    vectors = _Vectors(fail=fail)
-    service = ReviewDecisionService(reviews, snapshots, vectors=vectors)
-
-    await service.apply(
-        tasks[0].id,
-        _decision(ExtractionField.PRODUCT_NAME, "Overdraft"),
-        reviewer="reviewer-1",
-    )
-    assert vectors.offerings == []  # nothing activated yet
-    decided = await service.apply(
-        tasks[1].id,
-        _decision(ExtractionField.COLLATERAL, "none"),
-        reviewer="reviewer-1",
-    )
-
-    # Best effort: a failure is left to the sweep and never fails the decision.
-    assert decided.status.value == "approved"
-    assert vectors.offerings == [OfferingId.OVERDRAFT]
 
 
 # IX7 -------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_ix7_quota_refusal_publishes_the_corpus_as_text() -> None:
-    service, _, publications = _indexing(out_of_quota=True)
-
-    result = await service.refresh(_offering(), uuid4(), uuid4())
-
-    published = publications.values[-1]
-    assert {document.document_kind.value for document in published.documents} == {
-        "source",
-        "offering_summary",
-    }
-    assert all(
-        chunk.embedding is None
-        for document in published.documents
-        for chunk in document.chunks
-    )
-    assert "indexing.embedding_deferred" in result.manifest.warning_codes
-    assert result.manifest.document_count == 2
 
 
 # IX10 / IX13 -----------------------------------------------------------------
@@ -422,37 +272,6 @@ def test_ix10_a_chunk_starting_mid_section_opens_with_its_heading_path() -> None
 
 
 # IX11 ------------------------------------------------------------------------
-
-
-def test_ix11_summary_of_the_same_values_hashes_equal_at_different_times() -> None:
-    def summary(created_at: datetime):
-        snapshot = SnapshotAttempt(
-            id=uuid4(),
-            run_id=uuid4(),
-            offering_execution_id=uuid4(),
-            product=ProductType.CONSUMER_LOAN,
-            offering_id=OfferingId.CONSUMER_STANDARD,
-            status=SnapshotStatus.ACCEPTED,
-            normalized_tariff={"interest_rate": {"max": "13.5", "min": "13.5"}},
-            canonical_sha256="c" * 64,
-            created_at=created_at,
-            accepted_at=created_at,
-        )
-        return KnowledgeProjectionService().project_summary(
-            run_id=snapshot.run_id,
-            product=ProductType.CONSUMER_LOAN,
-            offering_id=OfferingId.CONSUMER_STANDARD,
-            display_name="Consumer loans",
-            source_url=URL,
-            value=snapshot,
-            language="en",
-        )
-
-    first = summary(NOW)
-    later = summary(NOW + timedelta(days=1))
-
-    assert first.content_sha256 == later.content_sha256
-    assert first.metadata["as_of"] != later.metadata["as_of"]
 
 
 # IX14 ------------------------------------------------------------------------

@@ -1,7 +1,7 @@
-"""Write knowledge documents straight into the RAG tables, for retrieval tests.
+"""Write knowledge documents straight into the evidence document tables.
 
 Production writes go through the offering publication repository; tests that only
-need rows to search use this instead of building runs, snapshots and publications.
+need stored rows use this instead of building runs, snapshots and publications.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.domain.knowledge import (
-    EmbeddedKnowledgeDocument,
+    KnowledgeDocument,
     chunk_content_sha256,
     document_version_id,
     version_chunk_id,
@@ -19,16 +19,14 @@ from app.domain.knowledge import (
 from app.repositories.knowledge_records import (
     KnowledgeChunkRecord,
     KnowledgeDocumentRecord,
-    validate_embeddings,
 )
 
 
 async def store_active_document(
     session_factory: async_sessionmaker[AsyncSession],
-    document: EmbeddedKnowledgeDocument,
+    document: KnowledgeDocument,
 ) -> None:
     """Insert one document version and its chunks as active."""
-    validate_embeddings(document)
     version_id = document_version_id(document)
     now = datetime.now(UTC)
     async with session_factory() as session, session.begin():
@@ -76,7 +74,6 @@ async def store_active_document(
                 extraction_method=chunk.extraction_method,
                 quality_score=chunk.quality_score,
                 extra_metadata=chunk.metadata,
-                embedding=list(chunk.embedding) if chunk.embedding else None,
                 is_active=True,
                 retired_at=None,
                 created_at=now,

@@ -203,11 +203,11 @@ class MonitoringWorker:
         return completed
 
     async def sweep_embeddings(self) -> int:
-        """Embed active chunks stored text-only; never raises (IX7).
+        """Embed active retrieval units stored without a vector; never raises.
 
-        An approval activates its documents before their vectors exist, and a
-        quota refusal publishes a run as text; lexical search serves both until
-        this fills the vectors.
+        Publication and approval write units as text; the field finder's lexical
+        search serves them until this fills the vectors (units are never
+        embedded on the request path).
         """
         if self._embeddings is None or self._embedding_sweep_batch <= 0:
             return 0

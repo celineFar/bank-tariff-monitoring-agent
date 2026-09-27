@@ -13,11 +13,6 @@ from app.domain.catalog import (
     SeedCatalog,
     SeedCatalogEntry,
 )
-from app.domain.knowledge import (
-    EMBEDDING_DIMENSIONS,
-    EmbeddedKnowledgeChunk,
-    EmbeddedKnowledgeDocument,
-)
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     MonitoringRun,
@@ -59,7 +54,6 @@ from app.domain.source_discovery import (
     SourceDiscoveryResult,
     TemporalStatus,
 )
-from app.services.knowledge_index import EmbeddingQuotaExhausted
 from app.services.knowledge_projection import KnowledgeProjectionService
 from app.services.monitoring_pipeline import (
     IndexingPipeline,
@@ -291,30 +285,6 @@ class _Extraction:
         return _extraction()
 
 
-class _Embedder:
-    def __init__(self, events, *, fail=False, out_of_quota=False):
-        self.events = events
-        self.fail = fail
-        self.out_of_quota = out_of_quota
-
-    async def embed(self, document):
-        self.events.append(("embed", document.document_kind.value))
-        if self.out_of_quota:
-            raise EmbeddingQuotaExhausted("embedding provider error 429")
-        if self.fail:
-            raise RuntimeError("embedding unavailable")
-        return EmbeddedKnowledgeDocument(
-            **document.model_dump(exclude={"chunks"}),
-            chunks=tuple(
-                EmbeddedKnowledgeChunk(
-                    **chunk.model_dump(),
-                    embedding=tuple(0.01 for _ in range(EMBEDDING_DIMENSIONS)),
-                )
-                for chunk in document.chunks
-            ),
-        )
-
-
 class _Snapshots:
     async def get_latest_accepted(self, **kwargs):
         return None
@@ -333,7 +303,7 @@ class _Publications:
         )
 
 
-def _indexing(*, fail_embedding=False, out_of_quota=False, audit_archive=None):
+def _indexing(*, audit_archive=None, snapshots=None):
     events = []
     publications = _Publications()
     service = IndexingPipeline(
@@ -342,8 +312,7 @@ def _indexing(*, fail_embedding=False, out_of_quota=False, audit_archive=None):
         discovery=_Discovery(events),
         extraction=_Extraction(events),
         projection=KnowledgeProjectionService(),
-        embedder=_Embedder(events, fail=fail_embedding, out_of_quota=out_of_quota),
-        snapshots=_Snapshots(),
+        snapshots=snapshots or _Snapshots(),
         publications=publications,
         audit_archive=audit_archive,
     )
@@ -362,21 +331,21 @@ async def test_indexing_refresh_wires_existing_stages_and_publishes_once() -> No
         "discover",
         "extract",
     ]
-    assert [event for event in events if event[0] == "embed"] == [
-        ("embed", "source"),
-        ("embed", "offering_summary"),
-    ]
     assert len(publications.values) == 1
     assert result.manifest.source_count == 1
     assert result.manifest.selected_count == 1
-    assert result.manifest.document_count == 2
+    # The source document only: no offering summary, and nothing is embedded.
+    assert result.manifest.document_count == 1
+    assert all(
+        document.document_kind.value == "source"
+        for document in publications.values[0].documents
+    )
     assert result.manifest.items[0].document_id is not None
     assert {timing.stage for timing in result.manifest.timings} >= {
         "acquisition",
         "normalization",
         "source_discovery",
         "semantic_extraction",
-        "embedding",
         "publication",
     }
     audit = publications.values[0].audit_metadata
@@ -385,45 +354,16 @@ async def test_indexing_refresh_wires_existing_stages_and_publishes_once() -> No
 
 @pytest.mark.asyncio
 async def test_indexing_failure_before_publication_leaves_state_untouched() -> None:
-    service, _, publications = _indexing(fail_embedding=True)
+    class Unreadable:
+        async def get_latest_accepted(self, **kwargs):
+            raise RuntimeError("database away")
+
+    service, _, publications = _indexing(snapshots=Unreadable())
 
     with pytest.raises(OfferingPipelineError) as captured:
         await service.refresh(_offering(), uuid4(), uuid4())
 
-    assert captured.value.stage == "embedding"
-    assert captured.value.failure_code == "indexing.embedding_failed"
-    assert publications.values == []
-
-
-@pytest.mark.asyncio
-async def test_a_quota_refusal_publishes_the_snapshot_and_its_corpus_as_text() -> None:
-    """A validated run must survive a provider quota window (IX7).
-
-    The snapshot is published with its documents, text only: the set is
-    activated, lexical search serves it at once, and the embedding sweep fills
-    the vectors later. Publishing nothing would leave the previous corpus (and
-    its summary) answering for the new tariff.
-    """
-    service, _, publications = _indexing(out_of_quota=True)
-
-    result = await service.refresh(_offering(), uuid4(), uuid4())
-
-    published = publications.values[-1]
-    assert published.snapshot is result.snapshot
-    assert published.documents
-    assert not any(document.fully_embedded for document in published.documents)
-    # And the deferral is auditable rather than silent.
-    assert "indexing.embedding_deferred" in result.manifest.warning_codes
-
-
-@pytest.mark.asyncio
-async def test_only_a_quota_refusal_is_deferred() -> None:
-    """A malformed response is a defect, not a window to wait out."""
-    service, _, publications = _indexing(fail_embedding=True)
-
-    with pytest.raises(OfferingPipelineError):
-        await service.refresh(_offering(), uuid4(), uuid4())
-
+    assert captured.value.stage == "previous_snapshot"
     assert publications.values == []
 
 
@@ -687,7 +627,6 @@ async def test_indexing_refresh_persists_progress_before_each_stage() -> None:
         "source_discovery",
         "semantic_extraction",
         "previous_snapshot",
-        "embedding",
         "publication",
     ]
 
@@ -795,7 +734,6 @@ async def test_indexing_refresh_reports_start_and_completion_of_every_stage() ->
         "source_discovery",
         "semantic_extraction",
         "previous_snapshot",
-        "embedding",
         "publication",
     ]
     assert [(item.kind.value, item.stage) for item in sink.items] == [
@@ -991,7 +929,6 @@ async def test_sd7_projection_indexes_only_the_selected_blocks() -> None:
         discovery=_Discovery(events),
         extraction=_Extraction(events),
         projection=KnowledgeProjectionService(),
-        embedder=_Embedder(events),
         snapshots=_Snapshots(),
         publications=publications,
     )
@@ -1048,7 +985,6 @@ async def test_pdf_selection_runs_before_normalization_when_the_page_links_pdfs(
         discovery=_Discovery(events),
         extraction=_Extraction(events),
         projection=KnowledgeProjectionService(),
-        embedder=_Embedder(events),
         snapshots=_Snapshots(),
         publications=publications,
     )
