@@ -770,7 +770,7 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 8: Live validation
 
-- [ ] Rebuild and restart the stack (`docker compose up --build -d`), worker included.
+- [x] Rebuild and restart the stack (`docker compose up --build -d`), worker included.
 - [ ] Reject or supersede the 22 old pending reviews from the 2026-09-27 run so they do
       not mix with the new run (human decision; `POST /api/v1/reviews/abort-pending`).
 - [ ] **(paid, ≈ $2.5)** Run both families through `POST /api/v1/runs` (the prompt
@@ -787,7 +787,26 @@ marked **(paid)** with an estimate at the repository's list prices.
 - [ ] Compare with the 2026-09-27 baseline (`metadata.baseline_2026_09_27`): Q2, Q3,
       Q5, Q6, Q10, Q11, Q15 should move to correct; Q1 should mention 17% and 15%.
 - [ ] Write `scenario-results.md` here and update this plan's Summary statuses.
-- [ ] Stop the worker or set `SCHEDULE_ENABLED=false` if the stack stays up unattended.
+- [x] Stop the worker or set `SCHEDULE_ENABLED=false` if the stack stays up unattended.
+
+**Phase 8 notes (in progress: paused before the paid run, for approval).**
+
+- **Local `.env` changed** (git-ignored; the previous file is kept as
+  `env.before-phase8` in the session scratchpad): `SEMANTIC_EXTRACTION_PROMPT_VERSION`
+  6 → 7, `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` 3 → 6, and `SCHEDULE_ENABLED=false`
+  added, so the rebuilt worker executes API runs but starts no daily run.
+- **Rebuilt** `api` and `worker` on `e94fe2e` with the local compose override
+  (`COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml`, API on port 8081). Health
+  check OK; the worker logs "daily scheduled monitoring is disabled"; the only startup
+  warning is the pre-existing "Failed to build response JSON schema for monitoring".
+- **The 22 old reviews were left pending.** Rejecting them is a human decision (and the
+  admin call needs `X-Review-Admin-Token`). A new run supersedes an older pending review
+  of the same offering and field, and a new accepted publication supersedes all pending
+  reviews of that offering's older snapshots, so the new run's reviews do not need them
+  cleared first.
+- **Waiting for approval to spend** about $2.5 (both families; PDF transcriptions and
+  most discovery assessments are cached, extraction is not) and about $0.30 (the 15
+  questions). A human is needed for the reviews the run raises.
 
 ## Deployment (not part of this plan: needs human approval)
 
