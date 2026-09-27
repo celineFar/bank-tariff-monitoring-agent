@@ -1,7 +1,7 @@
 # First iteration: fix plan
 
 Date: 2026-09-27 · Branch: `fix/1st-iteration` (from `integration/process-fixes` at
-`09e5181`) · Status: **in progress** (see each phase's notes). Sources: the seed-URL evaluation
+`09e5181`) · Status: **implemented and validated live** (Phases 0–8; 4 reviews await a human; deployment needs approval). Results: [scenario-results.md](scenario-results.md). Sources: the seed-URL evaluation
 [`tests/eval/seed_url_eval_2026-09-27.json`](../../tests/eval/seed_url_eval_2026-09-27.json)
 (15 questions against live ameriabank.am ground truth) and the review diagnosis of the
 same day (22 pending reviews traced to their causes). Four solution choices were asked
@@ -52,27 +52,27 @@ Ameria's own site (hero vs. table), which the system should report, not resolve.
 
 | ID | Problem | Found in | Severity | Status |
 |---|---|---|---|---|
-| F1 | Family rankings omit offerings with no published data and do not say so | Q1, Q2, Q3 | **high** | planned |
-| F2 | A single-currency offering's rate is stored without a currency | Q1 | medium | planned |
-| F3 | "Terms" is interpreted as loan length only | Q6 | medium | planned |
-| F4 | After an abstention the agent offers monitoring whatever the cause | Q5, Q9, Q10, Q11, Q15 | medium | planned |
-| F5 | "Not published by the bank" is indistinguishable from "not captured" | Q9 | medium | planned |
-| F6 | The catalog intro opens every new conversation | all | low | planned |
-| F7 | Long or "…"-stitched citation quotes fail validation | 10 reviews | **high** | planned |
-| F8 | One invalid field discards the whole extraction call | 8 reviews (Commercial) | **high** | planned |
-| F9 | The page-header rule discards the hero banner | 2 reviews (+ hidden values on 4 offerings) | **high** | planned |
-| F10 | The income-verification check rejects Ameria's wording | 3 reviews, 4 failed repairs | **high** | planned |
-| F11 | Broken JSON in `value_json` goes straight to review | 3 reviews | medium | planned |
-| F12 | Repair budget and priority skip the fields that become reviews | Primary, Secondary | medium | planned |
-| F13 | A required field the source omits can never be resolved | 3 reviews (Diaspora, No-income) | **high** | planned |
-| F14 | A citation points at the wrong evidence item | 1 review (Secondary) | low | watch |
-| F15 | Every fee carries the whole fee field's citations | Q4 | medium | planned |
-| F16 | Citations name internal ids, not sections a person can find | Q1, Q3, Q4 | low | planned |
-| F17 | Collateral/vehicle service fees are listed for an unsecured credit line | Q4 | low | planned |
-| F18 | A transient page-fetch failure fails the offering | Secondary, Renovation | medium | planned |
-| F19 | Pipeline model calls are recorded without a run id | cost ledger | low | planned |
-| F20 | A schema failure is logged only as "1 error(s)" | Commercial | low | planned |
-| F21 | The daily scheduler cannot be switched off | operations | low | planned |
+| F1 | Family rankings omit offerings with no published data and do not say so | Q1, Q2, Q3 | **high** | **fixed** |
+| F2 | A single-currency offering's rate is stored without a currency | Q1 | medium | **fixed** |
+| F3 | "Terms" is interpreted as loan length only | Q6 | medium | **fixed** |
+| F4 | After an abstention the agent offers monitoring whatever the cause | Q5, Q9, Q10, Q11, Q15 | medium | **fixed** |
+| F5 | "Not published by the bank" is indistinguishable from "not captured" | Q9 | medium | **fixed** |
+| F6 | The catalog intro opens every new conversation | all | low | **fixed** |
+| F7 | Long or "…"-stitched citation quotes fail validation | 10 reviews | **high** | **fixed** |
+| F8 | One invalid field discards the whole extraction call | 8 reviews (Commercial) | **high** | **fixed** |
+| F9 | The page-header rule discards the hero banner | 2 reviews (+ hidden values on 4 offerings) | **high** | **fixed** |
+| F10 | The income-verification check rejects Ameria's wording | 3 reviews, 4 failed repairs | **high** | **fixed** |
+| F11 | Broken JSON in `value_json` goes straight to review | 3 reviews | medium | **no code needed (1 residual, R2)** |
+| F12 | Repair budget and priority skip the fields that become reviews | Primary, Secondary | medium | **fixed** |
+| F13 | A required field the source omits can never be resolved | 3 reviews (Diaspora, No-income) | **high** | **fixed** |
+| F14 | A citation points at the wrong evidence item | 1 review (Secondary) | low | **did not recur** |
+| F15 | Every fee carries the whole fee field's citations | Q4 | medium | **fixed** |
+| F16 | Citations name internal ids, not sections a person can find | Q1, Q3, Q4 | low | **fixed** |
+| F17 | Collateral/vehicle service fees are listed for an unsecured credit line | Q4 | low | **fixed** |
+| F18 | A transient page-fetch failure fails the offering | Secondary, Renovation | medium | **fixed** |
+| F19 | Pipeline model calls are recorded without a run id | cost ledger | low | **fixed** |
+| F20 | A schema failure is logged only as "1 error(s)" | Commercial | low | **fixed** |
+| F21 | The daily scheduler cannot be switched off | operations | low | **fixed** |
 
 F7, F8, F9, F10 and F11 together remove 18 of the 22 reviews; F13 resolves 3 more with a
 single human confirmation each; F14 is the remaining one.
@@ -771,42 +771,48 @@ marked **(paid)** with an estimate at the repository's list prices.
 ### Phase 8: Live validation
 
 - [x] Rebuild and restart the stack (`docker compose up --build -d`), worker included.
-- [ ] Reject or supersede the 22 old pending reviews from the 2026-09-27 run so they do
-      not mix with the new run (human decision; `POST /api/v1/reviews/abort-pending`).
-- [ ] **(paid, ≈ $2.5)** Run both families through `POST /api/v1/runs` (the prompt
+- [x] Reject or supersede the 22 old pending reviews from the 2026-09-27 run so they do
+      not mix with the new run. (Superseded automatically by the new run; no admin call.)
+- [x] **(paid, $1.63 spent)** Run both families through `POST /api/v1/runs` (the prompt
       version bump invalidates the extraction cache).
-- [ ] Record per offering: published / reviews (by reason) / failed; target is at most
+- [x] Record per offering: published / reviews (by reason) / failed; target is at most
       1 review per offering, and none from F7–F11 causes.
 - [ ] A human decides the remaining reviews in `./tariff-chat` ("review them"),
-      using "confirm not stated" where the source omits the field.
-- [ ] Check ledger rows now carry `run_id` (F19) and read the cost per run.
-- [ ] **(paid, ≈ $0.30)** Re-run the 15 seed-URL questions (scratchpad runner or
-      `agents-cli eval generate --dataset tests/eval/datasets/seed-url-ground-truth.json`).
-- [ ] Grade with the deterministic metric (`fact_coverage`, no model cost); optionally
-      **(paid, ≈ $0.30)** the LLM judge with `tests/eval/seed_url_eval_config.yaml`.
-- [ ] Compare with the 2026-09-27 baseline (`metadata.baseline_2026_09_27`): Q2, Q3,
+      using "confirm not stated" where the source omits the field. (4 pending; expected
+      decisions in [scenario-results.md](scenario-results.md).)
+- [x] Check ledger rows now carry `run_id` (F19) and read the cost per run.
+- [x] **(paid, $0.40 spent, two rounds)** Re-run the 15 seed-URL questions (scratchpad
+      runner).
+- [x] Grade with the deterministic metric (`fact_coverage`, no model cost); the optional
+      LLM judge was not run.
+- [x] Compare with the 2026-09-27 baseline (`metadata.baseline_2026_09_27`): Q2, Q3,
       Q5, Q6, Q10, Q11, Q15 should move to correct; Q1 should mention 17% and 15%.
-- [ ] Write `scenario-results.md` here and update this plan's Summary statuses.
+- [x] Write `scenario-results.md` here and update this plan's Summary statuses.
 - [x] Stop the worker or set `SCHEDULE_ENABLED=false` if the stack stays up unattended.
 
-**Phase 8 notes (in progress: paused before the paid run, for approval).**
+**Phase 8 notes (done except the human reviews).**
 
-- **Local `.env` changed** (git-ignored; the previous file is kept as
-  `env.before-phase8` in the session scratchpad): `SEMANTIC_EXTRACTION_PROMPT_VERSION`
-  6 → 7, `SEMANTIC_EXTRACTION_MAX_REPAIRS_PER_RUN` 3 → 6, and `SCHEDULE_ENABLED=false`
-  added, so the rebuilt worker executes API runs but starts no daily run.
-- **Rebuilt** `api` and `worker` on `e94fe2e` with the local compose override
-  (`COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml`, API on port 8081). Health
-  check OK; the worker logs "daily scheduled monitoring is disabled"; the only startup
-  warning is the pre-existing "Failed to build response JSON schema for monitoring".
-- **The 22 old reviews were left pending.** Rejecting them is a human decision (and the
-  admin call needs `X-Review-Admin-Token`). A new run supersedes an older pending review
-  of the same offering and field, and a new accepted publication supersedes all pending
-  reviews of that offering's older snapshots, so the new run's reviews do not need them
-  cleared first.
-- **Waiting for approval to spend** about $2.5 (both families; PDF transcriptions and
-  most discovery assessments are cached, extraction is not) and about $0.30 (the 15
-  questions). A human is needed for the reviews the run raises.
+- **Result:** 10 of 13 offerings published (was 5), 4 reviews (was 22), 0 failed (was 3);
+  15 questions: 12 correct, 1 partial, 2 incorrect (was 7 / 3 / 1 with 4 abstentions);
+  mean fact coverage 0.56 → 0.87. Details and per-offering table:
+  [scenario-results.md](scenario-results.md).
+- **Q2, Q3, Q5, Q10, Q11, Q15 moved to correct; Q6 stayed partial and Q1 did not reach the
+  expected answer**, both because of **R1**: Online Consumer Finance's extraction now
+  reads the generic installment leaflet as its own (6,000,000 maximum, 0% rate), which
+  also made **Q14 incorrect**. R1 is a source-discovery scoping issue for the next
+  iteration (options in scenario-results.md).
+- **P8 bug found and fixed:** the read path's citation check refused the `section` key F16
+  added, so the first question round failed on all 15 (`tool.exception`). Fixed in its own
+  commit; the Postgres integration tests (run for the first time with a scratch
+  `tariff_monitor_test` database in the dev container) cover it. **Run the suite with
+  `TEST_DATABASE_URL=postgresql+asyncpg://tariff:tariff@127.0.0.1:5435/tariff_monitor_test`
+  from now on.**
+- **Residuals:** R2 (Commercial's requirement-policy value broken twice, F11/D3 limit),
+  R3 (a Consumer Loans amount review, a genuine catch).
+- **Stack state left behind:** API and worker running on the fixed code, daily schedule
+  off (`SCHEDULE_ENABLED=false` in the local `.env`); scratch database
+  `tariff_monitor_test` exists in the dev container (drop it with
+  `DROP DATABASE tariff_monitor_test` when no longer needed).
 
 ## Deployment (not part of this plan: needs human approval)
 

@@ -348,3 +348,11 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
 - **Phase 7 (operations).** One in-run fetch retry on transient failures; pipeline model
   calls carry run and offering in the cost ledger; `SCHEDULE_ENABLED=false` switches off
   the daily run. All 31 first-iteration regression tests pass; the suite is at baseline.
+- **Phase 8 (live validation, 2026-09-27).** 10/13 published (was 5), 4 reviews (was 22),
+  0 failed; questions 12 correct / 1 partial / 2 incorrect (was 7/3/1 + 4 abstained);
+  about $2.06 spent. A read-path bug (F16's `section` refused by the citation check) failed
+  the first question round and was fixed; the Postgres integration tests catch it and must
+  be run with `TEST_DATABASE_URL` (scratch `tariff_monitor_test` in the dev container).
+  New for the next iteration: **R1**, the generic installment leaflet read as Online
+  Consumer Finance's own tariff (Q1, Q6, Q14). Open human step: 4 reviews in
+  `./tariff-chat`.
