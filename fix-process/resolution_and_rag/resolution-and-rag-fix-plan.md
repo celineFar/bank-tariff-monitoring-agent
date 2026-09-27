@@ -810,22 +810,60 @@ outside the steps marked **(live)**.
 
 ### Phase 1: Contracts and validation (no model)
 
-- [ ] Add `app/domain/interpretation.py` with `InterpretationRequest`,
+- [x] Add `app/domain/interpretation.py` with `InterpretationRequest`,
       `InterpretationContext`, `RequestInterpretation` and `QueryShape`, all enums and
       bounds as in T1.
-- [ ] Add `QueryOperation.OVERVIEW` and include it in `ANSWERABLE_OPERATIONS`.
-- [ ] Extend `IntentResolution` with `standalone_question`, `query`, `replies_to` and
+- [x] Add `QueryOperation.OVERVIEW` and include it in `ANSWERABLE_OPERATIONS`.
+- [x] Extend `IntentResolution` with `standalone_question`, `query`, `replies_to` and
       `route`. Keep `clarification_response` / `continuation_intent` (D18).
-- [ ] Extend `ConversationResolutionState` with `conversation_language` and
+- [x] Extend `ConversationResolutionState` with `conversation_language` and
       `last_question`. Keep `pending_clarification.original_query` (now the standalone
       question).
-- [ ] Add `app/services/interpretation_validation.py`: V1–V10 as pure functions that
+- [x] Add `app/services/interpretation_validation.py`: V1–V10 as pure functions that
       turn a `RequestInterpretation` and the context into an `IntentResolution`, or a
       clarification.
-- [ ] Unit tests for V1–V10 with hand-written interpretations, including every safety
+- [x] Unit tests for V1–V10 with hand-written interpretations, including every safety
       case from Phase 0.
-- [ ] Add the context builder (session state + pending offer → `InterpretationContext`)
+- [x] Add the context builder (session state + pending offer → `InterpretationContext`)
       with tests.
+
+
+**Phase 1 notes (done).**
+- **The contract:**
+  - [app/domain/interpretation.py](../../app/domain/interpretation.py) has
+    `RequestInterpretation`, `InterpretationContext`, `InterpretationRequest`,
+    `PendingOffer` / `OfferKind` and `route_for`.
+  - `QueryShape`, `ReplyKind` and `Currency` live in
+    [app/domain/query_shape.py](../../app/domain/query_shape.py), so `intent.py` can use
+    them without an import cycle. `interpretation.py` re-exports them.
+- **`InterpretedIntent`** is `RequestIntent` without `clarification_response`. It is the
+  schema Gemini sees, so a reply can only be marked by `replies_to`.
+- **`QueryShape` bounds its fields instead of failing.** It deduplicates them and keeps
+  the first 20. It refuses `current`, which is a scope-only grant code issues.
+- **`IntentResolution` gains** `standalone_question`, `query`, `replies_to`, `accepts`
+  and `route`. **`ConversationResolutionState` gains** `conversation_language` and
+  `last_question`. All have defaults, so stored state and old callers still validate.
+  `OVERVIEW` joins `ANSWERABLE_OPERATIONS`.
+- **Validation:** [app/services/interpretation_validation.py](../../app/services/interpretation_validation.py).
+  - `InterpretationValidator.validate` applies V1–V6 and V9–V10. V7 (failure) and V8
+    (the field finder) are the resolver's and the answer path's.
+  - `build_context` is the context builder, `next_state` the state update, and
+    `offer_accepted` the V4 check the tools use.
+- **Decisions taken in the code:**
+  - **The detected script beats the interpreter's language** for English vs Armenian.
+    The interpreter only settles `mixed`.
+  - **An interpreter-requested clarification is used only with ≥ 2 valid options,**
+    otherwise ignored.
+  - **An unrankable rank proposal becomes an `overview`** of that field over the same
+    scope.
+  - **An `answer` with a `history` shape becomes the history intent.**
+  - **Accepting an offer always takes the offer's scope,** never the interpreter's.
+  - **A declined offer's monitoring intent becomes `unsupported_or_general`.**
+- **Tests:** [tests/unit/test_interpretation_validation.py](../../tests/unit/test_interpretation_validation.py)
+  (26 tests) and the test double
+  [tests/fixtures/interpretations.py](../../tests/fixtures/interpretations.py)
+  (`ScriptedInterpreter`, `interp()`).
+- **Suite:** 1133 passed, 12 xfailed, plus the 4 known Gemini-key failures.
 
 ### Phase 2: The interpreter
 

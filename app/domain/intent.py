@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import validate_offering_product
+from app.domain.query_shape import QueryShape, ReplyKind
 
 
 class IntentModel(BaseModel):
@@ -82,6 +83,13 @@ class IntentResolution(IntentModel):
     candidates: tuple[ResolutionCandidate, ...] = ()
     needs_clarification: bool = False
     expects_single_value: bool = False
+    # From the interpreter, checked by code (fix plan T1/T2).
+    standalone_question: str | None = Field(default=None, max_length=1000)
+    query: QueryShape | None = None
+    replies_to: ReplyKind = ReplyKind.NONE
+    accepts: bool | None = None
+    # The tool that serves the intent, decided by code.
+    route: str | None = None
 
     @model_validator(mode="after")
     def validate_resolution(self) -> IntentResolution:
@@ -160,6 +168,10 @@ class ConversationResolutionState(IntentModel):
     latest_product: ProductType | None = None
     latest_offering_id: OfferingId | None = None
     latest_offering_ids: tuple[OfferingId, ...] = ()
+    # The language the conversation is in, kept for replies without letters.
+    conversation_language: RequestLanguage | None = None
+    # The previous standalone question, for follow-ups ("what about the term?").
+    last_question: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def validate_scope(self) -> ConversationResolutionState:

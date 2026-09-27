@@ -469,6 +469,7 @@ ANSWERABLE_OPERATIONS = frozenset(
         QueryOperation.COMPARE,
         QueryOperation.FAMILY_RANK,
         QueryOperation.HISTORY,
+        QueryOperation.OVERVIEW,
     }
 )
 
