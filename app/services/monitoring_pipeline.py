@@ -10,7 +10,7 @@ from time import perf_counter
 from typing import Protocol, TypeVar
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from app.domain.acquisition import PageArtifact
+from app.domain.acquisition import AcquisitionWarningCode, PageArtifact
 from app.domain.catalog import SeedCatalog, SeedCatalogEntry
 from app.domain.knowledge import (
     EmbeddedKnowledgeDocument,
@@ -26,9 +26,10 @@ from app.domain.monitoring import (
     RunFailureCode,
     RunStatus,
     SnapshotStatus,
+    SourceFailureCode,
     SourceManifestItem,
 )
-from app.domain.normalization import NormalizedSourceBundle
+from app.domain.normalization import NormalizationWarningCode, NormalizedSourceBundle
 from app.domain.pdf_extraction import PdfLinkSelection
 from app.domain.pipeline import IndexingRefreshResult, SourceManifest, StageTiming
 from app.domain.review import (
@@ -69,6 +70,7 @@ from app.services.snapshot_lifecycle import (
     compare_accepted_snapshots,
     evidence_changed,
     non_reviewable_extraction_failure,
+    tariff_fields,
 )
 from app.services.source_selection import (
     build_selected_source_bundle,
@@ -382,6 +384,17 @@ class IndexingPipeline:
             review_rank_gap=self._review_rank_gap,
             selected_sources_markdown=render_normalized_markdown(selected_bundle),
         )
+        unavailable = _unavailable_linked_documents(artifact, bundle)
+        lost = _fields_lost(previous, snapshot) if unavailable else ()
+        if lost:
+            # A linked PDF that failed this once reads as if its values were
+            # withdrawn: publishing would record "value -> not stated", retire
+            # the document, and the next good run would record the reverse.
+            raise OfferingPipelineError(
+                "validation",
+                SourceFailureCode.LINKED_DOCUMENT_UNAVAILABLE.value,
+                LinkedDocumentUnavailable(unavailable, lost),
+            )
         if snapshot.status is SnapshotStatus.REVIEW_REQUIRED and not _review_tasks(
             snapshot
         ):
@@ -871,6 +884,64 @@ class _StageTracker:
         if progress.kind is ProgressKind.STAGE_STARTED:
             self.current_stage = progress.stage
         await report_safely(self._sink, progress)
+
+
+class LinkedDocumentUnavailable(ValueError):
+    """Values the last accepted snapshot had are missing while a linked document
+    could not be read; `reasons` are counts and names, never source text."""
+
+    def __init__(self, documents: tuple[str, ...], fields: tuple[str, ...]) -> None:
+        super().__init__("linked document unavailable")
+        self.reasons = (
+            f"{len(documents)} linked document(s) unavailable",
+            "fields no longer found: " + ", ".join(fields),
+        )
+
+
+_UNREADABLE_PDF = frozenset(
+    {
+        NormalizationWarningCode.ARTIFACT_UNAVAILABLE,
+        NormalizationWarningCode.PDF_MODEL_REQUIRED,
+        NormalizationWarningCode.PDF_MODEL_FAILED,
+    }
+)
+
+
+def _unavailable_linked_documents(
+    artifact: PageArtifact, bundle: NormalizedSourceBundle
+) -> tuple[str, ...]:
+    """Linked documents this run could not download or read.
+
+    A dead link (404) is not one: it is the same on every fetch.
+    """
+    failed = [
+        warning.detail.split(":", 1)[0]
+        for warning in artifact.warnings
+        if warning.code is AcquisitionWarningCode.LINKED_DOCUMENT_FAILED
+    ]
+    failed.extend(
+        warning.source_id
+        for warning in bundle.warnings
+        if warning.code in _UNREADABLE_PDF
+    )
+    return tuple(dict.fromkeys(item for item in failed if item))
+
+
+def _fields_lost(previous, current) -> tuple[str, ...]:
+    """Fields the previous accepted snapshot found that this one does not."""
+    if previous is None:
+        return ()
+    before = tariff_fields(previous.normalized_tariff)
+    after = tariff_fields(current.normalized_tariff)
+
+    def found(value) -> bool:
+        return isinstance(value, dict) and value.get("status") == "found"
+
+    return tuple(
+        name
+        for name, value in sorted(before.items())
+        if found(value) and not found(after.get(name))
+    )
 
 
 def _review_tasks(snapshot) -> tuple[ReviewTask, ...]:

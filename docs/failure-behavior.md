@@ -13,6 +13,7 @@ official evidence gives a reviewer a bounded business choice.
 | Timeout after bounded retry | `source.timeout` | fail offering, no review |
 | Transport failure | `source.transport` | fail offering, no review |
 | HTTP 404 | `source.not_found` | fail required source; optional linked source is recorded as a warning |
+| A linked document could not be downloaded or read (not a 404), and a field the last accepted snapshot found is no longer found | `source.linked_document_unavailable` | fail offering, nothing published; the previous tariffs stay current. Without such a lost field the failure stays a warning |
 | Other terminal HTTP status | `source.http_status` | controlled source failure |
 | Invalid/unsupported MIME | `source.mime_rejected` | reject source, no review |
 | Invalid length or excessive bytes | `source.size_rejected` | reject source, no review |

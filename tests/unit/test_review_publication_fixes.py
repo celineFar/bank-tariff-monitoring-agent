@@ -755,3 +755,88 @@ def test_p6_a_nested_field_is_cited_from_the_extraction() -> None:
             "quote": "Down payment from 15%",
         },
     )
+
+
+# --- P7: a linked document that failed once does not publish a withdrawal ----------
+
+
+def _p7_pipeline(warning_code):
+    from app.domain.acquisition import AcquisitionWarning
+    from tests.fixtures.structured_tariffs import accepted_snapshot
+    from tests.unit.test_monitoring_pipeline import _artifact, _indexing
+
+    service, _, publications = _indexing()
+    artifact = _artifact()
+    if warning_code is not None:
+        artifact = artifact.model_copy(
+            update={
+                "warnings": (
+                    AcquisitionWarning(
+                        code=warning_code, detail="pdf-1: source.timeout"
+                    ),
+                )
+            }
+        )
+
+    class Acquisition:
+        async def acquire(self, url):
+            return artifact
+
+    previous = accepted_snapshot("consumer")
+    previous = previous.model_copy(
+        update={
+            "normalized_tariff": {
+                **previous.normalized_tariff,
+                "details": {
+                    "type": "mortgage",
+                    "down_payment_pct": {"status": "found", "value": [{"v": 20}]},
+                },
+            }
+        }
+    )
+
+    class Snapshots:
+        async def get_latest_accepted(self, **kwargs):
+            return previous
+
+    service._acquisition = Acquisition()
+    service._snapshots = Snapshots()
+    return service, publications
+
+
+@pytest.mark.asyncio
+async def test_p7_a_failed_linked_pdf_does_not_publish_its_values_as_removed() -> None:
+    from uuid import uuid4
+
+    from app.domain.acquisition import AcquisitionWarningCode
+    from app.services.monitoring_pipeline import OfferingPipelineError
+    from tests.unit.test_monitoring_pipeline import _offering
+
+    service, publications = _p7_pipeline(AcquisitionWarningCode.LINKED_DOCUMENT_FAILED)
+
+    with pytest.raises(OfferingPipelineError) as captured:
+        await service.refresh(_offering(), uuid4(), uuid4())
+
+    assert captured.value.failure_code == "source.linked_document_unavailable"
+    assert "down_payment_pct" in " ".join(captured.value.cause_reasons)
+    assert publications.values == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("warning", ["none", "dead_link"])
+async def test_p7_a_dead_link_or_a_clean_fetch_still_publishes(warning) -> None:
+    from uuid import uuid4
+
+    from app.domain.acquisition import AcquisitionWarningCode
+    from tests.unit.test_monitoring_pipeline import _offering
+
+    code = (
+        AcquisitionWarningCode.LINKED_DOCUMENT_MISSING
+        if warning == "dead_link"
+        else None
+    )
+    service, publications = _p7_pipeline(code)
+
+    await service.refresh(_offering(), uuid4(), uuid4())
+
+    assert len(publications.values) == 1

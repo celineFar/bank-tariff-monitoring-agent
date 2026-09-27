@@ -138,6 +138,7 @@ class SourceFailureCode(StrEnum):
     BROWSER_UNAVAILABLE = "source.browser_unavailable"
     BROWSER_FAILED = "source.browser_failed"
     INCOMPLETE_CONTENT = "source.incomplete_content"
+    LINKED_DOCUMENT_UNAVAILABLE = "source.linked_document_unavailable"
 
 
 class IndexingFailureCode(StrEnum):
