@@ -1,0 +1,186 @@
+{
+  "requests_after_ctrl_c": [],
+  "disconnects": [
+    {
+      "t": 1790496778.798,
+      "event": "disconnect",
+      "id": 5,
+      "role": "source_discovery_classifier",
+      "held_s": 1.07
+    },
+    {
+      "t": 1790496778.799,
+      "event": "disconnect",
+      "id": 6,
+      "role": "source_discovery_classifier",
+      "held_s": 1.07
+    },
+    {
+      "t": 1790496778.849,
+      "event": "disconnect",
+      "id": 4,
+      "role": "source_discovery_classifier",
+      "held_s": 1.12
+    },
+    {
+      "t": 1790496787.014,
+      "event": "disconnect",
+      "id": 9,
+      "role": "source_discovery_classifier",
+      "held_s": 1.06
+    },
+    {
+      "t": 1790496787.015,
+      "event": "disconnect",
+      "id": 10,
+      "role": "source_discovery_classifier",
+      "held_s": 1.06
+    },
+    {
+      "t": 1790496787.016,
+      "event": "disconnect",
+      "id": 11,
+      "role": "source_discovery_classifier",
+      "held_s": 1.06
+    },
+    {
+      "t": 1790496794.156,
+      "event": "disconnect",
+      "id": 14,
+      "role": "source_discovery_classifier",
+      "held_s": 1.06
+    },
+    {
+      "t": 1790496794.158,
+      "event": "disconnect",
+      "id": 15,
+      "role": "source_discovery_classifier",
+      "held_s": 1.06
+    },
+    {
+      "t": 1790496794.158,
+      "event": "disconnect",
+      "id": 16,
+      "role": "source_discovery_classifier",
+      "held_s": 1.06
+    }
+  ],
+  "held_open_at_end": [],
+  "runs": [
+    {
+      "id": "16624a84-7382-43db-ad1f-6dba13643e65",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:673837:e7bb0349",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "656bbb94-00bd-47a9-a4ff-3ff034a92a45",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:673837:e7bb0349",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "9d8f5bd8-fcbc-4859-811d-713d9713c3ce",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:673837:e7bb0349",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    }
+  ],
+  "cli_alive": true,
+  "children": [],
+  "idle_cpu_s": 0.0,
+  "scenario": "c13_third_ctrl_c",
+  "step": "second turn",
+  "turns": [
+    {
+      "turn": 1,
+      "notice": "Monitoring cancelled.",
+      "cli_alive": true,
+      "output_after_ctrl_c": "urce documents \u00b7 2s\u2838   Reading source documents \u00b7 2s\u2838   Reading source documents \u00b7 2s\n  \u2713 Reading source documents \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 3s\n\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence\u2026\u2838   Finding tariff evidence\u2026\u283c   Finding tariff evidence\u2026\u2834   Finding tariff evidence\u2026\u2826   Finding tariff evidence\u2026\u2827   Finding tariff evidence\u2026\u2807   Finding tariff evidence\u2026\u280f   Finding tariff evidence\u2026\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence \u00b7 1s^C\u2838   Finding tariff evidence \u00b7 1s\u2838   Finding tariff evidence \u00b7 1s\n\u2022 Monitoring cancelled.\nYou > ",
+      "pressed": 1790496778.7947052
+    },
+    {
+      "turn": 2,
+      "notice": "Monitoring cancelled.",
+      "cli_alive": true,
+      "output_after_ctrl_c": "rce documents \u00b7 3s\u2839   Reading source documents \u00b7 3s\u2834   Reading source documents \u00b7 3s\u2834   Reading source documents \u00b7 3s\n  \u2713 Reading source documents \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 4s\n\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence\u2026\u2838   Finding tariff evidence\u2026\u283c   Finding tariff evidence\u2026\u2834   Finding tariff evidence\u2026\u2826   Finding tariff evidence\u2026\u2827   Finding tariff evidence\u2026\u2807   Finding tariff evidence\u2026\u280f   Finding tariff evidence\u2026\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence \u00b7 1s^C\u2839   Finding tariff evidence \u00b7 1s\n\u2022 Monitoring cancelled.\nYou > ",
+      "pressed": 1790496786.977569
+    },
+    {
+      "turn": 3,
+      "notice": "Monitoring cancelled.",
+      "cli_alive": true,
+      "output_after_ctrl_c": "urce documents \u00b7 2s\u2839   Reading source documents \u00b7 2s\u2838   Reading source documents \u00b7 2s\n  \u2713 Reading source documents \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 3s\n\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence\u2026\u2838   Finding tariff evidence\u2026\u283c   Finding tariff evidence\u2026\u2834   Finding tariff evidence\u2026\u2826   Finding tariff evidence\u2026\u2827   Finding tariff evidence\u2026\u2807   Finding tariff evidence\u2026\u280f   Finding tariff evidence\u2026\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence \u00b7 1s^C\u2838   Finding tariff evidence \u00b7 1s\u2838   Finding tariff evidence \u00b7 1s\n\u2022 Monitoring cancelled.\nYou > ",
+      "pressed": 1790496794.1420796
+    }
+  ]
+}

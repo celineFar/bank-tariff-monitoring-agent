@@ -1,0 +1,38 @@
+{
+  "scenario": "w03_docker_stop",
+  "exited_within_docker_grace_s": null,
+  "run_state_after_sigkill": [
+    {
+      "id": "5c7a92ad-3981-4a82-90ee-f0d84f05dae4",
+      "status": "running",
+      "error_code": null,
+      "claimed_by": "ip-172-31-32-93:128722049380912",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "running",
+          "current_stage": "source_discovery",
+          "failure_code": null
+        }
+      ],
+      "audits": []
+    }
+  ],
+  "run_state_after_worker_restart": [
+    {
+      "id": "5c7a92ad-3981-4a82-90ee-f0d84f05dae4",
+      "status": "running",
+      "error_code": null,
+      "claimed_by": "ip-172-31-32-93:128722049380912",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "running",
+          "current_stage": "source_discovery",
+          "failure_code": null
+        }
+      ],
+      "audits": []
+    }
+  ]
+}

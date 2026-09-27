@@ -33,9 +33,11 @@ from app.domain.knowledge import (
 )
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
+    LeaseState,
     ManifestItemStatus,
     OfferingPublication,
     OfferingRunStatus,
+    RunCancelOutcome,
     RunCommand,
     RunStatus,
     RunTrigger,
@@ -440,6 +442,109 @@ async def test_abandoned_running_run_is_failed_and_family_can_restart(
     assert failed.failure_code == "run.abandoned"
     assert replacement.created is True
     assert replacement.run.id != submitted.run.id
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_heartbeat_keeps_an_old_claim_from_being_recovered(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    submitted = await repository.submit(_command())
+    assert await repository.claim(submitted.run.id, "worker-1") is not None
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE monitoring_runs SET claimed_at = now() - interval '2 hours'"
+                " WHERE id = :id"
+            ),
+            {"id": submitted.run.id},
+        )
+
+    assert await repository.heartbeat(submitted.run.id, "worker-1") is LeaseState.HELD
+    recovered = await repository.recover_abandoned(
+        before=datetime.now(UTC) - timedelta(minutes=2)
+    )
+
+    assert recovered == 0  # a long run that still beats is not abandoned
+    # Another owner's beat does not renew this lease.
+    assert await repository.heartbeat(submitted.run.id, "worker-2") is LeaseState.LOST
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_closes_what_nobody_executes_and_asks_a_live_owner(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    queued = await repository.submit(_command())
+    owned = await repository.submit(_command(ProductType.MORTGAGE))
+    assert await repository.claim(owned.run.id, "worker-1") is not None
+    execution = await repository.create_offering_execution(
+        owned.run.id, ProductType.MORTGAGE, OfferingId.MORTGAGE_PRIMARY
+    )
+    await repository.start_offering_execution(execution.id, stage="acquisition")
+
+    # Queued: nobody executes it, so it closes at once.
+    assert (
+        await repository.cancel_run(queued.run.id, requested_by="cli:host:1:a")
+        is RunCancelOutcome.CANCELLED
+    )
+    closed = await repository.get(queued.run.id)
+    assert closed is not None and closed.failure_code == "run.cancelled"
+    assert await repository.claim(queued.run.id, "worker-1") is None
+
+    # Running under a live worker: the worker is asked, and hears it on its beat.
+    assert (
+        await repository.cancel_run(owned.run.id, requested_by="cli:host:1:a")
+        is RunCancelOutcome.REQUESTED
+    )
+    still = await repository.get(owned.run.id)
+    assert still is not None and still.status is RunStatus.RUNNING
+    assert (
+        await repository.heartbeat(owned.run.id, "worker-1")
+        is LeaseState.CANCEL_REQUESTED
+    )
+
+    # The owner itself (a cancelled claim that never executed) closes it now.
+    assert (
+        await repository.cancel_run(owned.run.id, requested_by="worker-1")
+        is RunCancelOutcome.CANCELLED
+    )
+    executions = await repository.list_offering_executions(owned.run.id)
+    assert executions[0].failure_code == "run.cancelled"
+    assert await repository.heartbeat(owned.run.id, "worker-1") is (LeaseState.RELEASED)
+    assert (
+        await repository.cancel_run(owned.run.id, requested_by="cli:host:1:a")
+        is RunCancelOutcome.NOT_ACTIVE
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_closes_a_run_whose_owner_stopped_beating(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    repository = PostgresRunRepository(monitoring_session_factory)
+    submitted = await repository.submit(_command())
+    assert await repository.claim(submitted.run.id, "worker-dead") is not None
+    async with monitoring_session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "UPDATE monitoring_runs SET claimed_at = now() - interval '10 minutes'"
+                " WHERE id = :id"
+            ),
+            {"id": submitted.run.id},
+        )
+
+    outcome = await repository.cancel_run(
+        submitted.run.id,
+        requested_by="cli:host:1:a",
+        stale_before=datetime.now(UTC) - timedelta(minutes=2),
+    )
+
+    assert outcome is RunCancelOutcome.CANCELLED
+    # The dead owner, should it come back, learns the run is no longer its own.
+    assert await repository.heartbeat(submitted.run.id, "worker-dead") is (
+        LeaseState.RELEASED
+    )
 
 
 @pytest.mark.asyncio

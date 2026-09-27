@@ -396,6 +396,8 @@ def build_application_container(
         answer_router=answer_router,
         owner=owner,
         poll_seconds=settings.tariff_queries.run_poll_seconds,
+        heartbeat_seconds=settings.scheduler.run_heartbeat_seconds,
+        lease_seconds=settings.scheduler.run_lease_seconds,
     )
 
     return ApplicationContainer(

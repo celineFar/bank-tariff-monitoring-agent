@@ -1,0 +1,219 @@
+/home/ubuntu/second-monitor/app/agent.py:81: UserWarning: [EXPERIMENTAL] ResumabilityConfig: This feature is experimental and may change or be removed in future versions without notice. It may introduce breaking changes at any time.
+  resumability_config=ResumabilityConfig(is_resumable=True),
+=== x01_submit_claim_window
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:root:Failed to build response JSON schema for monitoring
+Traceback (most recent call last):
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/google/adk/tools/_function_tool_declarations.py", line 271, in _build_response_json_schema
+    return adapter.json_schema()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/type_adapter.py", line 733, in json_schema
+    return schema_generator_instance.generate(self.core_schema, mode=mode)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 422, in generate
+    json_schema: JsonSchemaValue = self.generate_inner(schema)
+                                   ~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 585, in generate_inner
+    json_schema = current_handler(schema)
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/_internal/_schema_generation_shared.py", line 37, in __call__
+    return self.handler(core_schema)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 518, in handler_func
+    json_schema = generate_for_schema_type(schema_or_field)
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 928, in is_instance_schema
+    return self.handle_invalid_for_json_schema(schema, f'core_schema.IsInstanceSchema ({schema["cls"]})')
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 2457, in handle_invalid_for_json_schema
+    raise PydanticInvalidForJsonSchema(f'Cannot generate a JsonSchema for {error_info}')
+pydantic.errors.PydanticInvalidForJsonSchema: Cannot generate a JsonSchema for core_schema.IsInstanceSchema (<class 'collections.abc.AsyncIterator'>)
+
+For further information visit https://errors.pydantic.dev/2.13/u/invalid-for-json-schema
+/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/google/adk/models/llm_request.py:298: UserWarning: [EXPERIMENTAL] feature FeatureName.JSON_SCHEMA_FOR_FUNC_DECL is enabled.
+  declaration = tool._get_declaration()
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_adk.google.adk.runners:Root node ameria_tariff_monitor was cancelled.
+• Monitoring cancelled.
+{
+ "scenario": "x01_submit_claim_window",
+ "runs_after_cancel": [
+  {
+   "id": "81df834e-c102-46cd-921a-fb370fcab24b",
+   "status": "queued",
+   "error_code": null,
+   "claimed_by": null,
+   "executions": [],
+   "audits": []
+  }
+ ]
+}
+=== x02_claim_execute_window
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:root:Failed to build response JSON schema for monitoring
+Traceback (most recent call last):
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/google/adk/tools/_function_tool_declarations.py", line 271, in _build_response_json_schema
+    return adapter.json_schema()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/type_adapter.py", line 733, in json_schema
+    return schema_generator_instance.generate(self.core_schema, mode=mode)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 422, in generate
+    json_schema: JsonSchemaValue = self.generate_inner(schema)
+                                   ~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 585, in generate_inner
+    json_schema = current_handler(schema)
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/_internal/_schema_generation_shared.py", line 37, in __call__
+    return self.handler(core_schema)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 518, in handler_func
+    json_schema = generate_for_schema_type(schema_or_field)
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 928, in is_instance_schema
+    return self.handle_invalid_for_json_schema(schema, f'core_schema.IsInstanceSchema ({schema["cls"]})')
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 2457, in handle_invalid_for_json_schema
+    raise PydanticInvalidForJsonSchema(f'Cannot generate a JsonSchema for {error_info}')
+pydantic.errors.PydanticInvalidForJsonSchema: Cannot generate a JsonSchema for core_schema.IsInstanceSchema (<class 'collections.abc.AsyncIterator'>)
+
+For further information visit https://errors.pydantic.dev/2.13/u/invalid-for-json-schema
+WARNING:google_adk.google.adk.runners:Root node ameria_tariff_monitor was cancelled.
+• Monitoring cancelled.
+↳ A run for overdraft started by another chat is already in progress — following
+it.
+WARNING:google_adk.google.adk.runners:Root node ameria_tariff_monitor was cancelled.
+• Monitoring cancelled.
+{
+ "scenario": "x02_claim_execute_window",
+ "runs_after_cancel": [
+  {
+   "id": "91a84327-dab9-43e8-b60a-f12d354b49dc",
+   "status": "running",
+   "error_code": null,
+   "claimed_by": "cli:ip-172-31-32-93:632926:42ced2ae",
+   "executions": [],
+   "audits": []
+  }
+ ],
+ "second_request_finished_within_12s": false,
+ "model_requests_during_second_request": [
+  "ameria_tariff_monitor",
+  "ameria_tariff_monitor"
+ ],
+ "runs_at_end": [
+  {
+   "id": "91a84327-dab9-43e8-b60a-f12d354b49dc",
+   "status": "running",
+   "error_code": null,
+   "claimed_by": "cli:ip-172-31-32-93:632926:42ced2ae",
+   "executions": [],
+   "audits": []
+  }
+ ]
+}
+=== x03_leftovers_after_cancel
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:google_genai._api_client:Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.
+WARNING:root:Failed to build response JSON schema for monitoring
+Traceback (most recent call last):
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/google/adk/tools/_function_tool_declarations.py", line 271, in _build_response_json_schema
+    return adapter.json_schema()
+           ~~~~~~~~~~~~~~~~~~~^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/type_adapter.py", line 733, in json_schema
+    return schema_generator_instance.generate(self.core_schema, mode=mode)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 422, in generate
+    json_schema: JsonSchemaValue = self.generate_inner(schema)
+                                   ~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 585, in generate_inner
+    json_schema = current_handler(schema)
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/_internal/_schema_generation_shared.py", line 37, in __call__
+    return self.handler(core_schema)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 518, in handler_func
+    json_schema = generate_for_schema_type(schema_or_field)
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 928, in is_instance_schema
+    return self.handle_invalid_for_json_schema(schema, f'core_schema.IsInstanceSchema ({schema["cls"]})')
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/pydantic/json_schema.py", line 2457, in handle_invalid_for_json_schema
+    raise PydanticInvalidForJsonSchema(f'Cannot generate a JsonSchema for {error_info}')
+pydantic.errors.PydanticInvalidForJsonSchema: Cannot generate a JsonSchema for core_schema.IsInstanceSchema (<class 'collections.abc.AsyncIterator'>)
+
+For further information visit https://errors.pydantic.dev/2.13/u/invalid-for-json-schema
+▶ Monitoring 1 consumer loan offerings
+  ✓ Acquiring web content ··················· 0s
+  ✓ Choosing the offering's documents ······· 0s
+  ✓ Reading source documents ················ 3s
+WARNING:google_adk.google.adk.runners:Root node source_discovery_classifier was cancelled.
+WARNING:google_adk.google.adk.runners:Root node source_discovery_classifier was cancelled.
+WARNING:google_adk.google.adk.runners:Root node source_discovery_classifier was cancelled.
+WARNING:google_adk.google.adk.runners:Root node ameria_tariff_monitor was cancelled.
+• Monitoring cancelled.
+{
+ "scenario": "x03_leftovers_after_cancel",
+ "tasks_before_turn": [],
+ "task_count_during_step": 13,
+ "tasks_3s_after_cancel": [],
+ "threads_before_turn": [
+  "asyncio_0 daemon=False"
+ ],
+ "threads_3s_after_cancel": [
+  "asyncio_0 daemon=False",
+  "asyncio_1 daemon=False",
+  "asyncio_2 daemon=False"
+ ],
+ "held_requests_disconnected": [
+  4,
+  5,
+  6
+ ],
+ "requests_after_cancel": [],
+ "runs": [
+  {
+   "id": "72622ac9-1b97-4dfd-8020-6f7d95c3d171",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:632926:ac424f3f",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "source_discovery",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "source_discovery",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "source_discovery"
+     }
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{"t": 1790493905.953, "event": "request", "id": 1, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
+{"t": 1790493905.953, "event": "response", "id": 1, "role": "ameria_tariff_monitor", "status": 200}
+{"t": 1790493906.043, "event": "request", "id": 2, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
+{"t": 1790493906.043, "event": "response", "id": 2, "role": "ameria_tariff_monitor", "status": 200}
+{"t": 1790493906.15, "event": "request", "id": 3, "role": "pdf_link_selector", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
+{"t": 1790493906.15, "event": "response", "id": 3, "role": "pdf_link_selector", "status": 200}
+{"t": 1790493909.154, "event": "request", "id": 4, "role": "source_discovery_classifier", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
+{"t": 1790493909.157, "event": "request", "id": 5, "role": "source_discovery_classifier", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
+{"t": 1790493909.158, "event": "request", "id": 6, "role": "source_discovery_classifier", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
+{"t": 1790493910.17, "event": "disconnect", "id": 5, "role": "source_discovery_classifier", "held_s": 1.01}
+{"t": 1790493910.219, "event": "disconnect", "id": 4, "role": "source_discovery_classifier", "held_s": 1.06}
+{"t": 1790493910.222, "event": "disconnect", "id": 6, "role": "source_discovery_classifier", "held_s": 1.06}

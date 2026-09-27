@@ -220,6 +220,9 @@ _FAILURE_EXPLANATIONS = {
     RunFailureCode.INTERRUPTED: (
         "the chat session running it closed before it finished"
     ),
+    RunFailureCode.ABANDONED: (
+        "the process running it stopped responding before it finished"
+    ),
 }
 
 

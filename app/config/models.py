@@ -432,6 +432,19 @@ class SchedulerSettings(SettingsGroup):
     timezone: str = "Asia/Yerevan"
     hour: int = Field(default=6, ge=0, le=23)
     minute: int = Field(default=0, ge=0, le=59)
+    # The lease an executing process (worker or chat) holds on its run: it
+    # renews the heartbeat this often, and a run silent for `run_lease_seconds`
+    # is closed as abandoned by any worker (every `run_recovery_interval_seconds`)
+    # or chat. A stop requested by another process is noticed at the next beat.
+    run_heartbeat_seconds: float = Field(default=5.0, gt=0, le=60)
+    run_lease_seconds: float = Field(default=120.0, ge=30, le=3600)
+    run_recovery_interval_seconds: float = Field(default=60.0, ge=5, le=3600)
+
+    @model_validator(mode="after")
+    def validate_lease(self) -> SchedulerSettings:
+        if self.run_lease_seconds < 4 * self.run_heartbeat_seconds:
+            raise ValueError("RUN_LEASE_SECONDS must cover at least 4 heartbeats")
+        return self
 
     @field_validator("timezone")
     @classmethod

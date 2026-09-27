@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import secrets
+import signal
 import socket
 import threading
 from dataclasses import dataclass, replace
@@ -252,6 +253,8 @@ class ProgressRenderer:
         self._offerings = 1
         self._run_started: float | None = None
         self.saw_monitoring = False
+        # Set when this turn follows a run another process executes.
+        self.followed = False
 
     def render(self, event: Event) -> None:
         metadata = event.custom_metadata or {}
@@ -344,6 +347,7 @@ class ProgressRenderer:
                 detail = (item.detail or "finished").replace("_", " ")
                 _notice(f"Monitoring {detail} after {elapsed}", tone="yellow")
         elif item.kind is ProgressKind.FOLLOWING:
+            self.followed = True
             self.stop()
             _notice(item.detail or "Following a run started elsewhere", symbol="↳")
 
@@ -405,6 +409,22 @@ class ChatSession:
         self.renderer = renderer or ProgressRenderer()
         self.displays = displays
         self._invocation_id: str | None = None
+        self._turn: asyncio.Task | None = None
+
+    def interrupt(self, fallback: asyncio.Task) -> None:
+        """Ctrl-C: cancel the running turn; at the prompt, cancel `fallback`.
+
+        Installed as the loop's SIGINT handler, so every press is a clean
+        cancellation. asyncio's own handler cancels only on the first press and
+        raises KeyboardInterrupt afterwards, which killed the CLI on the third
+        press without closing the run.
+        """
+        if self._turn is not None:
+            # A finished turn is still closing (rewind, notices): let it.
+            if not self._turn.done():
+                self._turn.cancel()
+            return
+        fallback.cancel()
 
     async def events(self) -> list[Event]:
         session = await self.sessions.get_session(
@@ -444,9 +464,11 @@ class ChatSession:
         """One user message; Ctrl-C (task cancellation) cancels and rewinds it."""
         self._invocation_id = None
         self.renderer.saw_monitoring = False
+        self.renderer.followed = False
         turn = asyncio.create_task(
             self.run_turn(types.Content(role="user", parts=[types.Part(text=text)]))
         )
+        self._turn = turn
         try:
             await turn
         except asyncio.CancelledError:
@@ -472,11 +494,19 @@ class ChatSession:
                     '"review them" to continue.',
                     tone="yellow",
                 )
+            elif monitoring and self.renderer.followed:
+                # The run belongs to another process; the node asked it to stop.
+                _notice(
+                    "Monitoring cancelled. The run started elsewhere was asked to "
+                    "stop and will end within a few seconds.",
+                    tone="yellow",
+                )
             elif monitoring:
                 _notice("Monitoring cancelled.", tone="yellow")
             else:
                 _notice("Cancelled.", tone="yellow")
         finally:
+            self._turn = None
             self.renderer.stop()
 
     async def run_turn(self, message: types.Content) -> None:
@@ -986,6 +1016,10 @@ async def chat(
         renderer=ProgressRenderer(verbose=verbose),
         displays=getattr(container, "review_display", None),
     )
+    loop = asyncio.get_running_loop()
+    main_task = asyncio.current_task()
+    if main_task is not None:
+        loop.add_signal_handler(signal.SIGINT, session.interrupt, main_task)
     try:
         heading = f'Ameria Tariff Chat · conversation "{session_name}"'
         hint = "Type quit to exit. Ctrl-C cancels a running turn."
@@ -1022,6 +1056,7 @@ async def chat(
             except Exception as exc:
                 _print_unexpected_error(exc, "This turn", session_name)
     finally:
+        loop.remove_signal_handler(signal.SIGINT)
         session.renderer.stop()
         configure_services(None, None)
         await container.close()
@@ -1059,7 +1094,8 @@ def main() -> None:
     )
     try:
         asyncio.run(chat(args.user, session_name, verbose=args.verbose, new=args.new))
-    except (KeyboardInterrupt, EOFError):
+    except (KeyboardInterrupt, EOFError, asyncio.CancelledError):
+        # Ctrl-C at the prompt cancels the chat itself: a normal way out.
         console.print()
 
 

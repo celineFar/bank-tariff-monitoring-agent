@@ -86,6 +86,28 @@ class RunFailureCode(StrEnum):
     CANCELLED = "run.cancelled"
     # The process executing the run died; found and closed on its next start.
     INTERRUPTED = "run.interrupted"
+    # Its owner stopped renewing the lease; closed by any worker or chat.
+    ABANDONED = "run.abandoned"
+
+
+class LeaseState(StrEnum):
+    """What the executing process learns when it renews its lease."""
+
+    HELD = "held"
+    # Another process asked the owner to stop (a chat following the run).
+    CANCEL_REQUESTED = "cancel_requested"
+    # Someone else closed the run as abandoned or interrupted; stop at once.
+    LOST = "lost"
+    # The owner's own pipeline already finished or paused the run.
+    RELEASED = "released"
+
+
+class RunCancelOutcome(StrEnum):
+    # Closed now: it was queued, or the caller itself was executing it.
+    CANCELLED = "cancelled"
+    # Another live process executes it; that process was asked to stop.
+    REQUESTED = "requested"
+    NOT_ACTIVE = "not_active"
 
 
 class OfferingFailureCode(StrEnum):

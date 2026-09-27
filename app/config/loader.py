@@ -184,6 +184,9 @@ def load_settings(
             timezone=raw.schedule_timezone,
             hour=raw.schedule_hour,
             minute=raw.schedule_minute,
+            run_heartbeat_seconds=raw.run_heartbeat_seconds,
+            run_lease_seconds=raw.run_lease_seconds,
+            run_recovery_interval_seconds=raw.run_recovery_interval_seconds,
         ),
         observability=ObservabilitySettings(
             log_level=raw.log_level,

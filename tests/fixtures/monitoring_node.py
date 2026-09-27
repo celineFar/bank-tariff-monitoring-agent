@@ -29,9 +29,11 @@ from app.domain.monitoring import (
     AnswerResult,
     AnswerStatus,
     ClaimedRun,
+    LeaseState,
     MonitoringRun,
     OfferingExecution,
     OfferingRunStatus,
+    RunCancelOutcome,
     RunCommand,
     RunFailureCode,
     RunStatus,
@@ -65,6 +67,11 @@ class Runs:
         self.submits: list[RunCommand] = []
         self.claims: list[tuple[UUID, str]] = []
         self.audits: list[tuple[UUID, str]] = []
+        self.heartbeats: list[tuple[UUID, str]] = []
+        self.cancels: list[tuple[UUID, str]] = []
+        self.cancel_requests: set[UUID] = set()
+        self.recoveries = 0
+        self.stale: set[UUID] = set()
 
     # --- RunService -------------------------------------------------------
     async def submit(self, command: RunCommand, *, idempotency_key=None):
@@ -147,6 +154,53 @@ class Runs:
                 )
                 failed += 1
         return failed
+
+    async def heartbeat(self, run_id: UUID, owner: str) -> LeaseState:
+        self.heartbeats.append((run_id, owner))
+        run = self.runs[run_id]
+        if run.status is RunStatus.RUNNING and self.owners.get(run_id) == owner:
+            return (
+                LeaseState.CANCEL_REQUESTED
+                if run_id in self.cancel_requests
+                else LeaseState.HELD
+            )
+        if run.status is RunStatus.RUNNING or run.failure_code in {
+            RunFailureCode.ABANDONED.value,
+            RunFailureCode.INTERRUPTED.value,
+        }:
+            return LeaseState.LOST
+        return LeaseState.RELEASED
+
+    async def cancel_run(
+        self, run_id: UUID, *, requested_by: str, stale_before=None
+    ) -> RunCancelOutcome:
+        self.cancels.append((run_id, requested_by))
+        run = self.runs[run_id]
+        if run.status not in {RunStatus.QUEUED, RunStatus.RUNNING}:
+            return RunCancelOutcome.NOT_ACTIVE
+        if run.status is RunStatus.QUEUED or self.owners.get(run_id) == requested_by:
+            self.set(
+                run_id,
+                status=RunStatus.FAILED,
+                failure_code=RunFailureCode.CANCELLED.value,
+                completed_at=NOW,
+            )
+            return RunCancelOutcome.CANCELLED
+        self.cancel_requests.add(run_id)
+        return RunCancelOutcome.REQUESTED
+
+    async def recover_abandoned(self, *, before) -> int:
+        """Closes the runs a test marked `stale` (their owner died)."""
+        self.recoveries += 1
+        for run_id in self.stale:
+            self.set(
+                run_id,
+                status=RunStatus.FAILED,
+                failure_code=RunFailureCode.ABANDONED.value,
+                completed_at=NOW,
+            )
+        closed, self.stale = len(self.stale), set()
+        return closed
 
     def set(self, run_id: UUID, **update: Any) -> MonitoringRun:
         self.runs[run_id] = self.runs[run_id].model_copy(update=update)
@@ -486,6 +540,8 @@ async def build(
     stage_delay: float = 0.0,
     owner: str = "cli:test-host:1",
     follow_timeout_seconds: float = 5.0,
+    heartbeat_seconds: float = 0.02,
+    lease_seconds: float = 120.0,
 ) -> Harness:
     runs = Runs()
     reviews = Reviews()
@@ -511,6 +567,8 @@ async def build(
         owner=owner,
         poll_seconds=0.01,
         follow_timeout_seconds=follow_timeout_seconds,
+        heartbeat_seconds=heartbeat_seconds,
+        lease_seconds=lease_seconds,
     )
 
     async def run_tariff_monitoring(

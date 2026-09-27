@@ -1,0 +1,87 @@
+{
+  "requests_after_ctrl_c": [],
+  "disconnects": [],
+  "held_open_at_end": [],
+  "runs": [
+    {
+      "id": "59b0fd44-e0e5-47f8-9474-9dda2ee9f3d8",
+      "status": "awaiting_review",
+      "error_code": null,
+      "claimed_by": null,
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "candidate_review",
+          "current_stage": "published",
+          "failure_code": null
+        }
+      ],
+      "audits": [
+        [
+          "offering.published",
+          {
+            "chunks": 12,
+            "changes": 0,
+            "metadata": {
+              "timings": [
+                {
+                  "stage": "acquisition",
+                  "duration_ms": 41
+                },
+                {
+                  "stage": "pdf_selection",
+                  "duration_ms": 34
+                },
+                {
+                  "stage": "normalization",
+                  "duration_ms": 2815
+                },
+                {
+                  "stage": "source_discovery",
+                  "duration_ms": 234
+                },
+                {
+                  "stage": "semantic_extraction",
+                  "duration_ms": 215
+                },
+                {
+                  "stage": "previous_snapshot",
+                  "duration_ms": 4
+                },
+                {
+                  "stage": "embedding",
+                  "duration_ms": 2
+                }
+              ],
+              "warning_codes": [
+                "AMBIGUOUS_TABLE",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL"
+              ],
+              "provenance_changed": false,
+              "acquisition_warnings": []
+            },
+            "documents": 1,
+            "manifests": 11,
+            "snapshot_id": "4574826c-aea6-4f7e-91d6-2f513c41ef7e",
+            "snapshot_status": "review_required"
+          }
+        ]
+      ]
+    }
+  ],
+  "cli_alive": true,
+  "children": [],
+  "idle_cpu_s": 0.0,
+  "scenario": "c08_review_prompt",
+  "step": "review prompt",
+  "notice": "Review postponed"
+}

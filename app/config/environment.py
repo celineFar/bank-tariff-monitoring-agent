@@ -135,6 +135,9 @@ class EnvironmentSettings(BaseSettings):
     schedule_timezone: str = "Asia/Yerevan"
     schedule_hour: int = 6
     schedule_minute: int = 0
+    run_heartbeat_seconds: float = 5.0
+    run_lease_seconds: float = 120.0
+    run_recovery_interval_seconds: float = 60.0
     log_level: str = "INFO"
     log_file: Path | None = None
     log_timezone: str = "Asia/Yerevan"

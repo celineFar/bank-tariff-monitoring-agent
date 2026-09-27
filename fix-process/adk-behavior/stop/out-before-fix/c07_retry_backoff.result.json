@@ -1,0 +1,42 @@
+{
+  "requests_after_ctrl_c": [],
+  "disconnects": [],
+  "held_open_at_end": [],
+  "runs": [
+    {
+      "id": "2a78b443-01a0-4dfe-a8d4-3585b83c34f0",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:626355:014829cb",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "semantic_extraction",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "semantic_extraction",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "semantic_extraction"
+          }
+        ]
+      ]
+    }
+  ],
+  "cli_alive": true,
+  "children": [],
+  "idle_cpu_s": 0.0,
+  "scenario": "c07_retry_backoff",
+  "step": "semantic_extraction backoff",
+  "notice": "Monitoring cancelled."
+}

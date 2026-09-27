@@ -1,0 +1,64 @@
+{
+  "requests_after_ctrl_c": [],
+  "disconnects": [
+    {
+      "t": 1790496818.238,
+      "event": "disconnect",
+      "id": 8,
+      "role": "semantic_loan_extractor",
+      "held_s": 1.12
+    },
+    {
+      "t": 1790496818.238,
+      "event": "disconnect",
+      "id": 9,
+      "role": "semantic_loan_extractor",
+      "held_s": 1.11
+    },
+    {
+      "t": 1790496818.239,
+      "event": "disconnect",
+      "id": 10,
+      "role": "semantic_loan_extractor",
+      "held_s": 1.11
+    }
+  ],
+  "held_open_at_end": [],
+  "runs": [
+    {
+      "id": "c677ae40-0705-4c00-b950-fbb0d9ea50e9",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:674529:07048ca9",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "semantic_extraction",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "semantic_extraction",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "semantic_extraction"
+          }
+        ]
+      ]
+    }
+  ],
+  "cli_alive": true,
+  "children": [],
+  "idle_cpu_s": 0.0,
+  "scenario": "c12_double_ctrl_c",
+  "step": "semantic_extraction, two presses 50 ms apart",
+  "output_after_ctrl_c": "s\u2834   Reading source documents \u00b7 2s\u2826   Reading source documents \u00b7 3s\u2827   Reading source documents \u00b7 3s\u2807   Reading source documents \u00b7 3s\n  \u2713 Reading source documents \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 3s\n\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\n  \u2713 Finding tariff evidence \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 0s\n\u280b   Extracting tariff fields\u2026\u2819   Extracting tariff fields\u2026\u2839   Extracting tariff fields\u2026\u2838   Extracting tariff fields\u2026\u283c   Extracting tariff fields\u2026\u2834   Extracting tariff fields\u2026\u2826   Extracting tariff fields\u2026\u2827   Extracting tariff fields\u2026\u2807   Extracting tariff fields\u2026\u280f   Extracting tariff fields\u2026\u280b   Extracting tariff fields\u2026\u2819   Extracting tariff fields\u2026\u2839   Extracting tariff fields \u00b7 1s\u2838   Extracting tariff fields \u00b7 1s^C\u2838   Extracting tariff fields \u00b7 1s\n\u2022 Monitoring cancelled.\nYou > ^C\n"
+}

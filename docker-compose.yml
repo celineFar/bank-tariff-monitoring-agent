@@ -17,6 +17,9 @@ services:
   worker:
     build: .
     command: ["uv", "run", "python", "-m", "app.worker"]
+    # SIGTERM cancels the run in progress and closes it as run.cancelled;
+    # leave room for those writes before Docker's SIGKILL.
+    stop_grace_period: 30s
     env_file: .env
     environment:
       LOG_FILE: /var/log/tariff-monitor/worker.log

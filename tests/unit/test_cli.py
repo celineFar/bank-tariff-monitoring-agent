@@ -32,6 +32,7 @@ from tests.fixtures.monitoring_node import (
     call,
     function_responses,
     interrupts,
+    queued_run,
     text,
 )
 
@@ -324,6 +325,64 @@ async def test_ctrl_c_cancels_the_run_and_rewinds_the_turn(capsys) -> None:
     harness.model.play()  # next turn: the model just answers
     await session.converse("hello")
     assert "done" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_every_ctrl_c_cancels_the_turn_never_the_chat(capsys) -> None:
+    # asyncio's own SIGINT handler raised KeyboardInterrupt from the second
+    # press on; the third killed the CLI with the run left `running`.
+    harness = await build(block=True)
+    session = _session(harness)
+    chat = asyncio.create_task(asyncio.Event().wait())  # stands in for chat()
+
+    for _ in range(3):
+        harness.pipeline.started.clear()
+        harness.model.play(_monitor())
+        converse = asyncio.create_task(session.converse("monitor overdraft"))
+        await asyncio.wait_for(harness.pipeline.started.wait(), 5)
+        session.interrupt(chat)  # what the loop's SIGINT handler calls
+        await asyncio.wait_for(converse, 5)
+
+    assert not chat.cancelled()
+    chat.cancel()
+    statuses = [(run.status, run.failure_code) for run in harness.runs.runs.values()]
+    assert statuses == [(RunStatus.FAILED, "run.cancelled")] * 3
+    assert capsys.readouterr().out.count("Monitoring cancelled.") == 3
+
+
+@pytest.mark.asyncio
+async def test_ctrl_c_at_the_prompt_leaves_the_chat() -> None:
+    harness = await build()
+    chat = asyncio.create_task(asyncio.Event().wait())
+
+    _session(harness).interrupt(chat)
+
+    with pytest.raises(asyncio.CancelledError):
+        await chat
+
+
+@pytest.mark.asyncio
+async def test_ctrl_c_while_following_says_the_owner_was_asked_to_stop(
+    capsys,
+) -> None:
+    harness = await build()
+    other = harness.runs.add(
+        queued_run().model_copy(
+            update={"status": RunStatus.RUNNING, "started_at": queued_run().queued_at}
+        ),
+        owner="worker-1",
+    )
+    harness.model.play(_monitor())
+    session = _session(harness, owner="cli:test-host:1")
+    converse = asyncio.create_task(session.converse("monitor overdraft"))
+    while not session.renderer.followed:
+        await asyncio.sleep(0.01)
+
+    session.interrupt(asyncio.current_task())
+    await asyncio.wait_for(converse, 5)
+
+    assert other.id in harness.runs.cancel_requests
+    assert "was asked to stop" in capsys.readouterr().out
 
 
 @pytest.mark.asyncio

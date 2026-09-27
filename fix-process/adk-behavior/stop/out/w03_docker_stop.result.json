@@ -1,0 +1,66 @@
+{
+  "scenario": "w03_docker_stop",
+  "exited_within_docker_grace_s": 0.92,
+  "run_state_after_sigkill": [
+    {
+      "id": "51f685ed-f5d7-4d53-8f77-c376b114fd01",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "ip-172-31-32-93:129877758472416",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    }
+  ],
+  "run_state_after_worker_restart": [
+    {
+      "id": "51f685ed-f5d7-4d53-8f77-c376b114fd01",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "ip-172-31-32-93:129877758472416",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    }
+  ]
+}

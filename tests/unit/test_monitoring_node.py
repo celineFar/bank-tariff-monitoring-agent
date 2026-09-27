@@ -222,6 +222,149 @@ async def test_cancelling_the_consumer_cancels_the_run() -> None:
     assert run.failure_code == "run.cancelled"
 
 
+async def _cancel_turn_when(harness, reached: asyncio.Event) -> None:
+    task = asyncio.create_task(harness.turn(text("monitor")))
+    await asyncio.wait_for(reached.wait(), 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_cancelling_between_submit_and_claim_closes_the_queued_run() -> None:
+    # Left queued, the worker would execute it after the user cancelled.
+    harness = await build()
+    harness.model.play(_monitor())
+    reached = asyncio.Event()
+
+    async def claim_never_returns(run_id, owner):
+        reached.set()
+        await asyncio.Event().wait()
+
+    harness.runs.claim = claim_never_returns
+
+    await _cancel_turn_when(harness, reached)
+
+    (run,) = harness.runs.runs.values()
+    assert run.status is RunStatus.FAILED
+    assert run.failure_code == "run.cancelled"
+    assert harness.pipeline.executed == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelling_after_the_claim_before_execution_closes_the_run() -> None:
+    # Left running with no executor, it blocked the offering for the lease.
+    harness = await build()
+    harness.model.play(_monitor())
+    reached = asyncio.Event()
+    real_claim = harness.runs.claim
+
+    async def claim_then_hang(run_id, owner):
+        await real_claim(run_id, owner)
+        reached.set()
+        await asyncio.Event().wait()
+
+    harness.runs.claim = claim_then_hang
+
+    await _cancel_turn_when(harness, reached)
+
+    (run,) = harness.runs.runs.values()
+    assert run.status is RunStatus.FAILED
+    assert run.failure_code == "run.cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancelling_while_following_asks_the_owner_to_stop() -> None:
+    harness = await build()
+    other = harness.runs.add(
+        queued_run().model_copy(
+            update={"status": RunStatus.RUNNING, "started_at": queued_run().queued_at}
+        ),
+        owner="worker-1",
+    )
+    harness.model.play(_monitor())
+    reached = asyncio.Event()
+    real_get = harness.runs.get
+
+    async def get_and_signal(run_id):
+        reached.set()  # the node is polling: it is following
+        return await real_get(run_id)
+
+    harness.runs.get = get_and_signal
+
+    await _cancel_turn_when(harness, reached)
+
+    assert harness.runs.cancels == [(other.id, "cli:test-host:1")]
+    assert other.id in harness.runs.cancel_requests
+    # The owner closes it at its next heartbeat; the chat does not.
+    assert harness.runs.runs[other.id].status is RunStatus.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_a_stop_requested_elsewhere_ends_the_run_this_chat_executes() -> None:
+    harness = await build(block=True)
+    harness.model.play(_monitor())
+    turn = asyncio.create_task(harness.turn(text("monitor")))
+    await asyncio.wait_for(harness.pipeline.started.wait(), 5)
+    (run_id,) = harness.runs.runs
+
+    harness.runs.cancel_requests.add(run_id)  # a following chat pressed Ctrl-C
+    events = await asyncio.wait_for(turn, 5)
+
+    result = function_responses(events, "run_tariff_monitoring")[0]
+    assert result["status"] == "failed"
+    assert result["failure_code"] == "run.cancelled"
+    assert (run_id, "cli:test-host:1") in harness.runs.heartbeats
+
+
+@pytest.mark.asyncio
+async def test_following_a_run_whose_owner_died_ends_within_the_lease() -> None:
+    harness = await build(lease_seconds=0.04, follow_timeout_seconds=30.0)
+    other = harness.runs.add(
+        queued_run().model_copy(
+            update={"status": RunStatus.RUNNING, "started_at": queued_run().queued_at}
+        ),
+        owner="worker-dead",
+    )
+    harness.model.play(_monitor())
+    harness.runs.stale.add(other.id)
+
+    events = await asyncio.wait_for(harness.turn(text("monitor")), 5)
+
+    # The stale run is closed before the submit, so this request runs its own.
+    assert harness.runs.runs[other.id].failure_code == "run.abandoned"
+    result = function_responses(events, "run_tariff_monitoring")[0]
+    assert result["status"] == "succeeded"
+    assert harness.pipeline.executed == 1
+
+
+@pytest.mark.asyncio
+async def test_following_stops_when_the_owner_dies_mid_run() -> None:
+    harness = await build(lease_seconds=0.04, follow_timeout_seconds=30.0)
+    other = harness.runs.add(
+        queued_run().model_copy(
+            update={"status": RunStatus.RUNNING, "started_at": queued_run().queued_at}
+        ),
+        owner="worker-1",
+    )
+    harness.model.play(_monitor())
+    real_get = harness.runs.get
+
+    async def owner_dies_once_followed(run_id):
+        if harness.runs.recoveries >= 1:  # past the pre-submit recovery
+            harness.runs.stale.add(run_id)
+        return await real_get(run_id)
+
+    harness.runs.get = owner_dies_once_followed
+
+    events = await asyncio.wait_for(harness.turn(text("monitor")), 5)
+
+    result = function_responses(events, "run_tariff_monitoring")[0]
+    assert result["followed"] is True
+    assert result["failure_code"] == "run.abandoned"
+    assert harness.runs.runs[other.id].status is RunStatus.FAILED
+
+
 @pytest.mark.asyncio
 async def test_a_run_owned_by_another_process_is_followed_not_executed() -> None:
     harness = await build()

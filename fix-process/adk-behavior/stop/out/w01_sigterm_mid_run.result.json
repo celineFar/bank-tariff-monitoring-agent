@@ -1,0 +1,92 @@
+{
+  "scenario": "w01_sigterm_mid_run",
+  "run_id": "df9e575a-1498-4f18-b843-df945c299235",
+  "exit_s_after_sigterm_while_model_call_held": 0.92,
+  "disconnects_while_held": [
+    {
+      "t": 1790496664.727,
+      "event": "disconnect",
+      "id": 2,
+      "role": "source_discovery_classifier",
+      "held_s": 1.07
+    },
+    {
+      "t": 1790496664.729,
+      "event": "disconnect",
+      "id": 3,
+      "role": "source_discovery_classifier",
+      "held_s": 1.07
+    },
+    {
+      "t": 1790496664.733,
+      "event": "disconnect",
+      "id": 4,
+      "role": "source_discovery_classifier",
+      "held_s": 1.07
+    }
+  ],
+  "run_state_15s_after_sigterm": [
+    {
+      "id": "df9e575a-1498-4f18-b843-df945c299235",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "ip-172-31-32-93:139219066878816",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    }
+  ],
+  "exit_s_after_release": 0.92,
+  "model_requests_after_sigterm": [],
+  "run_state_at_end": [
+    {
+      "id": "df9e575a-1498-4f18-b843-df945c299235",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "ip-172-31-32-93:139219066878816",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    }
+  ]
+}

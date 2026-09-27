@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.domain.models import OfferingId, ProductType
 from app.domain.monitoring import (
     ClaimedRun,
+    LeaseState,
     MonitoringRun,
     OfferingExecution,
     OfferingPublication,
     OfferingRunStatus,
     PublicationResult,
+    RunCancelOutcome,
     RunCommand,
     RunFailureCode,
     RunStatus,
@@ -523,7 +525,7 @@ class PostgresRunRepository:
                             SELECT id
                             FROM monitoring_runs
                             WHERE status = 'running'
-                              AND claimed_at < :before
+                              AND coalesce(heartbeat_at, claimed_at) < :before
                             FOR UPDATE SKIP LOCKED
                             """
                         ),
@@ -565,7 +567,179 @@ class PostgresRunRepository:
                 ),
                 {"run_ids": list(run_ids)},
             )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO audit_events (run_id, event_type, reason_code, payload)
+                    SELECT id, 'run.abandoned', 'run.abandoned', CAST(:payload AS jsonb)
+                    FROM unnest(CAST(:run_ids AS uuid[])) AS id
+                    """
+                ),
+                {
+                    "run_ids": list(run_ids),
+                    "payload": _json({"stale_before": before.isoformat()}),
+                },
+            )
         return len(run_ids)
+
+    async def heartbeat(self, run_id: UUID, owner: str) -> LeaseState:
+        """Renew the lease of a run this owner executes; report what it found."""
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        """
+                        UPDATE monitoring_runs
+                        SET heartbeat_at = now()
+                        WHERE id = :run_id
+                          AND status = 'running'
+                          AND claimed_by = :owner
+                        RETURNING cancel_requested_at
+                        """
+                    ),
+                    {"run_id": run_id, "owner": owner},
+                )
+            ).first()
+            if row is not None:
+                return (
+                    LeaseState.CANCEL_REQUESTED
+                    if row.cancel_requested_at is not None
+                    else LeaseState.HELD
+                )
+            current = (
+                await session.execute(
+                    text(
+                        "SELECT status, error_code FROM monitoring_runs WHERE id = :run_id"
+                    ),
+                    {"run_id": run_id},
+                )
+            ).first()
+        if current is None:
+            raise RunNotFoundError(str(run_id))
+        # Running under another owner, or closed by recovery: this process has
+        # lost the run. Anything else is its own pipeline finishing or pausing.
+        if current.status == RunStatus.RUNNING.value or current.error_code in {
+            RunFailureCode.ABANDONED.value,
+            RunFailureCode.INTERRUPTED.value,
+        }:
+            return LeaseState.LOST
+        return LeaseState.RELEASED
+
+    async def cancel_run(
+        self,
+        run_id: UUID,
+        *,
+        requested_by: str,
+        stale_before: datetime | None = None,
+    ) -> RunCancelOutcome:
+        """Stop a run: close it now if nobody executes it, else ask its owner.
+
+        Closed now: a queued run, a running run the caller itself claimed (it
+        cannot be executing it any more), and a running run whose lease is
+        older than `stale_before`. A run another live process executes gets a
+        cancel request, which the owner reads with its next heartbeat.
+        """
+        requester = requested_by.strip()
+        if not requester or len(requester) > 200:
+            raise ValueError("requested_by must contain 1 to 200 characters")
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT status, claimed_by,
+                               coalesce(heartbeat_at, claimed_at) AS lease_at
+                        FROM monitoring_runs
+                        WHERE id = :run_id
+                        FOR UPDATE
+                        """
+                    ),
+                    {"run_id": run_id},
+                )
+            ).first()
+            if row is None:
+                raise RunNotFoundError(str(run_id))
+            if row.status not in {RunStatus.QUEUED.value, RunStatus.RUNNING.value}:
+                return RunCancelOutcome.NOT_ACTIVE
+            unowned = (
+                row.status == RunStatus.QUEUED.value
+                or row.claimed_by == requester
+                or (
+                    stale_before is not None
+                    and row.lease_at is not None
+                    and row.lease_at < stale_before
+                )
+            )
+            payload = _json({"requested_by": requester, "status": row.status})
+            if not unowned:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE monitoring_runs
+                        SET cancel_requested_at = coalesce(cancel_requested_at, now()),
+                            cancel_requested_by = :requester,
+                            updated_at = now()
+                        WHERE id = :run_id
+                        """
+                    ),
+                    {"run_id": run_id, "requester": requester},
+                )
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO audit_events (run_id, event_type, reason_code, payload)
+                        VALUES (:run_id, 'run.cancel_requested', 'run.cancelled',
+                                CAST(:payload AS jsonb))
+                        """
+                    ),
+                    {"run_id": run_id, "payload": payload},
+                )
+                return RunCancelOutcome.REQUESTED
+            await session.execute(
+                text(
+                    """
+                    UPDATE offering_executions
+                    SET
+                        status = 'failed',
+                        completed_at = now(),
+                        failure_count = failure_count + 1,
+                        failure_code = 'run.cancelled',
+                        failure_detail = 'Cancelled by the caller',
+                        updated_at = now()
+                    WHERE run_id = :run_id
+                      AND status IN ('pending', 'running')
+                    """
+                ),
+                {"run_id": run_id},
+            )
+            await session.execute(
+                text(
+                    """
+                    UPDATE monitoring_runs
+                    SET
+                        status = 'failed',
+                        completed_at = now(),
+                        error_code = 'run.cancelled',
+                        failure_detail = 'Cancelled by the caller',
+                        cancel_requested_at = coalesce(cancel_requested_at, now()),
+                        cancel_requested_by = :requester,
+                        updated_at = now()
+                    WHERE id = :run_id
+                    """
+                ),
+                {"run_id": run_id, "requester": requester},
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO audit_events (run_id, event_type, reason_code, payload)
+                    VALUES (:run_id, 'run.cancelled', 'run.cancelled',
+                            CAST(:payload AS jsonb))
+                    """
+                ),
+                {"run_id": run_id, "payload": payload},
+            )
+        return RunCancelOutcome.CANCELLED
 
     async def finish(
         self,

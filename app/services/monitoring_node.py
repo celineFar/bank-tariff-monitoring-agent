@@ -53,6 +53,12 @@ from app.services.review_resolution import (
     ReviewInputRejected,
     ReviewResolutionService,
 )
+from app.services.run_lease import (
+    RunStopped,
+    execute_with_lease,
+    recover_stale_runs,
+    stop_run,
+)
 from app.services.run_service import RunServicePort, run_covers_command
 
 _YEREVAN = ZoneInfo("Asia/Yerevan")
@@ -64,6 +70,8 @@ PROGRESS_KIND = "monitoring_progress"
 REVIEW_INTERRUPT_PREFIX = "review"
 # Following a run another process owns is bounded; the user can ask again.
 DEFAULT_FOLLOW_TIMEOUT_SECONDS = 1800.0
+DEFAULT_HEARTBEAT_SECONDS = 5.0
+DEFAULT_LEASE_SECONDS = 120.0
 
 
 class AnswerPort(Protocol):
@@ -138,6 +146,8 @@ def build_monitoring_node(
     owner: str,
     poll_seconds: float,
     follow_timeout_seconds: float = DEFAULT_FOLLOW_TIMEOUT_SECONDS,
+    heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS,
+    lease_seconds: float = DEFAULT_LEASE_SECONDS,
     clock: Callable[[], float] = monotonic,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> FunctionNode:
@@ -178,7 +188,24 @@ def build_monitoring_node(
                 offering_id=request.offering_id,
                 trigger=RunTrigger.ADK,
             )
-            submission = await run_service.submit(command)
+            # A run whose owner died must not block this request.
+            await recover_stale_runs(runs, lease_seconds)
+            # Shielded: a Ctrl-C landing mid-submit still learns the run it
+            # created, so it can close it instead of leaving it queued for a
+            # worker to execute after the user cancelled.
+            submit = asyncio.ensure_future(run_service.submit(command))
+            try:
+                submission = await asyncio.shield(submit)
+            except asyncio.CancelledError:
+                await asyncio.wait({submit})
+                if not submit.cancelled() and submit.exception() is None:
+                    await stop_run(
+                        runs,
+                        submit.result().run.id,
+                        requested_by=owner,
+                        lease_seconds=lease_seconds,
+                    )
+                raise
             run, created = submission.run, submission.created
             if not run_covers_command(run, command):
                 yield _result(
@@ -199,47 +226,69 @@ def build_monitoring_node(
             "invocation_id": ctx.invocation_id,
         }
 
-        # 2. Execute it here if nobody has claimed it yet.
-        if run.status is RunStatus.QUEUED:
-            claimed = await runs.claim(run.id, owner)
-            if claimed is not None:
-                stream = stream_progress(
-                    lambda sink: pipeline.execute(claimed.run, progress=sink)
-                )
-                async for item in stream:
-                    yield _progress_event(item)
-                run = await _reload(runs, run.id)
-
-        # 3. Otherwise follow the process that owns it (the one remaining poll).
         followed = False
-        if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
-            followed = True
-            async for event in _follow(
-                runs,
-                run,
-                poll_seconds=poll_seconds,
-                timeout_seconds=follow_timeout_seconds,
-                clock=clock,
-                sleep=sleep,
-            ):
-                yield event
-            run = await _reload(runs, run.id)
-            if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
-                yield (
-                    await _outcome(
-                        runs,
-                        run,
-                        request,
-                        status="still_running",
-                        created=created,
-                        followed=True,
-                        message=(
-                            "The run started elsewhere is still going; ask for "
-                            "its status later."
-                        ),
+        try:
+            # 2. Execute it here if nobody has claimed it yet.
+            if run.status is RunStatus.QUEUED:
+                claimed = await runs.claim(run.id, owner)
+                if claimed is not None:
+                    stream = stream_progress(
+                        lambda sink: execute_with_lease(
+                            runs,
+                            claimed.run.id,
+                            owner,
+                            lambda: pipeline.execute(claimed.run, progress=sink),
+                            heartbeat_seconds=heartbeat_seconds,
+                        )
                     )
-                ).model_dump(mode="json")
-                return
+                    try:
+                        async for item in stream:
+                            yield _progress_event(item)
+                    except RunStopped as stopped:
+                        # Another process asked for the stop; the pipeline
+                        # closed the run, and the outcome below reports it.
+                        logger.info("monitoring run stopped: %s", stopped)
+                    run = await _reload(runs, run.id)
+
+            # 3. Otherwise follow the process that owns it (the one remaining poll).
+            if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
+                followed = True
+                async for event in _follow(
+                    runs,
+                    run,
+                    poll_seconds=poll_seconds,
+                    timeout_seconds=follow_timeout_seconds,
+                    recovery_seconds=max(poll_seconds, lease_seconds / 4),
+                    recover=lambda: recover_stale_runs(runs, lease_seconds),
+                    clock=clock,
+                    sleep=sleep,
+                ):
+                    yield event
+                run = await _reload(runs, run.id)
+                if run.status in {RunStatus.QUEUED, RunStatus.RUNNING}:
+                    yield (
+                        await _outcome(
+                            runs,
+                            run,
+                            request,
+                            status="still_running",
+                            created=created,
+                            followed=True,
+                            message=(
+                                "The run started elsewhere is still going; ask "
+                                "for its status later."
+                            ),
+                        )
+                    ).model_dump(mode="json")
+                    return
+        except (asyncio.CancelledError, GeneratorExit):
+            # Ctrl-C while claiming, executing or following. Closes the run if
+            # this chat created or claimed it and the pipeline has not, and
+            # asks the owner to stop a run another process executes.
+            await stop_run(
+                runs, run.id, requested_by=owner, lease_seconds=lease_seconds
+            )
+            raise
 
         # 4. Ask for each pending review, one pause per review.
         if run.status is RunStatus.AWAITING_REVIEW:
@@ -439,10 +488,17 @@ async def _follow(
     *,
     poll_seconds: float,
     timeout_seconds: float,
+    recovery_seconds: float,
+    recover: Callable[[], Awaitable[int]],
     clock: Callable[[], float],
     sleep: Callable[[float], Awaitable[None]],
 ) -> AsyncIterator[Event]:
-    """Stream the persisted stages of a run another process is executing."""
+    """Stream the persisted stages of a run another process is executing.
+
+    Every `recovery_seconds` it also closes runs whose owner stopped renewing
+    its lease, so following a run whose process died ends within the lease
+    instead of at the timeout.
+    """
     yield _progress_event(
         PipelineProgress(
             kind=ProgressKind.FOLLOWING,
@@ -455,7 +511,11 @@ async def _follow(
     )
     seen: dict[OfferingId, str | None] = {}
     started = clock()
+    recovered_at = started
     while clock() - started < timeout_seconds:
+        if clock() - recovered_at >= recovery_seconds:
+            recovered_at = clock()
+            await recover()
         current = await _reload(runs, run.id)
         for execution in await runs.list_offering_executions(run.id):
             if seen.get(execution.offering_id) == execution.current_stage:

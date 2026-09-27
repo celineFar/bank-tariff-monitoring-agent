@@ -1,0 +1,120 @@
+{
+  "scenario": "c15_ctrl_c_while_following",
+  "chat_said": "^C\u283c   Finding tariff evidence \u00b7 2s\n\u2022 Monitoring cancelled.\nYou > ",
+  "worker_request_still_open_after_ctrl_c": true,
+  "run_state_3s_after_ctrl_c": [
+    {
+      "id": "f3fbcc6a-d3fa-48ae-9af8-2ac873c65e1a",
+      "status": "running",
+      "error_code": null,
+      "claimed_by": "ip-172-31-32-93:123514627011120",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "running",
+          "current_stage": "source_discovery",
+          "failure_code": null
+        }
+      ],
+      "audits": []
+    }
+  ],
+  "model_requests_after_ctrl_c": [
+    {
+      "role": "source_discovery_classifier",
+      "t_after_s": 2.84
+    },
+    {
+      "role": "semantic_loan_extractor",
+      "t_after_s": 3.05
+    },
+    {
+      "role": "semantic_loan_extractor",
+      "t_after_s": 3.06
+    },
+    {
+      "role": "semantic_loan_extractor",
+      "t_after_s": 3.06
+    },
+    {
+      "role": "semantic_loan_extractor",
+      "t_after_s": 3.08
+    }
+  ],
+  "run_state_at_end": [
+    {
+      "id": "f3fbcc6a-d3fa-48ae-9af8-2ac873c65e1a",
+      "status": "awaiting_review",
+      "error_code": null,
+      "claimed_by": null,
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "candidate_review",
+          "current_stage": "published",
+          "failure_code": null
+        }
+      ],
+      "audits": [
+        [
+          "offering.published",
+          {
+            "chunks": 12,
+            "changes": 0,
+            "metadata": {
+              "timings": [
+                {
+                  "stage": "acquisition",
+                  "duration_ms": 40
+                },
+                {
+                  "stage": "pdf_selection",
+                  "duration_ms": 263
+                },
+                {
+                  "stage": "normalization",
+                  "duration_ms": 2671
+                },
+                {
+                  "stage": "source_discovery",
+                  "duration_ms": 8454
+                },
+                {
+                  "stage": "semantic_extraction",
+                  "duration_ms": 211
+                },
+                {
+                  "stage": "previous_snapshot",
+                  "duration_ms": 3
+                },
+                {
+                  "stage": "embedding",
+                  "duration_ms": 2
+                }
+              ],
+              "warning_codes": [
+                "AMBIGUOUS_TABLE",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL"
+              ],
+              "provenance_changed": false,
+              "acquisition_warnings": []
+            },
+            "documents": 1,
+            "manifests": 11,
+            "snapshot_id": "dbeefef7-5d5e-4c4e-91dc-8b16b15f7e1c",
+            "snapshot_status": "review_required"
+          }
+        ]
+      ]
+    }
+  ]
+}

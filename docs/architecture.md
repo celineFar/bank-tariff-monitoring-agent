@@ -45,8 +45,12 @@ shell, or SQL tool.
   `custom_metadata`, never from text) become stage lines with a local timer; an
   `adk_request_input` pause becomes the Rich review panel and guided prompt; the
   validated reply resumes the same invocation. Ctrl-C cancels the turn (the run is
-  marked `run.cancelled`) and rewinds it. On start the CLI continues an unanswered
-  review, or closes a run its previous process left running (`run.interrupted`).
+  marked `run.cancelled`) and rewinds it; the CLI installs its own SIGINT handler
+  (`ChatSession.interrupt`), so every press cancels the running turn and a press at
+  the prompt leaves the chat. When the turn was following a run another process
+  executes, Ctrl-C asks that process to stop it. On start the CLI continues an
+  unanswered review, or closes a run its previous process left running
+  (`run.interrupted`).
   Conversations are named (`--session`, `--new`); no id is printed unless
   `--verbose`. The entry module filters two known ADK experimental notices, and the
   launcher sends CLI diagnostics to `logs/cli.log`.
@@ -150,8 +154,13 @@ shell, or SQL tool.
   scheduled families are submitted independently through `RunService`. Claimed work
   calls `TariffPipeline.execute(run, progress=LogProgressSink)` directly; the worker
   owns no ADK app or session and imports nothing from `google.adk`. A run that
-  pauses for review stays `awaiting_review` and is reviewed from the CLI. On start
-  it fails abandoned leases and completes paused runs whose reviews are all decided.
+  pauses for review stays `awaiting_review` and is reviewed from the CLI. A claimed
+  run executes under the lease (`app/services/run_lease.py`). SIGTERM/SIGINT cancel
+  the run in progress, which closes it as `run.cancelled`, and the worker exits
+  (compose gives it a 30 s grace period). On start, and every
+  `RUN_RECOVERY_INTERVAL_SECONDS`, it fails runs whose lease expired
+  (`run.abandoned`); on start it also completes paused runs whose reviews are all
+  decided.
   A separate loop embeds active chunks stored without a vector (`embed_missing`, every
   `EMBEDDING_SWEEP_INTERVAL_SECONDS`), so a provider quota wait never blocks claiming
   runs.
@@ -159,6 +168,12 @@ shell, or SQL tool.
   (`PipelineProgress`, `ProgressSink`, log/queue sinks) and `stream_progress`,
   which runs the pipeline as a task and yields its progress; cancelling the
   consumer cancels the pipeline, which marks the run `run.cancelled`.
+- `app/services/run_lease.py`: `execute_with_lease` runs the pipeline as a task
+  while renewing `monitoring_runs.heartbeat_at` every `RUN_HEARTBEAT_SECONDS`; the
+  heartbeat reports a cancel request or a lost run, and either cancels the pipeline.
+  `stop_run` (used by a cancelled caller) closes a run nobody executes — queued, the
+  caller's own claim, or a lease older than `RUN_LEASE_SECONDS` — and otherwise
+  records a cancel request for the owner (migration `024`).
 - `app/services/structured_projection.py`: pure, fail-closed projection of final accepted
   semantic extraction into offering profiles, typed tariff facts, verified citations,
   and clean evidence-backed retrieval units. Accepted projections are published
@@ -749,10 +764,16 @@ review-to-session correlation columns an earlier workflow design needed.
 
 Cancellation: cancelling the consumer of `run_async` raises `CancelledError` inside the
 node and the pipeline, which fails the in-flight offering execution and the run with
-`run.cancelled` before re-raising; the CLI then calls `Runner.rewind_async`. A CLI that
-dies mid-run is closed on its next start with `RunRepository.fail_interrupted` for the
-previous process's owner (`run.interrupted`); the worker's lease recovery is the
-backstop.
+`run.cancelled` before re-raising; the CLI then calls `Runner.rewind_async`. The node
+also handles the cancellation itself around claiming, executing and following
+(`stop_run`): a run it submitted but has not claimed, or claimed but whose pipeline
+never started, is closed at once, and a run another process executes gets a cancel
+request that the owner reads with its next heartbeat. The submit is shielded so a
+cancel landing mid-submit still knows the run it created. A CLI that dies mid-run is
+closed on its next start with `RunRepository.fail_interrupted` for the previous
+process's owner (`run.interrupted`); lease recovery (by any worker every
+`RUN_RECOVERY_INTERVAL_SECONDS`, and by the node before submitting and while
+following) is the backstop.
 
 The shared service factory resolves the validated PostgreSQL `SESSION_SERVICE_URI`.
 FastAPI and the CLI prepare and require ADK 2.9.2 JSON session schema version `1`; ADK
@@ -823,9 +844,11 @@ foundation:
 transaction lock, applies idempotency keys, and returns an existing run only when its
 scope overlaps the request. Migration `010` replaces the single active-family index
 with indexes for targeted offerings and family-wide runs. Workers claim queued rows with `FOR UPDATE SKIP LOCKED`; claim state is
-stored in PostgreSQL. On startup, the worker marks expired running claims failed before
-claiming new work, which releases the family constraint without replaying partially
-published work.
+stored in PostgreSQL. The executing process renews `heartbeat_at` while it runs; a
+running claim whose heartbeat (or claim, before the first beat) is older than
+`RUN_LEASE_SECONDS` is failed as `run.abandoned` by the worker on startup and
+periodically, and by the chat node before it submits, which releases the family
+constraint without replaying partially published work.
 
 `POST /api/v1/runs`, the ADK monitoring tool, and the 06:00 scheduler all submit the
 same typed `RunCommand` through `RunService`. The HTTP adapter returns `202` with the

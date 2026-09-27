@@ -1,0 +1,21 @@
+{
+  "scenario": "x01_submit_claim_window",
+  "runs_after_cancel": [
+    {
+      "id": "a795e842-3fc7-479c-8a27-3cb883662878",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": null,
+      "executions": [],
+      "audits": [
+        [
+          "run.cancelled",
+          {
+            "status": "queued",
+            "requested_by": "cli:ip-172-31-32-93:673189:834bdf06"
+          }
+        ]
+      ]
+    }
+  ]
+}

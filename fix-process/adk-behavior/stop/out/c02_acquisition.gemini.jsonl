@@ -1,0 +1,4 @@
+{"t": 1790493854.431, "event": "request", "id": 1, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
+{"t": 1790493854.432, "event": "response", "id": 1, "role": "ameria_tariff_monitor", "status": 200}
+{"t": 1790493854.521, "event": "request", "id": 2, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
+{"t": 1790493854.521, "event": "response", "id": 2, "role": "ameria_tariff_monitor", "status": 200}

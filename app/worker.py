@@ -23,6 +23,7 @@ from app.runtime import build_application_container
 from app.services.contracts import TariffPipeline
 from app.services.logging_setup import configure_application_logging
 from app.services.monitoring_progress import LogProgressSink
+from app.services.run_lease import RunStopped, execute_with_lease, stop_run
 from app.services.run_service import RunServicePort
 from app.services.telemetry import (
     configure_telemetry,
@@ -75,7 +76,10 @@ class MonitoringWorker:
         pipeline: TariffPipeline,
         resolution: ReviewCompletionPort | None = None,
         worker_id: str,
-        abandoned_after: timedelta = timedelta(minutes=30),
+        # A run whose heartbeat is older than this is closed as abandoned.
+        abandoned_after: timedelta = timedelta(seconds=120),
+        heartbeat_seconds: float = 5.0,
+        recovery_interval_seconds: float = 60.0,
         poll_interval_seconds: float = 2.0,
         embeddings: EmbeddingSweepPort | None = None,
         embedding_sweep_batch: int = 200,
@@ -86,15 +90,21 @@ class MonitoringWorker:
         self._resolution = resolution
         self._worker_id = worker_id
         self._abandoned_after = abandoned_after
+        self._heartbeat_seconds = heartbeat_seconds
+        self._recovery_interval_seconds = recovery_interval_seconds
         self._poll_interval_seconds = poll_interval_seconds
         self._embeddings = embeddings
         self._embedding_sweep_batch = embedding_sweep_batch
         self._embedding_sweep_interval_seconds = embedding_sweep_interval_seconds
 
     async def recover_abandoned(self) -> int:
-        recovered = await self._runs.recover_abandoned(
-            before=datetime.now(UTC) - self._abandoned_after
-        )
+        try:
+            recovered = await self._runs.recover_abandoned(
+                before=datetime.now(UTC) - self._abandoned_after
+            )
+        except Exception:
+            logger.warning("abandoned run recovery failed", exc_info=True)
+            return 0
         if recovered:
             logger.warning("marked %s abandoned run(s) failed", recovered)
         return recovered
@@ -120,8 +130,16 @@ class MonitoringWorker:
                 span.set_attribute("tariff.run_id", str(claimed.run.id))
                 span.set_attribute("tariff.product", claimed.run.command.product.value)
                 span.set_attribute("tariff.worker_id", self._worker_id)
-                result = await self._pipeline.execute(
-                    claimed.run, progress=LogProgressSink(logger)
+                # Under the lease: a chat following this run can ask it to
+                # stop, and the heartbeat keeps it from being recovered.
+                result = await execute_with_lease(
+                    self._runs,
+                    claimed.run.id,
+                    self._worker_id,
+                    lambda: self._pipeline.execute(
+                        claimed.run, progress=LogProgressSink(logger)
+                    ),
+                    heartbeat_seconds=self._heartbeat_seconds,
                 )
                 span.set_attribute("tariff.run_status", result.status.value)
             logger.info(
@@ -130,6 +148,18 @@ class MonitoringWorker:
                 result.status.value,
                 len(result.summary.get("review_ids", []) or []),
             )
+        except RunStopped as stopped:
+            logger.info("monitoring run stopped on request: %s", stopped)
+        except asyncio.CancelledError:
+            # The worker is shutting down. The pipeline closes the run it was
+            # executing; this also closes one cancelled before it started.
+            await stop_run(
+                self._runs,
+                claimed.run.id,
+                requested_by=self._worker_id,
+                lease_seconds=self._abandoned_after.total_seconds(),
+            )
+            raise
         except Exception as exc:
             logger.exception(
                 "monitoring run failed unexpectedly run_id=%s", claimed.run.id
@@ -184,12 +214,26 @@ class MonitoringWorker:
             except TimeoutError:
                 pass
 
+    async def _recover_forever(self, stop: asyncio.Event) -> None:
+        # Not only at startup: a process killed mid-run must not block its
+        # offering until the next worker restart.
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(
+                    stop.wait(), timeout=self._recovery_interval_seconds
+                )
+            except TimeoutError:
+                await self.recover_abandoned()
+
     async def run_forever(self, stop: asyncio.Event) -> None:
         await self.startup_checks()
-        sweep = asyncio.create_task(self._sweep_forever(stop))
+        background = (
+            asyncio.create_task(self._sweep_forever(stop)),
+            asyncio.create_task(self._recover_forever(stop)),
+        )
         try:
             while not stop.is_set():
-                if await self.process_next():
+                if await self._until_stopped(self.process_next(), stop):
                     continue
                 try:
                     await asyncio.wait_for(
@@ -199,9 +243,31 @@ class MonitoringWorker:
                 except TimeoutError:
                     pass
         finally:
-            sweep.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sweep
+            for task in background:
+                task.cancel()
+            for task in background:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+    @staticmethod
+    async def _until_stopped(work, stop: asyncio.Event) -> bool:
+        """Run one unit of work; on a stop signal cancel it and wait for cleanup.
+
+        Without this a SIGTERM waited for the whole run, model calls included
+        and `docker stop` then killed the worker mid-run.
+        """
+        task = asyncio.ensure_future(work)
+        stopping = asyncio.ensure_future(stop.wait())
+        try:
+            await asyncio.wait({task, stopping}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            stopping.cancel()
+        if not task.done():
+            logger.info("stop requested; cancelling the run in progress")
+            task.cancel()
+            await asyncio.wait({task})
+            return False
+        return task.result()
 
 
 async def main() -> None:
@@ -217,6 +283,9 @@ async def main() -> None:
         embeddings=container.knowledge_indexer,
         embedding_sweep_batch=settings.rag.embedding_sweep_batch,
         embedding_sweep_interval_seconds=settings.rag.embedding_sweep_interval_seconds,
+        abandoned_after=timedelta(seconds=settings.scheduler.run_lease_seconds),
+        heartbeat_seconds=settings.scheduler.run_heartbeat_seconds,
+        recovery_interval_seconds=settings.scheduler.run_recovery_interval_seconds,
     )
     scheduler = AsyncIOScheduler(timezone=settings.scheduler.timezone)
     scheduler.add_job(

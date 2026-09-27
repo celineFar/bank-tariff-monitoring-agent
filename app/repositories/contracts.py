@@ -12,10 +12,12 @@ from app.domain.models import (
 )
 from app.domain.monitoring import (
     ClaimedRun,
+    LeaseState,
     MonitoringRun,
     OfferingExecution,
     OfferingPublication,
     PublicationResult,
+    RunCancelOutcome,
     RunCommand,
     RunStatus,
     RunSubmissionResult,
@@ -55,6 +57,16 @@ class RunRepository(Protocol):
     async def claim(self, run_id: UUID, owner: str) -> ClaimedRun | None: ...
 
     async def recover_abandoned(self, *, before: datetime) -> int: ...
+
+    async def heartbeat(self, run_id: UUID, owner: str) -> LeaseState: ...
+
+    async def cancel_run(
+        self,
+        run_id: UUID,
+        *,
+        requested_by: str,
+        stale_before: datetime | None = None,
+    ) -> RunCancelOutcome: ...
 
     async def fail_interrupted(
         self, *, owner_prefix: str, before: datetime | None = None

@@ -1,0 +1,127 @@
+{
+  "scenario": "x02_claim_execute_window",
+  "runs_after_cancel": [
+    {
+      "id": "77f0763c-8ef3-4bbb-90e0-e8f41b6288c1",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:673189:36380005",
+      "executions": [],
+      "audits": [
+        [
+          "run.cancelled",
+          {
+            "status": "running",
+            "requested_by": "cli:ip-172-31-32-93:673189:36380005"
+          }
+        ]
+      ]
+    }
+  ],
+  "second_request_finished_within_12s": true,
+  "model_requests_during_second_request": [
+    "ameria_tariff_monitor",
+    "ameria_tariff_monitor",
+    "pdf_link_selector",
+    "source_discovery_classifier",
+    "source_discovery_classifier",
+    "source_discovery_classifier",
+    "source_discovery_classifier",
+    "semantic_loan_extractor",
+    "semantic_loan_extractor",
+    "semantic_loan_extractor",
+    "semantic_loan_extractor"
+  ],
+  "runs_at_end": [
+    {
+      "id": "77f0763c-8ef3-4bbb-90e0-e8f41b6288c1",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:673189:36380005",
+      "executions": [],
+      "audits": [
+        [
+          "run.cancelled",
+          {
+            "status": "running",
+            "requested_by": "cli:ip-172-31-32-93:673189:36380005"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "f44df75a-cc16-40e6-8281-5fae8d0808a6",
+      "status": "awaiting_review",
+      "error_code": null,
+      "claimed_by": null,
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "candidate_review",
+          "current_stage": "published",
+          "failure_code": null
+        }
+      ],
+      "audits": [
+        [
+          "offering.published",
+          {
+            "chunks": 12,
+            "changes": 0,
+            "metadata": {
+              "timings": [
+                {
+                  "stage": "acquisition",
+                  "duration_ms": 58
+                },
+                {
+                  "stage": "pdf_selection",
+                  "duration_ms": 34
+                },
+                {
+                  "stage": "normalization",
+                  "duration_ms": 2794
+                },
+                {
+                  "stage": "source_discovery",
+                  "duration_ms": 274
+                },
+                {
+                  "stage": "semantic_extraction",
+                  "duration_ms": 214
+                },
+                {
+                  "stage": "previous_snapshot",
+                  "duration_ms": 4
+                },
+                {
+                  "stage": "embedding",
+                  "duration_ms": 2
+                }
+              ],
+              "warning_codes": [
+                "AMBIGUOUS_TABLE",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_NOT_SELECTED",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL",
+                "PDF_SKIPPED_HISTORICAL"
+              ],
+              "provenance_changed": false,
+              "acquisition_warnings": []
+            },
+            "documents": 1,
+            "manifests": 11,
+            "snapshot_id": "23586f13-ab62-4ddd-bbb4-8cde99890ae9",
+            "snapshot_status": "review_required"
+          }
+        ]
+      ]
+    }
+  ]
+}

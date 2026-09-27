@@ -1,0 +1,2 @@
+{"t": 1790493815.306, "event": "request", "id": 1, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
+{"t": 1790493816.414, "event": "disconnect", "id": 1, "role": "ameria_tariff_monitor", "held_s": 1.11}

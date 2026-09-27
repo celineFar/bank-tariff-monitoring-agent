@@ -1,0 +1,554 @@
+=== c02_acquisition
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "cabbf21d-9e38-4669-8426-ad99b71cc60a",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:624751:fd051891",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "acquisition",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "acquisition",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "acquisition"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c02_acquisition",
+ "step": "acquisition",
+ "notice": "Monitoring cancelled.",
+ "children_at_ctrl_c": [
+  [
+   624849,
+   "/home/ubuntu/second-monitor/.venv/lib/python3.13/site-packages/playwright/driver/node /home/ubuntu/second-monitor/.venv/"
+  ]
+ ]
+}
+=== c04_pdf_transcription
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [
+  {
+   "t": 1790493890.164,
+   "event": "disconnect",
+   "id": 4,
+   "role": "pdf_document_extractor",
+   "held_s": 1.06
+  }
+ ],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "1fbd1d6b-0634-4440-86d5-288181c05627",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:625056:3ddf0d39",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "normalization",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "normalization",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "normalization"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c04_pdf_transcription",
+ "step": "pdf_document_extractor",
+ "in_flight_at_ctrl_c": 1,
+ "first_request_id": 4,
+ "notice": "Monitoring cancelled.",
+ "cancel_to_prompt_s": 0.1
+}
+=== c05_source_discovery
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [
+  {
+   "t": 1790493910.17,
+   "event": "disconnect",
+   "id": 5,
+   "role": "source_discovery_classifier",
+   "held_s": 1.01
+  },
+  {
+   "t": 1790493910.219,
+   "event": "disconnect",
+   "id": 4,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790493910.222,
+   "event": "disconnect",
+   "id": 6,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  }
+ ],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "2ecf7827-786d-4269-8cc8-fb084f6e966b",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:625671:2526ac1e",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "source_discovery",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "source_discovery",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "source_discovery"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c05_source_discovery",
+ "step": "source_discovery_classifier",
+ "in_flight_at_ctrl_c": 3,
+ "first_request_id": 4,
+ "notice": "Monitoring cancelled.",
+ "cancel_to_prompt_s": 0.1
+}
+=== c06_semantic_extraction
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [
+  {
+   "t": 1790493930.79,
+   "event": "disconnect",
+   "id": 8,
+   "role": "semantic_loan_extractor",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790493930.792,
+   "event": "disconnect",
+   "id": 9,
+   "role": "semantic_loan_extractor",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790493930.792,
+   "event": "disconnect",
+   "id": 10,
+   "role": "semantic_loan_extractor",
+   "held_s": 1.06
+  }
+ ],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "438413b7-9dbd-4aea-914a-150f5336f2f2",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:625987:476c06fa",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "semantic_extraction",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "semantic_extraction",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "semantic_extraction"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c06_semantic_extraction",
+ "step": "semantic_loan_extractor",
+ "in_flight_at_ctrl_c": 3,
+ "first_request_id": 8,
+ "notice": "Monitoring cancelled.",
+ "cancel_to_prompt_s": 0.1
+}
+=== c07_retry_backoff
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "2a78b443-01a0-4dfe-a8d4-3585b83c34f0",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:626355:014829cb",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "semantic_extraction",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "semantic_extraction",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "semantic_extraction"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c07_retry_backoff",
+ "step": "semantic_extraction backoff",
+ "notice": "Monitoring cancelled."
+}
+=== c08_review_prompt
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "59b0fd44-e0e5-47f8-9474-9dda2ee9f3d8",
+   "status": "awaiting_review",
+   "error_code": null,
+   "claimed_by": null,
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "candidate_review",
+     "current_stage": "published",
+     "failure_code": null
+    }
+   ],
+   "audits": [
+    [
+     "offering.published",
+     {
+      "chunks": 12,
+      "changes": 0,
+      "metadata": {
+       "timings": [
+        {
+         "stage": "acquisition",
+         "duration_ms": 41
+        },
+        {
+         "stage": "pdf_selection",
+         "duration_ms": 34
+        },
+        {
+         "stage": "normalization",
+         "duration_ms": 2815
+        },
+        {
+         "stage": "source_discovery",
+         "duration_ms": 234
+        },
+        {
+         "stage": "semantic_extraction",
+         "duration_ms": 215
+        },
+        {
+         "stage": "previous_snapshot",
+         "duration_ms": 4
+        },
+        {
+         "stage": "embedding",
+         "duration_ms": 2
+        }
+       ],
+       "warning_codes": [
+        "AMBIGUOUS_TABLE",
+        "PDF_SKIPPED_NOT_SELECTED",
+        "PDF_SKIPPED_NOT_SELECTED",
+        "PDF_SKIPPED_NOT_SELECTED",
+        "PDF_SKIPPED_HISTORICAL",
+        "PDF_SKIPPED_HISTORICAL",
+        "PDF_SKIPPED_HISTORICAL",
+        "PDF_SKIPPED_HISTORICAL",
+        "PDF_SKIPPED_HISTORICAL",
+        "PDF_SKIPPED_HISTORICAL",
+        "PDF_SKIPPED_HISTORICAL"
+       ],
+       "provenance_changed": false,
+       "acquisition_warnings": []
+      },
+      "documents": 1,
+      "manifests": 11,
+      "snapshot_id": "4574826c-aea6-4f7e-91d6-2f513c41ef7e",
+      "snapshot_status": "review_required"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c08_review_prompt",
+ "step": "review prompt",
+ "notice": "Review postponed"
+}
+=== c11_second_ctrl_c
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [
+  {
+   "t": 1790494076.095,
+   "event": "disconnect",
+   "id": 4,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790494076.099,
+   "event": "disconnect",
+   "id": 5,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790494076.1,
+   "event": "disconnect",
+   "id": 6,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790494083.06,
+   "event": "disconnect",
+   "id": 9,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790494083.061,
+   "event": "disconnect",
+   "id": 10,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  },
+  {
+   "t": 1790494083.062,
+   "event": "disconnect",
+   "id": 11,
+   "role": "source_discovery_classifier",
+   "held_s": 1.06
+  }
+ ],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "3707d0a1-b4f3-4571-b263-3c56635bcc4e",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:628300:99297ddc",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "source_discovery",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "source_discovery",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "source_discovery"
+     }
+    ]
+   ]
+  },
+  {
+   "id": "4cf7be5c-0b7e-4511-bac2-d72a2f2abf64",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:628300:99297ddc",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "source_discovery",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "source_discovery",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "source_discovery"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c11_second_ctrl_c",
+ "step": "second turn",
+ "turns": [
+  {
+   "turn": 1,
+   "notice": "Monitoring cancelled.",
+   "cli_alive": true,
+   "output_after_ctrl_c": "urce documents \u00b7 2s\u2819   Reading source documents \u00b7 2s\u2839   Reading source documents \u00b7 2s\n  \u2713 Reading source documents \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 3s\n\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence\u2026\u2838   Finding tariff evidence\u2026\u283c   Finding tariff evidence\u2026\u2834   Finding tariff evidence\u2026\u2826   Finding tariff evidence\u2026\u2827   Finding tariff evidence\u2026\u2807   Finding tariff evidence\u2026\u280f   Finding tariff evidence\u2026\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2839   Finding tariff evidence \u00b7 1s^C\u2838   Finding tarif
+=== c12_double_ctrl_c
+{
+ "requests_after_ctrl_c": [],
+ "disconnects": [
+  {
+   "t": 1790494106.401,
+   "event": "disconnect",
+   "id": 10,
+   "role": "semantic_loan_extractor",
+   "held_s": 1.07
+  },
+  {
+   "t": 1790494106.45,
+   "event": "disconnect",
+   "id": 8,
+   "role": "semantic_loan_extractor",
+   "held_s": 1.12
+  },
+  {
+   "t": 1790494106.451,
+   "event": "disconnect",
+   "id": 9,
+   "role": "semantic_loan_extractor",
+   "held_s": 1.12
+  }
+ ],
+ "held_open_at_end": [],
+ "runs": [
+  {
+   "id": "adb88ee1-f7ba-4677-86aa-5fc3589cd212",
+   "status": "failed",
+   "error_code": "run.cancelled",
+   "claimed_by": "cli:ip-172-31-32-93:628779:67129d96",
+   "executions": [
+    {
+     "offering_id": "overdraft",
+     "status": "failed",
+     "current_stage": "semantic_extraction",
+     "failure_code": "run.cancelled"
+    }
+   ],
+   "audits": [
+    [
+     "offering.failed",
+     {
+      "stage": "semantic_extraction",
+      "reason": "cancelled"
+     }
+    ],
+    [
+     "run.cancelled",
+     {
+      "stage": "semantic_extraction"
+     }
+    ]
+   ]
+  }
+ ],
+ "cli_alive": true,
+ "children": [],
+ "idle_cpu_s": 0.0,
+ "scenario": "c12_double_ctrl_c",
+ "step": "semantic_extraction, two presses 50 ms apart",
+ "output_after_ctrl_c": "2s\u2827   Reading source documents \u00b7 2s\u280b   Reading source documents \u00b7 2s\u2819   Reading source documents \u00b7 2s\u2839   Reading source documents \u00b7 2s\n  \u2713 Reading source documents \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 3s\n\u280b   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\u2819   Finding tariff evidence\u2026\n  \u2713 Finding tariff evidence \u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7\u00b7 0s\n\u280b   Extracting tariff fields\u2026\u2819   Extracting tariff fields\u2026\u2839   Extracting tariff fields\u2026\u2838   Extracting tariff fields\u2026\u283c   Extracting tariff fields\u2026\u2834   Extracting tariff fields\u2026\u2826   Extracting tariff fields\u2026\u2827   Extracting tariff fields\u2026\u2807   Extracting tariff fields\u2026\u280f   Extracting tariff fields\u2026\u280b   Extracting tariff fields\u2026\u2819   Extracting tariff fields\u2026\u2839   Extracting tariff fields \u00b7 1s^C\u2838   Extracting tariff fields \u00b7 1s\u2838   Extracting tariff fields \u00b7 1s\n^C\u2022 Monitoring cancelled.\nYou > "
+}

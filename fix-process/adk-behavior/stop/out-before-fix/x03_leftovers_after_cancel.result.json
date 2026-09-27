@@ -1,0 +1,51 @@
+{
+  "scenario": "x03_leftovers_after_cancel",
+  "tasks_before_turn": [],
+  "task_count_during_step": 13,
+  "tasks_3s_after_cancel": [],
+  "threads_before_turn": [
+    "asyncio_0 daemon=False"
+  ],
+  "threads_3s_after_cancel": [
+    "asyncio_0 daemon=False",
+    "asyncio_1 daemon=False",
+    "asyncio_2 daemon=False"
+  ],
+  "held_requests_disconnected": [
+    4,
+    5,
+    6
+  ],
+  "requests_after_cancel": [],
+  "runs": [
+    {
+      "id": "72622ac9-1b97-4dfd-8020-6f7d95c3d171",
+      "status": "failed",
+      "error_code": "run.cancelled",
+      "claimed_by": "cli:ip-172-31-32-93:632926:ac424f3f",
+      "executions": [
+        {
+          "offering_id": "overdraft",
+          "status": "failed",
+          "current_stage": "source_discovery",
+          "failure_code": "run.cancelled"
+        }
+      ],
+      "audits": [
+        [
+          "offering.failed",
+          {
+            "stage": "source_discovery",
+            "reason": "cancelled"
+          }
+        ],
+        [
+          "run.cancelled",
+          {
+            "stage": "source_discovery"
+          }
+        ]
+      ]
+    }
+  ]
+}

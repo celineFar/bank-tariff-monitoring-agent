@@ -157,3 +157,28 @@ Implemented on `fix/indexing`, merged into `integration/process-fixes` (`8a91579
 - **Found: the dev database is at migration 015.** 016–022 were never applied; a
   deployment must apply 016–023 (IXS08 did this on a copy).
 - **IXS10 (live run) not run**: it needs the user's approval of the model spend.
+
+## Stopping runs (fix-process/adk-behavior/)
+
+Findings F1–F7 in `adk-behavior/stop-verification-report.md`, fixed on
+`integration/process-fixes` at the user's request on 2026-09-27. Decisions taken
+without asking:
+
+- **Ctrl-C while following stops the followed run**, even one the scheduler or the API
+  started. The chat said "Monitoring cancelled." and the user expects spending to stop;
+  the alternative (only stop watching) left a run the user had just cancelled calling
+  the model. The owner hears the request at its next heartbeat.
+- **Lease defaults: heartbeat 5 s, lease 120 s, worker recovery every 60 s**
+  (`RUN_HEARTBEAT_SECONDS`, `RUN_LEASE_SECONDS`, `RUN_RECOVERY_INTERVAL_SECONDS`, in
+  `SchedulerSettings`). The old 30-minute lease is gone: a live run renews its lease,
+  so a long run is never mistaken for an abandoned one. The lease must cover at least
+  four heartbeats (validated).
+- **F2 is fixed through F1**: SIGTERM now cancels the run within about a second, and
+  the worker gets a 30 s `stop_grace_period`. `uv run` forwards SIGTERM to Python
+  (checked with uv 0.12.15).
+- **No cancel route in the API.** Only the chat asks for a stop; `cancel_run` is a
+  repository method an API route could call later.
+- **The chat also recovers stale runs** (before submitting and while following), so a
+  dead owner cannot block monitoring when no worker is running.
+- **Migration 024 must be applied** before deploying (the dev database is still at
+  015, see the indexing notes).
