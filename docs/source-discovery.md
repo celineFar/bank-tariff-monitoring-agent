@@ -61,7 +61,11 @@ prompt). On the 13 seed pages the rule finds exactly the 16 cross-sell cards.
    the site's navigation, header and footer (blocks the HTML parser marks
    `site_chrome`, kept in their own group so a footer never joins a content
    section), the unheaded page header above the first heading, and linked
-   documents with no content (skipped before transcription, or failed).
+   documents with no content (skipped before transcription, or failed). A block above
+   the first heading that states a tariff fact as `Label: value` with a unit
+   ("Loan amount: Up to AMD 100 million", "Repayment term: 61 – 360 months") is the
+   page's hero banner, not header: it forms a "Page summary" section that the
+   classifier decides like any other content.
 4. Reuse exact assessments whose content fingerprints and discovery versions match.
    Fingerprints are built from content, never from positional block or table ids,
    so a block inserted near the top of a page does not invalidate every section.
@@ -314,7 +318,8 @@ In case_008, it contains nine assessments.
 Examples of material that can be classified deterministically include:
 
 - the canonical product-page document;
-- the site's navigation, header and footer, and the unheaded page header;
+- the site's navigation, header and footer, and the unheaded page header (except
+  hero tariff lines, which go to the classifier);
 - content known to be hidden;
 - linked documents with no content (skipped before transcription, or failed).
 

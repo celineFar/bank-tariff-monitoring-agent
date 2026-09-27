@@ -697,7 +697,6 @@ async def test_f13_confirming_a_missing_field_publishes_the_snapshot() -> None:
 # --- F9: the hero banner above the first heading ----------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="F9")
 def test_f9_hero_tariff_lines_are_content_not_page_header() -> None:
     from app.domain.normalization import NormalizedBlockType
     from app.domain.source_discovery import CandidateLayout, DiscoveryScope

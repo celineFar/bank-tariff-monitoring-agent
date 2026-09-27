@@ -324,3 +324,8 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
 - **Phase 2 (repairs).** Repair budget 3 → 6 per offering. F11 needed no code. The local
   `.env` pins the old budget (3) and prompt version (6); both lines must change before
   the live run or the new defaults do not apply.
+- **Phase 3 (source discovery).** Hero tariff lines above the first heading now go to
+  the classifier as a "Page summary". On the 13 captured pages only tariff lines moved
+  (No Income Verification, Primary, Construction, Commercial). Risk: those banners
+  disagree with the tables on some pages (Commercial term/APR, the 12.9% campaign rate),
+  which may raise `conflicting` reviews in the live run.

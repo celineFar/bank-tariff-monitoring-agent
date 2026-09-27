@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import defaultdict
 
 from app.domain.acquisition import SourceLocator, SourceType
@@ -48,6 +49,22 @@ DEFAULT_ITEM_CHARS = 3_000
 _MEMBER_OVERHEAD = 12
 _SITE_CHROME_KEY = ("<site-chrome>",)
 _PAGE_HEADER_KEY = ("<page-header>",)
+_PAGE_SUMMARY_KEY = ("<page-summary>",)
+# A tariff fact written as "Label: value" -- "Loan amount: Up to AMD 100 million",
+# "Repayment term: 61 - 360 months". Ameria's hero banner sits above the page's
+# first heading and states the rate, term and amount this way (F9).
+_TARIFF_LINE = re.compile(r"^[^:\n]{2,80}:[^\n]*\d[^\n]*", re.MULTILINE)
+_TARIFF_UNIT = re.compile(
+    r"%|\b(?:months?|years?|days?|AMD|USD|EUR|drams?|million|mln|thousand)\b"
+    r"|֏|ամիս|տարի|դրամ|մլն",
+    re.IGNORECASE,
+)
+
+
+def _states_tariff_value(text: str) -> bool:
+    return any(
+        _TARIFF_UNIT.search(match.group(0)) for match in _TARIFF_LINE.finditer(text)
+    )
 
 
 def build_discovery_candidates(
@@ -115,6 +132,10 @@ def _page_section_candidates(
             key = _SITE_CHROME_KEY
         elif block.heading_path:
             key = (*block.heading_path, f"parent:{block.parent_id or '-'}")
+        elif not seen_heading and _states_tariff_value(block.text):
+            # Above the first heading but a tariff fact ("Loan amount: Up to AMD
+            # 100 million"): the page's hero banner, classified like content.
+            key = _PAGE_SUMMARY_KEY
         elif not seen_heading:
             # Above the first heading: language switch, phone, "About Bank".
             key = _PAGE_HEADER_KEY
@@ -134,6 +155,8 @@ def _page_section_candidates(
         elif key == _PAGE_HEADER_KEY:
             layout = CandidateLayout.PAGE_HEADER
             title, heading_path = "Page header", ()
+        elif key == _PAGE_SUMMARY_KEY:
+            title, heading_path = "Page summary", ()
         else:
             heading_path = group[0].heading_path
             title = heading_path[-1] if heading_path else "Unheaded page content"

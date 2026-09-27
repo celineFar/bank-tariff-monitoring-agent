@@ -534,11 +534,41 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 3: Source discovery (F9)
 
-- [ ] F9: a page-header block with a tariff `Label: value` goes to the classifier as content.
-- [ ] Re-run the source-discovery offline scenarios in
+- [x] F9: a page-header block with a tariff `Label: value` goes to the classifier as content.
+- [x] Re-run the source-discovery offline scenarios in
       [../source_discovery/scenarios/](../source_discovery/scenarios/) and check no
       navigation block is newly selected.
-- [ ] Remove the `xfail` mark; run the suite.
+- [x] Remove the `xfail` mark; run the suite.
+
+**Phase 3 notes (done).**
+
+- **What changed.** [discovery_prefilter.py](../../app/services/discovery_prefilter.py):
+  a block above the first heading whose text has a `Label: value` line with a number and
+  a unit (%, months/years/days, AMD/USD/EUR, dram, million/mln, and the Armenian
+  equivalents) is grouped under a new `<page-summary>` key with title "Page summary"
+  and layout `CONTENT`, so the classifier decides it. Everything else above the first
+  heading keeps the page-header rule. [docs/source-discovery.md](../../docs/source-discovery.md)
+  says so.
+- **Check on the 13 captured pages** (instead of the whole scenario runner, whose S01
+  needs the scratch Postgres and S03/S04 replay recorded Gemini labels that this change
+  does not affect): [scenarios/f9_header_check.py](scenarios/f9_header_check.py),
+  output [scenarios/results/f9_header_check.json](scenarios/results/f9_header_check.json).
+  Only hero tariff lines moved: No Income Verification 5 (rate, term, amount, APR, down
+  payment), Primary 5, Construction 4, Commercial 3; the other 9 pages none. Every page
+  keeps its 5–6 navigation blocks in the header. No navigation text moved.
+- **Risk for Phase 8.** The banners now reach extraction, and on some pages they
+  disagree with the tariff tables (the site's own inconsistencies, see the evaluation's
+  ground-truth caveats): Commercial "36-360 months" vs 60 / 61-360 and APR 13.84-16.03%
+  vs 14.97-17.21%; the 12.9% campaign rate on Primary, Construction and No Income
+  Verification vs their standard table rates. Extraction may return conditional values
+  (good) or `conflicting` (a review). Watch the review counts per offering in Phase 8;
+  if conflicts appear, the source-discovery classifier's `temporal_status`/campaign
+  handling of the summary is the place to look, not this rule.
+- **Cache.** Discovery assessments are keyed by content fingerprints; the new summary
+  group is a new item, so the four affected pages make one extra classifier call each on
+  the next run.
+- Full suite: 1,214 passed, 59 skipped, 16 xfailed; only the 4 baseline
+  live-environment tests fail.
 
 ### Phase 4: Review decision (F13)
 
