@@ -79,8 +79,8 @@ class Runs:
         for run in self.runs.values():
             if (
                 run.command.product is command.product
-                and run.status
-                in {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.AWAITING_REVIEW}
+                # A run waiting for review blocks nothing (migration 026).
+                and run.status in {RunStatus.QUEUED, RunStatus.RUNNING}
                 and (
                     command.offering_id is None
                     or run.command.offering_id in {None, command.offering_id}

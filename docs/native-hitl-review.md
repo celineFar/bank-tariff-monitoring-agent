@@ -162,8 +162,9 @@ evidence re-opens the question. `approve` (a rate change or an OCR reading) and
   `X-Review-Admin-Token` matching `REVIEW_ADMIN_TOKEN` and reports completed and failed
   runs separately. A chat paused on one of those reviews learns on its next resume
   that the run was closed; it does not start a new run.
-- On start, the worker completes any run left `awaiting_review` whose reviews are all
-  decided (for example after a crash between the last decision and closing the run).
+- On start and every `RUN_RECOVERY_INTERVAL_SECONDS`, the worker completes any run left
+  `awaiting_review` none of whose reviews is pending (decided, superseded by a newer
+  candidate, or aborted).
 - Do not delete `human_reviews` rows to "unstick" a run; reject it instead.
 
 ## Deterministic reviewer demonstration

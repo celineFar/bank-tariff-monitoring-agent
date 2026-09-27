@@ -191,7 +191,7 @@ def build_monitoring_node(
         #    never submits again; that keeps a replay from starting a new run.
         run = await _resumed_run(runs, resume)
         if run is None and request.review_only:
-            run = await _oldest_awaiting_review(runs, request)
+            run = await _run_to_review(runs, resolution, request)
             if run is None:
                 yield _result(
                     status="no_pending_reviews",
@@ -427,10 +427,23 @@ async def _reload(runs: RunRepository, run_id: UUID) -> MonitoringRun:
     return run
 
 
-async def _oldest_awaiting_review(
-    runs: RunRepository, request: MonitoringNodeInput
+async def _run_to_review(
+    runs: RunRepository,
+    resolution: ReviewResolutionService,
+    request: MonitoringNodeInput,
 ) -> MonitoringRun | None:
-    for run in await runs.list_by_status(RunStatus.AWAITING_REVIEW, limit=100):
+    """The newest paused run in scope that still has a pending review.
+
+    Newest first: a newer candidate is the one worth deciding, and publishing it
+    supersedes an older one's reviews. A paused run left with nothing pending
+    (its reviews decided or superseded elsewhere) is closed on the way.
+    """
+    waiting = sorted(
+        await runs.list_by_status(RunStatus.AWAITING_REVIEW, limit=100),
+        key=lambda item: (item.queued_at, str(item.id)),
+        reverse=True,
+    )
+    for run in waiting:
         if request.product is not None and run.command.product is not request.product:
             continue
         if (
@@ -439,7 +452,12 @@ async def _oldest_awaiting_review(
             and run.command.offering_id is not request.offering_id
         ):
             continue
-        return run
+        if await resolution.pending(run.id):
+            return run
+        try:
+            await resolution.complete_run(run.id)
+        except Exception:
+            logger.warning("could not close reviewed run %s", run.id, exc_info=True)
     return None
 
 

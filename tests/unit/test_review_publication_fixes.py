@@ -207,3 +207,83 @@ async def test_p3_after_a_rejection_the_node_asks_the_next_offerings_review() ->
         task.status is not ReviewStatus.PENDING
         for task in harness.reviews.tasks.values()
     )
+
+
+# --- P2: reviewing picks the newest waiting run and closes empty ones -------------
+
+
+@pytest.mark.asyncio
+async def test_p2_review_them_asks_the_newest_waiting_run_first() -> None:
+    from datetime import timedelta
+
+    from app.domain.models import OfferingId
+    from app.domain.monitoring import RunStatus
+    from app.services.monitoring_node import parse_review_interrupt_id
+    from tests.fixtures.monitoring_node import (
+        NOW,
+        PRODUCT,
+        build,
+        call,
+        interrupts,
+        queued_run,
+        review_task,
+        text,
+    )
+
+    harness = await build()
+    empty = harness.runs.add(
+        queued_run(status=RunStatus.AWAITING_REVIEW, queued_at=NOW + timedelta(hours=2))
+    )
+    older = harness.runs.add(queued_run(status=RunStatus.AWAITING_REVIEW))
+    newer = harness.runs.add(
+        queued_run(status=RunStatus.AWAITING_REVIEW, queued_at=NOW + timedelta(hours=1))
+    )
+    for run in (older, newer):
+        task = review_task(run, OfferingId.OVERDRAFT, "interest_rate")
+        harness.reviews.tasks[task.id] = task
+    harness.model.play(call("run_tariff_monitoring", product=PRODUCT, review_only=True))
+
+    ((interrupt_id, _),) = interrupts(await harness.turn(text("review them")))
+
+    assert parse_review_interrupt_id(interrupt_id)[0] == newer.id
+    # The paused run with nothing pending was closed on the way.
+    assert harness.runs.runs[empty.id].status.is_terminal
+
+
+@pytest.mark.asyncio
+async def test_p2_the_worker_keeps_closing_reviewed_runs_and_survives_errors() -> None:
+    import asyncio
+    from datetime import timedelta
+
+    from app.worker import MonitoringWorker
+
+    class Runs:
+        async def recover_abandoned(self, *, before):
+            return 0
+
+    class Resolution:
+        calls = 0
+
+        async def complete_runs_without_pending_reviews(self, *, limit=100):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("database away")
+            return 1
+
+    resolution = Resolution()
+    worker = MonitoringWorker(
+        runs=Runs(),
+        pipeline=None,
+        resolution=resolution,
+        worker_id="worker-1",
+        abandoned_after=timedelta(minutes=2),
+        recovery_interval_seconds=0.01,
+    )
+    stop = asyncio.Event()
+    loop = asyncio.create_task(worker._recover_forever(stop))
+    while resolution.calls < 2:
+        await asyncio.sleep(0.01)
+    stop.set()
+    await loop
+
+    assert resolution.calls >= 2

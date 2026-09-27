@@ -175,12 +175,24 @@ class MonitoringWorker:
     async def startup_checks(self) -> None:
         """Close what a previous process left open; nothing needs correlating."""
         await self.recover_abandoned()
-        if self._resolution is not None:
+        await self.complete_reviewed_runs()
+
+    async def complete_reviewed_runs(self) -> int:
+        """Close paused runs none of whose reviews is pending any more.
+
+        A newer candidate supersedes a waiting one's reviews, and an admin can
+        abort them, without the paused run's own chat being there to close it.
+        """
+        if self._resolution is None:
+            return 0
+        try:
             completed = await self._resolution.complete_runs_without_pending_reviews()
-            if completed:
-                logger.warning(
-                    "completed %s reviewed run(s) left awaiting review", completed
-                )
+        except Exception:
+            logger.warning("closing reviewed runs failed", exc_info=True)
+            return 0
+        if completed:
+            logger.info("completed %s reviewed run(s) left awaiting review", completed)
+        return completed
 
     async def sweep_embeddings(self) -> int:
         """Embed active chunks stored text-only; never raises (IX7).
@@ -224,6 +236,7 @@ class MonitoringWorker:
                 )
             except TimeoutError:
                 await self.recover_abandoned()
+                await self.complete_reviewed_runs()
 
     async def run_forever(self, stop: asyncio.Event) -> None:
         await self.startup_checks()

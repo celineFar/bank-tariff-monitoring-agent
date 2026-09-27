@@ -33,20 +33,27 @@ async def supersede_reviews_older_than(
             text(
                 """
                 WITH current AS (
-                    SELECT lower(bank) AS bank, product, offering_id, created_at
-                    FROM tariff_snapshots
-                    WHERE id = :snapshot_id
+                    SELECT lower(snapshot.bank) AS bank, snapshot.product,
+                           snapshot.offering_id, snapshot.created_at,
+                           run.queued_at
+                    FROM tariff_snapshots AS snapshot
+                    JOIN monitoring_runs AS run ON run.id = snapshot.run_id
+                    WHERE snapshot.id = :snapshot_id
                 )
                 UPDATE human_reviews AS review
                 SET status = 'superseded', updated_at = :now
-                FROM tariff_snapshots AS older, current
+                FROM tariff_snapshots AS older, monitoring_runs AS older_run, current
                 WHERE review.snapshot_id = older.id
+                  AND older_run.id = older.run_id
                   AND review.status = 'pending'
                   AND older.id <> :snapshot_id
                   AND lower(older.bank) = current.bank
                   AND older.product = current.product
                   AND older.offering_id = current.offering_id
-                  AND older.created_at < current.created_at
+                  -- A snapshot is dated by its page fetch; two runs reusing one
+                  -- fetch tie, and the later-queued run is the newer.
+                  AND (older.created_at, older_run.queued_at)
+                      < (current.created_at, current.queued_at)
                 RETURNING review.id, review.run_id, review.offering_execution_id,
                           review.snapshot_id
                 """
@@ -144,13 +151,17 @@ async def newer_accepted_snapshot_exists(
                 SELECT EXISTS (
                     SELECT 1
                     FROM tariff_snapshots AS newer
+                    JOIN monitoring_runs AS newer_run ON newer_run.id = newer.run_id
                     JOIN tariff_snapshots AS current ON current.id = :snapshot_id
+                    JOIN monitoring_runs AS current_run
+                        ON current_run.id = current.run_id
                     WHERE newer.status = 'accepted'
                       AND newer.id <> current.id
                       AND lower(newer.bank) = lower(current.bank)
                       AND newer.product = current.product
                       AND newer.offering_id = current.offering_id
-                      AND newer.created_at > current.created_at
+                      AND (newer.created_at, newer_run.queued_at)
+                          > (current.created_at, current_run.queued_at)
                 )
                 """
             ),

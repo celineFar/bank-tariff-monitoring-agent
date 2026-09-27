@@ -700,8 +700,12 @@ of their own.
 
 The business lifecycle is `queued -> running -> awaiting_review -> terminal`, where the
 terminal states are `succeeded`, `partial_success`, and `failed`. A run may go directly
-from `running` to a terminal state. `awaiting_review` remains an active state for family
-deduplication and owns no worker claim while waiting for a person.
+from `running` to a terminal state. `awaiting_review` owns no worker claim and blocks no
+new run (migration `026`): monitoring keeps running while a review waits. Publishing a
+newer snapshot of an offering, accepted or not, supersedes the older candidate's pending
+reviews and closes that candidate, so at most one candidate per offering waits; a paused
+run closes once none of its reviews is pending (at the end of a chat review, when
+"review them" passes it, and on the worker's recovery interval).
 
 State ownership is deliberately split. PostgreSQL business tables own runs, offering
 executions, candidates, evidence, reviews, snapshots, changes, and publication state.
@@ -777,10 +781,10 @@ original tool call on resume. The ADK behaviours this relies on are re-demonstra
 
 Deterministic acquisition, extraction, normalization, validation and persistence stay
 inside `TariffPipeline`; they are not split into agent nodes. Migration
-`008_monitoring_workflow.sql` includes `AWAITING_REVIEW` in active-run uniqueness, and
-`010_offering_scoped_active_runs.sql` makes that boundary specific to an offering while
-keeping family-wide work exclusive; a paused run cannot be bypassed by another request
-for the same offering. Migration `016_drop_review_workflow_correlation.sql` removed the
+`010_offering_scoped_active_runs.sql` makes active-run uniqueness specific to an offering
+while keeping family-wide work exclusive, and `026_awaiting_review_does_not_block.sql`
+limits it to `queued` and `running`: a paused run no longer blocks its offering or family.
+"Review them" walks the newest paused run in scope first. Migration `016_drop_review_workflow_correlation.sql` removed the
 review-to-session correlation columns an earlier workflow design needed.
 
 Cancellation: cancelling the consumer of `run_async` raises `CancelledError` inside the

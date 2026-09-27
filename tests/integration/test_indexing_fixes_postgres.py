@@ -120,10 +120,18 @@ async def _publish(
     documents,
     *,
     accepted: bool = True,
+    created_at: datetime | None = None,
 ) -> SnapshotAttempt:
-    """Publish one offering run; `documents` builds the documents from its run id."""
+    """Publish one offering run; `documents` builds the documents from its run id.
+
+    `created_at` dates the snapshot as another run's fetch would (reuse).
+    """
     runs, run, execution = await _running_offering(session_factory)
     snapshot = _snapshot(run.id, execution.id)
+    if created_at is not None:
+        snapshot = snapshot.model_copy(
+            update={"created_at": created_at, "accepted_at": created_at}
+        )
     if not accepted:
         snapshot = snapshot.model_copy(
             update={"status": SnapshotStatus.REVIEW_REQUIRED, "accepted_at": None}

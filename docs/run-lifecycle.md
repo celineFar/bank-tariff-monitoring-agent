@@ -44,8 +44,9 @@ Failure codes owned by the lifecycle itself:
 | `run.interrupted` | The CLI process executing a chat run died. The next start of that conversation fails the runs owned by the previous process's owner (`RunRepository.fail_interrupted`). |
 | `run.abandoned` | A `running` claim outlived the worker lease (`recover_abandoned` at worker start) — the backstop for both hosts. |
 
-An idempotency key returns its original run. Active-run constraints cover `queued`,
-`running`, and `awaiting_review`. Targeted runs for different offerings in the same
+An idempotency key returns its original run. Active-run constraints cover `queued` and
+`running` only (migration 026): a run waiting for review blocks nothing, and a newer
+candidate for the offering supersedes its reviews. Targeted runs for different offerings in the same
 family may proceed independently; a request for the same offering reuses its active
 run. A family-wide run overlaps every offering in its family, so it cannot start
 while any targeted run is active, and targeted requests reuse an active family-wide
@@ -54,7 +55,8 @@ If an older service returns a run that does not cover the requested offering, th
 returns `409 run.active_scope_conflict` and the chat tool reports `blocked` instead of
 claiming the requested offering started. Startup recovery marks expired or interrupted
 running claims failed; it does not re-execute partially completed nondeterministic work.
-On start the worker also completes any paused run whose reviews were all decided.
+On start, and every `RUN_RECOVERY_INTERVAL_SECONDS`, the worker also completes any
+paused run none of whose reviews is pending (decided, or superseded by a newer candidate).
 
 Each family run owns per-offering executions. Successful offerings publish independently;
 a failed sibling leaves its previous current index/snapshot untouched and produces family

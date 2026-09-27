@@ -96,3 +96,65 @@ async def test_p3_a_newer_accepted_publication_closes_the_waiting_candidate(
         "failed",
         "review_superseded",
     )
+
+
+# --- P2: a run waiting for review does not stop monitoring ------------------------
+
+
+@pytest.mark.asyncio
+async def test_p2_a_paused_family_run_does_not_block_the_next_scheduled_run(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    from app.domain.models import ProductType
+    from app.domain.monitoring import RunCommand, RunTrigger
+    from app.repositories.monitoring import PostgresRunRepository
+
+    runs = PostgresRunRepository(monitoring_session_factory)
+    command = RunCommand(product=ProductType.MORTGAGE, trigger=RunTrigger.SCHEDULE)
+    yesterday = await runs.submit(command)
+    assert await runs.claim_next("worker") is not None
+    await runs.pause_for_review(yesterday.run.id, summary={"review_ids": []})
+
+    today = await runs.submit(command)
+
+    assert today.created is True
+    assert today.run.id != yesterday.run.id
+
+
+@pytest.mark.asyncio
+async def test_p2_a_newer_candidate_supersedes_the_waiting_one(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    older = await _publish(
+        monitoring_session_factory, lambda run_id: [_doc(run_id)], accepted=False
+    )
+    waiting = await _review(monitoring_session_factory, older, "p2-older")
+
+    # The next run needs review too, for another reason: publishing its
+    # candidate retires the older one before any review of it is created.
+    await _publish(
+        monitoring_session_factory, lambda run_id: [_doc(run_id)], accepted=False
+    )
+
+    review = await PostgresReviewRepository(monitoring_session_factory).get(waiting.id)
+    assert review is not None and review.status.value == "superseded"
+    assert (await _states(monitoring_session_factory, older.id))[0] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_p2_runs_reusing_one_fetch_are_ordered_by_queue_time(
+    monitoring_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    older = await _publish(
+        monitoring_session_factory, lambda run_id: [_doc(run_id)], accepted=False
+    )
+    await _review(monitoring_session_factory, older, "p2-tie")
+    newer = await _publish(
+        monitoring_session_factory,
+        lambda run_id: [_doc(run_id)],
+        accepted=True,
+        created_at=older.created_at,
+    )
+
+    assert (await _states(monitoring_session_factory, older.id))[0] == "rejected"
+    assert (await _states(monitoring_session_factory, newer.id))[0] == "accepted"

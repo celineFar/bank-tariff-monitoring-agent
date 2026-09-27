@@ -303,7 +303,7 @@ async def test_submission_is_idempotent_and_reuses_active_family_run(
 
 
 @pytest.mark.asyncio
-async def test_different_offering_can_start_while_another_awaits_review(
+async def test_a_run_awaiting_review_blocks_no_new_run(
     monitoring_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     repository = PostgresRunRepository(monitoring_session_factory)
@@ -318,12 +318,13 @@ async def test_different_offering_can_start_while_another_awaits_review(
     family_wide = await repository.submit(_command())
 
     assert credit_line.created is True
-    assert credit_line.run.id != overdraft.run.id
     assert credit_line.run.command.offering_id is OfferingId.CREDIT_LINE
-    assert repeated.created is False
-    assert repeated.run.id == overdraft.run.id
+    # The paused overdraft run waits for a person; it does not stop monitoring.
+    assert repeated.created is True
+    assert repeated.run.id != overdraft.run.id
+    # Queued targeted runs still exclude a family-wide one.
     assert family_wide.created is False
-    assert family_wide.run.command.offering_id is OfferingId.OVERDRAFT
+    assert family_wide.run.id == credit_line.run.id
 
 
 @pytest.mark.asyncio
