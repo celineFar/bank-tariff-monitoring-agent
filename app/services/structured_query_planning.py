@@ -277,6 +277,7 @@ def issue_read_grant(
         product=resolution.product,
         offering_ids=offering_ids,
         operation=QueryOperation.HISTORY if history else QueryOperation.CURRENT,
+        question=query if len(query) <= 1000 else None,
     )
 
 
@@ -320,4 +321,5 @@ def _plan(
         rank_direction=selection.rank_direction,
         fields=selection.fields,
         conditions=selection.conditions,
+        question=query if len(query) <= 1000 else None,
     )

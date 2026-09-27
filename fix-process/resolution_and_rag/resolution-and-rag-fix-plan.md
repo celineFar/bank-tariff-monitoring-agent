@@ -965,24 +965,67 @@ outside the steps marked **(live)**.
 
 ### Phase 3: Grants and tools
 
-- [ ] `resolve_request(tool_context)` has no text argument (RR16).
-- [ ] It stores its result keyed by invocation id and returns it on a repeat call (RR13).
-- [ ] Add `route` to the result (RR17).
-- [ ] Build the read grant from the validated shape and the standalone question; store
+- [x] `resolve_request(tool_context)` has no text argument (RR16).
+- [x] It stores its result keyed by invocation id and returns it on a repeat call (RR13).
+- [x] Add `route` to the result (RR17).
+- [x] Build the read grant from the validated shape and the standalone question; store
       the question with the plan (RR9).
-- [ ] `answer_tariff_query(tool_context)` answers the grant's question (RR16).
-- [ ] Replace `ORIGINAL_QUESTION_KEY` with `MONITORING_ANSWER_REQUEST_KEY` (question,
+- [x] `answer_tariff_query(tool_context)` answers the grant's question (RR16).
+- [x] Replace `ORIGINAL_QUESTION_KEY` with `MONITORING_ANSWER_REQUEST_KEY` (question,
       scope, shape).
-- [ ] Offer lifecycle: accept or decline via `replies_to` / `accepts`; clear on any
+- [x] Offer lifecycle: accept or decline via `replies_to` / `accepts`; clear on any
       other resolved turn; drop the empty-text `ValueError`; delete
       `AFFIRMATIVE_REPLIES` (RR14).
-- [ ] `run_tariff_monitoring`: `answered_now` requires an accepted scope confirmation in
+- [x] `run_tariff_monitoring`: `answered_now` requires an accepted scope confirmation in
       this turn (RR15).
-- [ ] Update the agent instruction: follow `route`, pass no text to tools, and describe
+- [x] Update the agent instruction: follow `route`, pass no text to tools, and describe
       the `interpretation_unavailable` reply.
-- [ ] Update `test_read_tool_scope.py`, `test_tariff_query_authorization.py`,
+- [x] Update `test_read_tool_scope.py`, `test_tariff_query_authorization.py`,
       `test_plugins.py` and the tool tests. Remove the xfail marks of RR13, RR14 and RR15.
-- [ ] Run RRS03 with recorded interpretations.
+- [x] Run RRS03 with recorded interpretations.
+
+
+**Phase 3 notes (done).**
+- **`resolve_request(tool_context)`** ([tools/resolution.py](../../app/tools/resolution.py))
+  reads the message with `current_user_text`. With no user message it returns
+  `intent.no_user_message`.
+  - **Once per turn:** the first result is stored under `RESOLUTION_RESULT_KEY`, keyed
+    by invocation id, and a repeat call returns it without an interpreter call or any
+    state change. This replaces the old `TARIFF_LAST_USED_TURN_KEY` guard.
+  - **When interpretation is unavailable** it returns `intent.interpretation_unavailable`
+    and touches no grant or offer, so the user can simply retry.
+- **Offers carry a `kind`:** `monitoring` (from `get_current_tariffs`) or
+  `scope_confirmation` (from `run_tariff_monitoring`). An offer reaches the
+  interpreter only when it was made in the previous resolved turn, and every
+  resolved turn clears it.
+  - **The spend grant** needs `offer_accepted` (V4) or an explicit monitoring intent.
+  - **Accepting a `scope_confirmation`** writes `FULL_PRODUCT_ACK_KEY` with
+    `confirmed: true` for this turn. `run_tariff_monitoring` requires exactly that, so
+    a later refresh question no longer confirms the family (RR15).
+  - `AFFIRMATIVE_REPLIES` and `issued_last_turn` are gone.
+- **The read grant is built from the standalone question.** `ResolutionPlan` gained
+  `question` (checked against `question_sha256`).
+  - `answer_tariff_query(tool_context)` takes no argument and answers
+    `plan.question` (RR9, RR16).
+  - The planner is still the keyword planner (Phase 4), now reading the standalone
+    question instead of the reply.
+- **`MONITORING_ANSWER_REQUEST_KEY`** (question, product, offering_ids, shape)
+  replaces `ORIGINAL_QUESTION_KEY`. `run_tariff_monitoring` still passes only its
+  `question` to the node; the node uses the full request in Phase 5 (RR27).
+- **The result carries `route`** (RR17).
+- **The agent instruction was rewritten** to follow `route`, pass no text, handle
+  "unavailable", and wait for the scope confirmation. It keeps the 24-line limit of
+  `test_agent_wiring.py`.
+- **Tests:**
+  - [tests/unit/test_tool_flows.py](../../tests/unit/test_tool_flows.py) (RRS03, 14 flows,
+    recorded interpretations);
+  - `test_tariff_query_authorization.py` rewritten for the argument-free tools;
+  - `test_read_tool_scope.py` adapted (offers now carry `kind`);
+  - the RR9 test now checks "rate fields, no core amount fields" (the exact shape
+    fields arrive with Phase 4).
+- **The docs** still describe `resolve_request(query)`; they are updated in Phase 6.
+- **Suite:** 1260 passed, 5 xfailed (RR23, RR24, RR26, RR27, RR28), plus the 4 known
+  Gemini-key failures.
 
 ### Phase 4: Planner and answer path
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -503,9 +504,18 @@ class ResolutionPlan(StructuredTariffModel):
     fields: tuple[FieldPath, ...] = ()
     conditions: dict[str, JsonValue] = Field(default_factory=dict)
     taxonomy_version: int = FIELD_PATH_VERSION
+    # The question of record (the standalone question), held server-side so
+    # the answer tool takes no text from the model.
+    question: str | None = Field(default=None, min_length=1, max_length=1000)
 
     @model_validator(mode="after")
     def validate_scope(self) -> ResolutionPlan:
+        if (
+            self.question is not None
+            and hashlib.sha256(self.question.encode("utf-8")).hexdigest()
+            != self.question_sha256
+        ):
+            raise ValueError("plan question differs from its hash")
         if any(
             item.tzinfo is None or item.utcoffset() is None
             for item in (self.issued_at, self.expires_at)

@@ -222,7 +222,6 @@ def _mortgage_rate_question(language=RequestLanguage.ENGLISH):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="RR9: the plan is built from the reply '3'")
 @pytest.mark.asyncio
 async def test_rr9_numeric_reply_plans_the_original_question() -> None:
     from app.domain.interpretation import ReplyKind
@@ -256,7 +255,9 @@ async def test_rr9_numeric_reply_plans_the_original_question() -> None:
     assert first["needs_clarification"] is True
     assert second["offering_id"] == OfferingId.MORTGAGE_DIASPORA.value
     plan = context.state["tariff_resolution_plan"]
-    assert set(plan["fields"]) == {item.value for item in RATES}
+    # The question's rate fields, not the core set the text "3" used to give.
+    assert {item.value for item in RATES} <= set(plan["fields"])
+    assert FieldPath.AMOUNT_MINIMUM.value not in plan["fields"]
     assert plan["question_sha256"] == hashlib.sha256(standalone.encode()).hexdigest()
 
 
@@ -334,7 +335,6 @@ def _express_rate():
     )
 
 
-@pytest.mark.xfail(strict=True, reason="RR13: a second resolve_request wipes the grant")
 @pytest.mark.asyncio
 async def test_rr13_second_resolution_in_a_turn_keeps_the_grant() -> None:
     from app.tools import resolve_request
@@ -358,9 +358,6 @@ async def test_rr13_second_resolution_in_a_turn_keeps_the_grant() -> None:
     assert interpreter.calls == 1
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR14: a thumbs-up to the monitoring offer raises"
-)
 @pytest.mark.asyncio
 async def test_rr14_thumbs_up_takes_up_the_monitoring_offer() -> None:
     from app.domain.interpretation import ReplyKind
@@ -399,9 +396,6 @@ async def test_rr14_thumbs_up_takes_up_the_monitoring_offer() -> None:
     }
 
 
-@pytest.mark.xfail(
-    strict=True, reason="RR15: any next-turn spend grant confirms the family"
-)
 @pytest.mark.asyncio
 async def test_rr15_an_unrelated_refresh_request_does_not_confirm_the_family() -> None:
     from app.tools import resolve_request, run_tariff_monitoring

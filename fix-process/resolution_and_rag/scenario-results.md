@@ -29,3 +29,19 @@ After run 3 the recorded replay (RRS01) passes 133/133.
 152 calls. Input tokens: mean 3,779, max 4,085. Output tokens: mean 198, max 405.
 Latency: p50 1.7 s, p90 2.6 s (six calls in parallel). This replaces the Phase 0
 `count_tokens` measurement: the recorded calls report the same prompt token count.
+
+## RRS03: multi-turn tool flows (Phase 3)
+
+[tests/unit/test_tool_flows.py](../../tests/unit/test_tool_flows.py): 14 flows through the
+real tools, each replaying one case's live recording. **All pass.**
+- **Offers:** six natural yeses take up the offer (yes / ok / sure / "yes, refresh it" /
+  👍 / Armenian), and the run answers the question of record. A refusal and a new
+  question spend nothing.
+- **Whole-family scope:** an explicit yes runs the family (and the replay passes); a
+  refresh question does not.
+- **Clarification and follow-ups:** `"3"` answers the original question with rate
+  fields; an Armenian question answered by number stays Armenian; a follow-up keeps
+  the offering.
+- **Once per turn:** a repeat call in the same turn returns the same result.
+
+The `xfail` tests RR9, RR13, RR14 and RR15 now pass.
