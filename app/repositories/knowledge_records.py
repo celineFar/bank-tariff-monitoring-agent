@@ -1,4 +1,4 @@
-"""SQLAlchemy records for the RAG knowledge tables (migrations 002, 007, 023).
+"""SQLAlchemy records for the evidence document tables (migrations 002, 007, 023, 027).
 
 Writes go through the offering publication repository
 (`app/repositories/monitoring.py`) and review activation
@@ -10,11 +10,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     Column,
-    Computed,
     DateTime,
     Float,
     ForeignKey,
@@ -25,12 +23,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
-    text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-from app.domain.knowledge import EMBEDDING_DIMENSIONS
 
 
 class KnowledgeBase(DeclarativeBase):
@@ -130,16 +125,6 @@ class KnowledgeChunkRecord(KnowledgeBase):
     extraction_method: Mapped[str] = mapped_column(String(100), nullable=False)
     quality_score: Mapped[float | None] = mapped_column(Float)
     extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
-    search_vector: Mapped[object] = mapped_column(
-        TSVECTOR,
-        Computed("to_tsvector('simple', content)", persisted=True),
-        nullable=False,
-    )
-    # NULL until the chunk is embedded: content under review is stored as text
-    # only, and a quota-deferred run is published before its vectors (IX5, IX7).
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(EMBEDDING_DIMENSIONS), nullable=True
-    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
     retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
@@ -160,20 +145,6 @@ class KnowledgeChunkRecord(KnowledgeBase):
             "section",
             "language",
             "is_active",
-        ),
-        # Partial: retrieval reads only active chunks (IX8, migration 023).
-        Index(
-            "knowledge_chunks_search_gin_idx",
-            "search_vector",
-            postgresql_using="gin",
-            postgresql_where=text("is_active"),
-        ),
-        Index(
-            "knowledge_chunks_embedding_hnsw_idx",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-            postgresql_where=text("is_active AND embedding IS NOT NULL"),
         ),
     )
 
