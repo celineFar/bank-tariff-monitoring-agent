@@ -81,7 +81,12 @@ through `ReviewDisplayService`. Reviews stored before this change carry a copy o
 whole evidence catalog (`evidence.items`) and are shown from it.
 
 `extraction_invalid` allows `select_candidate` (accept Gemini's value after checking it),
-`override` and `reject_all`. A decision removes only its own signal (reason and field),
+`override` and `reject_all`. `missing_required_field` allows `override`,
+`confirm_not_stated` and `reject_all`: `confirm_not_stated` (typed `not_stated` in the
+CLI, which then asks what was checked) records that the sources do not state the field.
+The field is stored `not_stated` with `confirmed_not_stated = true`, which no longer
+blocks acceptance, so an offering whose page omits one required field (Diaspora's
+repayment method) can publish its other values. A decision removes only its own signal (reason and field),
 so an OCR review and a rate-change review of the same field are both decided before the
 snapshot activates.
 
@@ -144,7 +149,8 @@ recorded on the review is the CLI's `--user` (default `cli-user`).
 
 ## Remembered decisions
 
-A field decision (`select_candidate` or `override`) is remembered once it is committed,
+A field decision (`select_candidate`, `override` or `confirm_not_stated`) is remembered
+once it is committed,
 against the extraction call that produced the field and the field's result (status,
 value, cited evidence). When a later run of the same offering produces the same call
 or the same result, and every evidence ID the decision cites is still in that run's

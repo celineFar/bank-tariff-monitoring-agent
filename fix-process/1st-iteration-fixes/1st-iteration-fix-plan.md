@@ -572,16 +572,56 @@ marked **(paid)** with an estimate at the repository's list prices.
 
 ### Phase 4: Review decision (F13)
 
-- [ ] Add `ReviewDecisionType.CONFIRM_NOT_STATED` (domain, validation, `review_policy`
+- [x] Add `ReviewDecisionType.CONFIRM_NOT_STATED` (domain, validation, `review_policy`
       for `missing_required_field` only).
-- [ ] Apply it in the decision service: field recorded `not_stated` with reviewer,
+- [x] Apply it in the decision service: field recorded `not_stated` with reviewer,
       reason and time; snapshot activates when every review is decided.
-- [ ] Add a migration if the stored decision type is constrained in SQL.
-- [ ] CLI: new choice in the review prompt; the pause schema accepts it.
-- [ ] `review_decision_memory` stores and replays it.
-- [ ] Update [docs/native-hitl-review.md](../../docs/native-hitl-review.md) and
+- [x] Add a migration if the stored decision type is constrained in SQL. (Not needed:
+      `human_reviews.decision` and `review_decision_memory.decision` are JSONB with no
+      check on the decision type.)
+- [x] CLI: new choice in the review prompt; the pause schema accepts it.
+- [x] `review_decision_memory` stores and replays it.
+- [x] Update [docs/native-hitl-review.md](../../docs/native-hitl-review.md) and
       [docs/review-quarantine.md](../../docs/review-quarantine.md).
-- [ ] Remove the `xfail` marks; run the suite.
+- [x] Remove the `xfail` marks; run the suite.
+
+**Phase 4 notes (done).**
+
+- **What changed.**
+  - [domain/review.py](../../app/domain/review.py):
+    `ReviewDecisionType.CONFIRM_NOT_STATED = "confirm_not_stated"`; `ReviewDecision`
+    requires a `reason` for it and refuses candidate/override fields (the existing
+    rules).
+  - [domain/semantic_extraction.py](../../app/domain/semantic_extraction.py):
+    `ValidatedFieldResult.confirmed_not_stated: bool = False`. Old stored extractions
+    read as `False`.
+  - [review_resolution.py](../../app/services/review_resolution.py): `review_policy`
+    has its own branch for `missing_required_field` (override, confirm_not_stated,
+    reject_all) with guidance; `validate` needed no change (it checks the allowed set).
+  - [review_decisions.py](../../app/services/review_decisions.py): refuses the
+    decision for any other reason; `_resolve_field` builds a `not_stated` replacement
+    with `confirmed_not_stated=True` and the explanation "Reviewer confirmed not stated:
+    <reason>"; the rest of the path (assembly, acceptance, memory) is shared with
+    overrides.
+  - [snapshot_lifecycle.py](../../app/services/snapshot_lifecycle.py):
+    `extraction_is_acceptable` and `detect_review_signals` skip a confirmed required
+    field.
+  - [semantic_extraction.py](../../app/services/semantic_extraction.py): replaying a
+    remembered decision for an unchanged result copies the flag.
+  - [cli.py](../../app/cli.py): the option "type not_stated if the sources do not state
+    it"; typing `not_stated` asks "What did you check?" and refuses an empty answer.
+    The ADK pause schema is `ReviewDecisionInput`, whose enum includes the new value.
+- **Tests.** `test_f13_*` (3: policy, publication, memory replay) and
+  `tests/unit/test_cli.py::test_not_stated_confirms_a_missing_field_with_what_was_checked`.
+  `test_review_resolution.py::test_review_view_is_bounded_and_reason_specific` now
+  expects the new decision for `missing_required_field`.
+- **Slip caught by the suite.** The first edit placed the new reason check between the
+  `if OVERRIDE` block and its `elif`, which made the `elif` apply to overrides; 14 review
+  tests failed and the check was moved after the chain.
+- Full suite: 1,218 passed (with the CLI test), 59 skipped, 14 xfailed; only the 4
+  baseline live-environment tests fail.
+- **For Phase 8:** Diaspora `repayment`, No Income Verification `repayment` and `fees`
+  are the expected uses. A reviewer still has to decide them in `./tariff-chat`.
 
 ### Phase 5: Projection and query service (F1, F2, F4, F5, F15, F16, F17)
 

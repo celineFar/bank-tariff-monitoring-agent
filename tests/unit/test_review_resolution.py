@@ -636,7 +636,11 @@ async def test_reject_all_pending_reports_a_failing_run_and_keeps_going() -> Non
         ),
         (
             ReviewReason.MISSING_REQUIRED_FIELD,
-            {ReviewDecisionType.REJECT_ALL, ReviewDecisionType.OVERRIDE},
+            {
+                ReviewDecisionType.REJECT_ALL,
+                ReviewDecisionType.OVERRIDE,
+                ReviewDecisionType.CONFIRM_NOT_STATED,  # F13
+            },
         ),
     ],
 )

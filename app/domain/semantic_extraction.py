@@ -567,6 +567,9 @@ class ValidatedFieldResult(ExtractionModel):
     # produced the field, and the field's result (status, value, cited IDs).
     prompt_fingerprint: str | None = None
     result_fingerprint: str | None = None
+    # A reviewer confirmed the sources do not state this field (F13): a required
+    # field that is `not_stated` no longer blocks acceptance.
+    confirmed_not_stated: bool = False
 
 
 class ExtractionReviewItem(ExtractionModel):

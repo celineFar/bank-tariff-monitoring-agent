@@ -638,7 +638,6 @@ def test_f13_confirm_not_stated_is_offered_only_for_a_missing_field() -> None:
     assert confirm not in invalid
 
 
-@pytest.mark.xfail(strict=True, reason="F13")
 @pytest.mark.asyncio
 async def test_f13_confirming_a_missing_field_publishes_the_snapshot() -> None:
     from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
@@ -692,6 +691,68 @@ async def test_f13_confirming_a_missing_field_publishes_the_snapshot() -> None:
     )
     assert repayment.status is ExtractionStatus.NOT_STATED
     assert repayment.confirmed_not_stated is True
+
+
+@pytest.mark.asyncio
+async def test_f13_a_remembered_confirmation_is_replayed_on_the_next_run() -> None:
+    from app.domain.semantic_extraction import (
+        RememberedReviewDecision,
+        ValidatedFieldResult,
+    )
+    from app.repositories.review_memory import InMemoryReviewDecisionMemory
+    from app.services.semantic_extraction import (
+        InMemorySemanticExtractionRepository,
+        SemanticExtractionService,
+    )
+    from tests.unit.test_semantic_extraction_fixes import (
+        RETRIEVED_AT,
+        ScriptedExtractor,
+        _mortgage_bundle,
+    )
+
+    memory = InMemoryReviewDecisionMemory()
+    service = SemanticExtractionService(
+        ScriptedExtractor(),
+        InMemorySemanticExtractionRepository(),
+        SemanticExtractionSettings(),
+        model_name="model-a",
+        review_memory=memory,
+    )
+    bundle, discovery = _mortgage_bundle("Loan amount: AMD 3-150 million")
+    discovery = discovery.model_copy(update={"offering_id": "mortgage_diaspora"})
+    first = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+    repayment = next(
+        item
+        for item in first.validated_fields
+        if item.field is ExtractionField.REPAYMENT
+    )
+    assert repayment.status is ExtractionStatus.NOT_STATED
+    assert repayment.confirmed_not_stated is False
+    await memory.remember(
+        RememberedReviewDecision(
+            offering_id="mortgage_diaspora",
+            field=ExtractionField.REPAYMENT,
+            prompt_fingerprint=repayment.prompt_fingerprint,
+            result_fingerprint=repayment.result_fingerprint,
+            decision=ValidatedFieldResult(
+                field=ExtractionField.REPAYMENT,
+                status=ExtractionStatus.NOT_STATED,
+                explanation="Reviewer confirmed not stated: page checked",
+                batch_id="memory:review-1",
+                confirmed_not_stated=True,
+            ),
+            reviewer="analyst",
+            review_id="review-1",
+        )
+    )
+
+    second = await service.extract(bundle, discovery, retrieved_at=RETRIEVED_AT)
+    replayed = next(
+        item
+        for item in second.validated_fields
+        if item.field is ExtractionField.REPAYMENT
+    )
+    assert replayed.confirmed_not_stated is True
 
 
 # --- F9: the hero banner above the first heading ----------------------------------------

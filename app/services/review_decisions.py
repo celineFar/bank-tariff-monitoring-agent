@@ -80,6 +80,11 @@ class ReviewDecisionService:
             if selected is None:
                 raise ValueError("selected candidate is outside the review scope")
         elif (
+            decision.decision_type is ReviewDecisionType.CONFIRM_NOT_STATED
+            and task.reason is not ReviewReason.MISSING_REQUIRED_FIELD
+        ):
+            raise ValueError("confirm_not_stated is valid only for a missing field")
+        elif (
             decision.decision_type is ReviewDecisionType.APPROVE
             and task.reason
             not in (ReviewReason.LARGE_RATE_CHANGE, ReviewReason.OCR_EVIDENCE)
@@ -166,38 +171,49 @@ class ReviewDecisionService:
                 "review issue scope is not a supported tariff field"
             ) from exc
 
-        if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
-            raw_value = selected.value
-            evidence_id = selected.evidence_references[0]
-            if selected.conditions.get("conditions"):
-                raise ValueError(
-                    "candidate conditions require an explicit structured override"
-                )
-            explanation = "Reviewer selected a captured official-source candidate."
-        else:
-            raw_value = decision.override_value
-            evidence_id = decision.evidence_reference
-            explanation = decision.reason
-        assert evidence_id is not None
-        raw_value = coerce_review_candidate_value(field, raw_value)
-        try:
-            validated_value = validate_review_field_value(field, raw_value)
-        except ValueError as exc:
-            raise ValueError(
-                f"review value for {field.value} does not match the required structured field"
-            ) from exc
-
         extraction = SemanticExtractionResult.model_validate(
             snapshot.semantic_extraction
         )
-        replacement = ValidatedFieldResult(
-            field=field,
-            status=ExtractionStatus.FOUND,
-            value=validated_value,
-            evidence=(_citation(evidence_items[evidence_id], evidence_id, selected),),
-            explanation=explanation,
-            batch_id=f"review:{task.id}",
-        )
+        if decision.decision_type is ReviewDecisionType.CONFIRM_NOT_STATED:
+            # The reviewer checked the passages and the field is not there (F13).
+            replacement = ValidatedFieldResult(
+                field=field,
+                status=ExtractionStatus.NOT_STATED,
+                explanation=f"Reviewer confirmed not stated: {decision.reason}",
+                batch_id=f"review:{task.id}",
+                confirmed_not_stated=True,
+            )
+        else:
+            if decision.decision_type is ReviewDecisionType.SELECT_CANDIDATE:
+                raw_value = selected.value
+                evidence_id = selected.evidence_references[0]
+                if selected.conditions.get("conditions"):
+                    raise ValueError(
+                        "candidate conditions require an explicit structured override"
+                    )
+                explanation = "Reviewer selected a captured official-source candidate."
+            else:
+                raw_value = decision.override_value
+                evidence_id = decision.evidence_reference
+                explanation = decision.reason
+            assert evidence_id is not None
+            raw_value = coerce_review_candidate_value(field, raw_value)
+            try:
+                validated_value = validate_review_field_value(field, raw_value)
+            except ValueError as exc:
+                raise ValueError(
+                    f"review value for {field.value} does not match the required structured field"
+                ) from exc
+            replacement = ValidatedFieldResult(
+                field=field,
+                status=ExtractionStatus.FOUND,
+                value=validated_value,
+                evidence=(
+                    _citation(evidence_items[evidence_id], evidence_id, selected),
+                ),
+                explanation=explanation,
+                batch_id=f"review:{task.id}",
+            )
         fields = tuple(
             replacement if item.field is field else item
             for item in extraction.validated_fields

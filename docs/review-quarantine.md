@@ -46,7 +46,9 @@ Snapshot validation blocks unresolved `ambiguous` and `conflicting` fields. Conf
 web/PDF citations are preserved as distinct candidates with their evidence references,
 source types, quoted values, and conditions. A required field the extraction did not
 state (or left out of its answer) routes to `missing_required_field`, showing the
-passages its extraction call read. A value Gemini proposed that failed a check, for any
+passages its extraction call read. The reviewer can enter the value with its passage,
+confirm the sources do not state it (`confirm_not_stated`, with a reason), or reject the
+candidate. A value Gemini proposed that failed a check, for any
 field, routes to `extraction_invalid` with that value as the candidate and the failed
 checks named. A model execution failure without a valid response fails the offering
 without creating a human task. A `found` empty or inapplicable value

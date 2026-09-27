@@ -989,7 +989,12 @@ class SemanticExtractionService:
                     # evidence) -- an approved OCR reading. Keep it as read, and
                     # mark it confirmed so it is not put to review again.
                     fields[field] = item.model_copy(
-                        update={"batch_id": decision.decision.batch_id}
+                        update={
+                            "batch_id": decision.decision.batch_id,
+                            "confirmed_not_stated": (
+                                decision.decision.confirmed_not_stated
+                            ),
+                        }
                     )
                     reused.append(_reuse_record(decision, item.prompt_fingerprint))
                 continue

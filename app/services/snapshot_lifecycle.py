@@ -201,6 +201,7 @@ def extraction_is_acceptable(result: SemanticExtractionResult) -> bool:
         if (
             field.field in _REQUIRED_TARIFF_FIELDS
             and field.status is ExtractionStatus.NOT_STATED
+            and not field.confirmed_not_stated
         ):
             return False
         if field.status is ExtractionStatus.FOUND:
@@ -326,6 +327,7 @@ def detect_review_signals(
         elif (
             field.field in _REQUIRED_TARIFF_FIELDS
             and field.status is ExtractionStatus.NOT_STATED
+            and not field.confirmed_not_stated
         ):
             # Where the field would have been read from: the passages its own
             # extraction call read, not the first entries of the catalog (RV2).

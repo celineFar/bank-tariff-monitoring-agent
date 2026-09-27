@@ -76,6 +76,8 @@ class ReviewDecisionType(StrEnum):
     SELECT_CANDIDATE = "select_candidate"
     REJECT_ALL = "reject_all"
     OVERRIDE = "override"
+    # The reviewer confirms the sources do not state a required field (F13).
+    CONFIRM_NOT_STATED = "confirm_not_stated"
 
 
 class ReviewCandidate(ReviewModel):
@@ -117,6 +119,11 @@ class ReviewDecision(ReviewModel):
             )
         ):
             raise ValueError("override fields are valid only for override decisions")
+        if (
+            self.decision_type is ReviewDecisionType.CONFIRM_NOT_STATED
+            and self.reason is None
+        ):
+            raise ValueError("confirming a field is not stated requires a reason")
         return self
 
 

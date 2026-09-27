@@ -640,6 +640,18 @@ def review_policy(
             "it, reject the candidate snapshot, or provide an evidence-linked "
             "structured override.",
         )
+    if reason is ReviewReason.MISSING_REQUIRED_FIELD:
+        return (
+            (
+                ReviewDecisionType.OVERRIDE,
+                ReviewDecisionType.CONFIRM_NOT_STATED,
+                ReviewDecisionType.REJECT_ALL,
+            ),
+            "Gemini found no value for this required field. Check the passages: "
+            "enter the value with its passage if it is there, confirm the sources "
+            "do not state it (with what you checked), or reject the candidate "
+            "snapshot.",
+        )
     if reason is ReviewReason.EXTRACTION_INVALID:
         # Q1: accepting Gemini's value is a candidate selection a human made
         # after checking it; there is no accepted value to `approve`.

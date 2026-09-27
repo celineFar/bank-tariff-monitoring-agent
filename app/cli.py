@@ -802,6 +802,8 @@ async def _ask_review_decision(
         options.append("enter a candidate number")
     if ReviewDecisionType.OVERRIDE in allowed:
         options.append(f"enter the correct {item.issue_scope.replace('_', ' ')}")
+    if ReviewDecisionType.CONFIRM_NOT_STATED in allowed:
+        options.append("type not_stated if the sources do not state it")
     if ReviewDecisionType.REJECT_ALL in allowed:
         options.append("type reject_all to discard this run")
     _notice(
@@ -831,6 +833,18 @@ async def _ask_review_decision(
             return ReviewDecision(decision_type=ReviewDecisionType.REJECT_ALL)
         if raw.lower() == "approve" and ReviewDecisionType.APPROVE in allowed:
             return ReviewDecision(decision_type=ReviewDecisionType.APPROVE)
+        if (
+            raw.lower() == "not_stated"
+            and ReviewDecisionType.CONFIRM_NOT_STATED in allowed
+        ):
+            reason = (await _ainput("[yellow]What did you check? >[/] ")).strip()
+            if not reason:
+                _error("Reason required", "Say which pages or documents you checked.")
+                continue
+            return ReviewDecision(
+                decision_type=ReviewDecisionType.CONFIRM_NOT_STATED,
+                reason=reason[:2000],
+            )
         if raw.isdigit() and ReviewDecisionType.SELECT_CANDIDATE in allowed:
             number = int(raw)
             if 1 <= number <= len(item.candidates):

@@ -329,3 +329,7 @@ state is in the plan under "Phase N notes"; this section keeps the cross-phase p
   (No Income Verification, Primary, Construction, Commercial). Risk: those banners
   disagree with the tables on some pages (Commercial term/APR, the 12.9% campaign rate),
   which may raise `conflicting` reviews in the live run.
+- **Phase 4 (confirm not stated).** New review decision `confirm_not_stated` for
+  `missing_required_field` only, stored as `not_stated` with `confirmed_not_stated=true`
+  and remembered like an override. No migration (decisions are JSONB). CLI input:
+  `not_stated`, then a required "what did you check" reason.

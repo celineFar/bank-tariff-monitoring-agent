@@ -302,6 +302,33 @@ async def test_native_pause_accepts_a_plain_repayment_review(
     assert "Enter each repayment method" in capsys.readouterr().out
 
 
+@pytest.mark.asyncio
+async def test_not_stated_confirms_a_missing_field_with_what_was_checked(
+    monkeypatch, capsys
+) -> None:
+    """F13: a field the sources do not state is confirmed, with a reason."""
+    _answers(monkeypatch, "not_stated", "Checked the page and both tariff PDFs")
+    session = cli.ChatSession(
+        runner=None,
+        sessions=None,
+        app_name="a",
+        user_id="u",
+        session_id="s",
+        owner="o",
+    )
+    view = _term_view(uuid4(), "Loan amount: AMD 3-150 million", "repayment")
+    view["allowed_decisions"].append(ReviewDecisionType.CONFIRM_NOT_STATED.value)
+
+    reply = await session.ask(_pending(view))
+
+    assert reply == {
+        "decision_type": "confirm_not_stated",
+        "reason": "Checked the page and both tariff PDFs",
+    }
+    shown = " ".join(capsys.readouterr().out.split())
+    assert "type not_stated if the sources do not state it" in shown
+
+
 # --- Ctrl-C and recovery -------------------------------------------------------------
 
 
