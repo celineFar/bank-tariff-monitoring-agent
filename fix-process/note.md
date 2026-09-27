@@ -185,6 +185,9 @@ without asking:
 
 ## Resolution and RAG (fix-process/resolution_and_rag/)
 
+- **Merged** into `integration/process-fixes` on 2026-09-27 as `f2f7e7b` (merge commit,
+  like the earlier fixes). The suite on the merged branch: 1272 passed, with the 4
+  known Gemini-key tests failing as before.
 - **Branch.** `fix/resolution_and_rag` did not exist; it is created from
   `integration/process-fixes` at `180ea9f`.
 - **Design choices agreed with the user** (2026-09-27): D1–D5 in the
