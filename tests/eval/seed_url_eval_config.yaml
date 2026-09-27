@@ -1,0 +1,13 @@
+# Seed-URL ground-truth suite (datasets/seed-url-ground-truth.json).
+# custom_response_quality: the local LLM judge; each case's reference is its
+#   acceptance contract (expected values checked against the live pages).
+# fact_coverage: deterministic, reads metadata.required_facts / forbidden_claims.
+metrics_to_run:
+  - custom_response_quality
+  - fact_coverage
+
+custom_metrics:
+  - name: custom_response_quality
+    custom_function_file: response_quality.py
+  - name: fact_coverage
+    custom_function_file: fact_coverage.py

@@ -1,0 +1,2821 @@
+{
+  "eval_set_id": "seed-url-ground-truth",
+  "description": "15 Ameria tariff questions with expected answers checked against the live ameriabank.am pages and PDFs on 2026-09-27. reference.response is the judge's acceptance contract (custom_response_quality); metadata.required_facts / forbidden_claims drive the deterministic fact_coverage metric; rubric_groups serve rubric-based metrics. metadata.baseline_2026_09_27 records the first measured run. Tariffs change: refresh the ground truth before reusing the expected values.",
+  "eval_cases": [
+    {
+      "eval_case_id": "q01_consumer_lowest_nominal_rate_amd",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Which consumer loan has the lowest nominal interest rate in AMD?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Among standard published AMD rates, Online Consumer Finance is lowest at 17% nominal (promotional offer valid 15.04.26-12.01.27), vs Consumer loan 20% fixed, Overdraft 21%/20% and Credit line 21%/20%/19% by card tier. However, Consumer loan, Overdraft and Credit line each also state 15%-21% for scoring-based loans or workers of specific industries, so on the lowest-possible-rate reading those three tie at 15%, below 17%. A complete answer names the basis of the comparison and mentions both figures. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Among standard published AMD rates, Online Consumer Finance is lowest at 17% nominal (promotional offer valid 15.04.26-12.01.27), vs Consumer loan 20% fixed, Overdraft 21%/20% and Credit line 21%/20%/19% by card tier. However, Consumer loan, Overdraft and Credit line each also state 15%-21% for scoring-based loans or workers of specific industries, so on the lowest-possible-rate reading those three tie at 15%, below 17%. A complete answer names the basis of the comparison and mentions both figures."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 1,
+        "category": "family_rank",
+        "test_focus": "Family ranking across the 4 consumer offerings, restricted to AMD.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "family_rank",
+          "offering_ids": [
+            "consumer_standard",
+            "overdraft",
+            "credit_line",
+            "online_consumer_finance"
+          ],
+          "fields": [
+            "rate.nominal.minimum"
+          ],
+          "currency": "AMD",
+          "rank_direction": "lowest"
+        },
+        "expected_answer": "Among standard published AMD rates, Online Consumer Finance is lowest at 17% nominal (promotional offer valid 15.04.26-12.01.27), vs Consumer loan 20% fixed, Overdraft 21%/20% and Credit line 21%/20%/19% by card tier. However, Consumer loan, Overdraft and Credit line each also state 15%-21% for scoring-based loans or workers of specific industries, so on the lowest-possible-rate reading those three tie at 15%, below 17%. A complete answer names the basis of the comparison and mentions both figures.",
+        "key_facts": [
+          {
+            "offering": "online_consumer_finance",
+            "field": "rate.nominal",
+            "value": "17% (AMD-only product)",
+            "conditions": "offer valid from 15.04.26 to 12.01.27",
+            "quote": "17%* ... *The offer is valid from 15.04.26 to 12.01.27",
+            "source": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "locator": "hero banner"
+          },
+          {
+            "offering": "consumer_standard",
+            "field": "rate.nominal",
+            "value": "20% fixed; 15%-21% scoring-based",
+            "quote": "Annual interest rate Fixed 20% / Annual interest rate: 15%-21%",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/Consumer_unsecured_eng.pdf",
+            "locator": "page 1 and page 2"
+          },
+          {
+            "offering": "overdraft",
+            "field": "rate.nominal",
+            "value": "21% / 20% by card tier; 15%-21% scoring-based",
+            "quote": "AMD: 21% AMD: 20% ... the nominal interest rate for AMD denominated loans may be 15% -21%",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "credit_line",
+            "field": "rate.nominal",
+            "value": "21% / 20% / 19% by card tier; 15%-21% scoring-based",
+            "quote": "AMD: 21% AMD: 20% AMD: 19%",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "floor_15pct",
+            "any_of": [
+              "\\b15(\\.0)?\\s?%"
+            ]
+          },
+          {
+            "id": "ocf_17pct",
+            "any_of": [
+              "Online Consumer Finance[\\s\\S]{0,400}\\b17(\\.0)?\\s?%",
+              "\\b17(\\.0)?\\s?%[\\s\\S]{0,400}Online Consumer Finance"
+            ]
+          },
+          {
+            "id": "scoring_condition",
+            "any_of": [
+              "scoring"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/Consumer_unsecured_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+          "https://ameriabank.am/en/loans/consumer-loans"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "where": "Hero banner at the top of the page: '17%*' and footnote '*The offer is valid from 15.04.26 to 12.01.27'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/Consumer_unsecured_eng.pdf#page=1",
+            "where": "Row 'Annual interest rate' = Fixed 20%; page 2 note 'Annual interest rate: 15%-21%'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf#page=1",
+            "where": "Row 'Interest rate' (AMD 21% / 20%) and footnote 3 (15%-21%)"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+            "where": "Row 'Interest rate' (AMD 21% / 20% / 19%) and footnote (15%-21%)"
+          },
+          {
+            "url": "https://ameriabank.am/en/loans/consumer-loans",
+            "where": "Listing cards show 'Nominal interest rate 15 - 21%'"
+          }
+        ],
+        "depends_on_offerings": [
+          "consumer_standard",
+          "overdraft",
+          "credit_line",
+          "online_consumer_finance"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "partially_correct",
+          "answer_correctness": 0.5,
+          "fact_coverage": 0.667,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 2,
+          "retrieved_context_digest": [
+            "credit_line rate.nominal.minimum=\"15\" AMD other=scoring-based loans or loans to workers of specific industries; currency=AMD",
+            "overdraft rate.nominal.minimum=\"15.0\" AMD currency=AMD; other=applications for scoring-based loans or loans to workers of specific industries"
+          ],
+          "data_state": {
+            "consumer_standard": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            },
+            "overdraft": {
+              "state": "accepted",
+              "pending_reviews": 0
+            },
+            "credit_line": {
+              "state": "accepted",
+              "pending_reviews": 0
+            },
+            "online_consumer_finance": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.0170535,
+          "gemini_calls": 4,
+          "input_tokens": 11733,
+          "output_tokens_incl_thinking": 2201,
+          "latency_ms": 11463
+        }
+      }
+    },
+    {
+      "eval_case_id": "q02_mortgage_largest_amount_amd",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Which mortgage loans allow the largest amount in AMD?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): AMD 150,000,000 is the largest maximum, shared by six offerings: Primary Market, Secondary Market, Commercial, Renovation, Construction and Mortgage Loan for Diaspora. Online Mortgage (primary market), Express Mortgage and Mortgage without Income Verification top out at AMD 100,000,000 (online secondary-market loans at AMD 50,000,000; online refinancing is capped at AMD 100,000,000). Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: AMD 150,000,000 is the largest maximum, shared by six offerings: Primary Market, Secondary Market, Commercial, Renovation, Construction and Mortgage Loan for Diaspora. Online Mortgage (primary market), Express Mortgage and Mortgage without Income Verification top out at AMD 100,000,000 (online secondary-market loans at AMD 50,000,000; online refinancing is capped at AMD 100,000,000)."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 2,
+        "category": "family_rank",
+        "test_focus": "Family ranking across all 9 mortgage offerings by maximum AMD amount; the source has a six-way tie.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "family_rank",
+          "offering_ids": [
+            "all 9 mortgage offerings"
+          ],
+          "fields": [
+            "amount.maximum"
+          ],
+          "currency": "AMD",
+          "rank_direction": "highest"
+        },
+        "expected_answer": "AMD 150,000,000 is the largest maximum, shared by six offerings: Primary Market, Secondary Market, Commercial, Renovation, Construction and Mortgage Loan for Diaspora. Online Mortgage (primary market), Express Mortgage and Mortgage without Income Verification top out at AMD 100,000,000 (online secondary-market loans at AMD 50,000,000; online refinancing is capped at AMD 100,000,000).",
+        "key_facts": [
+          {
+            "offering": "mortgage_primary",
+            "field": "amount.maximum",
+            "value": "AMD 150,000,000",
+            "quote": "3.2.1. AMD 3,000,000 - AMD 150,000,000 For online refinancing: AMD 3,000,000-100,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_secondary_market",
+            "field": "amount.maximum",
+            "value": "AMD 150,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_purchase_Secondary_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_commercial",
+            "field": "amount.maximum",
+            "value": "AMD 150,000,000",
+            "quote": "3.2.1. AMD 3,000,000 - AMD 150,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_commercial_purchase_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_renovation",
+            "field": "amount.maximum",
+            "value": "AMD 150,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_renovation_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_construction",
+            "field": "amount.maximum",
+            "value": "AMD 150,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_construction_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_diaspora",
+            "field": "amount.maximum",
+            "value": "AMD 150 million",
+            "quote": "AMD 3 - 150 mln",
+            "source": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "locator": "section 'Flexible financing for the Diaspora'"
+          },
+          {
+            "offering": "mortgage_express",
+            "field": "amount.maximum",
+            "value": "AMD 100,000,000",
+            "quote": "2.2.1. AMD 3,000,000 - AMD 100,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_online",
+            "field": "amount.maximum",
+            "value": "AMD 100,000,000 (primary market)",
+            "quote": "3.2.1. AMD 3,000,000 - AMD 100,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_online_purchase_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "max_150m",
+            "any_of": [
+              "150[,.\\s]?000[,.\\s]?000",
+              "150\\s?(million|mln)"
+            ]
+          },
+          {
+            "id": "primary_at_150m",
+            "any_of": [
+              "Primary[\\s\\S]{0,200}150",
+              "150[\\s\\S]{0,200}Primary"
+            ]
+          },
+          {
+            "id": "another_offering_at_150m",
+            "any_of": [
+              "(Secondary|Commercial|Renovation|Construction|Diaspora)[\\s\\S]{0,200}150",
+              "150[\\s\\S]{0,200}(Secondary|Commercial|Renovation|Construction|Diaspora)"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_purchase_Secondary_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_commercial_purchase_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_renovation_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_construction_eng.pdf#page=1",
+          "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_online_purchase_eng.pdf#page=1"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=1",
+            "where": "Row 3.2 'Loan amount' (AMD 3,000,000 - AMD 150,000,000)"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_purchase_Secondary_eng.pdf#page=1",
+            "where": "Row 3.2 'Loan amount'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_commercial_purchase_eng.pdf#page=1",
+            "where": "Row 3.2 'Loan amount'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_renovation_eng.pdf#page=1",
+            "where": "Row 3.2 'Loan amount'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_construction_eng.pdf#page=1",
+            "where": "Row 3.2 'Loan amount'"
+          },
+          {
+            "url": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "where": "Section 'Flexible financing for the Diaspora' ('AMD 3 - 150 mln')"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=1",
+            "where": "Row 2.2 (AMD 3,000,000 - AMD 100,000,000)"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_online_purchase_eng.pdf#page=1",
+            "where": "Row 3.2 (AMD 3,000,000 - AMD 100,000,000)"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_online",
+          "mortgage_primary",
+          "mortgage_diaspora",
+          "mortgage_secondary_market",
+          "mortgage_commercial",
+          "mortgage_express",
+          "mortgage_no_income_verification",
+          "mortgage_renovation",
+          "mortgage_construction"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "incorrect",
+          "answer_correctness": 0.0,
+          "fact_coverage": 0.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 2,
+          "retrieved_context_digest": [
+            "mortgage_express amount.maximum=\"100000000\" AMD currency=AMD",
+            "mortgage_online amount.maximum=\"100000000\" AMD property_market=primary market"
+          ],
+          "data_state": {
+            "mortgage_online": {
+              "state": "accepted",
+              "pending_reviews": 0
+            },
+            "mortgage_primary": {
+              "state": "pending_review",
+              "pending_reviews": 2
+            },
+            "mortgage_diaspora": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            },
+            "mortgage_secondary_market": {
+              "state": "pending_review",
+              "pending_reviews": 4
+            },
+            "mortgage_commercial": {
+              "state": "pending_review",
+              "pending_reviews": 8
+            },
+            "mortgage_express": {
+              "state": "accepted",
+              "pending_reviews": 0
+            },
+            "mortgage_no_income_verification": {
+              "state": "pending_review",
+              "pending_reviews": 4
+            },
+            "mortgage_renovation": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            },
+            "mortgage_construction": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            }
+          },
+          "cost_usd": 0.014085,
+          "gemini_calls": 4,
+          "input_tokens": 11495,
+          "output_tokens_incl_thinking": 1457,
+          "latency_ms": 10642
+        }
+      }
+    },
+    {
+      "eval_case_id": "q03_mortgage_longest_term",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Which mortgage loans have the longest repayment term?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): 360 months is the longest term, reached by Online, Primary Market, Diaspora, Secondary Market, Commercial, Express, and Mortgage without Income Verification (and Construction via online refinancing / Express construction; its standard tables stop at 61-240). Renovation Mortgage is the exception at up to 240 months. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: 360 months is the longest term, reached by Online, Primary Market, Diaspora, Secondary Market, Commercial, Express, and Mortgage without Income Verification (and Construction via online refinancing / Express construction; its standard tables stop at 61-240). Renovation Mortgage is the exception at up to 240 months."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 3,
+        "category": "family_rank",
+        "test_focus": "Family ranking by maximum term; 8 of 9 offerings reach 360 months.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "family_rank",
+          "offering_ids": [
+            "all 9 mortgage offerings"
+          ],
+          "fields": [
+            "term.maximum_months"
+          ],
+          "rank_direction": "highest"
+        },
+        "expected_answer": "360 months is the longest term, reached by Online, Primary Market, Diaspora, Secondary Market, Commercial, Express, and Mortgage without Income Verification (and Construction via online refinancing / Express construction; its standard tables stop at 61-240). Renovation Mortgage is the exception at up to 240 months.",
+        "key_facts": [
+          {
+            "offering": "mortgage_primary",
+            "field": "term.maximum_months",
+            "value": "360",
+            "quote": "3.6. Term (months) 3.6.1. 61-360",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_online",
+            "field": "term.maximum_months",
+            "value": "360",
+            "quote": "3.3.1. 61-360",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_online_purchase_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_express",
+            "field": "term.maximum_months",
+            "value": "360",
+            "quote": "1.2.1. 61-360",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf",
+            "locator": "page 3"
+          },
+          {
+            "offering": "mortgage_renovation",
+            "field": "term.maximum_months",
+            "value": "240",
+            "quote": "3.6.1. 61-240",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_renovation_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_construction",
+            "field": "term.maximum_months",
+            "value": "240 standard; 360 online refinance",
+            "quote": "3.6.1. 61-240 ... 3.7.4. 61-360",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_construction_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "max_360_months",
+            "any_of": [
+              "\\b360\\b"
+            ]
+          },
+          {
+            "id": "primary_at_360",
+            "any_of": [
+              "Primary[\\s\\S]{0,200}\\b360\\b",
+              "\\b360\\b[\\s\\S]{0,200}Primary"
+            ]
+          },
+          {
+            "id": "another_offering_at_360",
+            "any_of": [
+              "(Secondary|Commercial|Diaspora|Income Verification)[\\s\\S]{0,200}\\b360\\b",
+              "\\b360\\b[\\s\\S]{0,200}(Secondary|Commercial|Diaspora|Income Verification)"
+            ]
+          },
+          {
+            "id": "renovation_240_exception",
+            "any_of": [
+              "Renovation[\\s\\S]{0,200}\\b240\\b",
+              "\\b240\\b[\\s\\S]{0,200}Renovation"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=3",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_renovation_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_construction_eng.pdf#page=1",
+          "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+          "https://ameriabank.am/en/personal/loans/mortgage/no-income-verification"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=1",
+            "where": "Row '3.6. Term (months) 3.6.1. 61-360'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=3",
+            "where": "Row '1.2.1. 61-360'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_renovation_eng.pdf#page=1",
+            "where": "Row '3.6.1. 61-240' (the exception)"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortage_personal_construction_eng.pdf#page=1",
+            "where": "Rows '3.6.1. 61-240' (standard) and '3.7.4. 61-360' (online refinance)"
+          },
+          {
+            "url": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "where": "'60-360 months'"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/mortgage/no-income-verification",
+            "where": "Hero: '61-360 months'"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_online",
+          "mortgage_primary",
+          "mortgage_diaspora",
+          "mortgage_secondary_market",
+          "mortgage_commercial",
+          "mortgage_express",
+          "mortgage_no_income_verification",
+          "mortgage_renovation",
+          "mortgage_construction"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "partially_correct",
+          "answer_correctness": 0.5,
+          "fact_coverage": 0.25,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 2,
+          "retrieved_context_digest": [
+            "mortgage_express term.maximum_months=360  variant_id=express_home_construction",
+            "mortgage_online term.maximum_months=360"
+          ],
+          "data_state": {
+            "mortgage_online": {
+              "state": "accepted",
+              "pending_reviews": 0
+            },
+            "mortgage_primary": {
+              "state": "pending_review",
+              "pending_reviews": 2
+            },
+            "mortgage_diaspora": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            },
+            "mortgage_secondary_market": {
+              "state": "pending_review",
+              "pending_reviews": 4
+            },
+            "mortgage_commercial": {
+              "state": "pending_review",
+              "pending_reviews": 8
+            },
+            "mortgage_express": {
+              "state": "accepted",
+              "pending_reviews": 0
+            },
+            "mortgage_no_income_verification": {
+              "state": "pending_review",
+              "pending_reviews": 4
+            },
+            "mortgage_renovation": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            },
+            "mortgage_construction": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            }
+          },
+          "cost_usd": 0.0153105,
+          "gemini_calls": 4,
+          "input_tokens": 13064,
+          "output_tokens_incl_thinking": 1470,
+          "latency_ms": 10278
+        }
+      }
+    },
+    {
+      "eval_case_id": "q04_credit_line_fees",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What fees apply to the Credit Line?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Early repayment fee: N/A. Lump-sum fee for failure to make the required minimum monthly payment when due: AMD 5,000 (cards issued up to January 2015; later cards pay late-payment penalties instead). Late payment: 0.13% of overdue loan and interest per day. Increase of card credit limit: AMD 5,000. Loan service fees for client-requested changes (e.g. change of overdraft/credit-line account or card AMD 30,000; change of repayment date AMD 10,000; condition subsequent 0.05% min AMD 10,000; other term revision 0.1% min AMD 10,000). No extra fees when applying online. Card service and cash-withdrawal fees are set in the separate card tariff (not stated here). No application fee is stated. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Early repayment fee: N/A. Lump-sum fee for failure to make the required minimum monthly payment when due: AMD 5,000 (cards issued up to January 2015; later cards pay late-payment penalties instead). Late payment: 0.13% of overdue loan and interest per day. Increase of card credit limit: AMD 5,000. Loan service fees for client-requested changes (e.g. change of overdraft/credit-line account or card AMD 30,000; change of repayment date AMD 10,000; condition subsequent 0.05% min AMD 10,000; other term revision 0.1% min AMD 10,000). No extra fees when applying online. Card service and cash-withdraw"
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 4,
+        "category": "single_offering_fee_inventory",
+        "test_focus": "Fee inventory for one offering, mixing product fees and general loan-service fees.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "credit_line"
+          ],
+          "fields": [
+            "fee.*"
+          ]
+        },
+        "expected_answer": "Early repayment fee: N/A. Lump-sum fee for failure to make the required minimum monthly payment when due: AMD 5,000 (cards issued up to January 2015; later cards pay late-payment penalties instead). Late payment: 0.13% of overdue loan and interest per day. Increase of card credit limit: AMD 5,000. Loan service fees for client-requested changes (e.g. change of overdraft/credit-line account or card AMD 30,000; change of repayment date AMD 10,000; condition subsequent 0.05% min AMD 10,000; other term revision 0.1% min AMD 10,000). No extra fees when applying online. Card service and cash-withdrawal fees are set in the separate card tariff (not stated here). No application fee is stated.",
+        "key_facts": [
+          {
+            "offering": "credit_line",
+            "field": "fee.early_repayment",
+            "value": "N/A",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "credit_line",
+            "field": "fee.other",
+            "value": "AMD 5,000 lump sum for missed minimum payment (cards to Jan 2015)",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 2"
+          },
+          {
+            "offering": "credit_line",
+            "field": "fee.other",
+            "value": "0.13% per day late-payment fine",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 2"
+          },
+          {
+            "offering": "credit_line",
+            "field": "fee.other",
+            "value": "AMD 5,000 increase of credit limit",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "credit_line",
+            "field": "fee.other",
+            "value": "Loan service fees table (12 rows)",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "early_repayment_na",
+            "any_of": [
+              "early repayment[\\s\\S]{0,120}(N/?A|not applicable|no fee|none)"
+            ]
+          },
+          {
+            "id": "late_fine_0_13pct",
+            "any_of": [
+              "0[.,]13\\s?%"
+            ]
+          },
+          {
+            "id": "amd_5000",
+            "any_of": [
+              "5,?000"
+            ]
+          },
+          {
+            "id": "account_change_30000",
+            "any_of": [
+              "30,?000"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=2",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+            "where": "Rows 'Early repayment fee' (N/A) and 'Increase of credit limit' (AMD 5,000)"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=2",
+            "where": "Lump-sum fee AMD 5,000 and 0.13% daily fine"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_eng.pdf#page=1",
+            "where": "Loan service fees table"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line",
+            "where": "'Terms and conditions' -> tabs 'Credit line unsecured' and 'Loans service fee'"
+          }
+        ],
+        "depends_on_offerings": [
+          "credit_line"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct",
+          "answer_correctness": 0.9,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 14,
+          "retrieved_context_digest": [
+            "credit_line fee.early_repayment={\"scope\": \"product\", \"amount\": null, \"currency\": null, \"rate_pct\": null, \"conditions\": [], \"description\": \"Early repayme",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"10000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"25000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"product\", \"amount\": \"5000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [{\"value\": \"issued up to Jan AMD other=issued up to January 2015",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"10000.0\", \"currency\": \"AMD\", \"rate_pct\": \"0.05\", \"conditions\": [], \"descrip AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"10000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"10000.0\", \"currency\": \"AMD\", \"rate_pct\": \"0.1\", \"conditions\": [], \"descript AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"30000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"15000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"50000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"general_loan_service\", \"amount\": \"50000.0\", \"currency\": \"AMD\", \"rate_pct\": null, \"conditions\": [], \"descripti AMD",
+            "credit_line fee.other={\"scope\": \"product\", \"amount\": null, \"currency\": null, \"rate_pct\": \"0.13\", \"conditions\": [{\"value\": \"issued after Januar  other=issued after January 2015"
+          ],
+          "data_state": {
+            "credit_line": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.07406925,
+          "gemini_calls": 4,
+          "input_tokens": 86004,
+          "output_tokens_incl_thinking": 2551,
+          "latency_ms": 13434
+        }
+      }
+    },
+    {
+      "eval_case_id": "q05_primary_mortgage_collateral",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What collateral does the Primary Market Mortgage require?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): The loan is secured by the real estate being purchased; the Bank may accept other real estate, cash in the Bank or Bank-issued bonds as additional security. Property under construction without a registered title, or property abroad, must be secured by other real estate in Armenia; online refinancing uses completed developer property. LTV: AMD up to 90% (61-240 months) / 80% (>240); foreign currency 70% / 60%; cash/bonds up to 100%. Guarantees may be requested. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: The loan is secured by the real estate being purchased; the Bank may accept other real estate, cash in the Bank or Bank-issued bonds as additional security. Property under construction without a registered title, or property abroad, must be secured by other real estate in Armenia; online refinancing uses completed developer property. LTV: AMD up to 90% (61-240 months) / 80% (>240); foreign currency 70% / 60%; cash/bonds up to 100%. Guarantees may be requested."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 5,
+        "category": "single_offering_field",
+        "test_focus": "Collateral requirement of one mortgage offering.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "single",
+          "offering_ids": [
+            "mortgage_primary"
+          ],
+          "fields": [
+            "collateral.requirement",
+            "collateral.alternative"
+          ]
+        },
+        "expected_answer": "The loan is secured by the real estate being purchased; the Bank may accept other real estate, cash in the Bank or Bank-issued bonds as additional security. Property under construction without a registered title, or property abroad, must be secured by other real estate in Armenia; online refinancing uses completed developer property. LTV: AMD up to 90% (61-240 months) / 80% (>240); foreign currency 70% / 60%; cash/bonds up to 100%. Guarantees may be requested.",
+        "key_facts": [
+          {
+            "offering": "mortgage_primary",
+            "field": "collateral.requirement",
+            "value": "real estate being purchased (+ optional other real estate, cash, Bank bonds)",
+            "quote": "1. The loan is secured by the real estate being purchased. The Bank may consider pledge of other real estate as additional security to the reasonable satisfaction of the Bank, as well as cash in the Bank or bonds issued by the Bank.",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 3, section 5.1"
+          },
+          {
+            "offering": "mortgage_primary",
+            "field": "ltv_pct",
+            "value": "AMD 90%/80%; FX 70%/60%; cash/bonds 100%",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 3, section 5.2"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "purchased_property",
+            "any_of": [
+              "(real estate|property)[\\s\\S]{0,60}(being )?purchased",
+              "purchased[\\s\\S]{0,40}(real estate|property)"
+            ]
+          },
+          {
+            "id": "additional_security",
+            "any_of": [
+              "cash",
+              "bonds"
+            ]
+          },
+          {
+            "id": "ltv_90",
+            "any_of": [
+              "\\b90\\s?%"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=3",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=4",
+          "https://ameriabank.am/en/personal/loans/mortgage/primary"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=3",
+            "where": "Section 5 'Security': 5.1 Eligible collateral, 5.2 LTV, 5.3 Location"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=4",
+            "where": "5.4 Appraisal, 5.5 Additional security"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/mortgage/primary",
+            "where": "'Terms and conditions' -> 'Tariffs' tab, section 5"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_primary"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "abstained_data_unavailable",
+          "answer_correctness": 0.0,
+          "fact_coverage": 0.0,
+          "answer_tool_status": "missing",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query",
+            "get_current_tariffs"
+          ],
+          "retrieved_fact_count": 0,
+          "retrieved_context_digest": [],
+          "data_state": {
+            "mortgage_primary": {
+              "state": "pending_review",
+              "pending_reviews": 2
+            }
+          },
+          "cost_usd": 0.0116445,
+          "gemini_calls": 5,
+          "input_tokens": 10551,
+          "output_tokens_incl_thinking": 995,
+          "latency_ms": 9781
+        }
+      }
+    },
+    {
+      "eval_case_id": "q06_online_consumer_finance_purpose_terms",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What purpose and terms does the Online Consumer Finance cover?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Purpose: buying electronics, household appliances, furniture and everyday goods in instalments from Ameria's partner online stores. Terms: AMD 50,000-1,500,000; 17% nominal (offer valid 15.04.26-12.01.27); APR 18.1%-18.4%; 6-24 months; AMD only; age 20-66, Armenian residents; annuity repayment; the purchased product is the collateral (LTV 100%); 0.13% daily penalty on overdue amounts; no early-repayment penalty. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Purpose: buying electronics, household appliances, furniture and everyday goods in instalments from Ameria's partner online stores. Terms: AMD 50,000-1,500,000; 17% nominal (offer valid 15.04.26-12.01.27); APR 18.1%-18.4%; 6-24 months; AMD only; age 20-66, Armenian residents; annuity repayment; the purchased product is the collateral (LTV 100%); 0.13% daily penalty on overdue amounts; no early-repayment penalty."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 6,
+        "category": "single_offering_multi_field",
+        "test_focus": "Open-ended 'purpose and terms' question on one offering.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "online_consumer_finance"
+          ],
+          "fields": [
+            "identity.purpose",
+            "amount.*",
+            "rate.*",
+            "term.*",
+            "collateral",
+            "repayment"
+          ]
+        },
+        "expected_answer": "Purpose: buying electronics, household appliances, furniture and everyday goods in instalments from Ameria's partner online stores. Terms: AMD 50,000-1,500,000; 17% nominal (offer valid 15.04.26-12.01.27); APR 18.1%-18.4%; 6-24 months; AMD only; age 20-66, Armenian residents; annuity repayment; the purchased product is the collateral (LTV 100%); 0.13% daily penalty on overdue amounts; no early-repayment penalty.",
+        "key_facts": [
+          {
+            "offering": "online_consumer_finance",
+            "field": "identity.purpose",
+            "value": "electronics, household appliances, furniture, daily products from partner online stores",
+            "source": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "locator": "intro 'Online consumer loan'"
+          },
+          {
+            "offering": "online_consumer_finance",
+            "field": "amount",
+            "value": "AMD 50,000 - 1,500,000",
+            "quote": "Financing Limit | Minimum: 50,000 AMD Maximum: 1,500,000 AMD",
+            "source": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "locator": "tab 'Terms of installment financing for the purchase of goods'"
+          },
+          {
+            "offering": "online_consumer_finance",
+            "field": "term",
+            "value": "6-24 months",
+            "quote": "Term (months) | 6 - 24 months",
+            "source": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "locator": "same tab"
+          },
+          {
+            "offering": "online_consumer_finance",
+            "field": "rate.nominal",
+            "value": "17%",
+            "quote": "17%* ... *The offer is valid from 15.04.26 to 12.01.27",
+            "source": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "locator": "hero banner"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "purpose_goods",
+            "any_of": [
+              "electronics",
+              "household appliances",
+              "furniture"
+            ]
+          },
+          {
+            "id": "term_6_24",
+            "any_of": [
+              "\\b6\\b[\\s\\S]{0,40}\\b24\\b"
+            ]
+          },
+          {
+            "id": "amount_range",
+            "any_of": [
+              "1,?500,?000"
+            ]
+          },
+          {
+            "id": "rate_17",
+            "any_of": [
+              "\\b17(\\.0)?\\s?%"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "where": "Hero banner; intro 'Online consumer loan'; 'Terms and conditions' -> 'Terms of installment financing for the purchase of goods' and 'Payment methods' tabs"
+          }
+        ],
+        "depends_on_offerings": [
+          "online_consumer_finance"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "partially_correct",
+          "answer_correctness": 0.5,
+          "fact_coverage": 0.5,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 6,
+          "retrieved_context_digest": [
+            "online_consumer_finance identity.purpose=\"household appliances\"",
+            "online_consumer_finance identity.purpose=\"products necessary for your daily life from our partner online stores\"",
+            "online_consumer_finance identity.purpose=\"furniture\"",
+            "online_consumer_finance identity.purpose=\"electronics\"",
+            "online_consumer_finance term.maximum_months=24",
+            "online_consumer_finance term.minimum_months=6"
+          ],
+          "data_state": {
+            "online_consumer_finance": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.01482525,
+          "gemini_calls": 4,
+          "input_tokens": 13867,
+          "output_tokens_incl_thinking": 1180,
+          "latency_ms": 9727
+        }
+      }
+    },
+    {
+      "eval_case_id": "q07_overdraft_max_amount",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What amount can the Overdraft reach?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Up to AMD 15,000,000 for scoring-based overdrafts (from AMD 100,000). Applications reviewed outside the scoring system: AMD 300,000 - 10,000,000, at most 4 times income. The total credit limit on the card can be AMD 100,000 - 100,000,000 (card-level total, not the overdraft limit). Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Up to AMD 15,000,000 for scoring-based overdrafts (from AMD 100,000). Applications reviewed outside the scoring system: AMD 300,000 - 10,000,000, at most 4 times income. The total credit limit on the card can be AMD 100,000 - 100,000,000 (card-level total, not the overdraft limit)."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 7,
+        "category": "single_offering_field",
+        "test_focus": "Maximum amount with conditional variants (scoring vs non-scoring vs card total).",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "overdraft"
+          ],
+          "fields": [
+            "amount.maximum",
+            "revolving.credit_limit.maximum"
+          ]
+        },
+        "expected_answer": "Up to AMD 15,000,000 for scoring-based overdrafts (from AMD 100,000). Applications reviewed outside the scoring system: AMD 300,000 - 10,000,000, at most 4 times income. The total credit limit on the card can be AMD 100,000 - 100,000,000 (card-level total, not the overdraft limit).",
+        "key_facts": [
+          {
+            "offering": "overdraft",
+            "field": "amount.maximum",
+            "value": "AMD 15 million (scoring)",
+            "quote": "Maximum amount: AMD 15 million",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "overdraft",
+            "field": "amount.maximum",
+            "value": "AMD 10 million, max 4x income (outside scoring)",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "overdraft",
+            "field": "revolving.credit_limit.maximum",
+            "value": "AMD 100,000,000 total card limit",
+            "quote": "Minimum and total maximum credit AMD: 100,000-100,000,000",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "max_15m",
+            "any_of": [
+              "15,?000,?000",
+              "15\\s?(million|mln)"
+            ]
+          },
+          {
+            "id": "non_scoring_10m",
+            "any_of": [
+              "10,?000,?000",
+              "10\\s?(million|mln)"
+            ]
+          },
+          {
+            "id": "income_multiple_4",
+            "any_of": [
+              "\\b4[- ]?(fold|times|×|x)\\b",
+              "four"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf#page=1",
+            "where": "Row 'Credit limit' and footnote 2"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft",
+            "where": "Hero banner and 'Terms and conditions' -> 'Overdrafts via Cards not secured with property (unsecured)' tab, row 'Credit limit'"
+          }
+        ],
+        "depends_on_offerings": [
+          "overdraft"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct",
+          "answer_correctness": 1.0,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 8,
+          "retrieved_context_digest": [
+            "overdraft amount.maximum=\"10000000.0\" AMD program=loans issued beyond the scoring system",
+            "overdraft amount.maximum=\"15000000.0\" AMD program=loans issued under the scoring system",
+            "overdraft amount.maximum=\"100000000.0\" AMD other=total credit limit for the card",
+            "overdraft amount.salary_multiple.maximum=\"4.0\"  program=If the loan application is reviewed outside the scoring system",
+            "overdraft revolving.credit_limit.maximum=\"100000000\" AMD",
+            "overdraft revolving.credit_limit.maximum=\"15000000\" AMD",
+            "overdraft revolving.credit_limit.maximum=\"10000000\" AMD",
+            "overdraft revolving.credit_limit.salary_multiple.maximum=\"4\""
+          ],
+          "data_state": {
+            "overdraft": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.02407875,
+          "gemini_calls": 4,
+          "input_tokens": 24955,
+          "output_tokens_incl_thinking": 1430,
+          "latency_ms": 8386
+        }
+      }
+    },
+    {
+      "eval_case_id": "q08_credit_line_term",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What repayment term applies to the Credit Line?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Indefinite term (until requested back): the line runs until the Bank cancels it under the agreement, based on its monitoring. Grace period up to 51 days. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Indefinite term (until requested back): the line runs until the Bank cancels it under the agreement, based on its monitoring. Grace period up to 51 days."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 8,
+        "category": "single_offering_field",
+        "test_focus": "Non-numeric term (indefinite / on demand).",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "credit_line"
+          ],
+          "fields": [
+            "term.indefinite",
+            "term.end_condition"
+          ]
+        },
+        "expected_answer": "Indefinite term (until requested back): the line runs until the Bank cancels it under the agreement, based on its monitoring. Grace period up to 51 days.",
+        "key_facts": [
+          {
+            "offering": "credit_line",
+            "field": "term.indefinite",
+            "value": "true (until requested back)",
+            "quote": "Indefinite term (until requested back): until loan cancellation by the Bank, which may occur in accordance with the agreement, based on the results of the monitoring by the Bank.",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 1, row 'Term (months)'"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "indefinite",
+            "any_of": [
+              "indefinite",
+              "until requested back",
+              "on demand"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+            "where": "Row 'Term (months)'"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line",
+            "where": "Hero 'Indefinite term (until requested back)*' and 'Credit line unsecured' tab"
+          }
+        ],
+        "depends_on_offerings": [
+          "credit_line"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct",
+          "answer_correctness": 1.0,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 2,
+          "retrieved_context_digest": [
+            "credit_line term.end_condition=\"on_demand\"",
+            "credit_line term.indefinite=true"
+          ],
+          "data_state": {
+            "credit_line": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.01286775,
+          "gemini_calls": 4,
+          "input_tokens": 11177,
+          "output_tokens_incl_thinking": 1196,
+          "latency_ms": 8380
+        }
+      }
+    },
+    {
+      "eval_case_id": "q09_express_mortgage_application_fee_absent",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What application fee applies to the Express Mortgage?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): No application fee is stated for the Express Mortgage (page, Express terms PDF and both loan-service-fee PDFs). The only up-front fee row is '2.4. Lump sum disbursement fee 2.4.1. N/A'. The customer pays third-party costs (notary, cadastre registration, final appraisal if required). The correct response is to say that no application fee is published, without inventing one. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: No application fee is stated for the Express Mortgage (page, Express terms PDF and both loan-service-fee PDFs). The only up-front fee row is '2.4. Lump sum disbursement fee 2.4.1. N/A'. The customer pays third-party costs (notary, cadastre registration, final appraisal if required). The correct response is to say that no application fee is published, without inventing one."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 9,
+        "category": "absent_value",
+        "test_focus": "A value the source does not state: the system must not invent an application fee.",
+        "expected_behavior": "state_not_available",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "single",
+          "offering_ids": [
+            "mortgage_express"
+          ],
+          "fields": [
+            "fee.application"
+          ]
+        },
+        "expected_answer": "No application fee is stated for the Express Mortgage (page, Express terms PDF and both loan-service-fee PDFs). The only up-front fee row is '2.4. Lump sum disbursement fee 2.4.1. N/A'. The customer pays third-party costs (notary, cadastre registration, final appraisal if required). The correct response is to say that no application fee is published, without inventing one.",
+        "key_facts": [
+          {
+            "offering": "mortgage_express",
+            "field": "fee.disbursement",
+            "value": "N/A",
+            "quote": "2.4. Lump sum disbursement fee 2.4.1. N/A",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf",
+            "locator": "page 1"
+          },
+          {
+            "offering": "mortgage_express",
+            "field": "fee.application",
+            "value": "not stated",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf",
+            "locator": "pages 1-2 (absence)"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "no_application_fee",
+            "any_of": [
+              "no[\\s\\S]{0,80}application fee",
+              "application fee[\\s\\S]{0,160}(not (stated|specified|published|found|available|listed)|no accepted|N/?A|none)"
+            ]
+          }
+        ],
+        "forbidden_claims": [
+          {
+            "id": "invented_application_fee",
+            "any_of": [
+              "application fee (is|of|:)\\s*\\**\\s*(AMD\\s?[\\d,]+|[\\d.]+\\s?%)"
+            ]
+          }
+        ],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=1",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=2",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_14.07.26_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/mortgage/express-loan"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=1",
+            "where": "Section 2 'General requirements': 2.4 Lump sum disbursement fee = N/A (no application-fee row)"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_express_eng.pdf#page=2",
+            "where": "8.1 'Other fees payable by the customer'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/Loan_tariffs_14.07.26_eng.pdf#page=1",
+            "where": "Loan service fees: no application fee"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/mortgage/express-loan",
+            "where": "'Terms and conditions' / 'Useful information'"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_express"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct_abstention",
+          "answer_correctness": 0.75,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "insufficient_evidence",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query",
+            "get_current_tariffs"
+          ],
+          "retrieved_fact_count": 0,
+          "retrieved_context_digest": [],
+          "data_state": {
+            "mortgage_express": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.01299225,
+          "gemini_calls": 5,
+          "input_tokens": 10848,
+          "output_tokens_incl_thinking": 1295,
+          "latency_ms": 9117
+        }
+      }
+    },
+    {
+      "eval_case_id": "q10_diaspora_mortgage_rate_currency",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the interest rate of the Mortgage Loan for Diaspora?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Nominal rate from 13.5%: AMD 13.5-14%, USD 10-10.5%, EUR 8-8.5%; APR AMD 14.97-17.17%, USD 11.03-15.39%, EUR 8.3-12.45%. A 1% disbursement fee applies. The page (updated 16.09.2026) states no campaign period or end date; it is still linked from the main menu and mortgage listing, so it appears active on 2026-09-27, but validity cannot be confirmed from the source. A good answer gives the rates with the accepted/as-of time and notes that no validity period is published. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Nominal rate from 13.5%: AMD 13.5-14%, USD 10-10.5%, EUR 8-8.5%; APR AMD 14.97-17.17%, USD 11.03-15.39%, EUR 8.3-12.45%. A 1% disbursement fee applies. The page (updated 16.09.2026) states no campaign period or end date; it is still linked from the main menu and mortgage listing, so it appears active on 2026-09-27, but validity cannot be confirmed from the source. A good answer gives the rates with the accepted/as-of time and notes that no validity period is published."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 10,
+        "category": "freshness_and_currency",
+        "test_focus": "How current the data is: a /campaigns/ page with no stated validity period.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "single",
+          "offering_ids": [
+            "mortgage_diaspora"
+          ],
+          "fields": [
+            "rate.nominal.*",
+            "rate.effective.*"
+          ]
+        },
+        "expected_answer": "Nominal rate from 13.5%: AMD 13.5-14%, USD 10-10.5%, EUR 8-8.5%; APR AMD 14.97-17.17%, USD 11.03-15.39%, EUR 8.3-12.45%. A 1% disbursement fee applies. The page (updated 16.09.2026) states no campaign period or end date; it is still linked from the main menu and mortgage listing, so it appears active on 2026-09-27, but validity cannot be confirmed from the source. A good answer gives the rates with the accepted/as-of time and notes that no validity period is published.",
+        "key_facts": [
+          {
+            "offering": "mortgage_diaspora",
+            "field": "rate.nominal",
+            "value": "AMD 13.5-14%; USD 10-10.5%; EUR 8-8.5%",
+            "quote": "Nominal interest rate from 13.5% ... AMD 13.5 - 14% ... USD 10 - 10.5%",
+            "source": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "locator": "section 'Flexible financing for the Diaspora'"
+          },
+          {
+            "offering": "mortgage_diaspora",
+            "field": "rate.effective",
+            "value": "AMD 14.97-17.17%; USD 11.03-15.39%; EUR 8.3-12.45%",
+            "quote": "*Annual percentage rate (APR): AMD: 14.97-17.17%, USD: 11.03-15.39%, EUR: 8.3-12.45%.",
+            "source": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "locator": "same section, footnote"
+          },
+          {
+            "offering": "mortgage_diaspora",
+            "field": "validity",
+            "value": "not stated; page updated 16.09.2026",
+            "source": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "locator": "page footer"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "amd_13_5",
+            "any_of": [
+              "13[.,]5"
+            ]
+          },
+          {
+            "id": "usd_rate",
+            "any_of": [
+              "USD[\\s\\S]{0,60}\\b10(\\.0)?\\b",
+              "\\b10\\s?[-–]\\s?10[.,]5"
+            ]
+          },
+          {
+            "id": "eur_rate",
+            "any_of": [
+              "EUR[\\s\\S]{0,60}\\b8(\\.0)?\\b",
+              "\\b8\\s?[-–]\\s?8[.,]5"
+            ]
+          },
+          {
+            "id": "validity_not_published",
+            "any_of": [
+              "validity",
+              "campaign period",
+              "end date",
+              "expir"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/en/campaigns/mortgage-loan-for-diaspora",
+            "where": "Section 'Flexible financing for the Diaspora' (rates and APR footnote); footer 'Updated on 16.09.2026'"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_diaspora"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "abstained_data_unavailable",
+          "answer_correctness": 0.0,
+          "fact_coverage": 0.0,
+          "answer_tool_status": "missing",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query",
+            "get_current_tariffs"
+          ],
+          "retrieved_fact_count": 0,
+          "retrieved_context_digest": [],
+          "data_state": {
+            "mortgage_diaspora": {
+              "state": "pending_review",
+              "pending_reviews": 1
+            }
+          },
+          "cost_usd": 0.01233525,
+          "gemini_calls": 5,
+          "input_tokens": 10917,
+          "output_tokens_incl_thinking": 1106,
+          "latency_ms": 13137
+        }
+      }
+    },
+    {
+      "eval_case_id": "q11_primary_mortgage_down_payment_collateral",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What down payment and collateral does the Primary Market Mortgage require?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): Down payment: at least 10% of the purchase price (5% with additional collateral; 7.5% under the 2024-2026 state programmes for families with children). Loans without a creditworthiness assessment need 30-60% depending on amount and region. Collateral: the purchased real estate, optionally with other real estate, cash or Bank bonds; LTV up to 90%/80% (AMD) and 70%/60% (foreign currency). Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: Down payment: at least 10% of the purchase price (5% with additional collateral; 7.5% under the 2024-2026 state programmes for families with children). Loans without a creditworthiness assessment need 30-60% depending on amount and region. Collateral: the purchased real estate, optionally with other real estate, cash or Bank bonds; LTV up to 90%/80% (AMD) and 70%/60% (foreign currency)."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 11,
+        "category": "single_offering_multi_field",
+        "test_focus": "Two fields at once (down payment and collateral) on one mortgage.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "single",
+          "offering_ids": [
+            "mortgage_primary"
+          ],
+          "fields": [
+            "mortgage.down_payment.minimum_pct",
+            "collateral.requirement",
+            "collateral.alternative"
+          ]
+        },
+        "expected_answer": "Down payment: at least 10% of the purchase price (5% with additional collateral; 7.5% under the 2024-2026 state programmes for families with children). Loans without a creditworthiness assessment need 30-60% depending on amount and region. Collateral: the purchased real estate, optionally with other real estate, cash or Bank bonds; LTV up to 90%/80% (AMD) and 70%/60% (foreign currency).",
+        "key_facts": [
+          {
+            "offering": "mortgage_primary",
+            "field": "mortgage.down_payment.minimum_pct",
+            "value": "10% (5% with additional collateral)",
+            "quote": "3.13.1. At least 10% of the purchase price of the property In case of additional collateral: in the amount of 5% of the purchase price.",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 2, section 3.13"
+          },
+          {
+            "offering": "mortgage_primary",
+            "field": "collateral.requirement",
+            "value": "purchased real estate (+ other real estate, cash, bonds)",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 3, section 5.1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "down_payment_10",
+            "any_of": [
+              "\\b10\\s?%"
+            ]
+          },
+          {
+            "id": "collateral_purchased_property",
+            "any_of": [
+              "(real estate|property)[\\s\\S]{0,60}purchased",
+              "purchased[\\s\\S]{0,40}(real estate|property)"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=2",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=3",
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=6",
+          "https://ameriabank.am/en/personal/loans/mortgage/primary"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=2",
+            "where": "3.13 'Minimum down payment'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=3",
+            "where": "Section 5 'Security'"
+          },
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=6",
+            "where": "Section 11 (loans without creditworthiness assessment)"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/mortgage/primary",
+            "where": "Hero 'from 10%' / 'Advance payment'; 'Tariffs' tab rows 3.13 and 5.1-5.5"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_primary"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "abstained_data_unavailable",
+          "answer_correctness": 0.0,
+          "fact_coverage": 0.0,
+          "answer_tool_status": "missing",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query",
+            "get_current_tariffs"
+          ],
+          "retrieved_fact_count": 0,
+          "retrieved_context_digest": [],
+          "data_state": {
+            "mortgage_primary": {
+              "state": "pending_review",
+              "pending_reviews": 2
+            }
+          },
+          "cost_usd": 0.01322325,
+          "gemini_calls": 5,
+          "input_tokens": 10621,
+          "output_tokens_incl_thinking": 1402,
+          "latency_ms": 10514
+        }
+      }
+    },
+    {
+      "eval_case_id": "q12_overdraft_nominal_rate",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the nominal interest rate of the Overdraft?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): AMD 21% for Arca Classic, Mastercard Standard/VISA Classic (incl. Digital); AMD 20% for Gold, World/Platinum and Signature cards (incl. Digital). Scoring-based loans or workers of specific industries: 15%-21%. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: AMD 21% for Arca Classic, Mastercard Standard/VISA Classic (incl. Digital); AMD 20% for Gold, World/Platinum and Signature cards (incl. Digital). Scoring-based loans or workers of specific industries: 15%-21%."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 12,
+        "category": "single_offering_field",
+        "test_focus": "Rate with card-tier variants and a conditional range.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "overdraft"
+          ],
+          "fields": [
+            "rate.nominal.minimum",
+            "rate.nominal.maximum"
+          ]
+        },
+        "expected_answer": "AMD 21% for Arca Classic, Mastercard Standard/VISA Classic (incl. Digital); AMD 20% for Gold, World/Platinum and Signature cards (incl. Digital). Scoring-based loans or workers of specific industries: 15%-21%.",
+        "key_facts": [
+          {
+            "offering": "overdraft",
+            "field": "rate.nominal",
+            "value": "21% / 20% by card tier; 15%-21% scoring",
+            "quote": "AMD: 21% AMD: 20%",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf",
+            "locator": "page 1, row 'Interest rate' and footnote 3"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "rate_21",
+            "any_of": [
+              "\\b21(\\.0)?\\s?%"
+            ]
+          },
+          {
+            "id": "rate_20",
+            "any_of": [
+              "\\b20(\\.0)?\\s?%"
+            ]
+          },
+          {
+            "id": "scoring_15_21",
+            "any_of": [
+              "\\b15(\\.0)?\\s?%"
+            ]
+          }
+        ],
+        "forbidden_claims": [
+          {
+            "id": "usd_rate_invented",
+            "any_of": [
+              "USD[\\s\\S]{0,40}\\b1[0-3](\\.\\d)?\\s?%"
+            ]
+          }
+        ],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_overdraft_eng.pdf#page=1",
+            "where": "Row 'Interest rate' and footnote 3"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loans/overdraft",
+            "where": "'Terms and conditions' -> 'Overdrafts via Cards not secured with property (unsecured)' tab, row 'Interest rate'"
+          }
+        ],
+        "depends_on_offerings": [
+          "overdraft"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct",
+          "answer_correctness": 1.0,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 6,
+          "retrieved_context_digest": [
+            "overdraft rate.nominal.maximum=\"21.0\" AMD currency=AMD; card_tier=Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Master Card Standard Digital",
+            "overdraft rate.nominal.maximum=\"20.0\" AMD currency=AMD; card_tier=Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital,Mastercard World/VISA Platinum, VISA Platinum Digital/ Mastercard World Digital, Visa Signature , Visa Signature Digital",
+            "overdraft rate.nominal.maximum=\"21.0\" AMD currency=AMD; other=applications for scoring-based loans or loans to workers of specific industries",
+            "overdraft rate.nominal.minimum=\"21.0\" AMD currency=AMD; card_tier=Arca Classic, Master Card Standard/VISA Classic, VISA Classic Digital/ Master Card Standard Digital",
+            "overdraft rate.nominal.minimum=\"20.0\" AMD currency=AMD; card_tier=Mastercard Gold/VISA Gold, VISA Gold Digital/ Mastercard Gold Digital,Mastercard World/VISA Platinum, VISA Platinum Digital/ Mastercard World Digital, Visa Signature , Visa Signature Digital",
+            "overdraft rate.nominal.minimum=\"15.0\" AMD currency=AMD; other=applications for scoring-based loans or loans to workers of specific industries"
+          ],
+          "data_state": {
+            "overdraft": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.0189915,
+          "gemini_calls": 4,
+          "input_tokens": 16802,
+          "output_tokens_incl_thinking": 1704,
+          "latency_ms": 8374
+        }
+      }
+    },
+    {
+      "eval_case_id": "q13_credit_line_effective_rate",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the effective interest rate of the Credit Line?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): APR in AMD: 23.13% (VISA Classic / Mastercard Standard incl. Digital), 21.92% (Gold, World/Platinum, Signature incl. Digital), 20.73% (VISA Infinite, Mastercard World Elite). Scoring-based loans: 16.06%-23.13%. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: APR in AMD: 23.13% (VISA Classic / Mastercard Standard incl. Digital), 21.92% (Gold, World/Platinum, Signature incl. Digital), 20.73% (VISA Infinite, Mastercard World Elite). Scoring-based loans: 16.06%-23.13%."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 13,
+        "category": "single_offering_field",
+        "test_focus": "Effective rate (APR) with card-tier variants.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "credit_line"
+          ],
+          "fields": [
+            "rate.effective.minimum",
+            "rate.effective.maximum"
+          ]
+        },
+        "expected_answer": "APR in AMD: 23.13% (VISA Classic / Mastercard Standard incl. Digital), 21.92% (Gold, World/Platinum, Signature incl. Digital), 20.73% (VISA Infinite, Mastercard World Elite). Scoring-based loans: 16.06%-23.13%.",
+        "key_facts": [
+          {
+            "offering": "credit_line",
+            "field": "rate.effective",
+            "value": "23.13% / 21.92% / 20.73%; 16.06-23.13% scoring",
+            "quote": "Annual percentage rate (APR)4 AMD: 23.13 % AMD: 21.92 % AMD: 20.73 %",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "apr_23_13",
+            "any_of": [
+              "23[.,]13"
+            ]
+          },
+          {
+            "id": "apr_21_92",
+            "any_of": [
+              "21[.,]92"
+            ]
+          },
+          {
+            "id": "apr_20_73",
+            "any_of": [
+              "20[.,]73"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/unsecured_credit_line_eng.pdf#page=1",
+            "where": "Row 'Annual percentage rate (APR)' and footnote 4"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loans/credit-line",
+            "where": "'Terms and conditions' -> 'Credit line unsecured' tab"
+          }
+        ],
+        "depends_on_offerings": [
+          "credit_line"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct",
+          "answer_correctness": 1.0,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 8,
+          "retrieved_context_digest": [
+            "credit_line rate.effective.maximum=\"23.13\" AMD other=scoring-based loans or loans to workers of specific industries; currency=AMD",
+            "credit_line rate.effective.maximum=\"21.92\" AMD card_tier=Master Card Gold/VISA Gold, Master Card World/VISA Platinum, VISA Signature, VISA Gold Digital/ Master Card Gold Digital,VISA Platinum Digital/ Master Card World Digital,VISA Signature Digital; currency=AMD",
+            "credit_line rate.effective.maximum=\"20.73\" AMD card_tier=VISA Infinite, Mastercard World Elite; currency=AMD",
+            "credit_line rate.effective.maximum=\"23.13\" AMD card_tier=VISA Classic/Master Card Standard, VISA Classic Digital/Master Card Standard Digital; currency=AMD",
+            "credit_line rate.effective.minimum=\"16.06\" AMD other=scoring-based loans or loans to workers of specific industries; currency=AMD",
+            "credit_line rate.effective.minimum=\"21.92\" AMD card_tier=Master Card Gold/VISA Gold, Master Card World/VISA Platinum, VISA Signature, VISA Gold Digital/ Master Card Gold Digital,VISA Platinum Digital/ Master Card World Digital,VISA Signature Digital; currency=AMD",
+            "credit_line rate.effective.minimum=\"20.73\" AMD card_tier=VISA Infinite, Mastercard World Elite; currency=AMD",
+            "credit_line rate.effective.minimum=\"23.13\" AMD card_tier=VISA Classic/Master Card Standard, VISA Classic Digital/Master Card Standard Digital; currency=AMD"
+          ],
+          "data_state": {
+            "credit_line": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.02145525,
+          "gemini_calls": 4,
+          "input_tokens": 19577,
+          "output_tokens_incl_thinking": 1806,
+          "latency_ms": 59630
+        }
+      }
+    },
+    {
+      "eval_case_id": "q14_online_consumer_finance_amount",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What loan amount does the Online Consumer Finance allow?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): AMD 50,000 to AMD 1,500,000 (the linked generic instalment leaflet's 6,000,000 does not apply to this online product). Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: AMD 50,000 to AMD 1,500,000 (the linked generic instalment leaflet's 6,000,000 does not apply to this online product)."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 14,
+        "category": "single_offering_field",
+        "test_focus": "Amount range for one offering.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "consumer_loan",
+          "operation": "single",
+          "offering_ids": [
+            "online_consumer_finance"
+          ],
+          "fields": [
+            "amount.minimum",
+            "amount.maximum"
+          ]
+        },
+        "expected_answer": "AMD 50,000 to AMD 1,500,000 (the linked generic instalment leaflet's 6,000,000 does not apply to this online product).",
+        "key_facts": [
+          {
+            "offering": "online_consumer_finance",
+            "field": "amount",
+            "value": "AMD 50,000 - 1,500,000",
+            "quote": "Financing Limit | Minimum: 50,000 AMD Maximum: 1,500,000 AMD",
+            "source": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "locator": "tab 'Terms of installment financing for the purchase of goods'"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "min_50000",
+            "any_of": [
+              "50,?000"
+            ]
+          },
+          {
+            "id": "max_1500000",
+            "any_of": [
+              "1,?500,?000"
+            ]
+          }
+        ],
+        "forbidden_claims": [
+          {
+            "id": "generic_leaflet_6m_as_maximum",
+            "any_of": [
+              "(maximum|max\\.?|up to)[^\\n]{0,40}6,?000,?000"
+            ]
+          }
+        ],
+        "reference_urls": [
+          "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/en/personal/loans/consumer-loan/online-consumer-finance",
+            "where": "Hero 'AMD 50.000 - 1.500.000'; 'Terms and conditions' -> 'Terms of installment financing for the purchase of goods' tab, row 'Financing Limit'"
+          }
+        ],
+        "depends_on_offerings": [
+          "online_consumer_finance"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "correct",
+          "answer_correctness": 1.0,
+          "fact_coverage": 1.0,
+          "answer_tool_status": "answered",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query"
+          ],
+          "retrieved_fact_count": 2,
+          "retrieved_context_digest": [
+            "online_consumer_finance amount.maximum=\"1500000\" AMD",
+            "online_consumer_finance amount.minimum=\"50000\" AMD"
+          ],
+          "data_state": {
+            "online_consumer_finance": {
+              "state": "accepted",
+              "pending_reviews": 0
+            }
+          },
+          "cost_usd": 0.01369725,
+          "gemini_calls": 4,
+          "input_tokens": 11463,
+          "output_tokens_incl_thinking": 1360,
+          "latency_ms": 10946
+        }
+      }
+    },
+    {
+      "eval_case_id": "q15_primary_mortgage_term",
+      "prompt": {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What repayment term does the Primary Market Mortgage offer?"
+          }
+        ]
+      },
+      "reference": {
+        "response": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ground truth (live ameriabank.am, 2026-09-27): 60 to 360 months: 60 months at a fixed rate (AMD 13.5%, USD 11.0%, EUR 8.5%); 61-360 months at an adjustable rate (can change from the 37th month); online refinancing 61-360 months. Grading rules: the agent must call resolve_request, then answer_tariff_query, and may call get_current_tariffs once after an abstention; it must never start monitoring on its own. If an in-scope offering has no accepted snapshot, the agent must say so and must not present a partial ranking as the family answer. Values must carry currency, unit and every disclosed condition, with a citation (source URL plus page or section) and the accepted as-of time. Any invented value or a value from another offering caps the score at 1."
+            }
+          ]
+        }
+      },
+      "rubric_groups": {
+        "seed_url_ground_truth": {
+          "group_id": "seed_url_ground_truth",
+          "display_name": "Seed-URL ground truth",
+          "rubrics": [
+            {
+              "rubric_id": "factual_agreement",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "The response agrees with the ground truth: 60 to 360 months: 60 months at a fixed rate (AMD 13.5%, USD 11.0%, EUR 8.5%); 61-360 months at an adjustable rate (can change from the 37th month); online refinancing 61-360 months."
+                }
+              }
+            },
+            {
+              "rubric_id": "no_fabrication",
+              "importance": "HIGH",
+              "content": {
+                "property": {
+                  "description": "Every value stated is supported by the tool output; nothing is invented or borrowed from another offering."
+                }
+              }
+            },
+            {
+              "rubric_id": "citation_and_as_of",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "Each value is cited with a source URL and page/section, plus the accepted as-of time."
+                }
+              }
+            },
+            {
+              "rubric_id": "coverage_disclosure",
+              "importance": "MEDIUM",
+              "content": {
+                "property": {
+                  "description": "If any in-scope offering lacks accepted data (pending review or failed run), the response says so instead of answering as if coverage were complete."
+                }
+              }
+            }
+          ]
+        }
+      },
+      "metadata": {
+        "question_number": 15,
+        "category": "single_offering_field",
+        "test_focus": "Term range with fixed/adjustable variants.",
+        "expected_behavior": "answer",
+        "expected_route": {
+          "product": "mortgage",
+          "operation": "single",
+          "offering_ids": [
+            "mortgage_primary"
+          ],
+          "fields": [
+            "term.minimum_months",
+            "term.maximum_months"
+          ]
+        },
+        "expected_answer": "60 to 360 months: 60 months at a fixed rate (AMD 13.5%, USD 11.0%, EUR 8.5%); 61-360 months at an adjustable rate (can change from the 37th month); online refinancing 61-360 months.",
+        "key_facts": [
+          {
+            "offering": "mortgage_primary",
+            "field": "term",
+            "value": "60 (fixed) / 61-360 (adjustable)",
+            "quote": "3.3. Term (months) 3.3.1. 60 ... 3.6. Term (months) 3.6.1. 61-360",
+            "source": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf",
+            "locator": "page 1"
+          }
+        ],
+        "required_facts": [
+          {
+            "id": "term_360",
+            "any_of": [
+              "\\b360\\b"
+            ]
+          },
+          {
+            "id": "term_60",
+            "any_of": [
+              "\\b60\\b"
+            ]
+          }
+        ],
+        "forbidden_claims": [],
+        "reference_urls": [
+          "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=1",
+          "https://ameriabank.am/en/personal/loans/mortgage/primary"
+        ],
+        "human_verification": [
+          {
+            "url": "https://ameriabank.am/Portals/0/files/Personal/Loans/mortgage_personal_purchase_eng.pdf#page=1",
+            "where": "Rows 3.3 (60) and 3.6 (61-360)"
+          },
+          {
+            "url": "https://ameriabank.am/en/personal/loans/mortgage/primary",
+            "where": "Hero '60-360 months' / 'Term'; 'Tariffs' tab rows 3.3 and 3.6"
+          }
+        ],
+        "depends_on_offerings": [
+          "mortgage_primary"
+        ],
+        "ground_truth_retrieved_at": "2026-09-27T15:48:00Z",
+        "baseline_2026_09_27": {
+          "verdict": "abstained_data_unavailable",
+          "answer_correctness": 0.0,
+          "fact_coverage": 0.0,
+          "answer_tool_status": "missing",
+          "tool_trajectory": [
+            "resolve_request",
+            "answer_tariff_query",
+            "get_current_tariffs"
+          ],
+          "retrieved_fact_count": 0,
+          "retrieved_context_digest": [],
+          "data_state": {
+            "mortgage_primary": {
+              "state": "pending_review",
+              "pending_reviews": 2
+            }
+          },
+          "cost_usd": 0.0126615,
+          "gemini_calls": 5,
+          "input_tokens": 10797,
+          "output_tokens_incl_thinking": 1217,
+          "latency_ms": 15440
+        }
+      }
+    }
+  ]
+}

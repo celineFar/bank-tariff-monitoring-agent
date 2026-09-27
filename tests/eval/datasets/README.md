@@ -136,6 +136,16 @@ See the [Evaluation Guide](https://google.github.io/agents-cli/guide/evaluation/
 - `expanded-intent-safety.json`: 22 cases spanning every configured offering,
   bilingual/fuzzy resolution, stale/history behavior, unsupported requests,
   and tool-routing safety.
+- `seed-url-ground-truth.json`: 15 questions whose expected answers were read
+  from the live ameriabank.am pages and PDFs on 2026-09-27, unlike the
+  synthetic-corpus suites. Run it against a database populated by real
+  monitoring runs, with `../seed_url_eval_config.yaml`: the LLM judge reads
+  each case's `reference`, and the deterministic `fact_coverage` metric reads
+  `metadata.required_facts` and `metadata.forbidden_claims`. Each case's
+  `metadata.baseline_2026_09_27` records the first measured run; the full
+  record (answers, retrieved context, costs, review inventory) is
+  `../seed_url_eval_2026-09-27.json`. Tariffs change, so refresh the expected
+  values before reusing them.
 - `../fixtures.sql`: evaluation-only accepted/stale/history/review-pending rows.
   It starts with `TRUNCATE ... CASCADE`; apply it only to a disposable database
   whose name ends in `_test`.

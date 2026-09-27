@@ -298,3 +298,21 @@ From the end-to-end review of 2026-09-27; merged into `integration/process-fixes
 - **Phase research scripts** under `fix-process/*/scenarios|probes|survey` reflect the
   code of their phase; several no longer run against this branch and are kept as
   records.
+
+## First iteration (fix-process/1st-iteration-fixes/)
+
+Source: the 2026-09-27 seed-URL evaluation (`tests/eval/seed_url_eval_2026-09-27.json`)
+and the review diagnosis of the same day. The user answered four solution questions
+(D1–D4 in the plan); D5–D8 were decided in the plan and are listed there. Each phase's
+state is in the plan under "Phase N notes"; this section keeps the cross-phase points.
+
+- **Branch.** `fix/1st-iteration` from `integration/process-fixes` at `09e5181`.
+- **Phase 0 (2026-09-27).** Baseline 1,199 passed / 59 skipped / 1 failed / 3 errors;
+  the four non-passing tests need a live Gemini key or a startable server and fail the
+  same way before any change. 25 strict-xfail regression tests plus 5 guards in
+  `tests/unit/test_first_iteration_fixes.py`, on captures in `data/`.
+- **Plan corrections from reading the code.** F11 (broken JSON) is already repaired by
+  the existing repair path; the 2026-09-27 JSON reviews came from F10 (repair refused
+  by the income check) and F12 (budget spent first). F12's "would-be reviews first"
+  ordering orders nothing, because every flagged field blocks publication; only the
+  budget changes.
