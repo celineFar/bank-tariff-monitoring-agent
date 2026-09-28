@@ -37,12 +37,21 @@ psql -c "select 'offering: '||status||' · stage '||coalesce(current_stage,'-')
          from offering_executions where run_id='${run_id}';"
 psql -c "select 'snapshot: '||status||' · reused batches '
                 ||coalesce(semantic_extraction->>'reused_batch_count','-')
-                ||' · signals '||coalesce(validation->'review_signals'->>0,'none')
+                ||' · signals '||coalesce((select string_agg((s->>'field')||' ('||(s->>'reason')||')', ', ')
+                                          from jsonb_array_elements(validation->'review_signals') s),'none')
          from tariff_snapshots where run_id='${run_id}';"
+psql -c "select 'review: '||issue_scope||' ('||reason_code||') · '||status
+         from human_reviews where run_id='${run_id}' order by created_at;"
 psql -c "select 'change row: '||change_count||' change(s)' from tariff_changes where run_id='${run_id}';"
 psql -c "select 'warnings: '||coalesce(string_agg(distinct w,', '),'none')
          from source_manifests m, jsonb_array_elements_text(coalesce(m.warning_codes,'[]'::jsonb)) w
          where m.run_id='${run_id}';" 2>/dev/null || true
-psql -c "select 'model calls this run: '||count(*)||' · cost \$'||round(coalesce(sum(estimated_cost_usd),0)::numeric,4)
-         from model_call_usage where run_id='${run_id}';"
+# Pipeline model calls are not stamped with a run id, so count the calls made
+# while this run was executing. A chat turn running at the same time would be
+# counted too; for a dry run there is none.
+psql -c "select 'model calls during this run: '||count(u.*)||' · cost \$'
+                ||round(coalesce(sum(u.estimated_cost_usd),0)::numeric,4)
+         from monitoring_runs r left join model_call_usage u
+           on u.called_at between r.started_at and coalesce(r.completed_at, now())
+         where r.id='${run_id}';"
 printf '%s\n' "run_id=${run_id}"
