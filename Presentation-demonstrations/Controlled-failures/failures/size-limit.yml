@@ -1,0 +1,9 @@
+# Failure 3: a safety limit refuses the source.
+#
+# The download size cap is lowered from 25 MB to 50 KB. The real bank page is
+# larger, so the retriever refuses it, the same guard that stops an unexpectedly
+# huge or runaway response in production.
+services:
+  worker:
+    environment:
+      MAX_DOWNLOAD_BYTES: "50000"

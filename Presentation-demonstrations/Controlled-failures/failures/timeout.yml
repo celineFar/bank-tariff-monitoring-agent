@@ -1,0 +1,11 @@
+# Failure 1: the bank's site does not answer.
+#
+# Inside the worker, ameriabank.am resolves to 192.0.2.1 (TEST-NET-1, RFC 5737),
+# an address routed nowhere. Connections hang instead of being refused, so the
+# retriever's own timeouts and bounded retries decide when to give up. The seed
+# URL, the host allowlist and the pipeline are unchanged.
+services:
+  worker:
+    extra_hosts:
+      - "ameriabank.am:192.0.2.1"
+      - "www.ameriabank.am:192.0.2.1"

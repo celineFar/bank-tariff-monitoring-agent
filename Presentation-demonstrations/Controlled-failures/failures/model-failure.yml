@@ -1,0 +1,12 @@
+# Failure 2: the model provider fails.
+#
+# Source discovery is pointed at gemini-2.5-flash-lite, a model Google has
+# retired, with no fallback model. The provider answers with a real error. This
+# is the failure the system actually hit on 2026-09-22, and the reason the
+# fallback chain exists. The model is still in the project's price catalog, so
+# the worker starts normally and the failure happens during the run.
+services:
+  worker:
+    environment:
+      SOURCE_DISCOVERY_MODEL_NAME: gemini-2.5-flash-lite
+      SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES: ""
