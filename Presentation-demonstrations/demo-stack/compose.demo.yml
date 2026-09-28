@@ -1,0 +1,42 @@
+# The demonstration stack: the project's own api, worker and db, run as a
+# separate Compose project ("tariff-demo") so it has its own database volume,
+# network and logs. The main stack and its data are never touched.
+#
+# It runs the images the main stack already built (no build here), so the code
+# is identical to the main stack's. After changing app/, rebuild the main
+# images first: docker compose build api worker
+#
+# Use it through stack.py, which runs:
+#   docker compose -p tariff-demo -f docker-compose.yml \
+#     -f Presentation-demonstrations/demo-stack/compose.demo.yml ...
+services:
+  api:
+    image: second-monitor-api:latest
+    build: !reset null
+    pull_policy: never
+    ports: !override ["127.0.0.1:8091:8080"]
+    volumes: !override
+      - demo_logs:/var/log/tariff-monitor
+      - demo_audit:/code/artifacts/pipeline-audit
+    environment: &demo_environment
+      # Runs happen only when the demonstration asks for one.
+      SCHEDULE_ENABLED: "false"
+      # Every run fetches the source again, rather than reusing a fetch from
+      # the last hour; otherwise a source failure could never happen.
+      ACQUISITION_FRESHNESS_HOURS: "0"
+
+  worker:
+    image: second-monitor-worker:latest
+    build: !reset null
+    pull_policy: never
+    volumes: !override
+      - demo_logs:/var/log/tariff-monitor
+      - demo_audit:/code/artifacts/pipeline-audit
+    environment: *demo_environment
+
+  db:
+    ports: !reset []
+
+volumes:
+  demo_logs:
+  demo_audit:
