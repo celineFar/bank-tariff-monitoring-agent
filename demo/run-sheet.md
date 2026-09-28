@@ -8,7 +8,46 @@ Plan: `fix-plans/demonstration-recording-plan.md`. Deliverables:
 
 ---
 
+## Status on the new system (2026-09-27)
+
+The demonstration was moved onto the integrated runtime (`integration/process-fixes`:
+one ADK agent, Gemini request interpreter, reviews applied one at a time, offering-aware
+source discovery, acquisition completeness gate, legacy RAG removed) on branch
+`demo/all-on-new-system`, against a fresh database built from migrations 001–027.
+
+Verified end to end on 2026-09-27, with no model spend:
+
+| Leg | Result |
+|---|---|
+| Mirror trust, `unchanged` / `republished` acquisition | 200 over HTTPS; both pass the completeness gate: 3 tables, 10 PDF links, 13,306 chars |
+| 11 part two — OCR scenario | `RESULT: PASS (7/7 criteria)`, `outcome=transcribed`, confidence 92.6 |
+| 13b — `source.timeout` | run and offering `failed · source.timeout` after 62 s, $0 |
+| 13c — `source.size_rejected` | `failed · source.size_rejected` (`PAGE_TOO_LARGE`) at acquisition, $0 |
+| 13d — `source.model_failed` | `gemini-2.5-flash-lite` answers `404 NOT_FOUND`; `failed · source.model_failed` at `pdf_selection`, $0 |
+| `baseline.sh capture / reset / restore / show` | round trip restores every state table; caches and ledger kept |
+
+**Not yet verified: everything that calls Gemini.** The project's prepaid Gemini
+credits ran out during verification (`HTTP 402 RESOURCE_EXHAUSTED`), so the bank
+baseline, clips 9, 10, 12, 15, clip 11 part one and clip 13a (the chat) have not been
+run on the new system. Their scripts below are adapted to the new system from code
+and from the interpreter's recorded cases; the **Expect** columns marked
+*(confirm)* carry the old system's observations and must be checked on the first
+take. Top up the credits before starting.
+
+---
+
 ## Before any recording
+
+0. **Free the machine.** It has 2 CPUs and 7 GB. With a second stack running
+   (`second-monitor`) and several editor sessions, Chromium renders of the bank page
+   took anywhere from 17 s to 329 s, and one render of the bank page came back with
+   only its first tab (0 tables, 0 PDFs). Stop every other Compose stack before
+   filming:
+
+   ```bash
+   docker ps --format '{{.Names}}'          # nothing but bank-tariff-monitoring-agent-*
+   uptime                                   # load average well under 2
+   ```
 
 1. **Build from current source.** The image bakes `app/` in; a stale image was
    already caught once during preparation.
@@ -57,11 +96,51 @@ Plan: `fix-plans/demonstration-recording-plan.md`. Deliverables:
    docker compose logs api | grep 'demo: trusted'
    ```
 
-6. **Capture the baseline** if there is not one already:
+   The line appears once per container start. A container that restarts and never
+   prints it again is stuck; the entrypoint used to hang on restart and was fixed
+   on this branch.
+
+6. **Build and capture the baseline** if `demo/baseline/` holds no dump. A dump
+   from the old system does not restore into the new schema; the one captured on
+   2026-09-24 is archived outside the repository.
+
+   The baseline is the Overdraft acquired from **the bank**, not the mirror, so the
+   catalog is switched back to the bank for this one run:
 
    ```bash
+   export COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml:demo/compose.bank-seed.yml
+   docker compose up -d api worker
+   ./demo/bin/baseline.sh reset              # empty run state; caches and ledger kept
+   ./demo/bin/run-offering.sh consumer_loan overdraft
+   ```
+
+   Then check that the acquisition saw the whole page before going further:
+
+   ```bash
+   docker compose exec -T db psql -U tariff -d tariff_monitor -tAc \
+     "select inventory from acquisition_baselines"
+   ```
+
+   Expect `"tables": 3, "pdf_links": 10`. Anything less (the 2026-09-27 attempt got
+   0 and 0 on a loaded machine) means the render missed the tabs: run
+   `./demo/bin/baseline.sh reset` and the run again. Do not capture it.
+
+   If the run paused for review, answer it in the chat, reading each value off the
+   bank's own passage (see *How a review is answered*):
+
+   ```bash
+   ./tariff-chat --session baseline-reviews
+   # You > Review the pending candidates
+   ```
+
+   A review-free baseline matters for clip 10 step 2. Then capture it and go back to
+   the demo stack:
+
+   ```bash
+   ./demo/bin/baseline.sh show              # runs succeeded, one accepted snapshot
    ./demo/bin/baseline.sh capture
-   ./demo/bin/baseline.sh show
+   export COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml
+   docker compose up -d api worker
    ```
 
 ### Secrets checklist — every take
@@ -87,11 +166,14 @@ from the bank.
 
 | # | Type this | Expect |
 |---|---|---|
-| 1 | `What are the interest rates on the card overdraft?` | 21% standard, 20% premium, 15–21% scoring-based, each with its APR, plus the +0.5% / +0.25% adjustments |
-| 2 | `Which official document does the 21% come from, and when was it retrieved?` | the bank's page URL and leaflet URL, the section path, quoted evidence, and both `Snapshot Accepted At` and `Current As Of` |
+| 1 | `What are the interest rates on the card overdraft?` | *(confirm)* 21% standard, 20% premium, 15–21% scoring-based, each with its APR, plus the +0.5% / +0.25% adjustments |
+| 2 | `Which official document does the 21% come from, and when was it retrieved?` | the bank's page URL and leaflet URL, the section path, the source's own wording quoted verbatim, and both `Snapshot Accepted At` and `Current As Of` |
 
-Do not shorten this to one question: a bare tariff question returns the values
-without citations, locators or as-of, and the deliverable needs all three.
+Keep it to two questions: on the old system a bare tariff question returned the
+values without citations, locators or as-of, and the deliverable needs all three.
+The new answer path cites every value from accepted facts; if question 1 already
+shows citations and as-of on the first take, question 2 still earns its place by
+naming the document.
 
 ---
 
@@ -114,28 +196,39 @@ without citations, locators or as-of, and the deliverable needs all three.
 
 | # | Step | Expect |
 |---|---|---|
-| 1 | `Run monitoring for the card overdraft now.` | stage lines, then published. This is the mirror baseline, compared against the bank capture, so it reports incidental wording changes and **no rate signal** |
-| 2 | `Run monitoring for the card overdraft now.` | identical content, every batch reused: **no change reported** |
+| 1 | `Run tariff monitoring for the overdraft.` | stage lines, then published. This is the mirror baseline, compared against the bank capture, so it reports incidental wording changes and **no rate signal** *(confirm)* |
+| 2 | `Run tariff monitoring for the overdraft.` | identical content, every batch reused: **no change reported** |
 | 3 | `./demo/bin/mirror-variant.sh republished` in a second terminal | mirror now serves the raised band |
-| 4 | `Run monitoring for the card overdraft now.` | the run pauses with **two** reviews: `interest_rate (large_rate_change)` and `repayment (missing_required_field)` |
-| 5 | answer both reviews (see below) | both recorded, snapshot published |
-| 6 | `What changed in the card overdraft tariffs?` | the interest-rate change with its evidence |
+| 4 | `Run tariff monitoring for the overdraft.` | the run pauses with an `interest_rate (large_rate_change)` review *(confirm; the old system also raised `repayment (missing_required_field)`)* |
+| 5 | answer every review (see below) | each answer applied as given; snapshot published once none is pending |
+| 6 | `What changed in the overdraft tariff?` | the interest-rate change with its evidence |
+
+**Wording.** Steps 1, 2, 4 and 6 use phrasings the request interpreter has recorded
+cases for (`run tariff monitoring for the overdraft` → start a run; `What changed in
+the … tariff?` → change history). On the new system "check overdraft for updates"
+and "monitor overdraft" also start a run; the old warning that "check for changes"
+lands on history no longer applies, but keep to the wording above on camera.
 
 **What the rate review looks like.** Its first line states the jump:
 *"Previous accepted value 21.0, candidate 25.0: a change of 4.0 percentage
-points."* Confirm it with the approve option. Then answer `repayment` from its
-passages as for any field review. Both belong to one batch, so neither publishes
-until both are answered.
+points."* Confirm it by typing `approve`.
+
+**First thing to check on the new system.** The republished edit changes the page's
+nominal rates only; the leaflet PDFs are the bank's own and still say 21%. The new
+source discovery picks the offering's leaflets itself, so if extraction reads the
+rate from a leaflet as well as the page, step 4 may raise
+`official_source_conflict` (pick the page's candidate) instead of, or beside,
+`large_rate_change`. Film whichever the pipeline raises and name it; do not edit
+the fixture to force the old one.
 
 Step 2 is the point of the clip as much as step 4: equal content must raise no
 alert. If step 1 raised a field review, answer it and run once more before step
 2 — only a run that needed no review leaves every batch cached.
 
-Use the exact wording in step 1. "Check for changes" resolves to the history
-intent and no run starts.
-
-Measured on 2026-09-24 over HTTP: step 1 $0, step 2 $0, step 4 $0.026. The chat
-adds its own cost on top, mostly for the review turns.
+Measured on the old system, 2026-09-24, over HTTP: step 1 $0, step 2 $0, step 4
+$0.026. Re-measure on the first take: the new system re-extracts against new
+prompts, so nothing from before is cached. The chat adds its own cost on top,
+mostly for the review turns.
 
 ---
 
@@ -144,32 +237,42 @@ adds its own cost on top, mostly for the review turns.
 Read this before clips 10, 11, 12 or 15. It is the part that is easy to get
 wrong on camera.
 
-**Every review takes two answers: a value, then the passage that supports it.**
-The prompt sequence is `Collateral >` then `Supporting passage (1-15) >`. Type
-`?` at the passage prompt to page through every captured passage with its source
-URL and page or table locator, then enter the number. A reviewer cannot record a
-value without pointing at the evidence for it.
+**Each review shows what it needs.** The panel names the field and the reason,
+states the jump for a rate change or Gemini's failed value for an
+`extraction_invalid` review, and lists the answers it accepts. Type:
 
-**Answer the whole queue in one sitting.** Decisions are held in session state
-and committed as a batch when the last review is answered. Leaving half-way
-leaves every review `pending`, and reopening the session starts again at the
-first one. This was confirmed during the dry run: four separate part-answers
-recorded nothing, and one session answering both reviews committed both.
+- `approve` to accept the extracted value (rate change, OCR evidence);
+- a candidate number to pick one (source conflict, invalid extraction);
+- the value itself to override it, in the format the panel states;
+- `?` to read the selected sources, `all` to list every captured passage;
+- `reject_all` to discard **this offering's** candidate snapshot. It no longer
+  discards the whole run.
 
-**The overdraft run raises two reviews, reliably**, both
-`missing_required_field`:
+**An override needs its passage.** After a typed value the CLI looks for the
+passage that states it: when exactly one does, it says *"Using passage N, which
+states it, as support"* and moves on; otherwise it asks `Supporting passage >`.
+Type `?` or `all` there to page through the passages with their source URL and
+locator, then the number. A reviewer cannot record a value without pointing at the
+evidence for it.
 
-| # | Field | Answer used in the dry run | Supporting passage |
+**Answers are applied one at a time.** This changed with the new runtime. Each
+answer is applied as soon as it is given, and the snapshot publishes when none of
+its reviews is pending. Leaving half-way keeps what was answered; reopen the chat
+and type `Review the pending candidates` to finish. A review whose run has ended is
+closed, not asked again.
+
+**Which fields the overdraft run asks about** is to be confirmed on the new system.
+The old system raised two `missing_required_field` reviews on the bank run:
+
+| # | Field | Answer used in the old dry run | Supporting passage |
 |---|---|---|---|
 | 1 | Collateral | `none` | the passage reading "Overdraft: without collateral" |
 | 2 | Product name | `Overdrafts via Cards not secured with property` | the leaflet's own title line on page 1 |
 
-Both answers are read off the bank's own documents. Do not invent a value to
-clear a prompt: `reject_all` is there for when the evidence does not support one.
-
-The passage numbers shift between runs, so **read the list on camera** rather
-than typing a number from this sheet. That is also the better demonstration: it
-shows the reviewer being given what they need to decide.
+Whatever it asks, read the answer off the bank's own documents. Do not invent a
+value to clear a prompt: `reject_all` is there for when the evidence does not
+support one. The passage numbers shift between runs, so **read the list on
+camera** rather than typing a number from this sheet.
 
 ---
 
@@ -196,9 +299,15 @@ docker compose logs worker | grep "classified as image_only"
 ```
 
 Expect `classified as image_only (image_only=2)` for the scanned document, beside
-`classified as mixed` for the bank's digital leaflets.
+`classified as mixed` for the bank's digital leaflets *(confirm)*. On the new system
+source discovery chooses the offering's PDFs from their link metadata before any is
+transcribed; the scanned leaflet keeps the original link text, so it should be
+chosen. If the grep finds nothing, check that the run's
+`pdf_link_selections` include `Overdraft_unsecured_scanned_eng.pdf`. If a value is
+taken from OCR text, the run pauses with an `ocr_evidence` review: approve it
+against the cited page.
 
-**Part two — the OCR fallback, deterministic and free.**
+**Part two — the OCR fallback, deterministic and free.** Verified 2026-09-27.
 
 ```bash
 docker compose exec api uv run python scripts/run_demonstration.py \
@@ -209,8 +318,9 @@ Expect `RESULT: PASS (7/7 criteria)`, OCR `outcome=transcribed`, recovered
 tokens `13.5`, `14.2`, `AMD`, `300,000`, and a mean confidence near 92.6. It runs
 inside `api` because that is where Tesseract is installed.
 
-Cost: part one ≈ $0.12 the first time (every extraction batch re-runs when a
-document changes) and near $0 on a retake, from cache. Part two is free.
+Cost: part one ≈ $0.12 on the old system the first time (every extraction batch
+re-runs when a document changes) and near $0 on a retake, from cache. Part two is
+free.
 
 ---
 
@@ -219,9 +329,9 @@ document changes) and near $0 on a retake, from cache. Part two is free.
 **Deliverable 12. Same staging as clip 10.**
 
 Film the review pause from clip 10 in full, unhurried: the field, the candidate
-value, the previous value, the evidence, and the input format the tool states.
+value, the previous value, the evidence, and the input format the panel states.
 Show both paths — a rejection and then, on a retake, an approval — and finish by
-showing the queue empty.
+showing the queue empty (`Are any candidates waiting for my review?`).
 
 ---
 
@@ -229,7 +339,8 @@ showing the queue empty.
 
 **Deliverable 13. Four legs, four boundaries.**
 
-Confirm after every leg that no tariff values were saved.
+Confirm after every leg that no tariff values were saved. Legs b, c and d were
+verified on the new system on 2026-09-27, with no model spend.
 
 ### 13a — no accepted data (nothing staged)
 
@@ -238,8 +349,9 @@ Confirm after every leg that no tariff values were saved.
 ./tariff-chat
 ```
 
-Ask about an offering with no snapshot, for example the credit line, and decline
-monitoring when offered. Expect an abstention, not a number.
+Ask about an offering with no snapshot, for example `What fees apply to the
+Credit Line?`, and decline monitoring when offered. Expect an abstention, not a
+number *(confirm)*.
 
 ### 13b — source.timeout
 
@@ -249,9 +361,15 @@ docker compose up -d api worker
 ./tariff-chat
 ```
 
-`Run monitoring for the card overdraft now.` Expect about a minute of heartbeats
-while the bounded retries run, then `source.timeout` with its operator sentence.
-Leave the pacing alone: the wait is the evidence that retries are bounded.
+`Run tariff monitoring for the overdraft.` Expect about a minute of heartbeats
+while the bounded retries run (62 s measured), then `source.timeout` with its
+operator sentence. Leave the pacing alone: the wait is the evidence that retries
+are bounded.
+
+On an overloaded machine the first attempt once closed as `run.internal_error`,
+with the offering left `running`: recording the failure could not get a database
+connection in time. It did not recur with the load down. If it happens on camera,
+it is step 0 that was skipped.
 
 ### 13c — source.size_rejected
 
@@ -262,12 +380,14 @@ uv run python demo/bin/build-oversized.py
 ./demo/bin/mirror-variant.sh oversized
 ```
 
-Expect `source.size_rejected`. The mirror compresses, so there is no
-`Content-Length` and the retriever stops mid-stream on decoded bytes.
+`Run tariff monitoring for the overdraft.` Expect `source.size_rejected`. The mirror
+compresses, so there is no `Content-Length` and the retriever stops mid-stream on
+decoded bytes.
 
 ### 13d — source.model_failed
 
 ```bash
+./demo/bin/mirror-variant.sh unchanged
 export COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml:demo/compose.model-failure.yml
 docker compose up -d api worker
 ```
@@ -276,7 +396,11 @@ docker compose up -d api worker
 > This is not hypothetical: it is the failure this system actually hit on
 > 22 September, and it is why the fallback chain exists."
 
-Expect `source.model_failed`. Afterwards, restore the default stack:
+`Run tariff monitoring for the overdraft.` Expect `source.model_failed` at the
+`pdf_selection` stage: choosing the offering's PDFs from their links is the first
+thing source discovery asks Gemini on the new system. `logs/worker.log` shows the
+provider's `404 NOT_FOUND` for `gemini-2.5-flash-lite`. Afterwards, restore the
+default stack:
 
 ```bash
 export COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml
@@ -298,36 +422,41 @@ One take. Accept stumbles; do not edit.
 ```
 
 1. Ask the overdraft question and then for its source — the bank's own evidence.
-2. Ask for a mortgage the system has never monitored (primary market), authorize
-   the run, and let it publish. This one acquires from `ameriabank.am` for real.
+2. Ask for a mortgage the system has never monitored (`What is the interest rate
+   of the Primary Market Mortgage?`). The assistant offers to check the bank's
+   website; accept, and let the run publish. This one acquires from
+   `ameriabank.am` for real.
 3. Republish the overdraft copy, run again, take the review, and read the
    detected change.
 
-Budget for a retake: step 2 depends on the bank's site. Its first-ever run was
-dry-run on 2026-09-24; a restore keeps the caches, so a take re-reads the same
-bank content for close to nothing unless the bank has changed it.
+Budget for a retake: step 2 depends on the bank's site and has never run on the
+new system. A restore keeps the caches, so a retake re-reads the same bank content
+for close to nothing unless the bank has changed it.
 
 ---
 
 ## Cost of a take
 
-Measured during the dry runs, pipeline only. The chat agent is extra: it
-re-sends the whole durable session on every turn, and review turns are the
-largest, because a review panel lists every captured passage.
+Measured during the old system's dry runs, pipeline only. The new system starts
+with empty caches and new prompts, so the first take of each clip pays in full;
+re-measure it. The chat agent is extra: every turn now also makes one request
+interpreter call, and review turns are the largest.
 
-| Clip | First run | Retake from cache |
+| Clip | First run (old system) | Retake from cache |
 |---|---|---|
 | 9 | $0 — reads the stored snapshot | $0 |
 | 10 | ≈ $0.03 | ≈ $0.03 — the batch that raised the field review is never cached |
 | 11 part one | ≈ $0.12 — a changed document re-runs every batch | ≈ $0 |
 | 11 part two | $0 — deterministic scenario | $0 |
-| 13 b, c, d | $0 — each fails before or at its first model call | $0 |
-| 15 mortgage leg | see the C6 record in the plan | ≈ $0 if the bank is unchanged |
+| 13 b, c, d | $0 — each fails before or at its first model call (verified on the new system) | $0 |
+| 15 mortgage leg | not yet run on the new system | ≈ $0 if the bank is unchanged |
 
 `demo/bin/baseline.sh restore` keeps every cache and the spend ledger, so a
 retake never re-pays for content that has not changed. Check what a session
 actually spent with `logs/model_usage.log` or
-`uv run python scripts/model_cost_report.py --days 1`.
+`uv run python scripts/model_cost_report.py --days 1`. Pipeline calls are logged
+without a run id on the new system; `demo/bin/run-offering.sh` therefore totals
+the calls made while its run was executing.
 
 ---
 
