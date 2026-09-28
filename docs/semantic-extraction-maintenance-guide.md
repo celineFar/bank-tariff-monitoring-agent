@@ -9,7 +9,8 @@ artifact names, see [semantic-extraction.md](semantic-extraction.md).
 > pipeline before that fix in places (row-level keyword packets, cue-word checks,
 > cache-only-when-valid). The current behaviour is summarised in
 > [semantic-extraction.md](semantic-extraction.md) and specified item by item in
-> `fix-process/semantic_extraction/semantic-extraction-fix-plan.md` (SE1–SE26). Of the
+> `fix-process/semantic_extraction/semantic-extraction-fix-plan.md` (SE1–SE26; in the
+> repository history at commit `833813a`, not in the working tree). Of the
 > gaps in section 13, deterministic numeric grounding (13.3) and completeness policy
 > by product subtype (13.7) are now implemented, as SE18 and SE21.
 

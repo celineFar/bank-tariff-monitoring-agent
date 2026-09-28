@@ -1,0 +1,132 @@
+{
+  "results": [
+    {
+      "field": "required_documents",
+      "status": "found",
+      "value_json": "[{\"conditions\":[{\"dimension\":\"other\",\"value\":\"filed together with the loan application\"}],\"value\":{\"name\":\"Loan application\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"filed together with the loan application\"}],\"value\":{\"name\":\"ID (original)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"filed together with the loan application\"}],\"value\":{\"name\":\"Certificate of ownership of the property to be purchased/pledged (copy)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"filed together with the loan application\"}],\"value\":{\"name\":\"Other documents upon the Bank's request\",\"requirement\":\"upon_request\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Proof of employment and/or other income\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Marriage (divorce, spouse death) certificate (original)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Certificate of title to real estate to be pledged (original)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Geodetic measurement report of land plot to be pledged\",\"requirement\":\"conditional\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Initial real estate appraisal report\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Construction costs estimate\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after pre-approval\"}],\"value\":{\"name\":\"Other documents upon the Bank's request\",\"requirement\":\"upon_request\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Copies of bases of title to real estate\",\"requirement\":\"upon_request\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"IDs of owners of the property to be purchased/pledged (originals)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Copies of marriage (divorce, spouse death) certificates of owners of the property to be pledged\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Statement from the State Committee of Real Estate Cadaster on encumbrance of real estate (unified statement)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Real estate appraisal report (final)\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Tax clearance certificate for the real estate\",\"requirement\":\"required\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Documentary proof that the down payment was made in a non-cash manner\",\"requirement\":\"conditional\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"after loan approval\"}],\"value\":{\"name\":\"Other documents upon the Bank's request\",\"requirement\":\"upon_request\"}}]",
+      "evidence": [
+        {
+          "evidence_id": "ev_4e2fd3a684393008e63e1a7c",
+          "quote": "• Loan application\n• ID (original)\n• Certificate of ownership of the property to be purchased/pledged (copy)\n• Other documents upon the Bank’s request"
+        },
+        {
+          "evidence_id": "ev_f0234287b14ef7ec1288e47e",
+          "quote": "• Proof of employment and/or other income\n• Marriage (divorce, spouse death) certificate (original)\n• Certificate of title to real estate to be pledged (original)\n• Geodetic measurement report of land plot to be pledged⁴\n• Initial real estate appraisal report\n• Other documents upon the Bank’s request"
+        },
+        {
+          "evidence_id": "ev_e73131a57f3849d9f238cfaf",
+          "quote": "Construction costs estimate"
+        },
+        {
+          "evidence_id": "ev_9bc88d7de5ea09f78f57afd7",
+          "quote": "• Copies of bases of title to real estate (to be submitted upon the Bank’s request)\n• IDs of owners of the property to be purchased/pledged (originals)\n• Copies of marriage (divorce, spouse death) certificates of owners of the property to be pledged\n• Statement from the State Committee of Real Estate Cadaster on encumbrance of real estate (unified statement)\n• Real estate appraisal report (final)\n• Tax clearance certificate for the real estate\n• Documentary proof that the down payment was made in a non-cash manner (e.g.: original receipt, or, if paid electronically, a document showing that the electronic payment was confirmed). Such proof is not required if the payment was made from the accounts held with the Bank and the Bank specialist has exported the payment document from the system.\n• Other documents upon the Bank’s request"
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "property_market",
+      "status": "found",
+      "value_json": "\"commercial\"",
+      "evidence": [
+        {
+          "evidence_id": "ev_7d3b3e543bd1313b3e4588fe",
+          "quote": "1.1. Purpose: 1.1.1. (i) Purchase of commercial property for commercial, lease or investment purposes, or (ii) transfer of a loan for purchase of property for commercial, lease or investment purposes from another bank/credit organization to Ameriabank CJSC (the “Bank”)"
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "down_payment_pct",
+      "status": "found",
+      "value_json": "[{\"conditions\":[],\"value\":5},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 50-100 million\"},{\"dimension\":\"other\",\"value\":\"without the assessment of creditworthiness criteria\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":50},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 50-100 million\"},{\"dimension\":\"other\",\"value\":\"without the assessment of creditworthiness criteria\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":60},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 30-50 million\"},{\"dimension\":\"other\",\"value\":\"without the assessment of creditworthiness criteria\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":40},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 30-50 million\"},{\"dimension\":\"other\",\"value\":\"without the assessment of creditworthiness criteria\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":50},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"up to AMD 30 million\"},{\"dimension\":\"other\",\"value\":\"without the assessment of creditworthiness criteria\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":30},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"up to AMD 30 million\"},{\"dimension\":\"other\",\"value\":\"without the assessment of creditworthiness criteria\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":40}]",
+      "evidence": [
+        {
+          "evidence_id": "ev_e6a16e55ee3fb46bef94fed2",
+          "quote": "3.11. Minimum down payment: 3.11.1. At least 5% of the purchase price of the property"
+        },
+        {
+          "evidence_id": "ev_0a15bcc8f75731dce827c769",
+          "quote": "Where the loan amount is AMD 50-100 million, the loan may be issued without the assessment of creditworthiness criteria if the customer (including non-resident) has made a down payment of 50% (if in Yerevan) or 60% (if in the regions of Armenia) and more and meets the requirements of the internal regulations of the Bank\nWhere the loan amount is AMD 30-50 million, the loan may be issued without the assessment of creditworthiness criteria if the customer (including non-resident) has made a down payment of 40% (if in Yerevan) or 50% (if in the regions of Armenia) and more and meets the requirements of the internal regulations of the Bank.\nWhere the loan amount is up to AMD 30 million, the loan may be issued without the assessment of creditworthiness criteria if the customer (including non-resident) has made a down payment of 30% (if in Yerevan) or 40% (if in the regions of Armenia) and more and meets the requirements of the internal regulations of the Bank."
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "ltv_pct",
+      "status": "found",
+      "value_json": "[{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"AMD\"},{\"dimension\":\"term_range\",\"value\":\"61-240 months\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":80},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"AMD\"},{\"dimension\":\"term_range\",\"value\":\"61-240 months\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":70},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"AMD\"},{\"dimension\":\"term_range\",\"value\":\"above 240 months\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":70},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"AMD\"},{\"dimension\":\"term_range\",\"value\":\"above 240 months\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":60},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"USD or EUR (foreign currency)\"},{\"dimension\":\"term_range\",\"value\":\"61-240 months\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":70},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"USD or EUR (foreign currency)\"},{\"dimension\":\"term_range\",\"value\":\"61-240 months\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":60},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"USD or EUR (foreign currency)\"},{\"dimension\":\"term_range\",\"value\":\"above 240 months\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":60},{\"conditions\":[{\"dimension\":\"currency\",\"value\":\"USD or EUR (foreign currency)\"},{\"dimension\":\"term_range\",\"value\":\"above 240 months\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":50},{\"conditions\":[{\"dimension\":\"collateral\",\"value\":\"cash in the Bank or bonds issued by the Bank\"}],\"value\":100},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"up to AMD 30 million\"},{\"dimension\":\"other\",\"value\":\"without creditworthiness assessment\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":70},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"up to AMD 30 million\"},{\"dimension\":\"other\",\"value\":\"without creditworthiness assessment\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":60},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 30-50 million\"},{\"dimension\":\"other\",\"value\":\"without creditworthiness assessment\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":60},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 30-50 million\"},{\"dimension\":\"other\",\"value\":\"without creditworthiness assessment\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":50},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 50-100 million\"},{\"dimension\":\"other\",\"value\":\"without creditworthiness assessment\"},{\"dimension\":\"location\",\"value\":\"Yerevan\"}],\"value\":50},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 50-100 million\"},{\"dimension\":\"other\",\"value\":\"without creditworthiness assessment\"},{\"dimension\":\"location\",\"value\":\"regions of Armenia\"}],\"value\":40}]",
+      "evidence": [
+        {
+          "evidence_id": "ev_b86398cbc082e5d322d072ea",
+          "quote": "1. For AMD loans with a term of 61-240 months: 80%² (if in Yerevan) and 70% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property,\nFor AMD loans with a term above 240 months: 70%² (if in Yerevan) and 60% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property\n2. For foreign currency loans with a term of 61-240 months: 70%² (if in Yerevan) and 60% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property,\nFor foreign currency loans with a term above 240 months: 60%² (if in Yerevan) and 50% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property\n3. up to 100% of the value of cash in the Bank or bonds issued by the Bank.\n4. For up to AMD 30 million loans without creditworthiness assessment: up to 70% (if in Yerevan) and up to 60% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property (this clause does not refer to the loans issued with a purpose of transfer of existing loans from another bank/credit organization).\nFor AMD 30-50 million loans without creditworthiness assessment: up to 60% (if in Yerevan) and up to 50% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property (this clause does not refer to the loans issued with a purpose of transfer of existing loans from another bank/credit organization).\nFor AMD 50-100 million loans without creditworthiness assessment: up to 50% (if in Yerevan) and up to 40% (if in the regions of Armenia) of the lower of the two: appraised market value or purchase price of pledged property (this clause does not refer to the loans issued with a purpose of transfer of existing loans from another bank/credit organization)."
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "collateral",
+      "status": "found",
+      "value_json": "[{\"conditions\":[],\"value\":{\"applicable\":true,\"description\":\"The loan is secured by the real estate being purchased. The Bank may consider pledge of other real estate as additional security to the reasonable satisfaction of the Bank, as well as cash in the Bank or bonds issued by the Bank.\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"purchasing property under construction without registered certificate of title\"}],\"value\":{\"applicable\":true,\"description\":\"secured by other Armenia-based real estate to the reasonable satisfaction of the Bank\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"purchasing property abroad\"}],\"value\":{\"applicable\":true,\"description\":\"secured by Armenia-based real estate to the reasonable satisfaction of the Bank\"}},{\"conditions\":[{\"dimension\":\"other\",\"value\":\"additional security\"}],\"value\":{\"applicable\":true,\"description\":\"The Bank may request guarantees of individuals and/or companies as additional security.\"}}]",
+      "evidence": [
+        {
+          "evidence_id": "ev_1b3fe10e30b985cdee7519e8",
+          "quote": "1. The loan is secured by the real estate being purchased. The Bank may consider pledge of other real estate as additional security to the reasonable satisfaction of the Bank, as well as cash in the Bank or bonds issued by the Bank.\n2. If the borrower wishes to purchase property under construction without registered certificate of title, the loan will be secured by other Armenia-based real estate to the reasonable satisfaction of the Bank.\n3. If the borrower wishes to purchase property abroad, the loan will be secured by Armenia-based real estate to the reasonable satisfaction of the Bank."
+        },
+        {
+          "evidence_id": "ev_827e059b4c547cc024f62e61",
+          "quote": "5.5. Additional security: 5.5.1. The Bank may request guarantees of individuals and/or companies as additional security."
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "income_verification_required",
+      "status": "found",
+      "value_json": "{\"default_required\":true,\"exceptions\":[]}",
+      "evidence": [
+        {
+          "evidence_id": "ev_f0234287b14ef7ec1288e47e",
+          "quote": "• Proof of employment and/or other income"
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "creditworthiness_assessment_required",
+      "status": "found",
+      "value_json": "{\"default_required\":true,\"exceptions\":[{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 50-100 million\"},{\"dimension\":\"other\",\"value\":\"down payment of 50% (if in Yerevan) or 60% (if in the regions of Armenia) and more\"}],\"value\":false},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"AMD 30-50 million\"},{\"dimension\":\"other\",\"value\":\"down payment of 40% (if in Yerevan) or 50% (if in the regions of Armenia) and more\"}],\"value\":false},{\"conditions\":[{\"dimension\":\"amount_range\",\"value\":\"up to AMD 30 million\"},{\"dimension\":\"other\",\"value\":\"down payment of 30% (if in Yerevan) or 40% (if in the regions of Armenia) and more\"}],\"value\":false}]",
+      "evidence": [
+        {
+          "evidence_id": "ev_0a15bcc8f75731dce827c769",
+          "quote": "Where the loan amount is AMD 50-100 million, the loan may be issued without the assessment of creditworthiness criteria if the customer (including non-resident) has made a down payment of 50% (if in Yerevan) or 60% (if in the regions of Armenia) and more and meets the requirements of the internal regulations of the Bank\nWhere the loan amount is AMD 30-50 million, the loan may be issued without the assessment of creditworthiness criteria if the customer (including non-resident) has made a down payment of 40% (if in Yerevan) or 50% (if in the regions of Armenia) and more and meets the requirements of the internal regulations of the Bank.\nWhere the loan amount is up to AMD 30 million, the loan may be issued without the assessment of creditworthiness criteria if the customer (including non-resident) has made a down payment of 30% (if in Yerevan) or 40% (if in the regions of Armenia) and more and meets the requirements of the internal regulations of the Bank."
+        }
+      ],
+      "explanation": null
+    },
+    {
+      "field": "property_requirements",
+      "status": "found",
+      "value_json": "[\"Location of the real estate to be pledged: Armenia\",\"Pledged property to be appraised by an appraising partner of the Bank\",\"The real estate being pledged is insured by the Bank if at the time of registration of the title to the real estate and/or at the time of reappraisal, the market value of the property is over AMD 100 million, or where the address of the pledged real estate is included in the list of properties published on the Bank’s website\"]",
+      "evidence": [
+        {
+          "evidence_id": "ev_4c2ffe9724f131f8b50ea6a2",
+          "quote": "5.3. Location of the real estate to be pledged: 5.3.1. Armenia"
+        },
+        {
+          "evidence_id": "ev_bae82db54ecd71e80b6fd96d",
+          "quote": "5.4. Appraisal of the collateral: 5.4.1. Pledged property to be appraised by an appraising partner of the Bank."
+        },
+        {
+          "evidence_id": "ev_28395017ed80b2cf69508af3",
+          "quote": "6.1.1.1. If at the time of registration of the title to the real estate and/or at the time of reappraisal, the market value of the property is over AMD 100 million (one hundred million); or"
+        },
+        {
+          "evidence_id": "ev_868274569fe6d2b1ac782d7e",
+          "quote": "6.1.1.2. where the address of the pledged real estate is included in the list of properties published on the Bank’s website."
+        }
+      ],
+      "explanation": null
+    }
+  ]
+}

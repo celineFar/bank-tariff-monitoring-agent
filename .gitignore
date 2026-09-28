@@ -221,4 +221,4 @@ end-to-end/
 # Local container log archive
 /logs/
 # Internal fix/debug plans (not part of the deliverable)
-/fix-plans/
+/fix-process/

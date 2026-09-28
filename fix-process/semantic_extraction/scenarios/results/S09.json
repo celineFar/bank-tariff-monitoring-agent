@@ -1,9 +1,0 @@
-{
- "scenario": "S09",
- "passed": true,
- "summary": "8 passed, 28 deselected, 2 warnings in 1.90s",
- "counts": {
-  "passed": 8
- },
- "failures": []
-}

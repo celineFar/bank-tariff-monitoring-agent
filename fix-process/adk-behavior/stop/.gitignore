@@ -1,5 +1,0 @@
-out/artifacts/
-out/pipeline-audit/
-out/*.log
-out/*.stdout
-__pycache__/

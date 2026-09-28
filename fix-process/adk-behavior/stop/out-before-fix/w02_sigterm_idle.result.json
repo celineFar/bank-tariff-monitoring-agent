@@ -1,4 +1,0 @@
-{
-  "scenario": "w02_sigterm_idle",
-  "exit_s_after_sigterm": 0.77
-}

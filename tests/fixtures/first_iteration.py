@@ -1,7 +1,6 @@
 """Captures from the 2026-09-27 live run, for the first-iteration regression tests.
 
-The files live in fix-process/1st-iteration-fixes/data/ (see that plan, Phase 0).
-Nothing here calls a model.
+The files live in tests/fixtures/first_iteration_captures/. Nothing here calls a model.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
 from app.domain.semantic_extraction import SemanticExtractionResult
 from app.services.snapshot_lifecycle import canonical_sha256, canonical_tariff_payload
 
-DATA = Path(__file__).resolve().parents[2] / "fix-process/1st-iteration-fixes/data"
+DATA = Path(__file__).resolve().parent / "first_iteration_captures"
 
 
 @cache

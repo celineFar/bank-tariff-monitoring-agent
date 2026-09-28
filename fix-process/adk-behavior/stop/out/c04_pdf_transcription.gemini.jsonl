@@ -1,8 +1,0 @@
-{"t": 1790493872.643, "event": "request", "id": 1, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
-{"t": 1790493872.644, "event": "response", "id": 1, "role": "ameria_tariff_monitor", "status": 200}
-{"t": 1790493872.791, "event": "request", "id": 2, "role": "ameria_tariff_monitor", "path": "/v1beta/models/gemini-3.7-flash:generateContent"}
-{"t": 1790493872.792, "event": "response", "id": 2, "role": "ameria_tariff_monitor", "status": 200}
-{"t": 1790493888.356, "event": "request", "id": 3, "role": "pdf_link_selector", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
-{"t": 1790493888.357, "event": "response", "id": 3, "role": "pdf_link_selector", "status": 200}
-{"t": 1790493889.106, "event": "request", "id": 4, "role": "pdf_document_extractor", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
-{"t": 1790493890.164, "event": "disconnect", "id": 4, "role": "pdf_document_extractor", "held_s": 1.06}

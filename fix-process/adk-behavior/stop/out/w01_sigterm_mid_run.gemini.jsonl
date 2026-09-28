@@ -1,8 +1,0 @@
-{"t": 1790496660.65, "event": "request", "id": 1, "role": "pdf_link_selector", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
-{"t": 1790496660.65, "event": "response", "id": 1, "role": "pdf_link_selector", "status": 200}
-{"t": 1790496663.654, "event": "request", "id": 2, "role": "source_discovery_classifier", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
-{"t": 1790496663.657, "event": "request", "id": 3, "role": "source_discovery_classifier", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
-{"t": 1790496663.659, "event": "request", "id": 4, "role": "source_discovery_classifier", "path": "/v1beta/models/gemini-3.1-flash-lite:generateContent"}
-{"t": 1790496664.727, "event": "disconnect", "id": 2, "role": "source_discovery_classifier", "held_s": 1.07}
-{"t": 1790496664.729, "event": "disconnect", "id": 3, "role": "source_discovery_classifier", "held_s": 1.07}
-{"t": 1790496664.733, "event": "disconnect", "id": 4, "role": "source_discovery_classifier", "held_s": 1.07}
