@@ -1,0 +1,129 @@
+diff --git a/app/api/routes.py b/app/api/routes.py
+index 85c131b..ee67c1a 100644
+--- a/app/api/routes.py
++++ b/app/api/routes.py
+@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
+ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+ from pydantic import BaseModel, ConfigDict, Field
+ 
++from app.domain.catalog import SeedCatalog
+ from app.domain.intent import HistoryQuery, HistoryRequestKind
+ from app.domain.models import OfferingId, ProductType
+ from app.domain.monitoring import (
+@@ -55,6 +56,12 @@ class RunRequest(BaseModel):
+     offering_id: OfferingId | None = None
+ 
+ 
++class OfferingSummary(BaseModel):
++    offering_id: OfferingId
++    product: ProductType
++    seed_url: str
++
++
+ class RunSubmissionResponse(RunSubmissionResult):
+     status_url: str
+     # Read-only diagnostics; review decisions are taken in the chat CLI.
+@@ -95,6 +102,26 @@ def get_review_repository(request: Request) -> ReviewRepository:
+     return request.app.state.review_repository
+ 
+ 
++def get_seed_catalog(request: Request) -> SeedCatalog:
++    return request.app.state.seed_catalog
++
++
++@router.get("/offerings", response_model=list[OfferingSummary], tags=["catalog"])
++async def list_offerings(
++    catalog: Annotated[SeedCatalog, Depends(get_seed_catalog)],
++) -> list[OfferingSummary]:
++    """The enabled catalog offerings; configuration only, no tariff data."""
++    return [
++        OfferingSummary(
++            offering_id=entry.offering_id,
++            product=entry.product,
++            seed_url=str(entry.seed_url),
++        )
++        for entry in catalog.offerings
++        if entry.enabled
++    ]
++
++
+ @router.post(
+     "/runs",
+     status_code=status.HTTP_202_ACCEPTED,
+diff --git a/app/fast_api_app.py b/app/fast_api_app.py
+index f53409e..af7a58a 100644
+--- a/app/fast_api_app.py
++++ b/app/fast_api_app.py
+@@ -82,6 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+     app.state.tariff_history_service = container.tariff_history_service
+     app.state.review_repository = container.reviews
+     app.state.review_resolution = container.review_resolution
++    app.state.seed_catalog = container.catalog
+     await attach_a2a_routes(
+         app,
+         agent=root_agent,
+diff --git a/app/runtime.py b/app/runtime.py
+index e0e63cd..7519ec0 100644
+--- a/app/runtime.py
++++ b/app/runtime.py
+@@ -10,6 +10,7 @@ from google.adk.workflow import FunctionNode
+ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+ 
+ from app.config import Settings, load_seed_catalog
++from app.domain.catalog import SeedCatalog
+ from app.repositories.acquisition_baselines import (
+     PostgresAcquisitionBaselineRepository,
+ )
+@@ -109,6 +110,8 @@ class ApplicationContainer:
+     # The worker's embedding sweep: structured retrieval units stored without
+     # a vector (units are never embedded on the request path).
+     embedding_sweep: StructuredUnitEmbeddingService | None = None
++    # The seed catalog this process loaded once; the offerings route lists it.
++    catalog: SeedCatalog | None = None
+ 
+     async def close(self) -> None:
+         await self.http_client.aclose()
+@@ -386,4 +389,5 @@ def build_application_container(
+         tariff_pipeline=tariff_pipeline,
+         review_display=ReviewDisplayService(reviews, snapshots),
+         embedding_sweep=unit_embeddings,
++        catalog=catalog,
+     )
+diff --git a/tests/unit/test_trigger_adapters.py b/tests/unit/test_trigger_adapters.py
+index bde694f..ba85456 100644
+--- a/tests/unit/test_trigger_adapters.py
++++ b/tests/unit/test_trigger_adapters.py
+@@ -210,6 +210,33 @@ async def test_http_persistence_failures_use_stable_bounded_envelopes() -> None:
+     assert "database" not in fetched.text.lower()
+ 
+ 
++@pytest.mark.asyncio
++async def test_offerings_route_lists_the_enabled_seed_catalog() -> None:
++    from app.config import load_seed_catalog
++
++    catalog = load_seed_catalog()
++    app = FastAPI()
++    app.state.seed_catalog = catalog
++    app.include_router(router)
++
++    async with httpx.AsyncClient(
++        transport=httpx.ASGITransport(app=app), base_url="http://test"
++    ) as client:
++        response = await client.get("/api/v1/offerings")
++
++    assert response.status_code == 200
++    body = response.json()
++    enabled = [entry for entry in catalog.offerings if entry.enabled]
++    assert [item["offering_id"] for item in body] == [
++        entry.offering_id.value for entry in enabled
++    ]
++    assert body[0] == {
++        "offering_id": enabled[0].offering_id.value,
++        "product": enabled[0].product.value,
++        "seed_url": str(enabled[0].seed_url),
++    }
++
++
+ @pytest.mark.asyncio
+ async def test_scheduler_submits_each_family_through_the_shared_service() -> None:
+     service = _RunService()

@@ -1,0 +1,39 @@
+# Overlay for the change-detection demonstration, applied on top of the demo
+# stack only while change_demo.py runs.
+#
+# It adds a local HTTPS mirror of the bank's Overdraft page, and points the
+# worker's Overdraft seed URL at it. Nothing in the application changes, and no
+# security control is relaxed: the allowlist still names exact hosts, HTTPS is
+# still required, and every limit keeps its value. The mirror's certificate is
+# signed by a local demo root, which only these containers trust.
+#
+# MIRROR_PAGE selects which version of the page the mirror serves: the original
+# copy, or the republished one with the new rates.
+services:
+  mirror:
+    image: caddy:2-alpine
+    volumes:
+      - ./Presentation-demonstrations/Change-detection-and-review/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Presentation-demonstrations/Change-detection-and-review/runtime/certs:/certs:ro
+      - ./Presentation-demonstrations/Change-detection-and-review/mirror/original:/srv:ro
+      - ${MIRROR_PAGE:-./Presentation-demonstrations/Change-detection-and-review/mirror/original/overdraft/index.html}:/srv/overdraft/index.html:ro
+    networks:
+      default:
+        aliases: ["tariff-mirror.demo"]
+
+  worker:
+    environment:
+      ALLOWED_SOURCE_HOSTS: "ameriabank.am,www.ameriabank.am,tariff-mirror.demo"
+      # certifi's bundle plus the demo root, for httpx.
+      SSL_CERT_FILE: /demo-trust/ca-bundle.pem
+    volumes:
+      # The shipped catalog with one line changed: Overdraft's seed URL.
+      - ./Presentation-demonstrations/Change-detection-and-review/runtime/seed_catalog.yaml:/code/app/config/seed_catalog.yaml:ro
+      - ./Presentation-demonstrations/Change-detection-and-review/runtime/ca:/demo-ca:ro
+      - demo_trust:/demo-trust
+      # Chromium reads trusted roots from this NSS database.
+      - demo_nssdb:/root/.pki/nssdb
+
+volumes:
+  demo_trust:
+  demo_nssdb:

@@ -1,0 +1,256 @@
+diff --git a/app/domain/review.py b/app/domain/review.py
+index 6795ca9..3d8a8f6 100644
+--- a/app/domain/review.py
++++ b/app/domain/review.py
+@@ -16,6 +16,8 @@ class ReviewModel(BaseModel):
+ 
+ class ReviewReason(StrEnum):
+     LARGE_RATE_CHANGE = "large_rate_change"
++    # A fee amount or percentage went up since the accepted snapshot.
++    FEE_INCREASE = "fee_increase"
+     OFFICIAL_SOURCE_CONFLICT = "official_source_conflict"
+     SOURCE_APPLICABILITY = "source_applicability"
+     MISSING_REQUIRED_FIELD = "missing_required_field"
+diff --git a/app/services/review_decisions.py b/app/services/review_decisions.py
+index 3269c8e..d5826ae 100644
+--- a/app/services/review_decisions.py
++++ b/app/services/review_decisions.py
+@@ -87,7 +87,11 @@ class ReviewDecisionService:
+         elif (
+             decision.decision_type is ReviewDecisionType.APPROVE
+             and task.reason
+-            not in (ReviewReason.LARGE_RATE_CHANGE, ReviewReason.OCR_EVIDENCE)
++            not in (
++                ReviewReason.LARGE_RATE_CHANGE,
++                ReviewReason.FEE_INCREASE,
++                ReviewReason.OCR_EVIDENCE,
++            )
+         ):
+             # OCR evidence is approvable because the reviewer is confirming a
+             # reading against a page they were shown, not inventing a value.
+diff --git a/app/services/review_resolution.py b/app/services/review_resolution.py
+index 1a8122e..1b27392 100644
+--- a/app/services/review_resolution.py
++++ b/app/services/review_resolution.py
+@@ -618,6 +618,17 @@ def review_policy(
+             "Confirm the evidence-backed large rate change, reject the candidate "
+             "snapshot, or provide an evidence-linked structured override.",
+         )
++    if reason is ReviewReason.FEE_INCREASE:
++        return (
++            (
++                ReviewDecisionType.APPROVE,
++                ReviewDecisionType.REJECT_ALL,
++                ReviewDecisionType.OVERRIDE,
++            ),
++            "A fee went up since the accepted snapshot. Confirm the evidence-backed "
++            "increase, reject the candidate snapshot, or provide an evidence-linked "
++            "structured override.",
++        )
+     if reason is ReviewReason.OFFICIAL_SOURCE_CONFLICT:
+         return (
+             (
+diff --git a/app/services/snapshot_lifecycle.py b/app/services/snapshot_lifecycle.py
+index 6eba6c3..1f5c820 100644
+--- a/app/services/snapshot_lifecycle.py
++++ b/app/services/snapshot_lifecycle.py
+@@ -142,10 +142,15 @@ def build_snapshot_attempt(
+     # at all. Each signal becomes its own review, and activation already waits
+     # for every one of them.
+     if previous_accepted_snapshot is not None:
+-        rate_signals = detect_large_rate_changes(
+-            previous_accepted_snapshot.normalized_tariff,
+-            payload,
+-            threshold=large_rate_change_percentage_points,
++        rate_signals = (
++            *detect_large_rate_changes(
++                previous_accepted_snapshot.normalized_tariff,
++                payload,
++                threshold=large_rate_change_percentage_points,
++            ),
++            *detect_fee_increases(
++                previous_accepted_snapshot.normalized_tariff, payload
++            ),
+         )
+         rate_signals = tuple(
+             _with_new_value_evidence(signal, result) for signal in rate_signals
+@@ -533,6 +538,74 @@ def detect_large_rate_changes(
+     return tuple(signals)
+ 
+ 
++def detect_fee_increases(
++    previous: dict[str, JsonValue],
++    current: dict[str, JsonValue],
++) -> tuple[dict[str, JsonValue], ...]:
++    """Any fee amount or percentage that went up since the accepted snapshot.
++
++    Fees are paired as rate entries are, by the words of their description and
++    conditions, never by list position. A fee with no counterpart is structural.
++    """
++    field = ExtractionField.FEES.value
++    increases = [
++        (key, prior[key], now[key])
++        for prior, now in _paired_rate_entries(
++            _fee_entries(previous.get(field)), _fee_entries(current.get(field))
++        )
++        for key in sorted(prior.keys() & now.keys())
++        if now[key] > prior[key]
++    ]
++    if not increases:
++        return ()
++    key, before, after = increases[0]
++    return (
++        {
++            "reason": "fee_increase",
++            "issue_scope": field,
++            "field": field,
++            "previous": f"{before} ({key})",
++            "current": f"{after} ({key})",
++        },
++    )
++
++
++def _fee_entries(
++    value: JsonValue,
++) -> list[tuple[frozenset[str], dict[str, Decimal]]]:
++    items = value.get("value") if isinstance(value, dict) else value
++    entries: list[tuple[frozenset[str], dict[str, Decimal]]] = []
++    for item in items if isinstance(items, list) else ():
++        if not isinstance(item, dict):
++            continue
++        amounts: dict[str, Decimal] = {}
++        for key in ("amount", "rate_pct"):
++            try:
++                amounts[key] = Decimal(str(item[key]))
++            except (KeyError, InvalidOperation):
++                continue
++        if "amount" in amounts:
++            # An amount is compared only with one in the same currency.
++            amounts[f"amount_{item.get('currency')}"] = amounts.pop("amount")
++        if not amounts:
++            continue
++        conditions = item.get("conditions")
++        text = " ".join(
++            (
++                str(item.get("description", "")),
++                *(
++                    str(condition.get("value", ""))
++                    for condition in (
++                        conditions if isinstance(conditions, list) else ()
++                    )
++                    if isinstance(condition, dict)
++                ),
++            )
++        )
++        entries.append((frozenset(_CONDITION_WORD.findall(text.lower())), amounts))
++    return entries
++
++
+ def _conflict_candidates(field, evidence_by_id: dict[str, EvidenceItem]):
+     candidates: list[dict[str, JsonValue]] = []
+     for citation in field.evidence:
+diff --git a/docs/native-hitl-review.md b/docs/native-hitl-review.md
+index 8163804..03a7102 100644
+--- a/docs/native-hitl-review.md
++++ b/docs/native-hitl-review.md
+@@ -59,6 +59,7 @@ which never changes once the snapshot exists.
+ | `source_applicability`, `ocr_evidence` | the field's (OCR) citations |
+ | `official_source_conflict` | one unit per candidate |
+ | `large_rate_change` | the new value's citations; before and after in the guidance |
++| `fee_increase` (a fee amount or percentage went up since the accepted snapshot) | the new fee's citations; before and after in the guidance |
+ 
+ A **unit** is a table, a window of a section (the seed block ± 2 blocks, ≤ 3,000
+ characters), or one passage. A review shows one unit, and a second when it ranks within
+diff --git a/tests/unit/test_snapshot_lifecycle.py b/tests/unit/test_snapshot_lifecycle.py
+index 54b6dca..214c28c 100644
+--- a/tests/unit/test_snapshot_lifecycle.py
++++ b/tests/unit/test_snapshot_lifecycle.py
+@@ -1,6 +1,8 @@
+ from datetime import UTC, datetime, timedelta
+ from uuid import uuid4
+ 
++import pytest
++
+ from app.domain.acquisition import SourceLocator, SourceType
+ from app.domain.models import OfferingId, ProductType
+ from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
+@@ -29,6 +31,7 @@ from app.services.snapshot_lifecycle import (
+     canonical_sha256,
+     canonical_tariff_payload,
+     compare_accepted_snapshots,
++    detect_fee_increases,
+     detect_large_rate_changes,
+     detect_review_signals,
+     evidence_changed,
+@@ -608,3 +611,71 @@ def test_a_rate_jump_is_guarded_even_when_a_field_review_is_also_needed() -> Non
+     assert "large_rate_change" in reasons
+     assert snapshot.status is SnapshotStatus.REVIEW_REQUIRED
+     assert snapshot.validation["accepted"] is False
++
++
++@pytest.mark.asyncio
++async def test_a_fee_increase_is_reviewed_and_can_be_approved() -> None:
++    from app.domain.review import ReviewDecision, ReviewDecisionType
++    from app.services.monitoring_pipeline import _review_tasks
++    from app.services.review_decisions import ReviewDecisionService
++    from app.services.review_resolution import build_review_view
++    from tests.unit.test_multi_review_approval import _Reviews, _Snapshots
++
++    def fees(amount: str) -> list[dict]:
++        return [
++            {
++                "description": "Loan service fee",
++                "scope": "product",
++                "amount": amount,
++                "currency": "AMD",
++                "rate_pct": None,
++                "conditions": [],
++            }
++        ]
++
++    result = _result(review=True)
++    fee = ValidatedFieldResult(
++        field=ExtractionField.FEES,
++        status=ExtractionStatus.FOUND,
++        value=fees("6000"),
++        evidence=result.validated_fields[0].evidence,
++        batch_id="fees",
++    )
++    partial = result.partial_product.model_copy(
++        update={"fields": (*result.partial_product.fields, fee)}
++    )
++    result = result.model_copy(
++        update={
++            "partial_product": partial,
++            "validated_fields": (*result.validated_fields, fee),
++        }
++    )
++    previous = _snapshot({"fees": {"status": "found", "value": fees("5000")}})
++    lower = {"fees": {"status": "found", "value": fees("4000")}}
++    assert detect_fee_increases(previous.normalized_tariff, lower) == ()
++
++    snapshot = build_snapshot_attempt(
++        run_id=uuid4(),
++        offering_execution_id=uuid4(),
++        product=ProductType.CONSUMER_LOAN,
++        offering_id=OfferingId.CONSUMER_STANDARD,
++        result=result,
++        previous_accepted_snapshot_id=previous.id,
++        previous_accepted_snapshot=previous,
++    )
++
++    reasons = [signal["reason"] for signal in snapshot.validation["review_signals"]]
++    assert reasons == ["fee_increase"]
++    assert snapshot.status is SnapshotStatus.REVIEW_REQUIRED
++    (task,) = _review_tasks(snapshot)
++    view = build_review_view(task, snapshot.evidence)
++    assert ReviewDecisionType.APPROVE in view.allowed_decisions
++    assert "5000" in view.guidance and "6000" in view.guidance
++
++    snapshots = _Snapshots(snapshot)
++    await ReviewDecisionService(_Reviews([task], snapshots), snapshots).apply(
++        task.id,
++        ReviewDecision(decision_type=ReviewDecisionType.APPROVE),
++        reviewer="analyst",
++    )
++    assert snapshots.snapshot.validation["accepted"] is True

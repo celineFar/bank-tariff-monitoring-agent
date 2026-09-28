@@ -13,10 +13,15 @@ snapshot is accepted with no review signal.
 ```
 Normal-extraction/
 ├── extraction_demo.py        the demonstration (standard library only)
-└── output/<offering>/
-    ├── card.md               the business view: values, conditions, quoted evidence
-    ├── report.md             the run, its cost, admission, the question, the checks
-    └── audit/                the pipeline audit files the worker wrote for the run
+├── output/<offering>/
+│   ├── card.md               the business view: values, conditions, quoted evidence
+│   └── report.md             the run, its cost, admission, the question, the checks
+└── pipeline-audit/           the worker's audit files, laid out like artifacts/pipeline-audit
+    └── run_<run_id>/<offering>/
+        ├── 0_run_context.md
+        ├── 2_*.md            normalization: the normalized page, its diff, the PDF link choice
+        ├── 3_*.md            source discovery: decisions, diff, selected sources
+        └── 4_*.md            extraction: evidence overlay, pre-validation, review queue
 ```
 
 ## Run
@@ -40,7 +45,10 @@ python3 extraction_demo.py --no-run    # report the latest accepted snapshot aga
 python3 extraction_demo.py --offering credit_line --cold
 ```
 
-Exit code 0 means every check passed.
+Exit code 0 means every check passed. Each invocation rewrites
+`output/<offering>/`; `--no-run` reports the latest accepted run, whoever
+started it. `pipeline-audit/` only grows: each reported run adds its own
+`run_<run_id>/` directory.
 
 The script refuses to start a run while another run is active on the demo stack,
 or while the demo worker runs with another demonstration's overlay (for example
@@ -86,7 +94,9 @@ product rather than offering, so the product's other offerings lose theirs too.
    interest rate of the Overdraft?". The answer comes from the stored facts,
    each with its citations.
 6. **Audit files.** It copies the worker's stage-numbered audit files for this
-   run into `audit/`. In `4_extraction_evidence.md`, every cited quote is
+   run into `pipeline-audit/run_<run_id>/<offering>/`, the same layout the worker
+   writes to `artifacts/pipeline-audit`. Each run gets its own directory, so earlier
+   runs stay available for comparison. In `4_extraction_evidence.md`, every cited quote is
    highlighted inside its source document.
 7. **Checks.**
 
@@ -103,8 +113,8 @@ product rather than offering, so the product's other offerings lose theirs too.
 
 ## Results
 
-The `--cold` run of Overdraft saved in `output/overdraft/` (run `c0b8cacd`,
-2026-09-28 07:25 UTC):
+The last `--cold` run of Overdraft made by this script (run `c0b8cacd`,
+2026-09-28 07:25 UTC; its audit files are in `pipeline-audit/run_c0b8cacd-…/`):
 
 | | |
 |---|---|
@@ -172,7 +182,8 @@ not here.
    reading and classifying and a stronger one for extraction.
 4. Open `output/overdraft/card.md`: the business view. Follow one evidence line
    to the page, and one to a PDF page.
-5. Open `output/overdraft/audit/4_extraction_evidence.md`: the same quotes,
+5. Open `pipeline-audit/run_<run_id>/overdraft/4_extraction_evidence.md` (the
+   run id is in the report): the same quotes,
    highlighted inside the source.
 6. End on the checks: 8 PASS, no human review, every quote found verbatim.
 7. Optional: run it again without `--cold`. It takes 30 seconds and costs $0,

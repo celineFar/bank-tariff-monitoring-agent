@@ -1,0 +1,69 @@
+diff --git a/app/services/snapshot_lifecycle.py b/app/services/snapshot_lifecycle.py
+index 6eba6c3..3e1c20a 100644
+--- a/app/services/snapshot_lifecycle.py
++++ b/app/services/snapshot_lifecycle.py
+@@ -54,6 +54,7 @@ _REQUIRED_TARIFF_FIELDS = frozenset(
+         ExtractionField.REPAYMENT,
+         ExtractionField.ELIGIBILITY,
+         ExtractionField.REQUIRED_DOCUMENTS,
++        ExtractionField.COLLATERAL,
+     }
+ )
+ _RATE_FIELDS = frozenset(
+diff --git a/tests/unit/test_review_fixes.py b/tests/unit/test_review_fixes.py
+index 44eb0a4..1b97d88 100644
+--- a/tests/unit/test_review_fixes.py
++++ b/tests/unit/test_review_fixes.py
+@@ -428,8 +428,10 @@ async def test_required_field_missing_from_the_answer_stays_missing_required_fie
+ 
+ @pytest.mark.asyncio
+ async def test_optional_field_missing_from_the_answer_is_extraction_invalid() -> None:
+-    result = await _result(_long_page(), _OmitsField(ExtractionField.COLLATERAL))
+-    signal = _signal(result, "collateral")
++    result = await _result(
++        _long_page(), _OmitsField(ExtractionField.INCOME_VERIFICATION_REQUIRED)
++    )
++    signal = _signal(result, "income_verification_required")
+     assert signal["reason"] == "extraction_invalid"
+     assert "candidates" not in signal
+     assert signal["failed_checks"]
+diff --git a/tests/unit/test_snapshot_lifecycle.py b/tests/unit/test_snapshot_lifecycle.py
+index 54b6dca..20c9be7 100644
+--- a/tests/unit/test_snapshot_lifecycle.py
++++ b/tests/unit/test_snapshot_lifecycle.py
+@@ -295,6 +295,35 @@ def test_ambiguous_applicability_and_missing_required_field_route_to_review() ->
+     assert extraction_is_acceptable(result) is False
+ 
+ 
++def test_missing_collateral_routes_to_review_until_confirmed_not_stated() -> None:
++    base = _result()
++    missing = base.validated_fields[0].model_copy(
++        update={
++            "field": ExtractionField.COLLATERAL,
++            "status": ExtractionStatus.NOT_STATED,
++            "value": None,
++            "evidence": (),
++        }
++    )
++    result = base.model_copy(
++        update={"validated_fields": (*base.validated_fields, missing)}
++    )
++
++    signals = detect_review_signals(result)
++
++    assert [(item["reason"], item["field"]) for item in signals] == [
++        ("missing_required_field", "collateral")
++    ]
++    assert extraction_is_acceptable(result) is False
++
++    confirmed = missing.model_copy(update={"confirmed_not_stated": True})
++    result = base.model_copy(
++        update={"validated_fields": (*base.validated_fields, confirmed)}
++    )
++    assert detect_review_signals(result) == ()
++    assert extraction_is_acceptable(result) is True
++
++
+ def test_evidence_backed_explicit_empty_value_is_not_unsupported_missing() -> None:
+     base = _result()
+     explicit_empty = base.validated_fields[0].model_copy(

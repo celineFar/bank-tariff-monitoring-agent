@@ -22,8 +22,6 @@ baseline.
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import re
 import sys
 import time
@@ -89,38 +87,6 @@ FAILURES = (
 )
 
 
-class Report:
-    """Prints as it goes and keeps the same lines for output/report.md."""
-
-    def __init__(self) -> None:
-        self.lines: list[str] = []
-
-    def heading(self, text: str) -> None:
-        print(f"\n==> {text}", flush=True)
-        self.lines += ["", f"## {text}", ""]
-
-    def say(self, text: str = "") -> None:
-        print(f"    {text}" if text else "", flush=True)
-        self.lines.append(text)
-
-    def table(self, header: list[str], rows: list[list[str]]) -> None:
-        widths = [
-            max(len(str(cell)) for cell in column)
-            for column in zip(header, *rows, strict=True)
-        ]
-        for row in (header, *rows):
-            print(
-                "    "
-                + "  ".join(str(c).ljust(w) for c, w in zip(row, widths, strict=True))
-            )
-        self.lines += [
-            "| " + " | ".join(header) + " |",
-            "|" + "---|" * len(header),
-            *("| " + " | ".join(str(c) for c in row) + " |" for row in rows),
-            "",
-        ]
-
-
 # --------------------------------------------------------------------------
 # state of the demo database
 
@@ -137,50 +103,9 @@ def fingerprints() -> dict[str, dict]:
     return {row["name"]: row for row in stack.sql(union)}
 
 
-def current_tariff() -> dict:
-    """What the API answers now for the demo offering."""
-    result = stack.api(
-        "GET", f"/tariffs/current?product={PRODUCT}&offering_id={OFFERING}"
-    )
-    item = result["items"][0]
-    tariff = item.get("normalized_tariff")
-    digest = (
-        hashlib.sha256(json.dumps(tariff, sort_keys=True).encode()).hexdigest()
-        if tariff is not None
-        else None
-    )
-    return {
-        "snapshot_id": item.get("snapshot_id"),
-        "accepted_at": item.get("accepted_at"),
-        "freshness": item.get("freshness"),
-        "tariff_sha256": digest,
-        "rates": rate_summary(tariff),
-    }
-
-
-def rate_summary(tariff: dict | None) -> str:
-    """The interest rates, to show a person the data being protected.
-
-    Each entry of `interest_rate.value` holds a `{min, max}` rate as strings.
-    """
-    entries = ((tariff or {}).get("interest_rate") or {}).get("value") or []
-    rates = []
-    for entry in entries:
-        rate = entry.get("value") or {}
-        low, high = (
-            f"{float(bound):g}" if bound is not None else None
-            for bound in (rate.get("min"), rate.get("max"))
-        )
-        if low and high and low != high:
-            rates.append(f"{low}-{high}%")
-        elif low or high:
-            rates.append(f"{low or high}%")
-    return ", ".join(rates) if rates else "none"
-
-
-def show_state(report: Report, label: str) -> tuple[dict, dict]:
+def show_state(report: stack.Report, label: str) -> tuple[dict, dict]:
     tables = fingerprints()
-    answer = current_tariff()
+    answer = stack.current_tariff(PRODUCT, OFFERING)
     report.say(f"Tariff tables ({label}):")
     report.table(
         ["Table", "Rows", "Content digest"],
@@ -201,7 +126,7 @@ def show_state(report: Report, label: str) -> tuple[dict, dict]:
 # one failure
 
 
-def run_failure(failure: Failure, stamp: str, report: Report) -> dict:
+def run_failure(failure: Failure, stamp: str, report: stack.Report) -> dict:
     report.heading(f"Failure: {failure.title} ({failure.name})")
     report.say(
         f"Artificial part: {failure.change} (`failures/{failure.overlay.name}`)."
@@ -289,7 +214,7 @@ def main() -> int:
     selected = [f for f in FAILURES if not args.failure or f.name in args.failure]
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
 
-    report = Report()
+    report = stack.Report()
     report.lines = [
         "# Controlled failures",
         "",

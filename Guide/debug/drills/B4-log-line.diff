@@ -1,0 +1,53 @@
+diff --git a/app/services/monitoring_pipeline.py b/app/services/monitoring_pipeline.py
+index 07827d2..8c7e8ea 100644
+--- a/app/services/monitoring_pipeline.py
++++ b/app/services/monitoring_pipeline.py
+@@ -343,6 +343,16 @@ class IndexingPipeline:
+             raise
+         if audit is not None and audit_context is not None:
+             await audit.record_source_discovery(audit_context, bundle, discovery)
++        discovered = select_sources(discovery)
++        logger.info(
++            "source discovery selected run_id=%s offering_id=%s documents=%d "
++            "items=%d assessments=%d",
++            run_id,
++            offering.offering_id.value,
++            len(discovered.document_ids),
++            len(discovered.items),
++            len(discovery.assessments),
++        )
+         # The plan is captured before extraction: afterwards its batches are
+         # cache hits, and the evidence overlay would report them as unsent.
+         plan = (
+diff --git a/tests/unit/test_monitoring_pipeline.py b/tests/unit/test_monitoring_pipeline.py
+index 365dfc2..c3efa3e 100644
+--- a/tests/unit/test_monitoring_pipeline.py
++++ b/tests/unit/test_monitoring_pipeline.py
+@@ -352,6 +352,27 @@ async def test_indexing_refresh_wires_existing_stages_and_publishes_once() -> No
+     assert "Consumer loan rate 13.5%" not in str(audit)
+ 
+ 
++@pytest.mark.asyncio
++async def test_indexing_refresh_logs_how_many_sources_discovery_selected(
++    caplog,
++) -> None:
++    service, _, _ = _indexing()
++    run_id = uuid4()
++
++    with caplog.at_level("INFO", logger="app.services.monitoring_pipeline"):
++        await service.refresh(_offering(), run_id, uuid4())
++
++    lines = [
++        record.getMessage()
++        for record in caplog.records
++        if record.getMessage().startswith("source discovery selected")
++    ]
++    assert lines == [
++        f"source discovery selected run_id={run_id} offering_id=consumer_standard "
++        "documents=1 items=1 assessments=1"
++    ]
++
++
+ @pytest.mark.asyncio
+ async def test_indexing_failure_before_publication_leaves_state_untouched() -> None:
+     class Unreadable:

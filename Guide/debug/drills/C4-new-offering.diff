@@ -1,0 +1,124 @@
+diff --git a/app/config/normalization_baseline.json b/app/config/normalization_baseline.json
+index 5943452..ff33c74 100644
+--- a/app/config/normalization_baseline.json
++++ b/app/config/normalization_baseline.json
+@@ -1549,6 +1549,19 @@
+      "text": "Do I need to be an Armenian citizen to apply?"
+     }
+    ]
++  },
++  {
++   "offering_id": "car_loan",
++   "urls": [
++    "https://ameriabank.am/en/personal/loans/consumer-loans/car-loan"
++   ],
++   "recorded_on": "2026-09-28",
++   "tables": [],
++   "blocks": [
++    {
++     "text": "Car loan"
++    }
++   ]
+   }
+  ]
+ }
+diff --git a/app/config/seed_catalog.yaml b/app/config/seed_catalog.yaml
+index 1ffd82f..702e3e9 100644
+--- a/app/config/seed_catalog.yaml
++++ b/app/config/seed_catalog.yaml
+@@ -89,6 +89,22 @@ offerings:
+         aliases: [ապառիկ ֆինանսավորում]
+         synonyms: [օնլայն ապառիկ ֆինանսավորում]
+         transliterations: [onlayn aparik, aparik finansavorum]
++  - product: consumer_loan
++    offering_id: car_loan
++    display_name: Car Loan
++    seed_url: https://ameriabank.am/en/personal/loans/consumer-loans/car-loan
++    enabled: true
++    language: en
++    localized_names:
++      en:
++        name: Car Loan
++        aliases: [auto loan]
++        synonyms: [vehicle financing]
++      hy:
++        name: Ավտովարկ
++        aliases: [ավտոմեքենայի վարկ]
++        synonyms: [մեքենայի ձեռքբերման վարկ]
++        transliterations: [avtovark]
+   - product: mortgage
+     offering_id: mortgage_online
+     display_name: Online Mortgage
+diff --git a/app/domain/models.py b/app/domain/models.py
+index 7bc5229..7810dd5 100644
+--- a/app/domain/models.py
++++ b/app/domain/models.py
+@@ -14,6 +14,7 @@ class OfferingId(StrEnum):
+     OVERDRAFT = "overdraft"
+     CREDIT_LINE = "credit_line"
+     ONLINE_CONSUMER_FINANCE = "online_consumer_finance"
++    CAR_LOAN = "car_loan"
+     MORTGAGE_ONLINE = "mortgage_online"
+     MORTGAGE_PRIMARY = "mortgage_primary"
+     MORTGAGE_DIASPORA = "mortgage_diaspora"
+@@ -31,6 +32,7 @@ class OfferingId(StrEnum):
+             OfferingId.OVERDRAFT,
+             OfferingId.CREDIT_LINE,
+             OfferingId.ONLINE_CONSUMER_FINANCE,
++            OfferingId.CAR_LOAN,
+         }:
+             return ProductType.CONSUMER_LOAN
+         return ProductType.MORTGAGE
+diff --git a/tests/fixtures/target_questions.py b/tests/fixtures/target_questions.py
+index b0a7cb3..13bed16 100644
+--- a/tests/fixtures/target_questions.py
++++ b/tests/fixtures/target_questions.py
+@@ -46,6 +46,7 @@ CONSUMER_FAMILY = (
+     OfferingId.OVERDRAFT,
+     OfferingId.CREDIT_LINE,
+     OfferingId.ONLINE_CONSUMER_FINANCE,
++    OfferingId.CAR_LOAN,
+ )
+ MORTGAGE_FAMILY = tuple(item for item in OfferingId if item.product is M)
+ 
+diff --git a/tests/unit/test_intent_resolution.py b/tests/unit/test_intent_resolution.py
+index e9572e1..e38b51d 100644
+--- a/tests/unit/test_intent_resolution.py
++++ b/tests/unit/test_intent_resolution.py
+@@ -243,7 +243,7 @@ def test_the_catalog_payload_is_complete_or_a_short_introduction() -> None:
+     full = resolver.catalog_payload(RequestLanguage.ENGLISH, complete=True)
+     intro = resolver.catalog_payload(RequestLanguage.ARMENIAN, complete=False)
+ 
+-    assert sum(len(family["offerings"]) for family in full["families"]) == 13
++    assert sum(len(family["offerings"]) for family in full["families"]) == 14
+     assert intro["offer_full_list"] is True
+     assert all(len(family["offerings"]) <= 3 for family in intro["families"])
+     assert intro["families"][1]["name"] == "Հիփոթեքային վարկեր"
+diff --git a/tests/unit/test_seed_catalog.py b/tests/unit/test_seed_catalog.py
+index 7cbb274..fd76a60 100644
+--- a/tests/unit/test_seed_catalog.py
++++ b/tests/unit/test_seed_catalog.py
+@@ -70,8 +70,8 @@ def test_default_catalog_contains_every_approved_offering() -> None:
+ 
+     assert catalog.version == 2
+     assert len(catalog.families) == 2
+-    assert len(catalog.offerings) == 13
+-    assert len(catalog.enabled_for(ProductType.CONSUMER_LOAN)) == 4
++    assert len(catalog.offerings) == 14
++    assert len(catalog.enabled_for(ProductType.CONSUMER_LOAN)) == 5
+     assert len(catalog.enabled_for(ProductType.MORTGAGE)) == 9
+     assert (
+         catalog.get(
+diff --git a/tests/unit/test_tariff_queries.py b/tests/unit/test_tariff_queries.py
+index bbd5895..70c17f1 100644
+--- a/tests/unit/test_tariff_queries.py
++++ b/tests/unit/test_tariff_queries.py
+@@ -128,7 +128,7 @@ async def test_current_tariffs_classify_fresh_stale_missing_and_hide_pending() -
+     assert items[OfferingId.CREDIT_LINE].pending_newer_review is True
+     assert items[OfferingId.OVERDRAFT].freshness.value == "missing"
+     assert items[OfferingId.OVERDRAFT].normalized_tariff is None
+-    assert len(result.items) == 4
++    assert len(result.items) == 5
+ 
+ 
+ @pytest.mark.asyncio

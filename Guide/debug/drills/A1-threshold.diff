@@ -1,0 +1,84 @@
+diff --git a/.env.example b/.env.example
+index c175bb7..eec717e 100644
+--- a/.env.example
++++ b/.env.example
+@@ -129,7 +129,7 @@ RETRIEVAL_TRACE_LEVEL=summary
+ # Optional dedicated rotating file for the retrieval trace.
+ # RETRIEVAL_LOG_FILE=logs/retrieval.log
+ HITL_DOCUMENT_RANK_GAP=0.05
+-HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS=3
++HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS=2
+ # Required for POST /api/v1/reviews/abort-pending. Keep this secret.
+ REVIEW_ADMIN_TOKEN=
+ LOG_LEVEL=INFO
+diff --git a/app/config/environment.py b/app/config/environment.py
+index 27b79d9..466ca75 100644
+--- a/app/config/environment.py
++++ b/app/config/environment.py
+@@ -124,7 +124,7 @@ class EnvironmentSettings(BaseSettings):
+         "gemini-3.8-flash",
+     )
+     hitl_document_rank_gap: float = 0.05
+-    hitl_large_rate_change_percentage_points: float = 3
++    hitl_large_rate_change_percentage_points: float = 2
+     review_admin_token: SecretStr | None = None
+     schedule_enabled: bool = True
+     schedule_timezone: str = "Asia/Yerevan"
+diff --git a/app/config/models.py b/app/config/models.py
+index 465675e..a51d9f8 100644
+--- a/app/config/models.py
++++ b/app/config/models.py
+@@ -409,7 +409,7 @@ class SemanticExtractionSettings(SettingsGroup):
+ 
+ class HitlSettings(SettingsGroup):
+     document_rank_gap: float = Field(default=0.05, ge=0, le=1)
+-    large_rate_change_percentage_points: float = Field(default=3, gt=0)
++    large_rate_change_percentage_points: float = Field(default=2, gt=0)
+     review_admin_token: SecretStr | None = None
+ 
+ 
+diff --git a/docs/configuration.md b/docs/configuration.md
+index c724a69..3d8b6bf 100644
+--- a/docs/configuration.md
++++ b/docs/configuration.md
+@@ -169,7 +169,7 @@ downloader receives `settings.http` and the PDF extraction service receives
+   The demonstration command uses the source-discovery retry, fallback-model, and
+   price-ceiling settings for live calls.
+ - **HITL:** `HITL_DOCUMENT_RANK_GAP` and
+-  `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`. The latter defaults to three percentage
++  `HITL_LARGE_RATE_CHANGE_PERCENTAGE_POINTS`. The latter defaults to two percentage
+   points. These settings create deterministic review reasons; they do not authorize or
+   apply a decision.
+ - **Scheduling:** `SCHEDULE_ENABLED` (default `true`; `false` adds no daily run, while
+diff --git a/tests/unit/test_snapshot_lifecycle.py b/tests/unit/test_snapshot_lifecycle.py
+index 54b6dca..2d46fbc 100644
+--- a/tests/unit/test_snapshot_lifecycle.py
++++ b/tests/unit/test_snapshot_lifecycle.py
+@@ -1,6 +1,8 @@
+ from datetime import UTC, datetime, timedelta
++from decimal import Decimal
+ from uuid import uuid4
+ 
++from app.config import load_settings
+ from app.domain.acquisition import SourceLocator, SourceType
+ from app.domain.models import OfferingId, ProductType
+ from app.domain.monitoring import SnapshotAttempt, SnapshotStatus
+@@ -401,6 +403,18 @@ def test_large_rate_change_threshold_is_three_absolute_percentage_points() -> No
+     assert signals[0]["absolute_percentage_point_change"] == "3"
+ 
+ 
++def test_configured_default_threshold_is_two_percentage_points() -> None:
++    settings = load_settings(_env_file=None)
++    threshold = Decimal(str(settings.hitl.large_rate_change_percentage_points))
++    previous = {"interest_rate": {"value": [{"value": {"min": "10", "max": "10"}}]}}
++    below = {"interest_rate": {"value": [{"value": {"min": "11.99", "max": "10"}}]}}
++    at = {"interest_rate": {"value": [{"value": {"min": "12", "max": "10"}}]}}
++
++    assert detect_large_rate_changes(previous, below, threshold=threshold) == ()
++    signals = detect_large_rate_changes(previous, at, threshold=threshold)
++    assert signals[0]["absolute_percentage_point_change"] == "2"
++
++
+ def test_comparison_reports_only_meaningful_top_level_changes() -> None:
+     previous = _snapshot(
+         {"interest_rate": {"status": "found", "value": "13.5"}, "term": 60}

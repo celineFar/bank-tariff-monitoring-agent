@@ -23,8 +23,9 @@ reads the PDFs and extracts the tariff live: about two minutes and $0.13 for
 Overdraft. `--no-run` spends only the question at the end (under a cent).
 
 Writes output/<offering>/card.md (the business view), output/<offering>/report.md
-(the run, its checks and the question), and output/<offering>/audit/ (the
-pipeline audit files the worker wrote for this run).
+(the run, its checks and the question), and pipeline-audit/run_<run_id>/<offering>/:
+the pipeline audit files the worker wrote for this run, in the same layout as
+artifacts/pipeline-audit, one directory per run, kept across runs.
 
 Standard library only. Prerequisite, once: ../demo-stack/stack.py up.
 """
@@ -47,7 +48,9 @@ sys.path.insert(0, str(HERE.parent / "demo-stack"))
 import stack  # noqa: E402
 
 OUTPUT = HERE / "output"
+# The worker's PIPELINE_AUDIT_DIR, mirrored here run by run.
 AUDIT_ROOT = "/code/artifacts/pipeline-audit"
+AUDIT = HERE / "pipeline-audit"
 # Armenia keeps UTC+4 all year.
 YEREVAN = timezone(timedelta(hours=4), "Yerevan")
 ACTIVE_RUN_STATES = ("queued", "running", "awaiting_review")
@@ -371,8 +374,13 @@ def same_sources(snapshot_id: str, previous_id: str) -> bool:
     return len(hashes) == 2 and hashes[snapshot_id] == hashes[previous_id]
 
 
-def copy_audit(run_id: str, offering: str, destination: Path) -> list[str]:
-    """Copy the worker's stage-numbered audit files for this run and offering."""
+def copy_audit(run_id: str, offering: str) -> Path | None:
+    """Copy the worker's audit directory for this run and offering.
+
+    It lands at pipeline-audit/run_<run_id>/<offering>/, the layout the worker
+    writes, so earlier runs stay beside it.
+    """
+    destination = AUDIT / f"run_{run_id}" / offering
     if destination.exists():
         shutil.rmtree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -383,9 +391,9 @@ def copy_audit(run_id: str, offering: str, destination: Path) -> list[str]:
         capture=True,
         check=False,
     )
-    if result.returncode != 0:
-        return []
-    return sorted(path.name for path in destination.iterdir())
+    if result.returncode != 0 or not destination.is_dir():
+        return None
+    return destination
 
 
 # --------------------------------------------------------------------------
@@ -1027,15 +1035,20 @@ def main() -> int:
     answer = ask(question)
     show_answer(report, question, answer)
 
-    audit = copy_audit(run_id, offering, folder / "audit")
+    audit = copy_audit(run_id, offering)
     report.heading("Pipeline audit files")
     if audit:
+        relative = audit.relative_to(HERE)
         report.say(
-            "Copied from the worker; `4_extraction_evidence.md` highlights every "
-            "cited quote inside its source."
+            f"Copied from the worker to `{relative}/`; `4_extraction_evidence.md` "
+            "highlights every cited quote inside its source."
         )
-        report.lines += [f"- [{name}](audit/{name})" for name in audit]
-        print("    " + ", ".join(audit))
+        # report.md sits two levels below HERE, in output/<offering>/.
+        report.lines += [
+            f"- [{path.name}](../../{relative}/{path.name})"
+            for path in sorted(audit.iterdir())
+        ]
+        print("    " + ", ".join(path.name for path in sorted(audit.iterdir())))
     else:
         report.say("No audit files found for this run in the worker.")
 

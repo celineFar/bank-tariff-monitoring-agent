@@ -1,0 +1,13 @@
+diff --git a/app/config/seed_catalog.yaml b/app/config/seed_catalog.yaml
+index 1ffd82f..9c7f06e 100644
+--- a/app/config/seed_catalog.yaml
++++ b/app/config/seed_catalog.yaml
+@@ -53,7 +53,7 @@ offerings:
+         synonyms: [salary overdraft]
+       hy:
+         name: Օվերդրաֆտ
+-        aliases: [քարտային օվերդրաֆտ]
++        aliases: [քարտային օվերդրաֆտ, օվերդրաֆտային վարկ]
+         synonyms: [աշխատավարձային օվերդրաֆտ]
+         transliterations: [overdraft vark]
+   - product: consumer_loan

@@ -1,0 +1,26 @@
+diff --git a/tests/unit/test_source_urls.py b/tests/unit/test_source_urls.py
+index 6b791dd..4d7b491 100644
+--- a/tests/unit/test_source_urls.py
++++ b/tests/unit/test_source_urls.py
+@@ -28,3 +28,21 @@ def test_the_default_https_port_may_be_explicit() -> None:
+ def test_unsafe_source_url_fails_closed(url: str) -> None:
+     with pytest.raises(DisallowedSourceUrl):
+         validate_source_url(url, ALLOWED)
++
++
++def test_a_host_outside_the_allowlist_is_rejected() -> None:
++    with pytest.raises(DisallowedSourceUrl, match="not allowlisted: www.acba.am"):
++        validate_source_url("https://www.acba.am/en/individuals/loans", ALLOWED)
++
++
++def test_an_added_host_is_accepted_but_only_that_exact_host() -> None:
++    allowed = (*ALLOWED, "www.acba.am")
++
++    assert validate_source_url("https://www.acba.am/en/individuals/loans", allowed)
++    for url in (
++        "https://acba.am/en/individuals/loans",
++        "https://evil.www.acba.am/loans",
++        "http://www.acba.am/en/individuals/loans",
++    ):
++        with pytest.raises(DisallowedSourceUrl):
++            validate_source_url(url, allowed)

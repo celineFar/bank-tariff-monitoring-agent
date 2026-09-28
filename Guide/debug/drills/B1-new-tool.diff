@@ -1,0 +1,203 @@
+diff --git a/app/agent.py b/app/agent.py
+index 6b2d1d7..b840a9b 100644
+--- a/app/agent.py
++++ b/app/agent.py
+@@ -15,6 +15,7 @@ from app.tools import (
+     get_current_tariffs,
+     get_monitoring_status,
+     get_tariff_history,
++    list_supported_products,
+     resolve_request,
+     review_pending_candidates,
+     run_tariff_monitoring,
+@@ -33,7 +34,7 @@ dominant language. Never translate or invent canonical IDs. If its status is "un
+ could not interpret the message just now, ask the user to rephrase, and call nothing else. If
+ needs_clarification is true, ask the user to choose between the supplied options, numbered in the
+ given order, and call nothing else. When catalog_intro is present, briefly name the two families and
+-a few returned offerings and offer the full list. Answer a tariff question first; if pending_reviews
++a few offerings; list_supported_products gives the full list. Answer a tariff question first; if pending_reviews
+ is present, end with one line saying how many candidates await review for those offerings and offer
+ to review them. For a tariff question call answer_tariff_query (no arguments). If it does not
+ answer, follow its reason_code: awaiting_review -> the data waits for human review, offer to review
+@@ -60,6 +61,7 @@ TOOLS = [
+     get_monitoring_status,
+     run_tariff_monitoring,
+     review_pending_candidates,
++    list_supported_products,
+ ]
+ 
+ root_agent = Agent(
+diff --git a/app/domain/interpretation.py b/app/domain/interpretation.py
+index 3fad976..abd3df0 100644
+--- a/app/domain/interpretation.py
++++ b/app/domain/interpretation.py
+@@ -143,7 +143,7 @@ _ROUTES: dict[RequestIntent, str | None] = {
+     RequestIntent.START_MONITORING_RUN: "run_tariff_monitoring",
+     RequestIntent.REVIEW_PENDING_CANDIDATES: "review_pending_candidates",
+     RequestIntent.GET_RUN_STATUS: "get_monitoring_status",
+-    RequestIntent.LIST_SUPPORTED_PRODUCTS: None,
++    RequestIntent.LIST_SUPPORTED_PRODUCTS: "list_supported_products",
+     RequestIntent.UNSUPPORTED_OR_GENERAL: None,
+     RequestIntent.CLARIFICATION_RESPONSE: None,
+ }
+diff --git a/app/plugins.py b/app/plugins.py
+index 5013d82..929dbcc 100644
+--- a/app/plugins.py
++++ b/app/plugins.py
+@@ -27,6 +27,7 @@ BUSINESS_TOOLS = frozenset(
+         "run_tariff_monitoring",
+         "review_pending_candidates",
+         "get_monitoring_status",
++        "list_supported_products",
+     }
+ )
+ 
+diff --git a/app/tools/__init__.py b/app/tools/__init__.py
+index 68fddda..b0d4033 100644
+--- a/app/tools/__init__.py
++++ b/app/tools/__init__.py
+@@ -4,12 +4,14 @@
+   the per-turn read and spend grants (plan §6.6).
+ - `reads`: business-data reads with no scope parameter.
+ - `monitoring`: the monitoring and review tools that run the monitoring node.
++- `catalog`: `list_supported_products`, the configured families and offerings.
+ """
+ 
+ from app.tools._services import (
+     configure_services,
+     services,
+ )
++from app.tools.catalog import list_supported_products
+ from app.tools.monitoring import (
+     get_monitoring_status,
+     review_pending_candidates,
+@@ -28,6 +30,7 @@ __all__ = [
+     "get_current_tariffs",
+     "get_monitoring_status",
+     "get_tariff_history",
++    "list_supported_products",
+     "resolve_request",
+     "review_pending_candidates",
+     "run_tariff_monitoring",
+diff --git a/app/tools/catalog.py b/app/tools/catalog.py
+new file mode 100644
+index 0000000..f2a066d
+--- /dev/null
++++ b/app/tools/catalog.py
+@@ -0,0 +1,29 @@
++"""`list_supported_products`: the configured families and offerings.
++
++The seed catalog is configuration, not tariff data: this tool reads no grant
++and returns no values, only what the assistant covers.
++"""
++
++from __future__ import annotations
++
++from google.adk.tools import ToolContext
++
++from app.domain.intent import ConversationResolutionState, RequestLanguage
++from app.tools._services import services
++from app.tools._state import RESOLUTION_STATE_KEY
++
++
++async def list_supported_products(tool_context: ToolContext) -> dict[str, object]:
++    """List every product family and offering the assistant covers."""
++    if services.request_resolver is None:
++        return {"status": "unavailable", "reason_code": "catalog.service_unavailable"}
++    try:
++        state = ConversationResolutionState.model_validate(
++            tool_context.state.get(RESOLUTION_STATE_KEY) or {}
++        )
++    except ValueError:
++        state = ConversationResolutionState()
++    return services.request_resolver.catalog_payload(
++        state.conversation_language or RequestLanguage.ENGLISH,
++        complete=True,
++    )
+diff --git a/tests/unit/test_agent_wiring.py b/tests/unit/test_agent_wiring.py
+index ac97dd6..9e73654 100644
+--- a/tests/unit/test_agent_wiring.py
++++ b/tests/unit/test_agent_wiring.py
+@@ -19,7 +19,7 @@ def test_one_resumable_app_with_the_policy_plugin() -> None:
+     assert any(isinstance(plugin, ToolPolicyPlugin) for plugin in app.plugins)
+ 
+ 
+-def test_the_agent_exposes_exactly_the_seven_tools() -> None:
++def test_the_agent_exposes_exactly_the_eight_tools() -> None:
+     assert _tool_names() == {
+         "resolve_request",
+         "get_current_tariffs",
+@@ -28,6 +28,7 @@ def test_the_agent_exposes_exactly_the_seven_tools() -> None:
+         "get_monitoring_status",
+         "run_tariff_monitoring",
+         "review_pending_candidates",
++        "list_supported_products",
+     }
+ 
+ 
+diff --git a/tests/unit/test_catalog_tool.py b/tests/unit/test_catalog_tool.py
+new file mode 100644
+index 0000000..9afcf30
+--- /dev/null
++++ b/tests/unit/test_catalog_tool.py
+@@ -0,0 +1,60 @@
++from __future__ import annotations
++
++from types import SimpleNamespace
++
++import pytest
++
++from app.config import load_seed_catalog
++from app.domain.catalog import CatalogLanguage
++from app.domain.catalog import CatalogLanguage
++from app.domain.intent import RequestIntent
++from app.domain.interpretation import route_for
++from app.tools import configure_services, list_supported_products
++from tests.fixtures.interpretations import scripted_resolver
++
++
++@pytest.fixture
++def wired():
++    configure_services(request_resolver=scripted_resolver())
++    yield
++    configure_services()
++
++
++def test_the_list_intent_routes_to_the_catalog_tool() -> None:
++    assert (
++        route_for(RequestIntent.LIST_SUPPORTED_PRODUCTS) == "list_supported_products"
++    )
++
++
++@pytest.mark.asyncio
++async def test_the_catalog_tool_lists_every_enabled_offering(wired) -> None:
++    catalog = load_seed_catalog()
++    context = SimpleNamespace(
++        state={"intent_resolution": {"conversation_language": "hy"}}
++    )
++
++    result = await list_supported_products(context)
++
++    listed = {
++        offering["offering_id"]
++        for family in result["families"]
++        for offering in family["offerings"]
++    }
++    assert listed == {
++        entry.offering_id.value for entry in catalog.offerings if entry.enabled
++    }
++    assert result["complete"] is True
++    armenian = catalog.families[0].localized_names[CatalogLanguage.ARMENIAN].name
++    assert result["families"][0]["name"] == armenian
++    armenian = catalog.families[0].localized_names[CatalogLanguage.ARMENIAN].name
++    assert result["families"][0]["name"] == armenian
++    assert not any(family["has_more"] for family in result["families"])
++
++
++@pytest.mark.asyncio
++async def test_the_catalog_tool_without_services_is_unavailable() -> None:
++    configure_services()
++
++    result = await list_supported_products(SimpleNamespace(state={}))
++
++    assert result["reason_code"] == "catalog.service_unavailable"

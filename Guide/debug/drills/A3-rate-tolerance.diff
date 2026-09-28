@@ -1,0 +1,78 @@
+diff --git a/app/services/snapshot_lifecycle.py b/app/services/snapshot_lifecycle.py
+index 6eba6c3..fc168f5 100644
+--- a/app/services/snapshot_lifecycle.py
++++ b/app/services/snapshot_lifecycle.py
+@@ -59,6 +59,8 @@ _REQUIRED_TARIFF_FIELDS = frozenset(
+ _RATE_FIELDS = frozenset(
+     {ExtractionField.INTEREST_RATE.value, ExtractionField.EFFECTIVE_RATE.value}
+ )
++# A rate bound that moves by less than this is not reported as a change.
++_RATE_CHANGE_TOLERANCE = Decimal("0.1")
+ _PERCENTAGE = re.compile(r"(?<!\d)(\d{1,3}(?:[.,]\d+)?)\s*%")
+ 
+ _PROVENANCE_KEYS = frozenset(
+@@ -698,7 +700,7 @@ def compare_accepted_snapshots(
+             current_display=_display(after.get(field)),
+         )
+         for field in sorted(set(before) | set(after))
+-        if before.get(field) != after.get(field)
++        if _field_changed(field, before.get(field), after.get(field))
+     )
+     return SnapshotChangeSet(
+         id=uuid4(),
+@@ -712,6 +714,33 @@ def compare_accepted_snapshots(
+     )
+ 
+ 
++def _field_changed(field: str, previous: JsonValue, current: JsonValue) -> bool:
++    if field not in _RATE_FIELDS:
++        return previous != current
++    return not _within_rate_tolerance(previous, current)
++
++
++def _within_rate_tolerance(
++    previous: JsonValue, current: JsonValue, key: str | None = None
++) -> bool:
++    """Equal, except that a rate bound may move by less than the tolerance."""
++    if isinstance(previous, dict) and isinstance(current, dict):
++        return previous.keys() == current.keys() and all(
++            _within_rate_tolerance(previous[k], current[k], k) for k in previous
++        )
++    if isinstance(previous, list) and isinstance(current, list):
++        return len(previous) == len(current) and all(
++            _within_rate_tolerance(p, c) for p, c in zip(previous, current, strict=True)
++        )
++    if key in {"min", "max"} and previous is not None and current is not None:
++        try:
++            delta = abs(Decimal(str(previous)) - Decimal(str(current)))
++        except InvalidOperation:
++            return False
++        return delta < _RATE_CHANGE_TOLERANCE
++    return previous == current
++
++
+ def evidence_changed(
+     previous: SnapshotAttempt | None,
+     current: SnapshotAttempt,
+diff --git a/tests/unit/test_snapshot_lifecycle.py b/tests/unit/test_snapshot_lifecycle.py
+index 54b6dca..d984714 100644
+--- a/tests/unit/test_snapshot_lifecycle.py
++++ b/tests/unit/test_snapshot_lifecycle.py
+@@ -608,3 +608,17 @@ def test_a_rate_jump_is_guarded_even_when_a_field_review_is_also_needed() -> Non
+     assert "large_rate_change" in reasons
+     assert snapshot.status is SnapshotStatus.REVIEW_REQUIRED
+     assert snapshot.validation["accepted"] is False
++
++
++def test_a_rate_move_below_a_tenth_of_a_point_is_not_a_change() -> None:
++    def payload(low: str) -> dict:
++        entry = _rate_entry(low, "16", ("currency", "AMD"))
++        return {"interest_rate": {"status": "found", "value": [entry]}, "term": 60}
++
++    previous = _snapshot(payload("14.5"))
++    small = compare_accepted_snapshots(previous, _snapshot(payload("14.59")))
++    tenth = compare_accepted_snapshots(previous, _snapshot(payload("14.6")))
++
++    assert small is not None and small.changes == ()
++    assert tenth is not None
++    assert [change.field for change in tenth.changes] == ["interest_rate"]

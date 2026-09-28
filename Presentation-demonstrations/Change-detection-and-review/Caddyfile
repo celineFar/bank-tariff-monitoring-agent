@@ -1,0 +1,21 @@
+# The demonstration mirror: serves a copy of the bank's Overdraft page over the
+# HTTPS that app/security/urls.py requires, so the page can be "republished"
+# with new rates on cue. Adapted from branch demo/all-on-new-system.
+{
+	admin off
+}
+
+https://tariff-mirror.demo {
+	tls /certs/tariff-mirror.demo.pem /certs/tariff-mirror.demo-key.pem
+	root * /srv
+
+	# Real sites compress, so the retriever sees what it sees from the bank.
+	encode gzip
+
+	# Serve /overdraft directly rather than redirecting to /overdraft/, so the
+	# seed URL is fetched in one hop.
+	route {
+		try_files {path} {path}/index.html
+		file_server
+	}
+}

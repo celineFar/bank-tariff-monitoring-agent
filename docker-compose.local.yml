@@ -1,0 +1,7 @@
+# Temporary local port overrides: another checkout's stack holds 8080 and 5434.
+# Use with: COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml
+services:
+  api:
+    ports: !override ["8081:8080"]
+  db:
+    ports: !override ["5435:5432"]

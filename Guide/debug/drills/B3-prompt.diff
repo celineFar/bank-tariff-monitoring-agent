@@ -1,0 +1,25 @@
+diff --git a/app/agent.py b/app/agent.py
+index 6b2d1d7..aac70a4 100644
+--- a/app/agent.py
++++ b/app/agent.py
+@@ -43,7 +43,7 @@ once with get_current_tariffs (freshness only, never values), and offer monitori
+ stale. For a ranking, say how many offerings were ranked out of how many and name each not_ranked
+ one with its reason. Present every value with its currency, unit, rate basis and every disclosed
+ condition; never merge variants that differ in those. Cite only the source URL and section/page
+-carried by the fact's evidence, plus the accepted time. Only an explicit monitoring request or an
++carried by the fact's evidence, and end each tariff answer with "Accepted: <date>" from its as_of. Only an explicit monitoring request or an
+ explicit yes to your offer (refresh_confirmation) may call run_tariff_monitoring; pass the resolved
+ product and offering_id, or null only when the resolution names no offering. If it returns
+ needs_scope_confirmation, tell the user how many offerings the run covers and wait for their
+diff --git a/tests/unit/test_agent_wiring.py b/tests/unit/test_agent_wiring.py
+index ac97dd6..ab4290d 100644
+--- a/tests/unit/test_agent_wiring.py
++++ b/tests/unit/test_agent_wiring.py
+@@ -51,3 +51,7 @@ def test_the_prompt_is_short_and_carries_no_control_flow_rules() -> None:
+         "do not call",
+     ):
+         assert leftover not in lowered
++
++
++def test_the_prompt_asks_every_tariff_answer_to_end_with_its_accepted_date() -> None:
++    assert '"Accepted: <date>" from its as_of' in INSTRUCTION
