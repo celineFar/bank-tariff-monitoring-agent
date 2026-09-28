@@ -1,0 +1,15 @@
+# Baseline capture: the Overdraft offering acquires from the bank itself.
+#
+# The demonstration catalog points Overdraft at the local mirror. The baseline
+# has to hold the bank-sourced snapshot instead, because clip 9 cites the bank.
+# This overlay mounts the shipped catalog back in place of the demonstration
+# one, on the demonstration database, for the one run that builds the baseline.
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml:demo/compose.bank-seed.yml
+services:
+  api:
+    volumes:
+      - ./app/config/seed_catalog.yaml:/code/app/config/seed_catalog.yaml:ro
+  worker:
+    volumes:
+      - ./app/config/seed_catalog.yaml:/code/app/config/seed_catalog.yaml:ro

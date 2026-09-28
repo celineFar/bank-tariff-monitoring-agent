@@ -47,6 +47,7 @@ offerings:
         transliterations: [sparoghakan vark, sparoxakan vark]
   - product: consumer_loan
     offering_id: overdraft
+    category: overdraft
     display_name: Overdraft
     seed_url: https://tariff-mirror.demo/overdraft
     enabled: true
@@ -63,6 +64,7 @@ offerings:
         transliterations: [overdraft vark]
   - product: consumer_loan
     offering_id: credit_line
+    category: credit_line
     display_name: Credit Line
     seed_url: https://ameriabank.am/en/personal/loans/consumer-loans/credit-line
     enabled: true
@@ -230,7 +232,9 @@ offerings:
     localized_names:
       en:
         name: Construction Mortgage
-        aliases: [home construction loan]
+        # The page offers construction of residential and commercial property;
+        # its commercial table is "Loan for construction of commercial real estate".
+        aliases: [home construction loan, loan for construction of commercial real estate, commercial construction loan]
         synonyms: [self build mortgage]
       hy:
         name: Կառուցապատման վարկ
