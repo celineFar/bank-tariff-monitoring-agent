@@ -1,0 +1,228 @@
+{
+  "sample": "mortgage-tariffs.pdf",
+  "engine": "gemini",
+  "generated_at": "2026-09-28T06:39:06+00:00",
+  "produced_by": "gemini-3.1-flash-lite",
+  "elapsed_seconds": 6.33,
+  "simulated_gemini_failures": [],
+  "usage": {
+    "input_tokens": 1296,
+    "output_tokens": 1830,
+    "thinking_tokens": 0,
+    "total_tokens": 3126,
+    "request_attempts": 1,
+    "application_retries": 0
+  },
+  "cost_usd": 0.003069,
+  "page_sources": {
+    "1": "gemini",
+    "2": "gemini"
+  },
+  "ocr_pages": [],
+  "gemini_response": {
+    "pages": [
+      {
+        "page_number": 1,
+        "blocks": [
+          {
+            "type": "heading",
+            "text": "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": "Սակագներ և պայմաններ / Mortgage loan tariffs and conditions",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "heading",
+            "text": "Պայմաններ",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Գումար՝ 5,000,000-150,000,000 AMD",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Առավելագույն ժամկետ՝ 20 տարի",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Տրամադրման վճար՝ 0.5%",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Ապահովագրություն՝ 0.12% տարեկան",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Գնահատման վճար՝ 35,000 AMD",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Վաղաժամկետ մարում՝ 0%",
+            "heading_path": [
+              "ՀԻՓՈԹԵՔԱՅԻՆ ՎԱՐԿ",
+              "Պայմաններ"
+            ]
+          }
+        ],
+        "tables": [
+          {
+            "title": "Mortgage loan tariffs and conditions",
+            "headers": [
+              "Ժամկետ",
+              "Տոկոսադրույք* AMD",
+              "Տոկոսադրույք* USD",
+              "Կանխավճար**",
+              "Column 5"
+            ],
+            "header_rows": [],
+            "rows": [
+              {
+                "cells": [
+                  "Առաջնային շուկա",
+                  "մինչև 10 տարի",
+                  "11.5%",
+                  "7.9%",
+                  "20%"
+                ]
+              },
+              {
+                "cells": [
+                  "Առաջնային շուկա",
+                  "10-20 տարի",
+                  "12.0%",
+                  "8.4%",
+                  "25%"
+                ]
+              },
+              {
+                "cells": [
+                  "Երկրորդային շուկա",
+                  "մինչև 7 տարի",
+                  "12.5%",
+                  "8.9%",
+                  "30%"
+                ]
+              },
+              {
+                "cells": [
+                  "Երկրորդային շուկա",
+                  "7-15 տարի",
+                  "13.0%",
+                  "9.4%",
+                  "30%"
+                ]
+              }
+            ],
+            "row_groups": [],
+            "notes": [
+              "* Փաստացի տոկոսադրույքը՝ 12.9%-ից 14.8%:",
+              "** Պետական ծրագրերի դեպքում 10%:"
+            ]
+          }
+        ],
+        "notes": []
+      },
+      {
+        "page_number": 2,
+        "blocks": [
+          {
+            "type": "heading",
+            "text": "Լրացուցիչ վճարներ / Additional fees",
+            "heading_path": [
+              "Լրացուցիչ վճարներ / Additional fees"
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": "Գործում է 01.09.2026 թվականից:",
+            "heading_path": [
+              "Լրացուցիչ վճարներ / Additional fees"
+            ]
+          }
+        ],
+        "tables": [
+          {
+            "title": "Additional fees",
+            "headers": [
+              "Ծառայություն",
+              "Վճար",
+              "Պարբերականություն"
+            ],
+            "header_rows": [],
+            "rows": [
+              {
+                "cells": [
+                  "Վարկային հաշվի սպասարկում",
+                  "2,000 AMD",
+                  "ամսական"
+                ]
+              },
+              {
+                "cells": [
+                  "Անշարժ գույքի գնահատում",
+                  "35,000 AMD",
+                  "միանվագ"
+                ]
+              },
+              {
+                "cells": [
+                  "Նոտարական վավերացում",
+                  "15,000 AMD",
+                  "միանվագ"
+                ]
+              },
+              {
+                "cells": [
+                  "Ապահովագրություն",
+                  "0.12%",
+                  "տարեկան"
+                ]
+              },
+              {
+                "cells": [
+                  "Պայմանների փոփոխություն",
+                  "10,000 AMD",
+                  "յուրաքանչյուր դիմում"
+                ]
+              }
+            ],
+            "row_groups": [],
+            "notes": []
+          }
+        ],
+        "notes": []
+      }
+    ]
+  }
+}

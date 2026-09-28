@@ -1,0 +1,43 @@
+{
+  "sample": "loan-summary.pdf",
+  "engine": "ocr",
+  "generated_at": "2026-09-28T06:43:47+00:00",
+  "produced_by": "ocr:tesseract:5.5.0",
+  "elapsed_seconds": 10.8,
+  "simulated_gemini_failures": [
+    {
+      "model": "gemini-3.1-flash-lite",
+      "error": "503 UNAVAILABLE"
+    }
+  ],
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "thinking_tokens": 0,
+    "total_tokens": 0,
+    "request_attempts": 0,
+    "application_retries": 0
+  },
+  "cost_usd": null,
+  "page_sources": {
+    "1": "ocr",
+    "2": "ocr"
+  },
+  "ocr_pages": [
+    {
+      "page_number": 1,
+      "outcome": "transcribed",
+      "mean_confidence": 92.34285714285714,
+      "word_count": 35,
+      "detail": ""
+    },
+    {
+      "page_number": 2,
+      "outcome": "transcribed",
+      "mean_confidence": 80.5945945945946,
+      "word_count": 37,
+      "detail": ""
+    }
+  ],
+  "gemini_response": null
+}

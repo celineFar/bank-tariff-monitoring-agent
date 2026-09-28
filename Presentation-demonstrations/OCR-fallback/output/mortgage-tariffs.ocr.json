@@ -1,0 +1,43 @@
+{
+  "sample": "mortgage-tariffs.pdf",
+  "engine": "ocr",
+  "generated_at": "2026-09-28T06:43:59+00:00",
+  "produced_by": "ocr:tesseract:5.5.0",
+  "elapsed_seconds": 12.52,
+  "simulated_gemini_failures": [
+    {
+      "model": "gemini-3.1-flash-lite",
+      "error": "503 UNAVAILABLE"
+    }
+  ],
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "thinking_tokens": 0,
+    "total_tokens": 0,
+    "request_attempts": 0,
+    "application_retries": 0
+  },
+  "cost_usd": null,
+  "page_sources": {
+    "1": "ocr",
+    "2": "none"
+  },
+  "ocr_pages": [
+    {
+      "page_number": 1,
+      "outcome": "transcribed",
+      "mean_confidence": 76.74747474747475,
+      "word_count": 99,
+      "detail": ""
+    },
+    {
+      "page_number": 2,
+      "outcome": "low_confidence",
+      "mean_confidence": 38.08163265306123,
+      "word_count": 49,
+      "detail": "mean confidence 38.1 is below the floor 60.0"
+    }
+  ],
+  "gemini_response": null
+}

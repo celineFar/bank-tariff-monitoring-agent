@@ -1,0 +1,170 @@
+{
+  "sample": "loan-summary.pdf",
+  "engine": "gemini",
+  "generated_at": "2026-09-28T06:39:00+00:00",
+  "produced_by": "gemini-3.1-flash-lite",
+  "elapsed_seconds": 10.84,
+  "simulated_gemini_failures": [],
+  "usage": {
+    "input_tokens": 1296,
+    "output_tokens": 1640,
+    "thinking_tokens": 0,
+    "total_tokens": 2936,
+    "request_attempts": 1,
+    "application_retries": 0
+  },
+  "cost_usd": 0.002784,
+  "page_sources": {
+    "1": "gemini",
+    "2": "gemini"
+  },
+  "ocr_pages": [],
+  "gemini_response": {
+    "pages": [
+      {
+        "page_number": 1,
+        "blocks": [
+          {
+            "type": "heading",
+            "text": "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": "Տեղեկատվական ամփոփագիր",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Արժույթ: AMD",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Ժամկետ: 12-60 ամիս",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Գումար: 300,000 - 10,000,000 AMD",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Անվանական տոկոսադրույք: 13.5%",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Փաստացի տոկոսադրույք: 14.2%",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Հայտի ուսումնասիրության վճար: 0 AMD",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Տրամադրման վճար: 1%",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Մարման եղանակ: անուիտետային",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          },
+          {
+            "type": "key_value",
+            "text": "Գրավ: չի պահանջվում",
+            "heading_path": [
+              "ՍՊԱՌՈՂԱԿԱՆ ՎԱՐԿ"
+            ]
+          }
+        ],
+        "tables": [],
+        "notes": []
+      },
+      {
+        "page_number": 2,
+        "blocks": [
+          {
+            "type": "heading",
+            "text": "Սակագներ և վճարներ",
+            "heading_path": [
+              "Սակագներ և վճարներ"
+            ]
+          },
+          {
+            "type": "paragraph",
+            "text": "Սակագները գործում են 01.09.2026 թվականից:",
+            "heading_path": [
+              "Սակագներ և վճարներ"
+            ]
+          }
+        ],
+        "tables": [
+          {
+            "title": "Սակագներ և վճարներ",
+            "headers": [
+              "Ծառայություն",
+              "Վճար"
+            ],
+            "header_rows": [],
+            "rows": [
+              {
+                "cells": [
+                  "Հաշվի սպասարկում",
+                  "0 AMD"
+                ]
+              },
+              {
+                "cells": [
+                  "Վաղաժամկետ մարում",
+                  "0%"
+                ]
+              },
+              {
+                "cells": [
+                  "Ուշացման տույժ",
+                  "0.13% օրական"
+                ]
+              },
+              {
+                "cells": [
+                  "Քաղվածքի տրամադրում",
+                  "1,000 AMD"
+                ]
+              }
+            ],
+            "row_groups": [],
+            "notes": []
+          }
+        ],
+        "notes": [
+          "SAMPLE - synthetic values for demonstration only"
+        ]
+      }
+    ]
+  }
+}
