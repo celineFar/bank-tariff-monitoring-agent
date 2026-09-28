@@ -15,10 +15,15 @@ if [[ -f "${ROOT_CA}" ]]; then
   certifi_path="$(uv run python -c 'import certifi; print(certifi.where())')"
   cat "${certifi_path}" "${ROOT_CA}" > "${BUNDLE}"
 
+  # Create the NSS database only when it is missing. On a container restart it
+  # already exists, and `certutil -N` then prompts for its password and spins
+  # on the closed stdin, so the service never starts.
   mkdir -p "${HOME}/.pki/nssdb"
-  certutil -d "sql:${HOME}/.pki/nssdb" -N --empty-password >/dev/null 2>&1 || true
-  certutil -d "sql:${HOME}/.pki/nssdb" -D -n "${NICKNAME}" >/dev/null 2>&1 || true
-  certutil -d "sql:${HOME}/.pki/nssdb" -A -t "C,," -n "${NICKNAME}" -i "${ROOT_CA}"
+  if [[ ! -f "${HOME}/.pki/nssdb/cert9.db" ]]; then
+    certutil -d "sql:${HOME}/.pki/nssdb" -N --empty-password </dev/null >/dev/null 2>&1 || true
+  fi
+  certutil -d "sql:${HOME}/.pki/nssdb" -D -n "${NICKNAME}" </dev/null >/dev/null 2>&1 || true
+  certutil -d "sql:${HOME}/.pki/nssdb" -A -t "C,," -n "${NICKNAME}" -i "${ROOT_CA}" </dev/null
 
   printf '%s\n' "demo: trusted ${ROOT_CA} for httpx (${BUNDLE}) and Chromium (NSS)" >&2
 else
