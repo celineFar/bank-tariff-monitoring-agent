@@ -1,25 +1,25 @@
 # Controlled failures
 
-Generated 2026-09-28 07:21 UTC by `failure_demo.py` against the demonstration stack (Compose project `tariff-demo`). Offering: `overdraft`.
+Generated 2026-09-29 01:46 UTC by `failure_demo.py` against the demonstration stack (Compose project `tariff-demo`). Offering: `overdraft`.
 
 ## Before: what the demo database holds
 
 Tariff tables (before):
 | Table | Rows | Content digest |
 |---|---|---|
-| tariff_snapshots | 3 | `0aaf712d7faf` |
-| tariff_facts | 199 | `b9d2d0cc3087` |
-| fact_evidence | 506 | `e02348fce0e8` |
-| tariff_changes | 1 | `c4a6c07086ec` |
-| snapshot_documents | 12 | `94445ec51a15` |
+| tariff_snapshots | 5 | `41643daf3c64` |
+| tariff_facts | 328 | `31a816c6ead2` |
+| fact_evidence | 842 | `b899adff2398` |
+| tariff_changes | 3 | `118900301d06` |
+| snapshot_documents | 20 | `34e06c586e44` |
 | human_reviews | 0 | `d41d8cd98f00` |
 
-`GET /tariffs/current` for overdraft: snapshot `479e2bba`, accepted 2026-09-28T07:19:21.789171Z, freshness `fresh`, interest rates 21%, 20%, 15-21%.
+`GET /tariffs/current` for overdraft: snapshot `3bb3d6cc`, accepted 2026-09-29T01:44:03.852631Z, freshness `fresh`, interest rates 21%, 20%, 15-21%.
 
 ## Failure: The bank's site does not answer (timeout)
 
 Artificial part: inside the worker, `ameriabank.am` resolves to 192.0.2.1, an address routed nowhere (`failures/timeout.yml`).
-Submitted run `2cf508bb` through `POST /api/v1/runs`.
+Submitted run `bcff8997` through `POST /api/v1/runs`.
 | Outcome | Value |
 |---|---|
 | Run status | `failed` after 69s |
@@ -33,17 +33,17 @@ Submitted run `2cf508bb` through `POST /api/v1/runs`.
 
 Worker log:
 ```text
-2026-09-28T11:22:26.262+04:00 WARNING app.services.monitoring_pipeline: offering failed run_id=2cf508bb-fb2b-4cc5-8eee-adee7b11805d offering_id=overdraft stage=acquisition code=source.timeout reason=TIMEOUT
-2026-09-28T11:22:26.270+04:00 INFO __main__: progress run_id=2cf508bb-fb2b-4cc5-8eee-adee7b11805d kind=offering_failed offering_id=overdraft stage=acquisition elapsed_ms=0 failure_code=source.timeout detail=None
-2026-09-28T11:22:26.275+04:00 INFO __main__: progress run_id=2cf508bb-fb2b-4cc5-8eee-adee7b11805d kind=run_finished offering_id=None stage=None elapsed_ms=61730 failure_code=source.timeout detail=failed
-2026-09-28T11:22:26.275+04:00 INFO __main__: monitoring run completed run_id=2cf508bb-fb2b-4cc5-8eee-adee7b11805d status=failed review_count=0
+2026-09-29T05:47:25.357+04:00 WARNING app.services.monitoring_pipeline: offering failed run_id=bcff8997-af94-48d0-9298-a801c0c0af67 offering_id=overdraft stage=acquisition code=source.timeout reason=TIMEOUT
+2026-09-29T05:47:25.369+04:00 INFO __main__: progress run_id=bcff8997-af94-48d0-9298-a801c0c0af67 kind=offering_failed offering_id=overdraft stage=acquisition elapsed_ms=0 failure_code=source.timeout detail=None
+2026-09-29T05:47:25.374+04:00 INFO __main__: progress run_id=bcff8997-af94-48d0-9298-a801c0c0af67 kind=run_finished offering_id=None stage=None elapsed_ms=61668 failure_code=source.timeout detail=failed
+2026-09-29T05:47:25.374+04:00 INFO __main__: monitoring run completed run_id=bcff8997-af94-48d0-9298-a801c0c0af67 status=failed review_count=0
 ```
 
 
 ## Failure: The model provider fails (model-failure)
 
 Artificial part: source discovery uses the retired `gemini-2.5-flash-lite`, with no fallback model (`failures/model-failure.yml`).
-Submitted run `1ec9d546` through `POST /api/v1/runs`.
+Submitted run `4172f524` through `POST /api/v1/runs`.
 | Outcome | Value |
 |---|---|
 | Run status | `failed` after 24s |
@@ -57,17 +57,17 @@ Submitted run `1ec9d546` through `POST /api/v1/runs`.
 
 Worker log:
 ```text
-2026-09-28T11:23:05.125+04:00 WARNING app.services.monitoring_pipeline: offering failed run_id=1ec9d546-d3b4-4811-84a0-a2115bdc3df0 offering_id=overdraft stage=pdf_selection code=source.model_failed reason=HTTP 404 / NOT_FOUND: This model models/gemini-2.5-flash-lite is no longer available to new us
-2026-09-28T11:23:05.146+04:00 INFO __main__: progress run_id=1ec9d546-d3b4-4811-84a0-a2115bdc3df0 kind=offering_failed offering_id=overdraft stage=pdf_selection elapsed_ms=0 failure_code=source.model_failed detail=None
-2026-09-28T11:23:05.158+04:00 INFO __main__: progress run_id=1ec9d546-d3b4-4811-84a0-a2115bdc3df0 kind=run_finished offering_id=None stage=None elapsed_ms=18415 failure_code=source.model_failed detail=failed
-2026-09-28T11:23:05.158+04:00 INFO __main__: monitoring run completed run_id=1ec9d546-d3b4-4811-84a0-a2115bdc3df0 status=failed review_count=0
+2026-09-29T05:48:05.696+04:00 WARNING app.services.monitoring_pipeline: offering failed run_id=4172f524-531c-409d-ac7f-f1f800eaaf16 offering_id=overdraft stage=pdf_selection code=source.model_failed reason=HTTP 404 / NOT_FOUND: This model models/gemini-2.5-flash-lite is no longer available to new us
+2026-09-29T05:48:05.703+04:00 INFO __main__: progress run_id=4172f524-531c-409d-ac7f-f1f800eaaf16 kind=offering_failed offering_id=overdraft stage=pdf_selection elapsed_ms=0 failure_code=source.model_failed detail=None
+2026-09-29T05:48:05.708+04:00 INFO __main__: progress run_id=4172f524-531c-409d-ac7f-f1f800eaaf16 kind=run_finished offering_id=None stage=None elapsed_ms=20695 failure_code=source.model_failed detail=failed
+2026-09-29T05:48:05.708+04:00 INFO __main__: monitoring run completed run_id=4172f524-531c-409d-ac7f-f1f800eaaf16 status=failed review_count=0
 ```
 
 
 ## Failure: A safety limit refuses the source (size-limit)
 
 Artificial part: the download size cap is lowered from 25 MB to 50 KB (`failures/size-limit.yml`).
-Submitted run `7a292ffe` through `POST /api/v1/runs`.
+Submitted run `7accb0ab` through `POST /api/v1/runs`.
 | Outcome | Value |
 |---|---|
 | Run status | `failed` after 6s |
@@ -81,10 +81,10 @@ Submitted run `7a292ffe` through `POST /api/v1/runs`.
 
 Worker log:
 ```text
-2026-09-28T11:23:24.608+04:00 WARNING app.services.monitoring_pipeline: offering failed run_id=7a292ffe-c914-4430-812b-229e179b2766 offering_id=overdraft stage=acquisition code=source.size_rejected reason=PAGE_TOO_LARGE
-2026-09-28T11:23:24.614+04:00 INFO __main__: progress run_id=7a292ffe-c914-4430-812b-229e179b2766 kind=offering_failed offering_id=overdraft stage=acquisition elapsed_ms=0 failure_code=source.size_rejected detail=None
-2026-09-28T11:23:24.619+04:00 INFO __main__: progress run_id=7a292ffe-c914-4430-812b-229e179b2766 kind=run_finished offering_id=None stage=None elapsed_ms=1189 failure_code=source.size_rejected detail=failed
-2026-09-28T11:23:24.620+04:00 INFO __main__: monitoring run completed run_id=7a292ffe-c914-4430-812b-229e179b2766 status=failed review_count=0
+2026-09-29T05:48:26.755+04:00 WARNING app.services.monitoring_pipeline: offering failed run_id=7accb0ab-5ec8-44fb-b1ae-42963724659b offering_id=overdraft stage=acquisition code=source.size_rejected reason=PAGE_TOO_LARGE
+2026-09-29T05:48:26.762+04:00 INFO __main__: progress run_id=7accb0ab-5ec8-44fb-b1ae-42963724659b kind=offering_failed offering_id=overdraft stage=acquisition elapsed_ms=0 failure_code=source.size_rejected detail=None
+2026-09-29T05:48:26.766+04:00 INFO __main__: progress run_id=7accb0ab-5ec8-44fb-b1ae-42963724659b kind=run_finished offering_id=None stage=None elapsed_ms=1146 failure_code=source.size_rejected detail=failed
+2026-09-29T05:48:26.767+04:00 INFO __main__: monitoring run completed run_id=7accb0ab-5ec8-44fb-b1ae-42963724659b status=failed review_count=0
 ```
 
 
@@ -93,14 +93,14 @@ Worker log:
 Tariff tables (after):
 | Table | Rows | Content digest |
 |---|---|---|
-| tariff_snapshots | 3 | `0aaf712d7faf` |
-| tariff_facts | 199 | `b9d2d0cc3087` |
-| fact_evidence | 506 | `e02348fce0e8` |
-| tariff_changes | 1 | `c4a6c07086ec` |
-| snapshot_documents | 12 | `94445ec51a15` |
+| tariff_snapshots | 5 | `41643daf3c64` |
+| tariff_facts | 328 | `31a816c6ead2` |
+| fact_evidence | 842 | `b899adff2398` |
+| tariff_changes | 3 | `118900301d06` |
+| snapshot_documents | 20 | `34e06c586e44` |
 | human_reviews | 0 | `d41d8cd98f00` |
 
-`GET /tariffs/current` for overdraft: snapshot `479e2bba`, accepted 2026-09-28T07:19:21.789171Z, freshness `fresh`, interest rates 21%, 20%, 15-21%.
+`GET /tariffs/current` for overdraft: snapshot `3bb3d6cc`, accepted 2026-09-29T01:44:03.852631Z, freshness `fresh`, interest rates 21%, 20%, 15-21%.
 
 ## Was each failure safe?
 
@@ -116,7 +116,7 @@ Tariff tables (after):
 | PASS | size-limit: failed with the expected code | `source.size_rejected` |
 | PASS | size-limit: wrote no snapshot and no change | 0 snapshots, 0 changes |
 | PASS | every tariff table is byte-for-byte unchanged | 6 of 6 digests equal |
-| PASS | the API still serves the same accepted tariff | snapshot `479e2bba`, rates 21%, 20%, 15-21% |
+| PASS | the API still serves the same accepted tariff | snapshot `3bb3d6cc`, rates 21%, 20%, 15-21% |
 | PASS | the normal worker is back | running without a failure overlay |
 
 Model spend for these failures: $0.0000.

@@ -1,9 +1,9 @@
 {
   "sample": "mortgage-tariffs.pdf",
   "engine": "ocr",
-  "generated_at": "2026-09-28T06:43:59+00:00",
+  "generated_at": "2026-09-29T01:54:51+00:00",
   "produced_by": "ocr:tesseract:5.5.0",
-  "elapsed_seconds": 12.52,
+  "elapsed_seconds": 13.16,
   "simulated_gemini_failures": [
     {
       "model": "gemini-3.1-flash-lite",

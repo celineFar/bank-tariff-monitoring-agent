@@ -223,3 +223,5 @@ end-to-end/
 # Internal fix/debug plans (not part of the deliverable)
 /fix-process/
 Presentation_slides.pptx
+# Presentation narration script (local only)
+Presentation-demonstrations/narration.md

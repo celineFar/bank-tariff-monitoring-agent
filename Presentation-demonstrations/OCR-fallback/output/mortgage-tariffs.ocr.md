@@ -1,6 +1,6 @@
 # OCR output: mortgage-tariffs.pdf
 
-Generated 2026-09-28T06:43:59+00:00 by `ocr_fallback_demo.py --engine ocr`. Gemini was made to fail on purpose; the text under **Transcription** was read from the page images by the project's tesseract fallback. The values are synthetic sample data.
+Generated 2026-09-29T01:54:51+00:00 by `ocr_fallback_demo.py --engine ocr`. Gemini was made to fail on purpose; the text under **Transcription** was read from the page images by the project's tesseract fallback. The values are synthetic sample data.
 
 ## Run summary
 
@@ -9,7 +9,7 @@ Generated 2026-09-28T06:43:59+00:00 by `ocr_fallback_demo.py --engine ocr`. Gemi
 | Source | `samples/mortgage-tariffs.pdf`, sha256 `7010606a815ca9df…` |
 | Input probe | `image_only`, 2 pages, 0 native text characters |
 | Gemini | `gemini-3.1-flash-lite` failed (503 UNAVAILABLE, simulated) |
-| Content produced by | `ocr:tesseract:5.5.0` in 12.52s |
+| Content produced by | `ocr:tesseract:5.5.0` in 13.16s |
 | OCR settings | languages `hye+eng`, 200 dpi, confidence floor 60 |
 
 ## Pages
