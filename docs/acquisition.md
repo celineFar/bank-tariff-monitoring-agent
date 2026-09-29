@@ -55,6 +55,12 @@ to the ADK model.
 9. Raw HTML, rendered HTML, Markdown, and PDFs are written atomically
    to content-addressed storage.
 
+A monitoring run retries a failed acquisition once, 10 s later, when it failed with
+`source.browser_unavailable`, `source.browser_failed` or `source.incomplete_content`
+(`acquire_with_retry` in `app/services/monitoring_pipeline.py`; the delay is a
+constructor argument of the pipeline, not a setting). These are often a network blip.
+Any other failure, or a second failure, fails the offering at once.
+
 ## Identity
 
 `page_content_hash` names the page document downstream (`page:<hash>`), and so every
@@ -132,11 +138,12 @@ Run acquisition for one allowlisted URL with:
 uv run python scripts/demonstrate_acquisition.py "https://ameriabank.am/en/personal/loans/consumer-loans/consumer-loans"
 ```
 
-The script writes the requested URL to `.temp/acuisition_test/source_url.txt` and
-places the inspection files under `.temp/acuisition_test/output/`. The output includes
-the complete `PageArtifact`, summary, raw and rendered HTML, Markdown, structural
-blocks, tables, links, images, interactive controls, documents, and
-content-addressed raw artifacts.
+Each invocation claims the next free case directory,
+`.temp/acuisition_test/case_NNN/` (change the parent with `--inspection-directory`),
+writes the requested URL to its `source_url.txt`, and places the inspection files
+under its `output/`. The output includes the complete `PageArtifact`, summary, raw and
+rendered HTML, Markdown, structural blocks, tables, links, images, interactive
+controls, documents, and content-addressed raw artifacts.
 
 
 ---
@@ -158,6 +165,8 @@ case_000/
     ├── tables.json
     ├── links.json
     ├── documents.json
+    ├── images.json
+    ├── interactive_controls.json
     └── artifacts/
 ```
 
@@ -175,7 +184,7 @@ A quick overview of the run:
 - Whether acquisition used static HTTP or Playwright
 - Retrieval timestamp
 - Content hash
-- Number of blocks, tables, links, and documents
+- Number of blocks, tables, links, documents, images, and interactive controls
 - Warnings encountered
 
 This is the best file to open first.
@@ -312,6 +321,10 @@ Typical information includes:
 
 Only successfully validated PDFs appear here. A linked document must pass URL, redirect, size, MIME, and PDF-signature checks.
 
+### `images.json` and `interactive_controls.json`
+
+The page's images (URL, alt text, title, declared size, whether decorative, whether on an allowlisted host) and its interactive controls (element, role, text, ARIA label/expanded/controls state, whether disabled), each with a locator. Images are recorded, not downloaded.
+
 ### `page_artifact.json`
 
 The complete acquisition result in one file.
@@ -349,8 +362,6 @@ Possible extensions include:
 - `.html`: raw or rendered HTML
 - `.md`: generated Markdown
 - `.pdf`: downloaded official documents
-- `.json`: captured JSON responses
-- `.txt`: other captured textual responses
 
 These filenames are intentionally hash-based:
 

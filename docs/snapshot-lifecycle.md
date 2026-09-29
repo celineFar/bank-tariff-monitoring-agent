@@ -21,11 +21,14 @@ and conditions while excluding timestamps, citation ordering, prose formatting, 
 evidence locations. The first accepted observation has no field changes. Equal canonical
 values with changed evidence create `snapshot.provenance_changed`, not a tariff change.
 
-Current-tariff reads and normal RAG retrieval filter to accepted/active state. A newer
+Current-tariff reads and structured-fact answers filter to accepted/active state. A newer
 pending review is exposed only as a flag; its candidate values and chunks are not returned.
 History and change reads likewise use accepted observations, so rejection and supersession
 cannot appear as published tariff history.
 
 Publication is atomic per offering: knowledge versions/chunks, extraction attempt,
 snapshot decision, changes, manifest, offering status, and audit event commit together.
-Rollback preserves the prior index and accepted snapshot.
+An accepted snapshot also publishes its structured projection (the facts answers read) in
+the same transaction, and every publication supersedes pending reviews of the offering's
+older snapshots. Rollback preserves the prior document set, projection and accepted
+snapshot.

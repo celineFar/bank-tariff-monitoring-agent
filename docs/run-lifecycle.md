@@ -4,8 +4,11 @@ All triggers submit a typed `RunCommand` through `RunService`. `POST /api/v1/run
 non-chat monitoring entry point: it accepts canonical `product` and optional
 `offering_id`, returns `202`, and never runs natural-language classification or the
 pipeline inline. The chat monitoring tool submits only after intent/scope resolution and
-an invocation-bound spend grant. The scheduler independently submits consumer-loan and
-mortgage commands at 06:00 `Asia/Yerevan`.
+an invocation-bound spend grant. The worker's scheduler independently submits
+consumer-loan and mortgage commands daily at `SCHEDULE_HOUR`:`SCHEDULE_MINUTE` in
+`SCHEDULE_TIMEZONE` (default 06:00 `Asia/Yerevan`). `SCHEDULE_ENABLED=false` removes
+that daily job; the worker still claims API runs, recovers abandoned runs, and sweeps
+embeddings.
 
 Two hosts execute the same `TariffPipeline`; PostgreSQL decides which one owns a run:
 
@@ -32,9 +35,11 @@ PostgreSQL is the durable queue and business-state authority:
 | `failed` | No offering produced an accepted outcome, the run was cancelled or interrupted, or recovery failed safely. | Terminal; preserve earlier publications. |
 
 A run may transition directly from `running` to a terminal state. A paused run is closed
-by `ReviewResolutionService.complete_run` once no review is pending: all approved →
-`succeeded`; some rejected with a prior success → `partial_success`; otherwise `failed`.
-A paused run with no review rows fails closed.
+by `ReviewResolutionService.complete_run` once no review is pending. Superseded and
+failed reviews count as rejected. No review rejected and no offering failed before the
+pause → `succeeded`; otherwise at least one approved review or an offering that
+succeeded before the pause → `partial_success`; otherwise `failed`. A paused run with
+no review rows fails closed.
 
 Failure codes owned by the lifecycle itself:
 
@@ -42,7 +47,7 @@ Failure codes owned by the lifecycle itself:
 |---|---|
 | `run.cancelled` | The caller cancelled the run it was executing (Ctrl-C in the CLI). The pipeline fails the in-flight offering execution and the run before the cancellation propagates, and records a `run.cancelled` audit event. |
 | `run.interrupted` | The CLI process executing a chat run died. The next start of that conversation fails the runs owned by the previous process's owner (`RunRepository.fail_interrupted`). |
-| `run.abandoned` | A `running` claim outlived the worker lease (`recover_abandoned` at worker start) — the backstop for both hosts. |
+| `run.abandoned` | A `running` run's owner stopped renewing its heartbeat for `RUN_LEASE_SECONDS` (`recover_abandoned`, run by the worker at start and every `RUN_RECOVERY_INTERVAL_SECONDS`, and by a chat before it submits or while it follows a run) — the backstop for both hosts. |
 
 An idempotency key returns its original run. Active-run constraints cover `queued` and
 `running` only (migration 026): a run waiting for review blocks nothing, and a newer
@@ -53,8 +58,8 @@ while any targeted run is active, and targeted requests reuse an active family-w
 run. PostgreSQL advisory locking serializes these cross-scope submission checks.
 If an older service returns a run that does not cover the requested offering, the API
 returns `409 run.active_scope_conflict` and the chat tool reports `blocked` instead of
-claiming the requested offering started. Startup recovery marks expired or interrupted
-running claims failed; it does not re-execute partially completed nondeterministic work.
+claiming the requested offering started. Recovery (`run.abandoned`, `run.interrupted`)
+marks expired or interrupted running claims failed; it does not re-execute partially completed nondeterministic work.
 On start, and every `RUN_RECOVERY_INTERVAL_SECONDS`, the worker also completes any
 paused run none of whose reviews is pending (decided, or superseded by a newer candidate).
 A family run creates each offering's reviews as it goes; if it then ends `failed`
@@ -80,8 +85,10 @@ curl http://localhost:8080/api/v1/runs/00000000-0000-0000-0000-000000000000
 
 Read-only companion routes are `GET /api/v1/tariffs/current`,
 `GET /api/v1/tariffs/history`, `GET /api/v1/reviews[?run_id=]` and
-`GET /api/v1/reviews/{review_id}`. `POST /api/v1/questions` answers only from active
-indexed evidence. Review decisions are taken in the chat CLI, as native ADK pauses of the
+`GET /api/v1/reviews/{review_id}`. `POST /api/v1/questions` answers a question with a
+typed product/offering scope, and `POST /api/v1/tariffs/query` resolves the scope of a
+free-text question itself; both answer only from accepted structured tariff facts and
+never trigger acquisition. Review decisions are taken in the chat CLI, as native ADK pauses of the
 conversation (`docs/native-hitl-review.md`); runs the scheduler or the API started are
 reviewed there too. `POST /api/v1/reviews/abort-pending` is a token-protected admin
 operation that rejects every pending review, closes those runs, and reports any run it

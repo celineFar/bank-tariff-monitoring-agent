@@ -10,7 +10,8 @@ Scenarios are deterministic and offline. They drive the real application
 services — the run lifecycle, snapshot admission and comparison, review
 repository, URL allowlist, HTTP retriever, retry policy, failure mapping,
 projection, and the structured query service — against a disposable `_test`
-database. No demonstration touches the bank website or spends model credits.
+database. None of these offline scenarios touches the bank website or spends model
+credits; the live presentation demonstrations below do both.
 
 Deliverable 9 runs on a **recorded live capture** rather than fixture data: it
 replays the newest readable `end-to-end/run_NNN` written by
@@ -65,8 +66,9 @@ the filesystem repositories, covers `acquisition`, `normalization`,
 validates, publishes, compares, or persists a snapshot, and it never touches
 PostgreSQL. So `end-to-end/run_006` being an Overdraft capture does not give
 the chat an Overdraft tariff to answer from — `get_current_tariffs` reads
-accepted rows in `tariff_snapshots`, which only a worker run writes. When the
-chat says a snapshot is missing for an offering you have a capture of, both
+accepted rows in `tariff_snapshots`, which only a monitoring run writes (a worker run,
+or a chat-initiated run executed in the chat's process; see
+[run-lifecycle.md](run-lifecycle.md)). When the chat says a snapshot is missing for an offering you have a capture of, both
 statements are true; ask it to monitor that offering to publish one.
 
 ## What a successful run shows
@@ -105,6 +107,27 @@ half-written scenario cannot report a pass.
 - **Fixture values are synthetic.** Outside deliverable 9, the numbers come
   from `tests/fixtures/evaluation_corpus.py` and are not observed Ameriabank
   tariffs.
+
+## Live presentation demonstrations
+
+`Presentation-demonstrations/` holds the demonstrations shown in the presentation.
+Unlike the scenarios above, the stack demonstrations run real monitoring runs against
+the live bank site (or a local mirror of it) and Gemini. They use a separate Compose project, `demo-stack/` (`tariff-demo`: its own
+`db`, `api` and `worker` on the main stack's images, with `SCHEDULE_ENABLED=false`
+and `ACQUISITION_FRESHNESS_HOURS=0`, API at `127.0.0.1:8091`), so they never touch the
+main stack's data. `python3 present.py` sets up the stack, restores the
+`bank-baseline` checkpoint, and runs each demonstration in order, asking before each
+(`--check` shows what setup would do). See `Presentation-demonstrations/README.md`.
+
+| Folder | Deliverable | Source | Cost |
+|---|---|---|---|
+| `Normal-extraction/` | 9 — one real Overdraft run to a published tariff, with its card, report and pipeline audit | live bank site + Gemini | ~$0.13 |
+| `Controlled-failures/` | 13 — three real runs failed on purpose (`source.timeout`, `source.model_failed`, `source.size_rejected`); the accepted tariff stays unchanged | live bank site, no paid model call | $0 |
+| `Change-detection-and-review/` | 10 and 12 — a local HTTPS mirror republishes Overdraft 4 points higher; the run stops for review and publishes after approval in the chat | local mirror + Gemini | ~$0.08 |
+| `OCR-fallback/` | 11 — synthetic scanned PDFs through the PDF service with Gemini made to fail, scored against the real Gemini path | worker image, no database | $0 (OCR); ~$0.003 per sample with `--engine gemini` |
+
+Order matters: the change demonstration restores its own checkpoint and leaves a
+synthetic rate behind, so it runs last among the three stack demonstrations.
 
 ## Related demonstrations
 

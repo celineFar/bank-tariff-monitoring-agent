@@ -41,21 +41,30 @@ than left to the model to infer — `needs_clarification`, `needs_scope_confirma
 `request_satisfied=false`, `unavailable`, `rejected` with a reason code. The
 instruction tells the agent what each one obliges it to say. An abstention from the
 answer service must be reported as an abstention naming the offering and field, not
-patched with a different offering's number.
+patched with a different offering's number. Its `reason_code` picks the next step:
+`awaiting_review` → say the data waits for human review and offer to review it (not
+to monitor); `not_stated_in_source` → say the bank's published tariff does not state
+it and cite what was checked; anything else (`run_failed`, `never_monitored`,
+`no_accepted_data`, `field_not_extracted`) → name the offering and field, check
+freshness once with `get_current_tariffs`, and offer monitoring if the data is
+missing or stale. For a ranking, the agent says how many offerings were ranked out
+of how many and names each offering in the result's `not_ranked` list with its
+reason.
 
 **Session state** holds the conversational resolution state (the one-time catalog
-introduction, a pending clarification, the latest resolved scope) and three
-grants, each bound to the ADK invocation that issued it: the read grant
+introduction, offered only on a `LIST_SUPPORTED_PRODUCTS` or
+`UNSUPPORTED_OR_GENERAL` turn, never with a tariff answer; a pending clarification;
+the latest resolved scope) and three grants, each bound to the ADK invocation that issued it: the read grant
 (`tariff_resolution_plan`), the monitoring offer derived from it, and the spend grant
 (`monitoring_authorization`). A resumed invocation keeps its id, so a grant survives
 the replay of its own tool call and is useless in any later turn. The exact key list
-is `intent_resolution`, `resolution`, `monitoring_authorization`,
-`monitoring_confirmation_offer`, `monitoring_full_product_ack`,
-`monitoring_original_question`, `tariff_resolution_plan`,
-`tariff_resolution_plan_used`, `tariff_resolution_last_used_turn` (plus the CLI's
-`cli_owner`, used only for crash recovery). No preference, no cross-session memory,
-no accumulated business data — and nothing about reviews, which are a PostgreSQL
-query.
+is `intent_resolution`, `resolution`, `resolution_result`,
+`monitoring_authorization`, `monitoring_confirmation_offer`,
+`monitoring_full_product_ack`, `monitoring_answer_request`,
+`tariff_resolution_plan`, `tariff_resolution_plan_used`,
+`tariff_resolution_session_id` (plus the CLI's `cli_owner`, used only for crash
+recovery). No preference, no cross-session memory, no accumulated business data —
+and nothing about reviews, which are a PostgreSQL query.
 
 `automatic_function_calling` is disabled, so every tool call is an explicit,
 inspectable step rather than a hidden SDK loop.
@@ -73,7 +82,7 @@ to override it.
 
 | Tool | Model supplies | Scope comes from | Refuses when |
 |---|---|---|---|
-| `resolve_request()` | nothing — it reads the user's message itself | — it *issues* the grants | no user message this turn; the interpreter is unavailable (then nothing is granted). A repeat call in the same turn returns the first result |
+| `resolve_request()` | nothing — it reads the user's message itself | — it *issues* the grants | no user message this turn; the interpreter is unavailable (then nothing is granted). A repeat call in the same turn returns the first result. Its `pending_reviews` counts only the offerings of the turn's read grant, when there is one |
 | `answer_tariff_query()` | nothing — it answers the grant's own question | the read grant (`ResolutionPlan`: family, offerings, operation, fields, question of record) | the grant is absent, replayed, expired, from another session or turn, or scope-only |
 | `get_current_tariffs()` | nothing | the read grant | no valid grant this turn |
 | `get_tariff_history(kind, start_at, end_at, limit)` | the window and page size (clamped) | the read grant | no valid grant this turn |
@@ -144,7 +153,10 @@ a formatting-insensitive canonical diff in Python, not a question anyone asks a
 model. The same holds for ranking and comparison on the read side: the service
 computes them from typed facts, ranks only values that share a currency, unit, rate
 basis and fee scope (each group on its own), and *abstains* when no two offerings
-share one, rather than letting a model produce a plausible winner.
+share one, rather than letting a model produce a plausible winner. A ranking that
+does answer says "ranked N of M" and lists every offering it left out — not
+comparable, no value, or no published data (awaiting review, failed run, never
+monitored) — with that reason.
 
 ### Deterministic first, model only for the remainder
 

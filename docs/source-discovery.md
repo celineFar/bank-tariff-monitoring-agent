@@ -188,7 +188,8 @@ classifier excluded.
 `select_sources()` (`app/services/source_selection.py`) turns the assessments into
 one `SourceSelection`: each selected block or table with the assessment that
 decides it, and the documents that have selected content. Semantic extraction
-(`build_selected_source_bundle`) and the RAG projection read the same selection.
+(`build_selected_source_bundle`) and the evidence-document projection
+(`KnowledgeProjectionService.project_sources`) read the same selection.
 Irrelevant, possibly stale and future material is excluded. A block's or table's own
 assessment decides it; a section's or document's references count only for items
 without one. The projection further leaves out units labelled as another product,
@@ -261,6 +262,7 @@ preflight/
 ├── cache_hits.json
 ├── llm_candidates.json
 ├── llm_batches.json
+├── cost_estimate.json
 └── selected_for_llm.md
 ```
 
@@ -376,6 +378,7 @@ Previously stored semantic assessments that can be reused exactly.
 A cache hit requires all relevant identity dimensions to match:
 
 - Product
+- Offering
 - Content fingerprint
 - Policy version
 - Prompt version
@@ -580,7 +583,7 @@ The complete source-discovery preflight result in one file.
 It combines:
 
 - run identity;
-- product and canonical URL;
+- product, offering and canonical URL;
 - acquisition hash;
 - policy, prompt, and model versions;
 - deterministic assessments;
@@ -594,11 +597,12 @@ Its structure is approximately:
 ```json
 {
   "product": "mortgage",
+  "offering_id": "...",
   "canonical_url": "https://ameriabank.am/...",
   "input_content_hash": "a522...",
-  "policy_version": "1",
-  "prompt_version": "1",
-  "model_name": "gemini-2.5-flash-lite",
+  "policy_version": "2",
+  "prompt_version": "2",
+  "model_name": "gemini-3.1-flash-lite",
   "deterministic_assessments": [...],
   "cache_hits": [],
   "llm_candidates": [...],

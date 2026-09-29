@@ -31,7 +31,9 @@ POST /api/v1/runs  (or the scheduler)       CLI turn
 └── execute_run    (worker)                 └── invocation → execute_tool run_tariff_monitoring
     └── offering mortgage_primary               └── monitoring node
         ├── stage acquisition                       └── offering mortgage_primary
-        ├── stage normalization                         └── stage …  (same six stages)
+        ├── stage pdf_selection                         └── stage …  (same seven stages)
+        │   └── invoke_agent → call_llm
+        ├── stage normalization
         ├── stage source_discovery
         │   └── invoke_agent → call_llm
         ├── stage semantic_extraction
@@ -134,13 +136,18 @@ uv run python scripts/run_metrics_report.py --days 7 --section extraction_comple
 | `document_retrieval` | `source_manifests` | By `SourceFailureCode` reason code |
 | `extraction_completeness` | `tariff_facts` | Per `field_path`, not one percentage |
 | `evidence_coverage` | `fact_evidence` | Expected 100%; the value is seeing a regression |
+| `transcription_sources` | `knowledge_documents` | Documents by transcription engine (`gemini_pdf` vs `ocr`, other methods as stored) and average quality score |
 | `validation_signals` | `tariff_snapshots.validation` | Deterministic rejects by check and field |
 | `review_rate`, `review_activity` | `offering_executions`, `human_reviews` | Rate, reason mix, decision latency |
 | `model_reliability` | `model_call_usage` | Failures, cache hits, retries, latency by stage |
 | `change_activity` | `tariff_changes` | Detected change volume |
 
 Model token usage and estimated cost stay in `scripts/model_cost_report.py`; see
-[model cost monitoring](model-cost-monitoring.md).
+[model cost monitoring](model-cost-monitoring.md). Every `model_call_usage` row a
+pipeline stage writes carries its `run_id` and `offering_id`: the pipeline wraps
+each offering in `pipeline_usage_scope` (`app/services/model_call_usage.py`), so
+discovery, transcription and extraction calls, which run in their own ADK sessions
+or none, are still attributed to the run and offering that paid for them.
 
 ADK also emits OpenTelemetry metrics (token usage, invocation and tool
 durations, call counts). They are not exported: Langfuse cannot receive them,

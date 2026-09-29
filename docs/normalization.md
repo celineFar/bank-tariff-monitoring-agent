@@ -128,6 +128,16 @@ with the basis, so the decision stays auditable. Every PDF linked from the seed
 pages on 2026-09-26 was labelled by hand; `tests/unit/test_pdf_admission_gate.py`
 fails if admission would skip one labelled current.
 
+Admission cannot tell which admitted PDFs belong to the offering being run, so PDF
+link selection (`app/services/pdf_link_selection.py`, source discovery's first step)
+asks a tool-free Gemini classifier, from the same link metadata and before any
+transcription, to label each admitted PDF `current_product`, `shared_terms`,
+`related_product`, `generic_bank_information` or `unclear`. Only `current_product`,
+`shared_terms` and `unclear` PDFs are transcribed; the rest become empty
+`pdf_not_selected` documents and raise `PDF_SKIPPED_NOT_SELECTED` with the label and
+reason. Choices are cached per offering, link fingerprint, policy, prompt and model
+(migration `020`), and the run's archive renders them in `2_pdf_link_selection.md`.
+
 The original PDF bytes of an admitted document are then supplied to a tool-free
 Gemini ADK agent with a strict response schema, thinking disabled and temperature 0
 (the same PDF must transcribe to the same evidence after a cache miss). A table item
@@ -297,11 +307,12 @@ Warnings: 0
 
 This is the best file to open first.
 
-The 29 documents consist of:
-
-- 1 normalized web page;
-- 9 downloaded PDFs;
-- 19 captured API responses.
+These `case_008` figures were recorded when captured API payloads were still
+normalized, and have not been regenerated. The 29 documents were 1 normalized web
+page, 9 downloaded PDFs and 19 captured API responses, and the flattened JSON leaves
+of those responses made up most of the blocks and scalar candidates. Normalization
+now produces only the page and one document per distinct downloaded PDF (10 here),
+so a current run reports far fewer blocks and scalars.
 
 Here, “document” means an independently addressable source artifact. It does not necessarily mean a downloadable file.
 
@@ -339,7 +350,6 @@ It is not the canonical machine-readable result because Markdown cannot fully re
 - source locators;
 - visibility;
 - table-cell evidence;
-- JSON paths;
 - PDF page numbers;
 - extraction methods;
 - typed scalar values;
@@ -347,7 +357,7 @@ It is not the canonical machine-readable result because Markdown cannot fully re
 
 ### `normalized_blocks.json`
 
-All normalized content blocks from the page, PDFs, and API payloads in one flattened list.
+All normalized content blocks from the page and PDFs in one flattened list.
 
 A typical normalized HTML block looks like:
 
@@ -394,7 +404,7 @@ A typical normalized HTML block looks like:
 
 Important fields:
 
-- `id`: stable block identifier inherited from acquisition or generated for PDF/API content.
+- `id`: stable block identifier inherited from acquisition or generated for PDF content.
 - `type`: heading, paragraph, list, key/value pair, table, accordion, card, link, or other.
 - `raw_text`: text before normalization.
 - `text`: normalized Unicode and whitespace representation.
@@ -407,7 +417,7 @@ Important fields:
 - `fields`: explicit structure extracted without semantic inference.
 - `scalar_candidates`: numbers, ranges, units, and dates recognized in the block.
 - `source_refs`: evidence pointing back to the acquired source.
-- `extraction_method`: `browser`, `static`, `gemini_pdf:<model>`, `json`, or `text`.
+- `extraction_method`: `browser`, `static`, `gemini_pdf:<model>`, or `ocr:tesseract:<version>`.
 
 Examples of `fields` include:
 
@@ -428,17 +438,6 @@ or:
 ```
 
 These fields describe obvious source structure. They do not assign financial meaning.
-
-For API responses, each scalar JSON leaf becomes a block with fields such as:
-
-```json
-{
-  "path": "$['rates'][0]['value']",
-  "value": "13%"
-}
-```
-
-The large number of blocks in `case_008` is primarily caused by flattening the captured JSON payloads into individually addressable JSON leaves.
 
 ### `normalized_tables.json`
 
@@ -715,7 +714,6 @@ It combines:
 - acquisition hash;
 - normalized HTML page;
 - normalized PDFs;
-- normalized API payloads;
 - blocks;
 - tables;
 - links;
@@ -744,13 +742,13 @@ Each document contains:
 
 ```json
 {
-  "id": "document:1:db6b470de92a",
+  "id": "document:db6b470de92a",
   "name": "Terms of the loan for purchase of residential real estate",
   "source_url": "https://ameriabank.am/...pdf",
   "source_type": "pdf",
   "mime_type": "application/pdf",
   "content_sha256": "...",
-  "extraction_method": "gemini_pdf:gemini-2.5-flash-lite",
+  "extraction_method": "gemini_pdf:gemini-3.1-flash-lite",
   "quality_score": 1.0,
   "blocks": [],
   "tables": [],
@@ -758,13 +756,11 @@ Each document contains:
 }
 ```
 
-The document types in `case_008` are:
-
-```text
-page: 1
-pdf:  9
-api: 19
-```
+A PDF's `id` is content-addressed, `document:` plus the first 12 hex characters of
+its SHA-256, so a link added earlier on the page does not rename the documents after
+it. The document types in `case_008` were 1 page, 9 PDFs and 19 API responses; the
+API responses are no longer normalized (see `summary.txt` above), so a current run
+has `page: 1` and `pdf: 9`.
 
 ### `source_refs`
 
@@ -792,8 +788,7 @@ Depending on the source, a locator may identify:
 - an HTML block;
 - a CSS selector;
 - an XPath;
-- a PDF page;
-- a JSON path.
+- a PDF page.
 
 Examples:
 
@@ -801,13 +796,6 @@ Examples:
 {
   "source_type": "pdf",
   "pdf_page": 4
-}
-```
-
-```json
-{
-  "source_type": "api",
-  "json_path": "$['rates'][0]['value']"
 }
 ```
 
@@ -863,8 +851,9 @@ Possible values include:
 - `ocr:tesseract:<version>`: the page had no text layer and Gemini returned
   nothing for it, so the page image was rendered and read by the local OCR
   engine. The block cleared the configured confidence floor.
-- `json`: block came from a successfully parsed JSON payload.
-- `text`: payload was retained as ordinary text.
+- `pdf_skipped`, `pdf_not_selected`, `gemini_pdf_unavailable`: an empty PDF
+  document that admission skipped, that PDF link selection did not choose, or whose
+  bytes could not be read or transcribed; the matching warning gives the reason.
 
 The extraction method helps later verification assess evidence quality, and the
 OCR prefix is load-bearing rather than informational: a value read off a page
@@ -922,6 +911,7 @@ Possible warning codes include:
 - `PDF_MODEL_REQUIRED`: no Gemini key or PDF extractor is configured, and OCR recovered nothing.
 - `PDF_MODEL_FAILED`: all bounded Gemini extraction attempts failed or returned invalid output, and OCR recovered nothing.
 - `PDF_SKIPPED_HISTORICAL` / `PDF_SKIPPED_IRRELEVANT`: admission skipped the PDF from its link metadata; the message gives the basis.
+- `PDF_SKIPPED_NOT_SELECTED`: PDF link selection judged from the link that the PDF is not this offering's; the message gives the label and reason.
 - `PDF_PAGE_EMPTY`: pages with a text layer came back empty from transcription.
 - `PDF_OCR_FILLED`: pages whose content came from the local OCR fallback.
 - `BASELINE_MISMATCH`: the page lost structure its seed baseline records; the message lists what is missing.
@@ -929,7 +919,7 @@ Possible warning codes include:
 
 A warning does not necessarily invalidate the whole bundle. It identifies a specific source or operation that may be incomplete.
 
-`case_008` has:
+`case_008` had (the recorded figures above, from before PDF link selection):
 
 ```text
 Warnings: 0
@@ -939,7 +929,7 @@ This means all acquired artifacts needed by normalization were readable and stru
 
 It does not mean that:
 
-- all 29 documents are relevant;
+- all documents are relevant;
 - every scalar candidate is a tariff;
 - all sources have equal authority;
 - there are no conflicting loan terms;

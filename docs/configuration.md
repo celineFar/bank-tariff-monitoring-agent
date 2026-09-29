@@ -7,7 +7,7 @@ once; `load_settings` then validates and groups them. Copy `.env.example` to
 `.env` and never commit a real API key.
 
 The service-facing groups are `application`, `models`, `database`, `http`,
-`acquisition`, `pdf_extraction`, `rag`, `intent_resolution`, `tariff_queries`,
+`acquisition`, `pdf_extraction`, `ocr`, `rag`, `intent_resolution`, `tariff_queries`,
 `source_discovery`, `semantic_extraction`, `hitl`,
 `scheduler`, and `observability`. A component should receive only the group it needs—for example, a
 downloader receives `settings.http` and the PDF extraction service receives
@@ -133,8 +133,9 @@ downloader receives `settings.http` and the PDF extraction service receives
   runaway answer). Whole-run fallback order is
   configured by the comma-separated `SOURCE_DISCOVERY_FALLBACK_MODEL_NAMES`
   (default `gemini-3.5-flash-lite`; the same chain serves the PDF link selection).
-  `SOURCE_DISCOVERY_MODEL_NAME` overrides the primary classifier model for this
-  stage; when unset the stage falls back to the global `MODEL_NAME`.
+  `SOURCE_DISCOVERY_MODEL_NAME` (default `gemini-3.1-flash-lite`) is the primary
+  classifier model for this stage; only an empty value falls back to the global
+  `MODEL_NAME`.
   `SOURCE_DISCOVERY_MAX_PRICE_PER_MILLION_TOKENS_USD` (default `2.50`, the output
   rate of the fallback) is a hard ceiling applied independently to both input and
   output rates before any live model call.
@@ -174,7 +175,12 @@ downloader receives `settings.http` and the PDF extraction service receives
   apply a decision.
 - **Scheduling:** `SCHEDULE_ENABLED` (default `true`; `false` adds no daily run, while
   the worker still executes API runs and sweeps embeddings), `SCHEDULE_TIMEZONE`,
-  `SCHEDULE_HOUR`, and `SCHEDULE_MINUTE`.
+  `SCHEDULE_HOUR`, and `SCHEDULE_MINUTE`. The lease on an executing run (worker or
+  chat) uses `RUN_HEARTBEAT_SECONDS` (default `5`, how often the owner renews it),
+  `RUN_LEASE_SECONDS` (default `120`, the silence after which the run is closed
+  as `run.abandoned`; it must cover at least four heartbeats), and
+  `RUN_RECOVERY_INTERVAL_SECONDS` (default `60`, how often the worker looks for
+  such runs).
 - **Logging and serving:** `LOG_LEVEL`, `LOG_FILE`, `LOG_TIMEZONE`,
   `LOG_MAX_BYTES`, `LOG_BACKUP_COUNT`, and `ALLOW_ORIGINS`.
   Compose sets a separate `LOG_FILE` for API and worker; `./tariff-chat` writes
@@ -276,10 +282,10 @@ environment variable and accepts only HTTPS URLs on the configured source hosts.
 
 `SESSION_SERVICE_URI` must be a PostgreSQL SQLAlchemy async URI in every local/docker
 runtime that can start or resume monitoring. `shared://session` remains an internal ADK
-registry URI used by ADK Web, A2A, FastAPI, and the worker; it is not the value to put in
-the deployment environment.
+registry URI used by ADK Web, A2A, and FastAPI; it is not the value to put in the
+deployment environment. The worker owns no ADK session.
 
-FastAPI and the worker run an eager startup gate that calls ADK 2.9.2's idempotent
+FastAPI and the CLI run an eager startup gate that calls ADK 2.9.2's idempotent
 `DatabaseSessionService.prepare_tables()` and requires JSON session schema version `1`.
 The same check can be run independently before starting either process:
 
@@ -335,9 +341,11 @@ repository as the API and worker; run it within the container because the Compos
 
 Set `REVIEW_ADMIN_TOKEN` to a long random secret before using
 `POST /api/v1/reviews/abort-pending`. Pass it as `X-Review-Admin-Token`. If unset,
-the route returns `503`; an incorrect token returns `403`. The route resumes each
-paused workflow with `reject_all`, preserving review and audit history. It does not
-delete PostgreSQL rows. Example after configuring the secret:
+the route returns `503`; an incorrect token returns `403`. The route calls
+`ReviewResolutionService.reject_all_pending`, which records a `reject_all` decision
+for each pending candidate and closes its run, preserving review and audit history.
+It does not resume the paused conversations or delete PostgreSQL rows. Example after
+configuring the secret:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/reviews/abort-pending \

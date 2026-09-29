@@ -12,7 +12,9 @@ artifact names, see [semantic-extraction.md](semantic-extraction.md).
 > `fix-process/semantic_extraction/semantic-extraction-fix-plan.md` (SE1–SE26; in the
 > repository history at commit `833813a`, not in the working tree). Of the
 > gaps in section 13, deterministic numeric grounding (13.3) and completeness policy
-> by product subtype (13.7) are now implemented, as SE18 and SE21.
+> by product subtype (13.7) are now implemented, as SE18 and SE21. Section 5 (packets
+> and calls), section 10's caching sentence and section 11 have been brought up to date;
+> the rest of sections 4–11 may still describe the pre-fix pipeline.
 
 ## 1. Purpose and pipeline boundary
 
@@ -136,7 +138,8 @@ are therefore not free-form URLs supplied by the model.
 
 ## 5. Planning and evidence packets
 
-The planner groups fields into bounded packets:
+The planner (`app/services/extraction_planner.py`) groups fields into six field
+groups:
 
 1. identity, including canonical name, formal terms names, variants, category, and
    purpose;
@@ -144,27 +147,25 @@ The planner groups fields into bounded packets:
 3. fees and repayment;
 4. eligibility and related conditions;
 5. required documents;
-6. product-type-specific details.
+6. product-type-specific details (the offering category's own fields, SE21).
 
-Required documents deliberately have their own packet. Document lists often appear in
-both the webpage and one or more PDFs and are easily under-extracted when sharing a
-small packet with unrelated eligibility fields.
+The six groups are asked in three model calls (`FULL_MODE_CALLS`):
+`identity_and_core`, `terms_and_eligibility` and `documents_and_details`. In the
+default `full` evidence mode every call receives the offering's whole selected
+evidence, and a packet above `SEMANTIC_EXTRACTION_MAX_PACKET_CHARS` fails the run
+(`EvidencePacketTooLargeError`) instead of being cut. In the `budgeted` mode each call
+gets whole evidence units (a table or a section) within
+`SEMANTIC_EXTRACTION_BUDGET_CHARS`: every field first gets an equal share spent on the
+units labelled for it, the rest goes to the best-scoring units, and related-product
+units come in only with room left.
 
-For every field, deterministic keyword and role matching reserves space for its best
-evidence before contextual evidence fills the remaining capacity. Ranking favors:
+Global navigation and historical/future material are never evidence for a value.
+Related-product evidence is not excluded, but a value supported only by it goes to
+review. Evidence left out of a budgeted call is not deleted from the overall evidence
+catalog; it remains available for later verification and conflict analysis.
 
-- the current product over related or generic products;
-- the canonical page for customer-facing product identity;
-- appropriate information roles;
-- higher-precedence current evidence.
-
-Known sibling mortgage variants and historical/future material are excluded from a
-canonical current-product packet. Lower-ranked accepted evidence is not deleted from
-the overall evidence catalog; it remains available for later verification and conflict
-analysis.
-
-Every packet has a fingerprint derived from its fields, scope, evidence content, and
-source metadata. This is a core cache boundary.
+Every call has a fingerprint of exactly what it sends (model, generation settings,
+instruction and prompt). This is the cache key (section 11).
 
 ## 6. ADK extraction call
 
@@ -306,7 +307,8 @@ If every field needed for assembly validates, the result contains a complete
 - associated evidence IDs;
 - machine-readable and Markdown review queues.
 
-Invalid responses are not cached.
+Every fresh response is cached with its validation outcome (`accepted` or `review`);
+see section 11.
 
 Total termination is reserved for systemic failures, such as invalid inputs or
 configuration, unavailable source evidence, authentication failure, or every model
@@ -315,19 +317,16 @@ systemic failure.
 
 ## 11. Cache behavior
 
-A batch is reusable only when all of the following match:
-
-- product;
-- semantic schema version;
-- prompt version;
-- model name;
-- selected-evidence fingerprint.
-
-Only wholly validated batch responses are stored. Cached responses are validated again
-when read, so incompatible legacy records are ignored. Schema and prompt version 5
-invalidate earlier flat-string semantic contracts. PDF parsing, normalization, and
-source-discovery caches are independent and do not need to be invalidated by a purely
-semantic contract change.
+`semantic_extraction_batches` is keyed by the fingerprint of exactly what a call
+sends: model, generation settings, instruction and prompt. Every fresh answer is
+stored with its validation outcome (`accepted` or `review`, migration `021`), and a
+stored answer is reused as it is, without a second repair, so an unchanged failing
+field costs no call. A cached answer for other fields than the call asks is ignored.
+The schema and prompt versions stay in the lookup as a manual invalidation switch.
+`review_decision_memory` keeps each committed review decision against the call and
+the result it was about, so an unchanged field is not asked again. PDF parsing,
+normalization, and source-discovery caches are independent and do not need to be
+invalidated by a purely semantic contract change.
 
 ## 12. Current conflict behavior
 
@@ -375,9 +374,11 @@ textual grounding, not full semantic entailment.
 
 ### 13.3 Deterministic numeric and unit grounding
 
-Pydantic checks mathematical ranges, but a complete verifier should separately confirm
-that claim numbers, currencies, units, inclusivity, and `from`/`up to` semantics occur
-compatibly in the evidence.
+Implemented for numbers (SE18): for loan amounts, rates, terms, down payment, LTV, ages,
+credit limits, grace periods and fees, every number of a `found` value must appear in the quotes it cites, or the
+field goes to review. A complete verifier would still confirm per claim that
+currencies, units, inclusivity, and `from`/`up to` semantics occur compatibly in the
+evidence.
 
 ### 13.4 Cross-source conflict resolution
 
@@ -391,9 +392,11 @@ This has since been built downstream of extraction, not inside it.
 `detect_review_signals` in `app/services/snapshot_lifecycle.py` turns
 `conflicting` and `ambiguous` fields — along with missing required fields and
 large rate changes — into durable `ReviewTask` rows with bounded candidates and
-captured evidence, and the resumable ADK workflow collects
-`approve`/`select_candidate`/`reject_all`/`override` decisions with an audit
-history. See [review-quarantine.md](review-quarantine.md) and
+captured evidence. The monitoring node (`app/services/monitoring_node.py`) pauses
+the chat invocation on a native `RequestInput` for each review and collects
+`approve`/`select_candidate`/`reject_all`/`override`/`confirm_not_stated` decisions
+with an audit history; no separate workflow app or session correlation remains
+(migration `016`). See [review-quarantine.md](review-quarantine.md) and
 [native-hitl-review.md](native-hitl-review.md).
 
 What remains is routing at *claim* granularity: a review today is scoped to a
@@ -409,9 +412,11 @@ corrected claim through verification again.
 
 ### 13.7 Completeness policy by product subtype
 
-Some suspicious-omission checks exist, but the system does not yet have a complete,
-versioned policy describing required or expected concepts for every mortgage,
-consumer-finance, overdraft, credit-line, and campaign subtype.
+Implemented per offering category (SE21): the catalog gives each offering a category
+(`consumer_loan`, `overdraft`, `credit_line`, `mortgage`), extraction asks exactly that
+category's detail fields (`CATEGORY_FIELDS`), a model answer naming another category
+goes to review, and a missing required tariff field raises a review signal. Campaign
+subtypes have no policy of their own.
 
 ### 13.8 Cross-field consistency
 
@@ -463,8 +468,9 @@ The safest implementation order is:
 
 RAG and semantic extraction solve different problems:
 
-- normalization and chunking create stable searchable evidence units;
-- the knowledge store versions and indexes those chunks;
+- normalization and chunking create stable evidence units;
+- the knowledge store versions those chunks as text (migration `027` dropped their
+  vectors and search indexes);
 - retrieval selects a small evidence-bearing set for a bank, product, and field scope;
 - semantic extraction maps supplied evidence into typed product facts;
 - verification decides whether those facts are safe to accept.
@@ -501,5 +507,6 @@ claim is true.
 - `scripts/demonstrate_end_to_end.py`: complete human-readable pipeline audit.
 - `docs/semantic-extraction.md`: operational usage and artifact guide.
 - `docs/rag-retrieval.md`: retrieval contract and ranking.
-- `docs/knowledge-store.md`: document/chunk persistence and vector indexing.
+- `docs/knowledge-store.md`: document/chunk persistence (text only since migration
+  `027`).
 

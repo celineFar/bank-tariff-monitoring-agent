@@ -61,7 +61,10 @@ fixture asserts all thirteen Armenian primary labels so an incidental catalog ed
 visible in review.
 
 Both API and worker composition load the same catalog. Adding or changing an offering
-therefore requires a reviewed catalog change and catalog tests. Sources are never retired
-because an enabled seed temporarily fails or a linked source is not rediscovered. Only a
-successfully published version with the same stable document key supersedes its previous
-active version.
+therefore requires a reviewed catalog change and catalog tests. A failed, review-held, or
+otherwise unpublished run leaves the offering's active sources as they are, so a seed that
+temporarily fails retires nothing. An accepted publication (`activate_snapshot_set`,
+`app/repositories/knowledge_publication.py`) makes the snapshot's document set the
+offering's whole active set: it retires every active document of the offering outside
+that set, such as a changed page's old version or a PDF no longer linked. An accepted
+publication with no documents leaves the previous set in place.

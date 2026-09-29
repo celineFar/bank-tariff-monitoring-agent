@@ -18,14 +18,16 @@ Three processes — the terminal CLI, FastAPI, and the worker — share one
 composition root (`app/runtime.py`) and one PostgreSQL database. There is one ADK
 app with one agent; a chat-initiated run executes in the chat process, inside the
 agent's invocation, through the monitoring node. Scheduled and API runs execute in
-the worker, which has no ADK at all. Only the pipeline touches the bank.
+the worker, which has no ADK at all. Only the pipeline touches the bank. The
+worker registers the daily 06:00 job only while `SCHEDULE_ENABLED` is true (the
+default); with it off, runs start only from chat or the API.
 
 ```mermaid
 flowchart LR
     CLI["./tariff-chat<br/>attach loop · review console"]
     WEB["ADK Web / A2A<br/>dev surface"]
     HTTP["FastAPI<br/>/api/v1"]
-    SCHED["Scheduler<br/>06:00 Yerevan"]
+    SCHED["Scheduler<br/>06:00 Yerevan · SCHEDULE_ENABLED"]
 
     AGENT["App app · one agent<br/>ToolPolicyPlugin · 7 tools"]
     NODE["monitoring node<br/>stream · pause per review"]
@@ -80,19 +82,24 @@ holding a tool:
 | Call site | Model setting | What it decides | What validates the response |
 |---|---|---|---|
 | `AdkRequestInterpreter` | `MODEL_NAME` | every chat turn: intent, family/offerings, standalone question, and the question's shape (operation, fields, rank, currency) | enum-bounded schema; code checks IDs against the catalog and scope rules (V1–V10) and alone issues grants |
+| `AdkPdfLinkClassifier` (stage `discovery.pdf_link_selection`) | `SOURCE_DISCOVERY_MODEL_NAME` | from link metadata alone, which admitted PDFs are this offering's own or shared terms, before any transcription | exactly one decision per link ID and no others, one re-ask, enum-bounded labels |
 | `GeminiPdfExtractionService` | `PDF_EXTRACTION_MODEL_NAME` | transcribing an admitted PDF into blocks, tables, and notes | every page present exactly once, rectangular tables, strict schema |
-| `TesseractOcrTranscriber` | none — local engine, no model | reading a rendered page image when the probe says `image_only` and Gemini returned nothing | deterministic trigger, page/pixel/timeout bounds, confidence floor, OCR-marked provenance |
 | `AdkSourceDiscoveryClassifier` | `SOURCE_DISCOVERY_MODEL_NAME` | whether an unresolved unit belongs to this product | exactly one known source ID per requested item |
 | `AdkSemanticExtractor` | `MODEL_NAME` | evidence into typed tariff field values | in-batch evidence IDs, verbatim quotes, Pydantic contracts |
-| `GeminiEmbeddingProvider` | `EMBEDDING_MODEL_NAME` | nothing — vectors only | count, 768 dimensions, finite values |
 
 The root chat agent itself is a sixth site: it chooses which tool to call, and
 every tool re-checks its own authorization rather than trusting that choice.
 
-The four schema-bound stages run with thinking disabled, since reasoning tokens
-were being billed at the output rate for output whose shape is already fixed. The
-user-facing answer generator keeps thinking on, because reasoning over retrieved
-evidence is the product there.
+Two neighbours are not generation call sites. `TesseractOcrTranscriber` is a local
+engine with no model: it reads a rendered page image only when the probe says
+`image_only` and Gemini returned nothing, bounded by page, pixel, timeout and a
+confidence floor, with OCR-marked provenance. `GeminiEmbeddingProvider`
+(`EMBEDDING_MODEL_NAME`) decides nothing — it returns vectors, checked for count,
+768 dimensions and finite values — and runs in the worker's sweep and the field
+finder, never inside a monitoring run.
+
+The five schema-bound call sites run with thinking disabled, since reasoning tokens
+were being billed at the output rate for output whose shape is already fixed.
 
 ---
 
@@ -111,22 +118,22 @@ flowchart TD
     CLAIM["Claim<br/>chat: claim(run_id) in the chat process<br/>worker: FOR UPDATE SKIP LOCKED"]
 
     S1["1 · acquisition<br/>allowlisted fetch, conditional browser render,<br/>linked PDFs, captured payloads"]
-    S2["2 · normalization<br/>uniform blocks/tables/notes + locators<br/>PDF admission gate, Gemini transcription,<br/>OCR fallback for empty image-only pages"]
-    S3["3 · source discovery<br/>rules + cache first, model only for<br/>what is genuinely unresolved"]
-    S4["4 · semantic extraction<br/>bounded field packets, exact JSON Schema,<br/>verbatim-quote validation, bounded repair"]
-    S5["5 · previous snapshot<br/>latest accepted for this offering"]
-    S6["6 · embedding<br/>content-addressed reuse"]
+    S2["2 · PDF selection<br/>admission rules first, then Gemini picks<br/>the offering's PDFs from link metadata"]
+    S3["3 · normalization<br/>uniform blocks/tables/notes + locators<br/>PDF admission gate, Gemini transcription,<br/>OCR fallback for empty image-only pages"]
+    S4["4 · source discovery<br/>rules + cache first, model only for<br/>what is genuinely unresolved"]
+    S5["5 · semantic extraction<br/>bounded field packets, exact JSON Schema,<br/>verbatim-quote validation, bounded repair"]
+    S6["6 · previous snapshot<br/>latest accepted for this offering"]
     S7["7 · publication<br/>one transaction"]
     VAL{"Deterministic validation<br/>schema · evidence · normalization<br/>· conflict · large-change"}
 
     TRIG --> SUBMIT --> Q --> CLAIM --> S1
-    S1 --> S2 --> S3 --> S4 --> VAL
-    VAL -->|clean| S5
+    S1 --> S2 --> S3 --> S4 --> S5 --> VAL
+    VAL -->|clean| S6
     VAL -->|needs a human| REV["ReviewTask rows<br/>run → awaiting_review<br/>candidate stays inactive"]
     VAL -->|no trustworthy evidence| FAIL["offering failed<br/>stable failure code<br/>previous accepted data untouched"]
 
-    S5 --> DIFF["canonical comparison<br/>formatting-insensitive"]
-    DIFF --> S6 --> S7
+    S6 --> DIFF["canonical comparison<br/>formatting-insensitive"]
+    DIFF --> S7
     S7 --> OUT["accepted snapshot + change set<br/>+ typed facts + retrieval units<br/>+ source manifest + audit event"]
 
     REV --> HUMAN["human decision<br/>see diagram 3"]
@@ -135,12 +142,14 @@ flowchart TD
 
     classDef modelStage fill:#fff4e6,stroke:#d9822b,color:#663c00
     classDef bad fill:#fdecea,stroke:#c53030,color:#742a2a
-    class S2,S3,S4 modelStage
+    class S2,S3,S4,S5 modelStage
     class FAIL,KEEP bad
 ```
 
-Orange stages are the ones that call Gemini. Stages 1, 5, 6, and 7 and every
-decision diamond are pure Python.
+Orange stages are the ones that call Gemini. Stages 1, 6, and 7 and every
+decision diamond are pure Python. Stage 2 runs only when the page links PDFs.
+Nothing is embedded during a run: retrieval units are published without vectors,
+and the worker's sweep embeds them later.
 
 Two properties are worth reading off the diagram. First, no path reaches "accepted
 snapshot" without passing the validation diamond. Second, both failure exits lead
@@ -205,7 +214,7 @@ flowchart LR
     F[("tariff_facts + fact_evidence<br/>accepted, active only")]
     U[("retrieval_units<br/>field finder: only when no field is named")]
     ANSWER["answer + per-value citation<br/>quote · URL · page/section · as_of"]
-    ABSTAIN["abstention<br/>names the offering and field<br/>that have no accepted evidence"]
+    ABSTAIN["abstention<br/>names the offering and field<br/>that have no accepted evidence<br/>+ reason_code + per-offering coverage"]
 
     Q --> R --> P --> SVC
     SVC --> F
@@ -221,7 +230,15 @@ The plan is an authorization, not routing metadata: a plan that is absent,
 replayed, expired, cross-session, or widened is rejected before any repository
 call. Comparisons and rankings are computed in Python from typed facts — Gemini
 never does the arithmetic, and a ranking abstains rather than comparing values that
-differ in currency, unit, rate basis, or fee scope.
+differ in currency, unit, rate basis, or fee scope. A ranking that does answer says
+"ranked N of M" and lists every offering it left out with its reason.
+
+An abstention carries a `reason_code` — `awaiting_review`, `run_failed`,
+`never_monitored`, `no_accepted_data`, `not_stated_in_source`, or
+`field_not_extracted` — and, when an in-scope offering has no published data, a
+`coverage` list with the reason per offering. The agent's next step (offer a
+review, offer monitoring, or say the bank's tariff does not state it) follows from
+the code, not from a guess.
 
 ---
 
@@ -284,17 +301,18 @@ For terminals without Mermaid rendering:
   +--------------- TariffPipeline, per offering ----------------+
   |                                                             |
   |  1 acquisition       allowlist, render, linked PDFs         |
-  |  2 normalization     uniform evidence   [PDF -> Gemini,    |
-|                                          scanned -> OCR]   |
-  |  3 source discovery  rules + cache first   [rest -> Gemini] |
-  |  4 semantic extract  bounded packets       [-> Gemini]      |
+  |  2 PDF selection     admission rules  [admitted -> Gemini]  |
+  |  3 normalization     uniform evidence   [PDF -> Gemini,     |
+  |                                          scanned -> OCR]    |
+  |  4 source discovery  rules + cache first   [rest -> Gemini] |
+  |  5 semantic extract  bounded packets       [-> Gemini]      |
   |        |                                                    |
   |        +---- deterministic validation ----+                 |
   |          |              |                 |                 |
   |        clean      needs human    no trustworthy evidence    |
   |          |              |                 |                 |
-  |  5 previous snapshot    |        fail offering,             |
-  |  6 embedding     ReviewTask +    keep previous accepted     |
+  |  6 previous snapshot    |        fail offering,             |
+  |          |       ReviewTask +    keep previous accepted     |
   |  7 publication <- approved --+                              |
   |                                                             |
   +-------------------------------------------------------------+

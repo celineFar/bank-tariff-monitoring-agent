@@ -304,6 +304,7 @@ produced them:
 |---|---|
 | `0_run_context.md` | run, offering, and seed URL of the directory |
 | `2_normalized_webpage.md`, `2_normalization_diff.md` | normalization |
+| `2_pdf_link_selection.md` | PDF link selection (source discovery's first step, written with the normalization reports) |
 | `3_source_selection_decisions.md`, `3_source_selection_diff.md`, `3_selected_sources.md` | source discovery |
 | `4_extraction_evidence.md`, `4_pre_validation.md`, `4_review_queue.md` | semantic extraction |
 

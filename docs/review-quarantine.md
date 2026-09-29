@@ -5,8 +5,10 @@ scope to a run, offering execution, candidate snapshot, bounded candidate choice
 captured evidence references: the review's evidence set (`evidence.set`, units of
 evidence IDs decided when the signal was raised), never a copy of the evidence. Rows
 written before migration `022` carry a copy (`evidence.items`) and still work. The repository creates tasks idempotently, serializes
-decisions with row locks, stores ADK workflow correlation separately, and supports
-approved, rejected, superseded, and failed terminal states.
+decisions with row locks, and supports approved, rejected, superseded, and failed
+terminal states. A review carries no ADK session correlation (migration `016` dropped it):
+the monitoring node pauses the chat invocation with a native `RequestInput` and re-reads
+review state from the repository on every re-run.
 
 A newer review for the same product, offering, and issue scope deterministically
 supersedes the older pending review from an earlier snapshot. Reviews of the same field

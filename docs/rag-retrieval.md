@@ -83,7 +83,10 @@ trace=1f9f step=9  stage=branch.selected   branch=single
 trace=1f9f steps=9 elapsed_ms=41.2 status=answered facts=6 units=0
 ```
 
-A question that names its fields skips steps 4–6.
+A question that names its fields skips steps 4–6. When an in-scope offering has
+no active profile, a `coverage.unpublished` line follows `profiles.loaded` with
+each such offering's state (`awaiting_review`, `run_failed`, `never_monitored`, or
+`no_accepted_data`), the same states the answer's `coverage` metadata reports.
 
 `summary` keeps only the closing line, `off` disables it, and `verbose` adds
 `lexical.terms` (the derived `tsquery`) and one `unit.content` line per unit the
